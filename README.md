@@ -6,7 +6,42 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 
 ---
 
-## Table of Contents
+## 🚀 Quick Deploy with Pre-built Image
+
+**New to GearCargo? Deploy in 2 minutes with our pre-built image!**
+
+```bash
+# Download deployment files
+wget https://raw.githubusercontent.com/aiulian25/gearcargo/main/docker-compose.deploy.yml
+wget https://raw.githubusercontent.com/aiulian25/gearcargo/main/.env.production
+
+# Edit configuration
+nano .env.production
+# Set your credentials, domains, and secrets
+
+# Create directories
+mkdir -p volumes/{db,redis,attachments,backups,uploads}
+
+# Start (pulls image from ghcr.io)
+docker compose -f docker-compose.deploy.yml --env-file .env.production up -d
+
+# Check logs
+docker compose -f docker-compose.deploy.yml logs -f backend
+```
+
+✨ **Features:**
+- ⚡ No build time - image pre-built on GitHub
+- 🗄️ Database auto-initialized on first start
+- 👤 Admin user auto-created from environment variables
+- 🔒 Production-ready security settings
+- 📅 Calendar sync enabled by default for admin
+- 🔔 Push notifications ready to configure
+
+See [Deployment Options](#deployment-options) for details.
+
+---
+
+## Quick Start (Recommended Method)
 
 - [Features](#features)
 - [Quick Start](#quick-start)
@@ -133,7 +168,7 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 
 ---
 
-## Quick Start
+## Quick Start (Recommended Method)
 
 ### Prerequisites
 - Docker & Docker Compose v2+
@@ -142,7 +177,7 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 
 ### Automated Setup
 
-\`\`\`bash
+```bash
 # Clone the repository
 git clone https://github.com/aiulian25/GearCargo.git
 cd gearcargo
@@ -152,7 +187,7 @@ chmod +x setup.sh
 ./setup.sh
 
 # Access at http://localhost:5000
-\`\`\`
+```
 
 The setup script will:
 1. Check prerequisites
@@ -164,11 +199,64 @@ The setup script will:
 
 ---
 
-## Deployment Options
+## Table of Contents
 
-GearCargo provides **three deployment configurations** for different use cases:
+GearCargo provides **multiple deployment configurations** for different use cases:
 
-### Option 1: Development (\`docker-compose.yml\`)
+---
+
+### 🚀 Option 1: Pre-built Image from GitHub (Recommended for Production)
+
+Pull the latest pre-built image from GitHub Container Registry - **no build required!**
+
+**Best for:** Quick deployment, production servers, testing
+
+\`\`\`bash
+# 1. Download deployment files
+wget https://raw.githubusercontent.com/aiulian25/gearcargo/main/docker-compose.test.yml
+wget https://raw.githubusercontent.com/aiulian25/gearcargo/main/.env.test
+
+# 2. Customize your configuration
+nano .env.test
+# Edit: ADMIN_EMAIL, ADMIN_PASSWORD, domains, etc.
+
+# 3. Create required directories
+mkdir -p volumes/{db,redis,attachments,backups,uploads}
+
+# 4. Start the application (image will be pulled automatically)
+docker compose -f docker-compose.test.yml --env-file .env.test up -d
+
+# 5. Check startup logs
+docker compose -f docker-compose.test.yml logs -f backend
+
+# Look for:
+#   "Running database migrations..."
+#   "Database migrations complete."
+#   "Default admin user created: admin@test.local"
+\`\`\`
+
+**What happens on first startup:**
+1. 🐳 Docker pulls pre-built image from `ghcr.io/aiulian25/gearcargo:latest`
+2. 🗄️ Database migrations run automatically (creates all tables)
+3. 👤 Admin user is created from your `.env.test` credentials
+4. 🚀 Application starts and is ready to use!
+
+**Default admin credentials** (from `.env.test`):
+- Email: `admin@test.local`
+- Password: `TestAdmin123!`
+- ⚠️ **Change these immediately after first login!**
+
+**Features:**
+- ✅ No build time (image pre-built on GitHub)
+- ✅ Automatic database initialization
+- ✅ Production-ready configuration
+- ✅ HTTPS support (set `SESSION_COOKIE_SECURE=true`)
+- ✅ Domain-based access control
+- ✅ Smaller resource footprint
+
+---
+
+### Option 2: Development (\`docker-compose.yml\`)
 
 Best for: Local development, testing, feature development
 
@@ -192,7 +280,7 @@ docker compose up -d --build
 
 ---
 
-### Option 2: Production with AI (\`docker-compose.prod.yml\`)
+### Option 3: Production with AI (\`docker-compose.prod.yml\`)
 
 Best for: Full-featured production deployment with AI predictions
 
@@ -221,7 +309,7 @@ docker compose -f docker-compose.prod.yml logs -f backend
 
 ---
 
-### Option 3: Simple Production (\`docker-compose.simple.yml\`)
+### Option 4: Simple Production (\`docker-compose.simple.yml\`)
 
 Best for: Lightweight production without AI features
 
@@ -250,15 +338,19 @@ docker compose -f docker-compose.simple.yml logs -f backend
 
 ### Deployment File Comparison
 
-| Feature | \`docker-compose.yml\` | \`docker-compose.prod.yml\` | \`docker-compose.simple.yml\` |
-|---------|---------------------|---------------------------|----------------------------|
-| **Use Case** | Development | Full Production | Lightweight Production |
-| **Debug Mode** | ✅ Enabled | ❌ Disabled | ❌ Disabled |
-| **Ollama AI** | Optional | Optional | ❌ Disabled |
-| **Resource Limits** | None | 2 CPU, 1GB RAM | 2 CPU, 1GB RAM |
-| **Log Rotation** | No | Yes (10MB × 3) | Yes (10MB × 3) |
-| **Session Security** | Relaxed | Strict (HTTPS) | Strict (HTTPS) |
-| **Rate Limiting** | 200/day | 100/hour | 100/hour |
+| Feature | Pre-built Image | \`docker-compose.yml\` | \`docker-compose.prod.yml\` | \`docker-compose.simple.yml\` |
+|---------|----------------|---------------------|---------------------------|----------------------------|
+| **Use Case** | **Quick Production** | Development | Full Production | Lightweight Production |
+| **Build Time** | ⚡ **None (pre-built)** | ~2-5 minutes | ~2-5 minutes | ~2-5 minutes |
+| **Image Source** | `ghcr.io` | Local build | Local build | Local build |
+| **Auto Migrations** | ✅ **Yes** | Manual | Manual | Manual |
+| **Debug Mode** | ❌ Disabled | ✅ Enabled | ❌ Disabled | ❌ Disabled |
+| **Ollama AI** | ❌ Disabled | Optional | Optional | ❌ Disabled |
+| **Resource Limits** | 2 CPU, 1GB RAM | None | 2 CPU, 1GB RAM | 2 CPU, 1GB RAM |
+| **Log Rotation** | Yes (10MB × 3) | No | Yes (10MB × 3) | Yes (10MB × 3) |
+| **Session Security** | Strict (HTTPS) | Relaxed | Strict (HTTPS) | Strict (HTTPS) |
+| **Rate Limiting** | 100/hour | 200/day | 100/hour | 100/hour |
+| **Best For** | 🚀 **Production VPS** | Local dev | AI features | Minimal setup |
 
 ---
 
@@ -416,45 +508,37 @@ DEFAULT_THEME=dark
 
 GearCargo supports **two methods** for creating the initial admin user:
 
-### Method 1: Environment Variables (Recommended for Automation)
+### Method 1: Environment Variables (Automatic - Recommended) ✨
 
-Set these variables in your \`.env\` file **before the first container startup**:
+**With the pre-built image** (`docker-compose.test.yml`), admin creation is **fully automatic!**
 
-\`\`\`bash
+The `.env.test` file includes:
+```bash
+ADMIN_EMAIL=admin@test.local
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=TestAdmin123!
+```
+
+**What happens automatically on first startup:**
+1. 🗄️ Database tables are created via migrations
+2. 👤 Admin user is created if no users exist
+3. 🚀 Application starts ready to use
+
+**Security Notes:**
+- ⚠️ **Change default password immediately after first login!**
+- Password must be at least 8 characters
+- The admin user has full admin privileges (`is_admin=true`)
+- After login, update credentials in Settings → Account
+
+**For custom credentials:**
+Edit `.env.test` before first startup:
+```bash
 ADMIN_EMAIL=admin@yourdomain.com
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=YourSecurePassword123!
-\`\`\`
+```
 
-**How it works:**
-1. On first startup, if no users exist in the database, GearCargo checks for these environment variables
-2. If \`ADMIN_EMAIL\` and \`ADMIN_PASSWORD\` are set, an admin user is automatically created
-3. The admin is created with \`must_change_password=true\` for security
-4. You'll be prompted to change the password on first login
-
-**Security Notes:**
-- Password must be at least 8 characters
-- The admin user is created with full admin privileges (\`is_admin=true\`)
-- **Remove \`ADMIN_PASSWORD\` from \`.env\` after first login!**
-- A warning is logged reminding you to change the password
-
-**Example workflow:**
-\`\`\`bash
-# 1. Set up environment
-cp .env.example .env
-nano .env  # Add ADMIN_EMAIL, ADMIN_USERNAME, ADMIN_PASSWORD
-
-# 2. Start containers (admin created automatically)
-docker compose up -d --build
-
-# 3. Log in and change password at http://localhost:5000
-
-# 4. Remove password from .env for security
-sed -i 's/ADMIN_PASSWORD=.*/ADMIN_PASSWORD=/' .env
-
-# 5. Restart containers (optional, for security)
-docker compose restart backend
-\`\`\`
+---
 
 ### Method 2: Self-Registration (First User Becomes Admin)
 
