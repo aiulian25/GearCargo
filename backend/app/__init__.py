@@ -284,7 +284,10 @@ def init_default_admin(app):
             email=admin_email,
             username=admin_username,
             is_admin=True,
-            must_change_password=True
+            must_change_password=True,
+            calendar_enabled=True,  # Enable calendar sync by default
+            push_enabled=True,  # Enable push notifications by default
+            email_notifications_enabled=True  # Enable email notifications by default
         )
         admin.set_password(admin_password)
         

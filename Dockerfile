@@ -57,7 +57,8 @@ COPY --from=frontend-builder /frontend/dist /app/static
 # Create non-root user
 RUN useradd -m -u 1000 gearcargo && \
     mkdir -p /app/volumes/attachments /app/volumes/backups && \
-    chown -R gearcargo:gearcargo /app
+    chown -R gearcargo:gearcargo /app && \
+    chmod +x /app/docker-entrypoint.sh
 
 USER gearcargo
 
@@ -67,5 +68,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 EXPOSE 5000
 
-# Run with Gunicorn
-CMD ["gunicorn", "--config", "gunicorn.conf.py", "app:create_app()"]
+# Run entrypoint script (handles migrations then starts Gunicorn)
+CMD ["/app/docker-entrypoint.sh"]
