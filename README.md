@@ -213,21 +213,21 @@ Pull the latest pre-built image from GitHub Container Registry - **no build requ
 
 \`\`\`bash
 # 1. Download deployment files
-wget https://raw.githubusercontent.com/aiulian25/gearcargo/main/docker-compose.test.yml
-wget https://raw.githubusercontent.com/aiulian25/gearcargo/main/.env.test
+wget https://raw.githubusercontent.com/aiulian25/gearcargo/main/docker-compose.deploy.yml
+wget https://raw.githubusercontent.com/aiulian25/gearcargo/main/.env.production
 
 # 2. Customize your configuration
-nano .env.test
+nano .env.production
 # Edit: ADMIN_EMAIL, ADMIN_PASSWORD, domains, etc.
 
 # 3. Create required directories
 mkdir -p volumes/{db,redis,attachments,backups,uploads}
 
 # 4. Start the application (image will be pulled automatically)
-docker compose -f docker-compose.test.yml --env-file .env.test up -d
+docker compose -f docker-compose.deploy.yml --env-file .env.production up -d
 
 # 5. Check startup logs
-docker compose -f docker-compose.test.yml logs -f backend
+docker compose -f docker-compose.deploy.yml logs -f backend
 
 # Look for:
 #   "Running database migrations..."
@@ -238,13 +238,12 @@ docker compose -f docker-compose.test.yml logs -f backend
 **What happens on first startup:**
 1. 🐳 Docker pulls pre-built image from `ghcr.io/aiulian25/gearcargo:latest`
 2. 🗄️ Database migrations run automatically (creates all tables)
-3. 👤 Admin user is created from your `.env.test` credentials
+3. 👤 Admin user is created from your `.env.production` credentials
 4. 🚀 Application starts and is ready to use!
 
-**Default admin credentials** (from `.env.test`):
-- Email: `admin@test.local`
-- Password: `TestAdmin123!`
-- ⚠️ **Change these immediately after first login!**
+**Admin credentials:**
+- Set via `ADMIN_EMAIL`, `ADMIN_USERNAME`, and `ADMIN_PASSWORD` in `.env.production`
+- ⚠️ **Change the password immediately after first login!**
 
 **Features:**
 - ✅ No build time (image pre-built on GitHub)
@@ -510,13 +509,13 @@ GearCargo supports **two methods** for creating the initial admin user:
 
 ### Method 1: Environment Variables (Automatic - Recommended) ✨
 
-**With the pre-built image** (`docker-compose.test.yml`), admin creation is **fully automatic!**
+**With the pre-built image** (`docker-compose.deploy.yml`), admin creation is **fully automatic!**
 
-The `.env.test` file includes:
+Configure your `.env.production` file:
 ```bash
-ADMIN_EMAIL=admin@test.local
+ADMIN_EMAIL=admin@yourdomain.com
 ADMIN_USERNAME=admin
-ADMIN_PASSWORD=TestAdmin123!
+ADMIN_PASSWORD=YourSecurePassword123!
 ```
 
 **What happens automatically on first startup:**
@@ -530,13 +529,10 @@ ADMIN_PASSWORD=TestAdmin123!
 - The admin user has full admin privileges (`is_admin=true`)
 - After login, update credentials in Settings → Account
 
-**For custom credentials:**
-Edit `.env.test` before first startup:
-```bash
-ADMIN_EMAIL=admin@yourdomain.com
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD=YourSecurePassword123!
-```
+**Important:**
+- Generate strong, unique credentials before deployment
+- The admin user will have `calendar_enabled=true`, `push_enabled=true`, and `email_notifications_enabled=true` by default
+- Never use default or example passwords in production
 
 ---
 
