@@ -11,19 +11,20 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 **New to GearCargo? Deploy in 2 minutes with our pre-built image!**
 
 ```bash
-# Download deployment files
-wget https://raw.githubusercontent.com/aiulian25/gearcargo/main/docker-compose.deploy.yml
-wget https://raw.githubusercontent.com/aiulian25/gearcargo/main/.env.production
+# Clone the repository
+git clone https://github.com/aiulian25/GearCargo.git
+cd GearCargo
 
-# Edit configuration
-nano .env.production
-# Set your credentials, domains, and secrets
+# Copy and configure production environment
+cp .env.production .env
+nano .env
+# Edit all required values: ADMIN_EMAIL, ADMIN_PASSWORD, secrets, domains, etc.
 
 # Create directories
 mkdir -p volumes/{db,redis,attachments,backups,uploads}
 
-# Start (pulls image from ghcr.io)
-docker compose -f docker-compose.deploy.yml --env-file .env.production up -d
+# Start (pulls pre-built image from ghcr.io)
+docker compose -f docker-compose.deploy.yml --env-file .env up -d
 
 # Check logs
 docker compose -f docker-compose.deploy.yml logs -f backend
@@ -211,20 +212,21 @@ Pull the latest pre-built image from GitHub Container Registry - **no build requ
 
 **Best for:** Quick deployment, production servers, testing
 
-\`\`\`bash
-# 1. Download deployment files
-wget https://raw.githubusercontent.com/aiulian25/gearcargo/main/docker-compose.deploy.yml
-wget https://raw.githubusercontent.com/aiulian25/gearcargo/main/.env.production
+```bash
+# 1. Clone the repository
+git clone https://github.com/aiulian25/GearCargo.git
+cd GearCargo
 
-# 2. Customize your configuration
-nano .env.production
-# Edit: ADMIN_EMAIL, ADMIN_PASSWORD, domains, etc.
+# 2. Copy and configure production environment  
+cp .env.production .env
+nano .env
+# Edit: ADMIN_EMAIL, ADMIN_PASSWORD, domains, secrets, etc.
 
 # 3. Create required directories
 mkdir -p volumes/{db,redis,attachments,backups,uploads}
 
 # 4. Start the application (image will be pulled automatically)
-docker compose -f docker-compose.deploy.yml --env-file .env.production up -d
+docker compose -f docker-compose.deploy.yml --env-file .env up -d
 
 # 5. Check startup logs
 docker compose -f docker-compose.deploy.yml logs -f backend
