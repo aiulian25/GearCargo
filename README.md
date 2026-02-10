@@ -6,42 +6,6 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 
 ---
 
-## 🚀 Quick Deploy with Pre-built Image
-
-**New to GearCargo? Deploy in 2 minutes with our pre-built image!**
-
-```bash
-# Clone the repository
-git clone https://github.com/aiulian25/GearCargo.git
-cd GearCargo
-
-# Copy and configure production environment
-cp .env.production .env
-nano .env
-# Edit all required values: ADMIN_EMAIL, ADMIN_PASSWORD, secrets, domains, etc.
-
-# Create directories
-mkdir -p volumes/{db,redis,attachments,backups,uploads}
-
-# Start (pulls pre-built image from ghcr.io)
-docker compose -f docker-compose.deploy.yml --env-file .env up -d
-
-# Check logs
-docker compose -f docker-compose.deploy.yml logs -f backend
-```
-
-✨ **Features:**
-- ⚡ No build time - image pre-built on GitHub
-- 🗄️ Database auto-initialized on first start
-- 👤 Admin user auto-created from environment variables
-- 🔒 Production-ready security settings
-- 📅 Calendar sync enabled by default for admin
-- 🔔 Push notifications ready to configure
-
-See [Deployment Options](#deployment-options) for details.
-
----
-
 ## Quick Start (Recommended Method)
 
 - [Features](#features)
@@ -200,64 +164,13 @@ The setup script will:
 
 ---
 
-## Table of Contents
+## Deployment Options
 
 GearCargo provides **multiple deployment configurations** for different use cases:
 
 ---
 
-### 🚀 Option 1: Pre-built Image from GitHub (Recommended for Production)
-
-Pull the latest pre-built image from GitHub Container Registry - **no build required!**
-
-**Best for:** Quick deployment, production servers, testing
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/aiulian25/GearCargo.git
-cd GearCargo
-
-# 2. Copy and configure production environment  
-cp .env.production .env
-nano .env
-# Edit: ADMIN_EMAIL, ADMIN_PASSWORD, domains, secrets, etc.
-
-# 3. Create required directories
-mkdir -p volumes/{db,redis,attachments,backups,uploads}
-
-# 4. Start the application (image will be pulled automatically)
-docker compose -f docker-compose.deploy.yml --env-file .env up -d
-
-# 5. Check startup logs
-docker compose -f docker-compose.deploy.yml logs -f backend
-
-# Look for:
-#   "Running database migrations..."
-#   "Database migrations complete."
-#   "Default admin user created: admin@test.local"
-\`\`\`
-
-**What happens on first startup:**
-1. 🐳 Docker pulls pre-built image from `ghcr.io/aiulian25/gearcargo:latest`
-2. 🗄️ Database migrations run automatically (creates all tables)
-3. 👤 Admin user is created from your `.env.production` credentials
-4. 🚀 Application starts and is ready to use!
-
-**Admin credentials:**
-- Set via `ADMIN_EMAIL`, `ADMIN_USERNAME`, and `ADMIN_PASSWORD` in `.env.production`
-- ⚠️ **Change the password immediately after first login!**
-
-**Features:**
-- ✅ No build time (image pre-built on GitHub)
-- ✅ Automatic database initialization
-- ✅ Production-ready configuration
-- ✅ HTTPS support (set `SESSION_COOKIE_SECURE=true`)
-- ✅ Domain-based access control
-- ✅ Smaller resource footprint
-
----
-
-### Option 2: Development (\`docker-compose.yml\`)
+### Option 1: Development (\`docker-compose.yml\`)
 
 Best for: Local development, testing, feature development
 
@@ -281,7 +194,7 @@ docker compose up -d --build
 
 ---
 
-### Option 3: Production with AI (\`docker-compose.prod.yml\`)
+### Option 2: Production with AI (\`docker-compose.prod.yml\`)
 
 Best for: Full-featured production deployment with AI predictions
 
@@ -310,7 +223,7 @@ docker compose -f docker-compose.prod.yml logs -f backend
 
 ---
 
-### Option 4: Simple Production (\`docker-compose.simple.yml\`)
+### Option 3: Simple Production (\`docker-compose.simple.yml\`)
 
 Best for: Lightweight production without AI features
 
@@ -339,19 +252,19 @@ docker compose -f docker-compose.simple.yml logs -f backend
 
 ### Deployment File Comparison
 
-| Feature | Pre-built Image | \`docker-compose.yml\` | \`docker-compose.prod.yml\` | \`docker-compose.simple.yml\` |
-|---------|----------------|---------------------|---------------------------|----------------------------|
-| **Use Case** | **Quick Production** | Development | Full Production | Lightweight Production |
-| **Build Time** | ⚡ **None (pre-built)** | ~2-5 minutes | ~2-5 minutes | ~2-5 minutes |
-| **Image Source** | `ghcr.io` | Local build | Local build | Local build |
-| **Auto Migrations** | ✅ **Yes** | Manual | Manual | Manual |
-| **Debug Mode** | ❌ Disabled | ✅ Enabled | ❌ Disabled | ❌ Disabled |
-| **Ollama AI** | ❌ Disabled | Optional | Optional | ❌ Disabled |
-| **Resource Limits** | 2 CPU, 1GB RAM | None | 2 CPU, 1GB RAM | 2 CPU, 1GB RAM |
-| **Log Rotation** | Yes (10MB × 3) | No | Yes (10MB × 3) | Yes (10MB × 3) |
-| **Session Security** | Strict (HTTPS) | Relaxed | Strict (HTTPS) | Strict (HTTPS) |
-| **Rate Limiting** | 100/hour | 200/day | 100/hour | 100/hour |
-| **Best For** | 🚀 **Production VPS** | Local dev | AI features | Minimal setup |
+| Feature | \`docker-compose.yml\` | \`docker-compose.prod.yml\` | \`docker-compose.simple.yml\` |
+|---------|---------------------|---------------------------|----------------------------|
+| **Use Case** | Development | Full Production | Lightweight Production |
+| **Build Time** | ~2-5 minutes | ~2-5 minutes | ~2-5 minutes |
+| **Image Source** | Local build | Local build | Local build |
+| **Auto Migrations** | Manual | Manual | Manual |
+| **Debug Mode** | ✅ Enabled | ❌ Disabled | ❌ Disabled |
+| **Ollama AI** | Optional | Optional | ❌ Disabled |
+| **Resource Limits** | None | 2 CPU, 1GB RAM | 2 CPU, 1GB RAM |
+| **Log Rotation** | No | Yes (10MB × 3) | Yes (10MB × 3) |
+| **Session Security** | Relaxed | Strict (HTTPS) | Strict (HTTPS) |
+| **Rate Limiting** | 200/day | 100/hour | 100/hour |
+| **Best For** | Local dev | AI features | Minimal setup |
 
 ---
 
