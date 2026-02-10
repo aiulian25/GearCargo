@@ -85,9 +85,14 @@ celerybeat-schedule
 
 # Environments
 .env
+.env.test
 .venv
 env/
 venv/
+
+# Test deployment files (contain credentials)
+docker-compose.test.yml
+deploy.sh
 ENV/
 env.bak/
 venv.bak/
