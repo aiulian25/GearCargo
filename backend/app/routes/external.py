@@ -1,0 +1,986 @@
+"""
+GearCargo - External API Routes (Weather, Fuel Prices)
+"""
+
+import os
+import requests
+from datetime import datetime, timedelta
+from flask import Blueprint, request, jsonify, current_app
+from functools import lru_cache
+
+from app.routes.auth import token_required
+
+external_bp = Blueprint('external', __name__)
+
+# Cache for API responses
+_cache = {}
+CACHE_DURATION = timedelta(minutes=30)
+
+
+def get_cached(key, fetch_func, cache_duration=CACHE_DURATION):
+    """Simple cache wrapper."""
+    now = datetime.utcnow()
+    if key in _cache:
+        data, timestamp = _cache[key]
+        if now - timestamp < cache_duration:
+            return data
+    
+    try:
+        data = fetch_func()
+        _cache[key] = (data, now)
+        return data
+    except Exception as e:
+        current_app.logger.error(f"Cache fetch error for {key}: {e}")
+        # Return stale data if available
+        if key in _cache:
+            return _cache[key][0]
+        return None
+
+
+@external_bp.route('/weather', methods=['GET'])
+@token_required
+def get_weather(current_user):
+    """Get weather data from Open-Meteo API."""
+    lat = request.args.get('lat', type=float)
+    lon = request.args.get('lon', type=float)
+    location = request.args.get('location', 'Unknown')
+    
+    if not lat or not lon:
+        # Default to London if no coordinates
+        lat = 51.5074
+        lon = -0.1278
+        location = 'London, United Kingdom'
+    
+    cache_key = f"weather_{lat}_{lon}"
+    
+    def fetch_weather():
+        # Open-Meteo API (free, no key required)
+        url = "https://api.open-meteo.com/v1/forecast"
+        params = {
+            'latitude': lat,
+            'longitude': lon,
+            'current': 'temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,pressure_msl',
+            'daily': 'weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset',
+            'timezone': 'auto',
+            'forecast_days': 7
+        }
+        
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    
+    data = get_cached(cache_key, fetch_weather)
+    
+    if not data:
+        return jsonify({'error': 'Weather service unavailable'}), 503
+    
+    # Parse weather codes to conditions
+    weather_codes = {
+        0: {'condition': 'Clear', 'icon': 'clear_day'},
+        1: {'condition': 'Mainly Clear', 'icon': 'clear_day'},
+        2: {'condition': 'Partly Cloudy', 'icon': 'partly_cloudy_day'},
+        3: {'condition': 'Overcast', 'icon': 'cloud'},
+        45: {'condition': 'Foggy', 'icon': 'foggy'},
+        48: {'condition': 'Rime Fog', 'icon': 'foggy'},
+        51: {'condition': 'Light Drizzle', 'icon': 'rainy'},
+        53: {'condition': 'Drizzle', 'icon': 'rainy'},
+        55: {'condition': 'Heavy Drizzle', 'icon': 'rainy'},
+        61: {'condition': 'Light Rain', 'icon': 'rainy'},
+        63: {'condition': 'Rain', 'icon': 'rainy'},
+        65: {'condition': 'Heavy Rain', 'icon': 'rainy'},
+        71: {'condition': 'Light Snow', 'icon': 'weather_snowy'},
+        73: {'condition': 'Snow', 'icon': 'weather_snowy'},
+        75: {'condition': 'Heavy Snow', 'icon': 'weather_snowy'},
+        80: {'condition': 'Light Showers', 'icon': 'rainy'},
+        81: {'condition': 'Showers', 'icon': 'rainy'},
+        82: {'condition': 'Heavy Showers', 'icon': 'rainy'},
+        95: {'condition': 'Thunderstorm', 'icon': 'thunderstorm'},
+        96: {'condition': 'Thunderstorm with Hail', 'icon': 'thunderstorm'},
+        99: {'condition': 'Thunderstorm with Heavy Hail', 'icon': 'thunderstorm'},
+    }
+    
+    current = data.get('current', {})
+    daily = data.get('daily', {})
+    
+    current_code = current.get('weather_code', 0)
+    weather_info = weather_codes.get(current_code, {'condition': 'Unknown', 'icon': 'cloud'})
+    
+    # Build forecast
+    forecast = []
+    if daily.get('time'):
+        for i, date in enumerate(daily['time'][:7]):
+            code = daily.get('weather_code', [0])[i] if i < len(daily.get('weather_code', [])) else 0
+            info = weather_codes.get(code, {'condition': 'Unknown', 'icon': 'cloud'})
+            forecast.append({
+                'date': date,
+                'day': datetime.strptime(date, '%Y-%m-%d').strftime('%a'),
+                'temp_max': daily.get('temperature_2m_max', [0])[i] if i < len(daily.get('temperature_2m_max', [])) else 0,
+                'temp_min': daily.get('temperature_2m_min', [0])[i] if i < len(daily.get('temperature_2m_min', [])) else 0,
+                'condition': info['condition'],
+                'icon': info['icon']
+            })
+    
+    return jsonify({
+        'location': location,
+        'current': {
+            'temperature': current.get('temperature_2m'),
+            'feels_like': current.get('apparent_temperature'),
+            'humidity': current.get('relative_humidity_2m'),
+            'wind_speed': current.get('wind_speed_10m'),
+            'pressure': current.get('pressure_msl'),
+            'condition': weather_info['condition'],
+            'icon': weather_info['icon']
+        },
+        'sunrise': daily.get('sunrise', [''])[0].split('T')[1] if daily.get('sunrise') else None,
+        'sunset': daily.get('sunset', [''])[0].split('T')[1] if daily.get('sunset') else None,
+        'forecast': forecast,
+        'timezone': data.get('timezone', 'UTC')
+    })
+
+
+@external_bp.route('/fuel-prices', methods=['GET'])
+@token_required
+def get_fuel_prices(current_user):
+    """Get fuel prices - using EU Weekly Oil Bulletin data and UK Gov statistics.
+    
+    Data sources:
+    - UK: https://www.gov.uk/government/statistics/weekly-road-fuel-prices
+    - EU: https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en
+    
+    Prices are national averages updated weekly (typically Monday).
+    """
+    country = request.args.get('country', 'UK').upper()
+    location = request.args.get('location', 'United Kingdom')
+    lat = request.args.get('lat', type=float)
+    lon = request.args.get('lon', type=float)
+    
+    # Auto-detect country from coordinates if provided
+    if lat and lon:
+        detected_country = detect_country_from_coords(lat, lon)
+        if detected_country:
+            country = detected_country
+    
+    cache_key = f"fuel_prices_{country}"
+    
+    def fetch_fuel_prices():
+        # EU Weekly Oil Bulletin prices (EUR/L) - updated weekly
+        # Data sourced from EU Energy Portal and national statistics
+        # Last data update: Check weekly on Mondays
+        # https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en
+        
+        # Format: currency, diesel, petrol (E10), lpg, premium (E5), last_update
+        eu_prices = {
+            # United Kingdom (pence per litre -> pounds)
+            'UK': {
+                'currency': '£',
+                'currency_code': 'GBP',
+                'diesel': 1.38,      # UK Gov avg 03/02/2026
+                'petrol': 1.34,      # UK Gov avg 03/02/2026
+                'lpg': 0.65,
+                'premium': 1.45,
+                'source': 'UK Gov Weekly Statistics',
+                'last_update': '2026-02-03',
+            },
+            'GB': {  # Alias for UK
+                'currency': '£',
+                'currency_code': 'GBP',
+                'diesel': 1.38,
+                'petrol': 1.34,
+                'lpg': 0.65,
+                'premium': 1.45,
+                'source': 'UK Gov Weekly Statistics',
+                'last_update': '2026-02-03',
+            },
+            # Germany
+            'DE': {
+                'currency': '€',
+                'currency_code': 'EUR',
+                'diesel': 1.52,
+                'petrol': 1.68,
+                'lpg': 0.72,
+                'premium': 1.78,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # France
+            'FR': {
+                'currency': '€',
+                'currency_code': 'EUR',
+                'diesel': 1.58,
+                'petrol': 1.72,
+                'lpg': 0.85,
+                'premium': 1.82,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # Spain
+            'ES': {
+                'currency': '€',
+                'currency_code': 'EUR',
+                'diesel': 1.42,
+                'petrol': 1.52,
+                'lpg': 0.78,
+                'premium': 1.62,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # Italy
+            'IT': {
+                'currency': '€',
+                'currency_code': 'EUR',
+                'diesel': 1.62,
+                'petrol': 1.78,
+                'lpg': 0.72,
+                'premium': 1.88,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # Romania
+            'RO': {
+                'currency': 'RON',
+                'currency_code': 'RON',
+                'diesel': 7.20,
+                'petrol': 6.95,
+                'lpg': 3.50,
+                'premium': 7.85,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # Poland
+            'PL': {
+                'currency': 'PLN',
+                'currency_code': 'PLN',
+                'diesel': 6.20,
+                'petrol': 6.05,
+                'lpg': 2.85,
+                'premium': 6.90,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # Netherlands
+            'NL': {
+                'currency': '€',
+                'currency_code': 'EUR',
+                'diesel': 1.65,
+                'petrol': 1.95,
+                'lpg': 0.95,
+                'premium': 2.05,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # Belgium
+            'BE': {
+                'currency': '€',
+                'currency_code': 'EUR',
+                'diesel': 1.58,
+                'petrol': 1.72,
+                'lpg': 0.68,
+                'premium': 1.82,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # Austria
+            'AT': {
+                'currency': '€',
+                'currency_code': 'EUR',
+                'diesel': 1.48,
+                'petrol': 1.58,
+                'lpg': 0.92,
+                'premium': 1.68,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # Portugal
+            'PT': {
+                'currency': '€',
+                'currency_code': 'EUR',
+                'diesel': 1.55,
+                'petrol': 1.68,
+                'lpg': 0.82,
+                'premium': 1.78,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # Greece
+            'GR': {
+                'currency': '€',
+                'currency_code': 'EUR',
+                'diesel': 1.62,
+                'petrol': 1.75,
+                'lpg': 0.88,
+                'premium': 1.85,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # Ireland
+            'IE': {
+                'currency': '€',
+                'currency_code': 'EUR',
+                'diesel': 1.52,
+                'petrol': 1.65,
+                'lpg': 0.78,
+                'premium': 1.75,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # Czech Republic
+            'CZ': {
+                'currency': 'CZK',
+                'currency_code': 'CZK',
+                'diesel': 35.50,
+                'petrol': 36.20,
+                'lpg': 17.50,
+                'premium': 42.00,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # Hungary
+            'HU': {
+                'currency': 'HUF',
+                'currency_code': 'HUF',
+                'diesel': 595,
+                'petrol': 585,
+                'lpg': 285,
+                'premium': 645,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # Sweden
+            'SE': {
+                'currency': 'SEK',
+                'currency_code': 'SEK',
+                'diesel': 18.95,
+                'petrol': 18.25,
+                'lpg': 12.50,
+                'premium': 19.85,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # Denmark
+            'DK': {
+                'currency': 'DKK',
+                'currency_code': 'DKK',
+                'diesel': 12.85,
+                'petrol': 13.25,
+                'lpg': 8.50,
+                'premium': 14.50,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # Finland
+            'FI': {
+                'currency': '€',
+                'currency_code': 'EUR',
+                'diesel': 1.72,
+                'petrol': 1.85,
+                'lpg': 0.95,
+                'premium': 1.95,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # Bulgaria
+            'BG': {
+                'currency': 'BGN',
+                'currency_code': 'BGN',
+                'diesel': 2.65,
+                'petrol': 2.55,
+                'lpg': 1.35,
+                'premium': 2.85,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # Croatia
+            'HR': {
+                'currency': '€',
+                'currency_code': 'EUR',
+                'diesel': 1.45,
+                'petrol': 1.52,
+                'lpg': 0.75,
+                'premium': 1.62,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # Slovakia
+            'SK': {
+                'currency': '€',
+                'currency_code': 'EUR',
+                'diesel': 1.42,
+                'petrol': 1.55,
+                'lpg': 0.72,
+                'premium': 1.65,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # Slovenia
+            'SI': {
+                'currency': '€',
+                'currency_code': 'EUR',
+                'diesel': 1.48,
+                'petrol': 1.52,
+                'lpg': 0.82,
+                'premium': 1.62,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # Luxembourg
+            'LU': {
+                'currency': '€',
+                'currency_code': 'EUR',
+                'diesel': 1.35,
+                'petrol': 1.45,
+                'lpg': 0.65,
+                'premium': 1.55,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # Lithuania
+            'LT': {
+                'currency': '€',
+                'currency_code': 'EUR',
+                'diesel': 1.38,
+                'petrol': 1.48,
+                'lpg': 0.72,
+                'premium': 1.58,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # Latvia
+            'LV': {
+                'currency': '€',
+                'currency_code': 'EUR',
+                'diesel': 1.42,
+                'petrol': 1.52,
+                'lpg': 0.75,
+                'premium': 1.62,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # Estonia  
+            'EE': {
+                'currency': '€',
+                'currency_code': 'EUR',
+                'diesel': 1.45,
+                'petrol': 1.55,
+                'lpg': 0.78,
+                'premium': 1.65,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # Cyprus
+            'CY': {
+                'currency': '€',
+                'currency_code': 'EUR',
+                'diesel': 1.38,
+                'petrol': 1.42,
+                'lpg': 0.75,
+                'premium': 1.52,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # Malta
+            'MT': {
+                'currency': '€',
+                'currency_code': 'EUR',
+                'diesel': 1.21,
+                'petrol': 1.34,
+                'lpg': 0.65,
+                'premium': 1.44,
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': '2026-02-03',
+            },
+            # Norway (not EU but relevant)
+            'NO': {
+                'currency': 'NOK',
+                'currency_code': 'NOK',
+                'diesel': 19.50,
+                'petrol': 19.80,
+                'lpg': 12.50,
+                'premium': 21.50,
+                'source': 'Norway Statistics',
+                'last_update': '2026-02-03',
+            },
+            # Switzerland (not EU but relevant)
+            'CH': {
+                'currency': 'CHF',
+                'currency_code': 'CHF',
+                'diesel': 1.82,
+                'petrol': 1.75,
+                'lpg': 1.15,
+                'premium': 1.95,
+                'source': 'Swiss Federal Statistics',
+                'last_update': '2026-02-03',
+            },
+        }
+        
+        return eu_prices.get(country.upper(), eu_prices['UK'])
+    
+    # Cache for 1 hour (prices update weekly, but users may travel)
+    prices = get_cached(cache_key, fetch_fuel_prices, timedelta(hours=1))
+    
+    if not prices:
+        return jsonify({'error': 'Fuel price service unavailable'}), 503
+    
+    return jsonify({
+        'location': location,
+        'country': country,
+        'currency': prices.get('currency', '£'),
+        'currency_code': prices.get('currency_code', 'GBP'),
+        'prices': {
+            'diesel': prices.get('diesel'),
+            'petrol': prices.get('petrol'),
+            'lpg': prices.get('lpg'),
+            'premium': prices.get('premium'),
+        },
+        'source': prices.get('source', 'EU Weekly Oil Bulletin'),
+        'last_update': prices.get('last_update'),
+        'fetched_at': datetime.utcnow().isoformat()
+    })
+
+
+def detect_country_from_coords(lat, lon):
+    """Detect country code from coordinates using reverse geocoding."""
+    try:
+        # Use Open-Meteo's geocoding API (free, no key needed)
+        url = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lon}&format=json"
+        response = requests.get(url, headers={'User-Agent': 'GearCargo/1.0'}, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            country_code = data.get('address', {}).get('country_code', '').upper()
+            return country_code if country_code else None
+    except Exception as e:
+        current_app.logger.warning(f"Country detection failed: {e}")
+    return None
+
+
+@external_bp.route('/air-quality', methods=['GET'])
+@token_required
+def get_air_quality(current_user):
+    """Get air quality data from Open-Meteo."""
+    lat = request.args.get('lat', 51.5074, type=float)
+    lon = request.args.get('lon', -0.1278, type=float)
+    
+    cache_key = f"air_quality_{lat}_{lon}"
+    
+    def fetch_air_quality():
+        url = "https://air-quality-api.open-meteo.com/v1/air-quality"
+        params = {
+            'latitude': lat,
+            'longitude': lon,
+            'current': 'european_aqi,pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,ozone',
+            'timezone': 'auto'
+        }
+        
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    
+    data = get_cached(cache_key, fetch_air_quality)
+    
+    if not data:
+        return jsonify({'error': 'Air quality service unavailable'}), 503
+    
+    current = data.get('current', {})
+    aqi = current.get('european_aqi', 0)
+    
+    # AQI categories
+    if aqi <= 20:
+        category = 'Good'
+        color = 'green'
+    elif aqi <= 40:
+        category = 'Fair'
+        color = 'yellow'
+    elif aqi <= 60:
+        category = 'Moderate'
+        color = 'orange'
+    elif aqi <= 80:
+        category = 'Poor'
+        color = 'red'
+    elif aqi <= 100:
+        category = 'Very Poor'
+        color = 'purple'
+    else:
+        category = 'Extremely Poor'
+        color = 'maroon'
+    
+    return jsonify({
+        'aqi': aqi,
+        'category': category,
+        'color': color,
+        'pollutants': {
+            'pm10': current.get('pm10'),
+            'pm2_5': current.get('pm2_5'),
+            'co': current.get('carbon_monoxide'),
+            'no2': current.get('nitrogen_dioxide'),
+            'o3': current.get('ozone'),
+        }
+    })
+
+
+@external_bp.route('/weather-alerts', methods=['GET'])
+@token_required
+def get_weather_alerts(current_user):
+    """Get weather driving alerts based on current and forecast conditions."""
+    lat = request.args.get('lat', type=float)
+    lon = request.args.get('lon', type=float)
+    location = request.args.get('location', 'Unknown')
+    
+    if not lat or not lon:
+        lat = 51.5074
+        lon = -0.1278
+        location = 'London, United Kingdom'
+    
+    cache_key = f"weather_alerts_{lat}_{lon}"
+    
+    def fetch_detailed_weather():
+        """Fetch detailed weather data for driving alerts."""
+        url = "https://api.open-meteo.com/v1/forecast"
+        params = {
+            'latitude': lat,
+            'longitude': lon,
+            'current': 'temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,wind_gusts_10m,visibility,precipitation',
+            'hourly': 'temperature_2m,weather_code,wind_speed_10m,wind_gusts_10m,visibility,precipitation_probability,precipitation,freezing_level_height,snow_depth',
+            'daily': 'weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max',
+            'timezone': 'auto',
+            'forecast_days': 3
+        }
+        
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    
+    data = get_cached(cache_key, fetch_detailed_weather, timedelta(minutes=15))
+    
+    if not data:
+        return jsonify({'error': 'Weather service unavailable', 'alerts': []}), 503
+    
+    alerts = []
+    current = data.get('current', {})
+    hourly = data.get('hourly', {})
+    daily = data.get('daily', {})
+    
+    # Current conditions
+    weather_code = current.get('weather_code', 0)
+    wind_speed = current.get('wind_speed_10m', 0)
+    wind_gusts = current.get('wind_gusts_10m', 0)
+    visibility = current.get('visibility', 10000)
+    precipitation = current.get('precipitation', 0)
+    temperature = current.get('temperature_2m', 20)
+    humidity = current.get('relative_humidity_2m', 50)
+    
+    # Weather code mappings with driving severity
+    weather_hazards = {
+        # Fog
+        45: {'type': 'fog', 'severity': 'warning', 'i18n_key': 'weatherAlerts.fog'},
+        48: {'type': 'fog', 'severity': 'danger', 'i18n_key': 'weatherAlerts.freezingFog'},
+        # Rain
+        51: {'type': 'rain', 'severity': 'info', 'i18n_key': 'weatherAlerts.lightRain'},
+        53: {'type': 'rain', 'severity': 'warning', 'i18n_key': 'weatherAlerts.rain'},
+        55: {'type': 'rain', 'severity': 'warning', 'i18n_key': 'weatherAlerts.heavyRain'},
+        61: {'type': 'rain', 'severity': 'info', 'i18n_key': 'weatherAlerts.lightRain'},
+        63: {'type': 'rain', 'severity': 'warning', 'i18n_key': 'weatherAlerts.rain'},
+        65: {'type': 'rain', 'severity': 'danger', 'i18n_key': 'weatherAlerts.heavyRain'},
+        80: {'type': 'rain', 'severity': 'warning', 'i18n_key': 'weatherAlerts.showers'},
+        81: {'type': 'rain', 'severity': 'warning', 'i18n_key': 'weatherAlerts.showers'},
+        82: {'type': 'rain', 'severity': 'danger', 'i18n_key': 'weatherAlerts.heavyShowers'},
+        # Snow
+        71: {'type': 'snow', 'severity': 'warning', 'i18n_key': 'weatherAlerts.lightSnow'},
+        73: {'type': 'snow', 'severity': 'danger', 'i18n_key': 'weatherAlerts.snow'},
+        75: {'type': 'snow', 'severity': 'danger', 'i18n_key': 'weatherAlerts.heavySnow'},
+        77: {'type': 'snow', 'severity': 'warning', 'i18n_key': 'weatherAlerts.snowGrains'},
+        85: {'type': 'snow', 'severity': 'danger', 'i18n_key': 'weatherAlerts.snowShowers'},
+        86: {'type': 'snow', 'severity': 'danger', 'i18n_key': 'weatherAlerts.heavySnowShowers'},
+        # Freezing rain
+        66: {'type': 'ice', 'severity': 'danger', 'i18n_key': 'weatherAlerts.freezingRain'},
+        67: {'type': 'ice', 'severity': 'danger', 'i18n_key': 'weatherAlerts.heavyFreezingRain'},
+        # Thunderstorm
+        95: {'type': 'storm', 'severity': 'danger', 'i18n_key': 'weatherAlerts.thunderstorm'},
+        96: {'type': 'storm', 'severity': 'danger', 'i18n_key': 'weatherAlerts.thunderstormHail'},
+        99: {'type': 'storm', 'severity': 'danger', 'i18n_key': 'weatherAlerts.severeThunderstorm'},
+    }
+    
+    # Check current weather condition
+    if weather_code in weather_hazards:
+        hazard = weather_hazards[weather_code]
+        alerts.append({
+            'id': f'weather_{weather_code}',
+            'type': hazard['type'],
+            'severity': hazard['severity'],
+            'i18n_key': hazard['i18n_key'],
+            'active': True,
+            'current': True,
+            'icon': _get_alert_icon(hazard['type']),
+        })
+    
+    # Wind alerts
+    if wind_gusts >= 90:  # km/h - very strong gusts
+        alerts.append({
+            'id': 'wind_extreme',
+            'type': 'wind',
+            'severity': 'danger',
+            'i18n_key': 'weatherAlerts.extremeWind',
+            'value': round(wind_gusts),
+            'unit': 'km/h',
+            'active': True,
+            'current': True,
+            'icon': 'wind',
+        })
+    elif wind_gusts >= 60:  # Strong gusts
+        alerts.append({
+            'id': 'wind_strong',
+            'type': 'wind',
+            'severity': 'warning',
+            'i18n_key': 'weatherAlerts.strongWind',
+            'value': round(wind_gusts),
+            'unit': 'km/h',
+            'active': True,
+            'current': True,
+            'icon': 'wind',
+        })
+    elif wind_speed >= 40:  # Moderate wind
+        alerts.append({
+            'id': 'wind_moderate',
+            'type': 'wind',
+            'severity': 'info',
+            'i18n_key': 'weatherAlerts.moderateWind',
+            'value': round(wind_speed),
+            'unit': 'km/h',
+            'active': True,
+            'current': True,
+            'icon': 'wind',
+        })
+    
+    # Visibility alerts
+    if visibility < 100:  # meters - extremely poor
+        alerts.append({
+            'id': 'visibility_extreme',
+            'type': 'visibility',
+            'severity': 'danger',
+            'i18n_key': 'weatherAlerts.extremelyPoorVisibility',
+            'value': round(visibility),
+            'unit': 'm',
+            'active': True,
+            'current': True,
+            'icon': 'eye-off',
+        })
+    elif visibility < 500:  # Poor visibility
+        alerts.append({
+            'id': 'visibility_poor',
+            'type': 'visibility',
+            'severity': 'danger',
+            'i18n_key': 'weatherAlerts.veryPoorVisibility',
+            'value': round(visibility),
+            'unit': 'm',
+            'active': True,
+            'current': True,
+            'icon': 'eye-off',
+        })
+    elif visibility < 1000:  # Reduced visibility
+        alerts.append({
+            'id': 'visibility_reduced',
+            'type': 'visibility',
+            'severity': 'warning',
+            'i18n_key': 'weatherAlerts.poorVisibility',
+            'value': round(visibility),
+            'unit': 'm',
+            'active': True,
+            'current': True,
+            'icon': 'eye-off',
+        })
+    
+    # Temperature alerts
+    if temperature <= -10:  # Extreme cold
+        alerts.append({
+            'id': 'temp_extreme_cold',
+            'type': 'temperature',
+            'severity': 'danger',
+            'i18n_key': 'weatherAlerts.extremeCold',
+            'value': round(temperature),
+            'unit': '°C',
+            'active': True,
+            'current': True,
+            'icon': 'thermometer-snowflake',
+        })
+    elif temperature <= 0:  # Freezing
+        alerts.append({
+            'id': 'temp_freezing',
+            'type': 'temperature',
+            'severity': 'warning',
+            'i18n_key': 'weatherAlerts.freezing',
+            'value': round(temperature),
+            'unit': '°C',
+            'active': True,
+            'current': True,
+            'icon': 'thermometer-snowflake',
+        })
+    elif temperature <= 4 and humidity > 80:  # Risk of ice
+        alerts.append({
+            'id': 'temp_ice_risk',
+            'type': 'ice',
+            'severity': 'warning',
+            'i18n_key': 'weatherAlerts.iceRisk',
+            'value': round(temperature),
+            'unit': '°C',
+            'active': True,
+            'current': True,
+            'icon': 'snowflake',
+        })
+    elif temperature >= 35:  # Extreme heat
+        alerts.append({
+            'id': 'temp_extreme_heat',
+            'type': 'temperature',
+            'severity': 'warning',
+            'i18n_key': 'weatherAlerts.extremeHeat',
+            'value': round(temperature),
+            'unit': '°C',
+            'active': True,
+            'current': True,
+            'icon': 'thermometer-sun',
+        })
+    
+    # Check upcoming conditions (next 12 hours)
+    upcoming_alerts = []
+    if hourly.get('time'):
+        for i in range(min(12, len(hourly['time']))):
+            hour_code = hourly.get('weather_code', [0])[i] if i < len(hourly.get('weather_code', [])) else 0
+            hour_precip = hourly.get('precipitation_probability', [0])[i] if i < len(hourly.get('precipitation_probability', [])) else 0
+            hour_wind = hourly.get('wind_gusts_10m', [0])[i] if i < len(hourly.get('wind_gusts_10m', [])) else 0
+            
+            # Check for upcoming hazardous conditions
+            if hour_code in weather_hazards and hour_code not in [h.get('weather_code') for h in upcoming_alerts]:
+                hazard = weather_hazards[hour_code]
+                hour_time = hourly['time'][i]
+                upcoming_alerts.append({
+                    'id': f'upcoming_{hour_code}_{i}',
+                    'type': hazard['type'],
+                    'severity': hazard['severity'],
+                    'i18n_key': hazard['i18n_key'],
+                    'forecast_time': hour_time,
+                    'active': True,
+                    'current': False,
+                    'weather_code': hour_code,
+                    'icon': _get_alert_icon(hazard['type']),
+                })
+    
+    # Add unique upcoming alerts (avoid duplicates with current)
+    current_types = {a['type'] for a in alerts}
+    for ua in upcoming_alerts[:5]:  # Limit to 5 upcoming alerts
+        if ua['type'] not in current_types:
+            alerts.append(ua)
+    
+    # Generate driving tips based on alerts
+    tips = _generate_driving_tips(alerts)
+    
+    # Calculate overall safety score (0-100)
+    safety_score = _calculate_safety_score(alerts)
+    
+    return jsonify({
+        'location': location,
+        'alerts': alerts,
+        'tips': tips,
+        'safety_score': safety_score,
+        'conditions': {
+            'temperature': temperature,
+            'humidity': humidity,
+            'wind_speed': wind_speed,
+            'wind_gusts': wind_gusts,
+            'visibility': visibility,
+            'precipitation': precipitation,
+        },
+        'updated': datetime.utcnow().isoformat()
+    })
+
+
+def _get_alert_icon(alert_type):
+    """Get icon name for alert type."""
+    icons = {
+        'rain': 'cloud-rain',
+        'snow': 'snowflake',
+        'ice': 'snowflake',
+        'fog': 'cloud-fog',
+        'wind': 'wind',
+        'storm': 'cloud-lightning',
+        'visibility': 'eye-off',
+        'temperature': 'thermometer',
+    }
+    return icons.get(alert_type, 'alert-triangle')
+
+
+def _generate_driving_tips(alerts):
+    """Generate driving safety tips based on active alerts."""
+    tips = []
+    
+    alert_types = {a['type'] for a in alerts}
+    severities = {a['severity'] for a in alerts}
+    
+    if 'danger' in severities:
+        tips.append({
+            'i18n_key': 'weatherAlerts.tips.avoidTravel',
+            'priority': 'high',
+        })
+    
+    if 'rain' in alert_types:
+        tips.extend([
+            {'i18n_key': 'weatherAlerts.tips.reduceSpeed', 'priority': 'medium'},
+            {'i18n_key': 'weatherAlerts.tips.increaseDistance', 'priority': 'medium'},
+            {'i18n_key': 'weatherAlerts.tips.useHeadlights', 'priority': 'medium'},
+        ])
+    
+    if 'snow' in alert_types or 'ice' in alert_types:
+        tips.extend([
+            {'i18n_key': 'weatherAlerts.tips.checkTires', 'priority': 'high'},
+            {'i18n_key': 'weatherAlerts.tips.gentleBraking', 'priority': 'high'},
+            {'i18n_key': 'weatherAlerts.tips.clearWindows', 'priority': 'medium'},
+        ])
+    
+    if 'fog' in alert_types or 'visibility' in alert_types:
+        tips.extend([
+            {'i18n_key': 'weatherAlerts.tips.useFogLights', 'priority': 'high'},
+            {'i18n_key': 'weatherAlerts.tips.avoidOvertaking', 'priority': 'medium'},
+        ])
+    
+    if 'wind' in alert_types:
+        tips.extend([
+            {'i18n_key': 'weatherAlerts.tips.gripWheel', 'priority': 'medium'},
+            {'i18n_key': 'weatherAlerts.tips.watchHighSided', 'priority': 'medium'},
+        ])
+    
+    if 'storm' in alert_types:
+        tips.extend([
+            {'i18n_key': 'weatherAlerts.tips.pullOver', 'priority': 'high'},
+            {'i18n_key': 'weatherAlerts.tips.avoidFlooded', 'priority': 'high'},
+        ])
+    
+    if 'temperature' in alert_types:
+        has_cold = any(a.get('i18n_key', '').find('Cold') >= 0 or a.get('i18n_key', '').find('freezing') >= 0 for a in alerts)
+        if has_cold:
+            tips.append({'i18n_key': 'weatherAlerts.tips.warmUpEngine', 'priority': 'low'})
+        else:
+            tips.append({'i18n_key': 'weatherAlerts.tips.checkCoolant', 'priority': 'low'})
+    
+    # Deduplicate and sort by priority
+    seen = set()
+    unique_tips = []
+    priority_order = {'high': 0, 'medium': 1, 'low': 2}
+    for tip in tips:
+        if tip['i18n_key'] not in seen:
+            seen.add(tip['i18n_key'])
+            unique_tips.append(tip)
+    
+    unique_tips.sort(key=lambda x: priority_order.get(x['priority'], 2))
+    return unique_tips[:8]  # Return top 8 tips
+
+
+def _calculate_safety_score(alerts):
+    """Calculate driving safety score based on alerts."""
+    if not alerts:
+        return 100
+    
+    # Severity weights
+    weights = {'danger': 30, 'warning': 15, 'info': 5}
+    
+    total_penalty = sum(weights.get(a['severity'], 0) for a in alerts)
+    
+    # Cap the penalty
+    score = max(0, 100 - total_penalty)
+    
+    return score

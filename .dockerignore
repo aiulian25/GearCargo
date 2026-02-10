@@ -1,0 +1,64 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+README*
+DEPLOYMENT_PLAN*
+LICENSE
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Node modules (will be installed in container)
+frontend/node_modules
+
+# Python caches
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Virtual environments
+venv
+.venv
+env
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Volumes (runtime data)
+volumes
+
+# Docker compose override
+docker-compose.override.yml
+docker-compose.*.yml
+
+# Build artifacts
+*.log
+*.tmp
+.cache
+
+# Test files
+tests
+*.test.js
+*.test.py
+coverage
+.coverage
+htmlcov
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.bak
+*.backup

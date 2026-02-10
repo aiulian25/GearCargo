@@ -1,0 +1,2446 @@
+"""
+GearCargo - Authentication Routes
+"""
+
+import io
+import re
+import base64
+import pyotp
+import qrcode
+import secrets
+import hashlib
+import requests
+from datetime import datetime, timedelta
+from functools import wraps
+
+from flask import Blueprint, request, jsonify, current_app, session, url_for
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from werkzeug.security import generate_password_hash, check_password_hash
+import jwt
+
+from app import db, redis_client
+from app.models import User, ActivityLog, BlockedIP, BlockedDevice
+from app.utils.security_audit import security_audit
+
+auth_bp = Blueprint('auth', __name__)
+
+# Common passwords that should be rejected (top 100 most common)
+COMMON_PASSWORDS = {
+    'password', 'password1', 'password123', '123456', '12345678', '123456789',
+    '1234567890', 'qwerty', 'qwerty123', 'abc123', 'monkey', 'master', 'dragon',
+    'letmein', 'login', 'admin', 'welcome', 'welcome1', 'shadow', 'sunshine',
+    'princess', 'football', 'baseball', 'iloveyou', 'trustno1', '111111',
+    '123123', '654321', 'superman', 'qazwsx', 'michael', 'ashley', 'bailey',
+    'passw0rd', 'password!', 'pass1234', 'test', 'test123', 'guest', 'master123',
+    'changeme', 'hello', 'hello123', '000000', '666666', '888888', 'password12',
+    'qwerty1', '1q2w3e4r', '1qaz2wsx', 'zaq12wsx', 'access', 'starwars',
+    'charlie', 'donald', 'whatever', 'killer', 'jordan', 'jennifer', 'hunter',
+    'buster', 'soccer', 'harley', 'batman', 'andrew', 'tigger', 'sunshine1',
+    'secret', 'freedom', 'computer', 'pepper', 'ginger', 'joshua', 'maggie',
+    'summer', 'nicole', 'chelsea', 'biteme', 'yankees', 'dallas', 'austin',
+    'thunder', 'matrix', 'corvette', 'mercedes', 'lakers', 'cowboys', 'steelers',
+    '1234', '12345', 'abcd1234', 'password2', 'password3', 'admin123', 'root',
+    'toor', 'qwe123', 'zxcvbn', 'asdfgh', 'qwertyuiop', 'letmein123', 'gearcargo'
+}
+
+
+def validate_password_strength(password):
+    """
+    Validate password strength. Returns (is_valid, error_message, strength_score).
+    Strength score: 0-100
+    """
+    errors = []
+    score = 0
+    breach_count = 0
+    
+    # Length checks
+    if len(password) < 8:
+        errors.append('Password must be at least 8 characters')
+    elif len(password) >= 8:
+        score += 20
+    if len(password) >= 12:
+        score += 10
+    if len(password) >= 16:
+        score += 10
+    
+    # Character type checks
+    has_upper = bool(re.search(r'[A-Z]', password))
+    has_lower = bool(re.search(r'[a-z]', password))
+    has_digit = bool(re.search(r'\d', password))
+    has_special = bool(re.search(r'[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\;\'`~]', password))
+    
+    if has_upper:
+        score += 15
+    else:
+        errors.append('Password should contain at least one uppercase letter')
+    
+    if has_lower:
+        score += 15
+    else:
+        errors.append('Password should contain at least one lowercase letter')
+    
+    if has_digit:
+        score += 15
+    else:
+        errors.append('Password should contain at least one number')
+    
+    if has_special:
+        score += 15
+    
+    # Check for common passwords
+    password_lower = password.lower()
+    if password_lower in COMMON_PASSWORDS:
+        errors.append('This password is too common. Please choose a more unique password')
+        score = min(score, 20)  # Cap score for common passwords
+    
+    # Check for sequential characters
+    sequential_patterns = ['123', '234', '345', '456', '567', '678', '789', 
+                          'abc', 'bcd', 'cde', 'def', 'efg', 'qwe', 'wer', 'ert',
+                          'asd', 'sdf', 'dfg', 'zxc', 'xcv', 'cvb']
+    for pattern in sequential_patterns:
+        if pattern in password_lower:
+            score = max(0, score - 10)
+            break
+    
+    # Check for repeated characters (e.g., 'aaa', '111')
+    if re.search(r'(.)\1{2,}', password):
+        score = max(0, score - 10)
+    
+    # Check Have I Been Pwned database for breached passwords
+    breach_count = check_password_breach(password)
+    if breach_count > 0:
+        if breach_count > 100:
+            errors.append(f'This password has been exposed in data breaches {breach_count:,} times. Choose a different password.')
+            score = min(score, 10)  # Severely penalize breached passwords
+        else:
+            errors.append(f'This password has been found in {breach_count} data breach(es). Consider using a different password.')
+            score = min(score, 30)
+    
+    # Determine strength level
+    if score >= 70:
+        strength = 'strong'
+    elif score >= 50:
+        strength = 'medium'
+    else:
+        strength = 'weak'
+    
+    # Only enforce critical requirements (length, not common, not breached >100 times)
+    critical_errors = [e for e in errors if 'at least 8' in e or 'too common' in e or 'exposed in data breaches' in e]
+    
+    return len(critical_errors) == 0, errors, score, strength
+
+
+def check_password_breach(password):
+    """
+    Check if password has been exposed in data breaches using Have I Been Pwned API.
+    Uses k-anonymity model - only sends first 5 chars of SHA1 hash.
+    Returns the number of times the password was found in breaches (0 if not found).
+    """
+    try:
+        # SHA1 hash the password
+        sha1_hash = hashlib.sha1(password.encode('utf-8')).hexdigest().upper()
+        prefix = sha1_hash[:5]
+        suffix = sha1_hash[5:]
+        
+        # Query HIBP API with only the prefix (k-anonymity)
+        response = requests.get(
+            f'https://api.pwnedpasswords.com/range/{prefix}',
+            headers={'User-Agent': 'GearCargo-PasswordChecker/1.0'},
+            timeout=3
+        )
+        
+        if response.status_code != 200:
+            # API error - fail open (don't block registration)
+            current_app.logger.warning(f"HIBP API returned status {response.status_code}")
+            return 0
+        
+        # Check if our hash suffix is in the response
+        for line in response.text.splitlines():
+            hash_suffix, count = line.split(':')
+            if hash_suffix == suffix:
+                return int(count)
+        
+        return 0  # Password not found in breaches
+        
+    except requests.exceptions.Timeout:
+        current_app.logger.warning("HIBP API timeout - skipping breach check")
+        return 0
+    except Exception as e:
+        current_app.logger.warning(f"HIBP API error: {e}")
+        return 0  # Fail open on errors
+
+
+def get_limiter():
+    """Get rate limiter from app."""
+    return current_app.extensions.get('limiter')
+
+
+# ============================================================
+# ACCOUNT LOCKOUT PROTECTION
+# ============================================================
+
+# Security settings
+MAX_LOGIN_ATTEMPTS = 5  # Lock after 5 failed attempts
+LOCKOUT_DURATION = 30 * 60  # 30 minutes lockout
+FAILED_LOGIN_WINDOW = 15 * 60  # Track failures within 15 minutes
+
+
+def get_failed_login_key(email):
+    """Get Redis key for tracking failed logins."""
+    return f'failed_login:{email.lower()}'
+
+
+def get_lockout_key(email):
+    """Get Redis key for account lockout."""
+    return f'lockout:{email.lower()}'
+
+
+def is_account_locked(email):
+    """Check if account is locked due to too many failed attempts."""
+    if not redis_client:
+        return False, 0
+    
+    try:
+        lockout_key = get_lockout_key(email)
+        lockout_until = redis_client.get(lockout_key)
+        
+        if lockout_until:
+            remaining = redis_client.ttl(lockout_key)
+            return True, remaining
+        return False, 0
+    except Exception as e:
+        current_app.logger.error(f"Failed to check account lockout: {e}")
+        return False, 0
+
+
+def record_failed_login(email):
+    """Record a failed login attempt. Returns (is_locked, remaining_time, attempt_count)."""
+    if not redis_client:
+        return False, 0, 0
+    
+    try:
+        failed_key = get_failed_login_key(email)
+        
+        # Increment failed attempts
+        attempts = redis_client.incr(failed_key)
+        
+        # Set expiry on first attempt
+        if attempts == 1:
+            redis_client.expire(failed_key, FAILED_LOGIN_WINDOW)
+        
+        # Check if should lock
+        if attempts >= MAX_LOGIN_ATTEMPTS:
+            lockout_key = get_lockout_key(email)
+            redis_client.setex(lockout_key, LOCKOUT_DURATION, 'locked')
+            redis_client.delete(failed_key)  # Reset counter
+            
+            # Log the lockout
+            current_app.logger.warning(f"Account locked due to {attempts} failed attempts: {email}")
+            
+            return True, LOCKOUT_DURATION, attempts
+        
+        return False, 0, attempts
+    except Exception as e:
+        current_app.logger.error(f"Failed to record login attempt: {e}")
+        return False, 0, 0
+
+
+def clear_failed_logins(email):
+    """Clear failed login counter on successful login."""
+    if redis_client:
+        try:
+            redis_client.delete(get_failed_login_key(email))
+        except Exception as e:
+            current_app.logger.error(f"Failed to clear login attempts: {e}")
+
+
+# ============================================================
+# IP GEOLOCATION FOR SUSPICIOUS LOGIN DETECTION
+# ============================================================
+
+def get_real_client_ip():
+    """
+    Get the real client IP address, accounting for proxies/load balancers.
+    Checks X-Forwarded-For, X-Real-IP headers before falling back to remote_addr.
+    """
+    # X-Forwarded-For can contain multiple IPs: client, proxy1, proxy2, ...
+    if request.headers.get('X-Forwarded-For'):
+        # Get the first (original client) IP
+        ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
+        return ip
+    
+    # Some proxies use X-Real-IP instead
+    if request.headers.get('X-Real-IP'):
+        return request.headers.get('X-Real-IP').strip()
+    
+    # CF-Connecting-IP is used by Cloudflare
+    if request.headers.get('CF-Connecting-IP'):
+        return request.headers.get('CF-Connecting-IP').strip()
+    
+    # Fallback to direct remote_addr
+    return request.remote_addr or 'Unknown'
+
+
+def get_ip_location(ip_address):
+    """
+    Get location info for an IP address using ip-api.com (free, no key needed).
+    Returns dict with country, city, lat, lon, or None on failure.
+    """
+    if not ip_address or ip_address in ('127.0.0.1', 'localhost', '::1'):
+        return {'country': 'Local', 'country_code': 'LOCAL', 'city': 'Local', 'lat': 0, 'lon': 0, 'isp': 'Local'}
+    
+    try:
+        response = requests.get(
+            f'http://ip-api.com/json/{ip_address}?fields=status,country,countryCode,city,lat,lon,isp,query',
+            timeout=3
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('status') == 'success':
+                return {
+                    'country': data.get('country', 'Unknown'),
+                    'country_code': data.get('countryCode', 'XX'),
+                    'city': data.get('city', 'Unknown'),
+                    'lat': data.get('lat', 0),
+                    'lon': data.get('lon', 0),
+                    'isp': data.get('isp', 'Unknown'),
+                    'ip': data.get('query', ip_address)
+                }
+        
+        return None
+    except Exception as e:
+        current_app.logger.warning(f"IP geolocation failed for {ip_address}: {e}")
+        return None
+
+
+def get_known_locations_key(user_id):
+    """Get Redis key for tracking known login locations."""
+    return f'known_locations:{user_id}'
+
+
+def get_user_known_locations(user_id):
+    """Get list of countries/cities the user has logged in from before."""
+    if not redis_client:
+        return set()
+    
+    try:
+        locations_key = get_known_locations_key(user_id)
+        locations = redis_client.smembers(locations_key)
+        if locations:
+            return {loc.decode() if isinstance(loc, bytes) else loc for loc in locations}
+        return set()
+    except Exception as e:
+        current_app.logger.error(f"Failed to get known locations: {e}")
+        return set()
+
+
+def register_user_location(user_id, country_code):
+    """Register a country as a known login location for the user."""
+    if not redis_client or not country_code:
+        return
+    
+    try:
+        locations_key = get_known_locations_key(user_id)
+        redis_client.sadd(locations_key, country_code)
+        # Keep location history for 1 year
+        redis_client.expire(locations_key, 365 * 24 * 60 * 60)
+    except Exception as e:
+        current_app.logger.error(f"Failed to register user location: {e}")
+
+
+def is_suspicious_location(user_id, current_location):
+    """
+    Check if login is from a suspicious (new) location.
+    Returns (is_suspicious, location_info, known_locations).
+    """
+    if not current_location:
+        return False, None, set()
+    
+    country_code = current_location.get('country_code', 'XX')
+    known_locations = get_user_known_locations(user_id)
+    
+    # First login - not suspicious, just new
+    if not known_locations:
+        return False, current_location, known_locations
+    
+    # Check if this country is new
+    is_new_location = country_code not in known_locations and country_code != 'LOCAL'
+    
+    return is_new_location, current_location, known_locations
+
+
+def get_known_devices_key(user_id):
+    """Get Redis key for tracking known devices."""
+    return f'known_devices:{user_id}'
+
+
+def get_device_fingerprint():
+    """Generate a device fingerprint from request headers."""
+    import hashlib
+    user_agent = request.headers.get('User-Agent', 'unknown')
+    # Use user agent as primary identifier (could add more factors)
+    fingerprint = hashlib.sha256(user_agent.encode()).hexdigest()[:16]
+    return fingerprint, user_agent
+
+
+def is_new_device(user_id):
+    """Check if this is a new device for the user."""
+    if not redis_client:
+        return False, None
+    
+    try:
+        fingerprint, user_agent = get_device_fingerprint()
+        devices_key = get_known_devices_key(user_id)
+        
+        # Get known devices
+        known_devices = redis_client.smembers(devices_key)
+        if known_devices:
+            known_devices = {d.decode() if isinstance(d, bytes) else d for d in known_devices}
+        else:
+            known_devices = set()
+        
+        is_new = fingerprint not in known_devices
+        
+        # Get real client IP (not Docker/proxy IP)
+        real_ip = get_real_client_ip()
+        
+        # Get location info for the email
+        location_info = get_ip_location(real_ip)
+        
+        return is_new, {
+            'fingerprint': fingerprint,
+            'user_agent': user_agent[:200],
+            'ip': real_ip,
+            'location': location_info
+        }
+    except Exception as e:
+        current_app.logger.error(f"Failed to check new device: {e}")
+        return False, None
+
+
+def register_device(user_id):
+    """Register current device as known for the user."""
+    if not redis_client:
+        return
+    
+    try:
+        fingerprint, _ = get_device_fingerprint()
+        devices_key = get_known_devices_key(user_id)
+        
+        # Add device to known devices set
+        redis_client.sadd(devices_key, fingerprint)
+        
+        # Keep device fingerprints for 90 days
+        redis_client.expire(devices_key, 90 * 24 * 60 * 60)
+    except Exception as e:
+        current_app.logger.error(f"Failed to register device: {e}")
+
+
+def invalidate_user_sessions(user_id):
+    """Invalidate all sessions for a user."""
+    if redis_client:
+        try:
+            # Get all session keys for this user
+            session_keys = redis_client.keys(f'session:{user_id}:*')
+            if session_keys:
+                redis_client.delete(*session_keys)
+            current_app.logger.info(f"Invalidated {len(session_keys)} sessions for user {user_id}")
+        except Exception as e:
+            current_app.logger.error(f"Failed to invalidate sessions: {e}")
+
+
+def create_session(user_id, token_jti):
+    """Create a new session in Redis."""
+    if redis_client:
+        try:
+            # Store session with TTL matching refresh token expiry
+            refresh_expires = current_app.config.get('JWT_REFRESH_TOKEN_EXPIRES')
+            if isinstance(refresh_expires, timedelta):
+                ttl = int(refresh_expires.total_seconds())
+            else:
+                ttl = 30 * 24 * 60 * 60  # 30 days default
+            
+            session_key = f'session:{user_id}:{token_jti}'
+            session_data = {
+                'created_at': datetime.utcnow().isoformat(),
+                'user_agent': request.headers.get('User-Agent', 'unknown')[:200],
+                'ip': request.remote_addr or 'unknown'
+            }
+            redis_client.setex(session_key, ttl, str(session_data))
+            current_app.logger.info(f"Created session {token_jti} for user {user_id}")
+            return True
+        except Exception as e:
+            current_app.logger.error(f"Failed to create session: {e}")
+    return False
+
+
+def validate_session(user_id, token_jti):
+    """Validate that a session exists and is active."""
+    if redis_client:
+        try:
+            session_key = f'session:{user_id}:{token_jti}'
+            exists = redis_client.exists(session_key)
+            if not exists:
+                current_app.logger.warning(f"Session {token_jti} not found for user {user_id}")
+            return exists
+        except Exception as e:
+            current_app.logger.error(f"Failed to validate session: {e}")
+            # If Redis fails, allow the request (graceful degradation)
+            return True
+    # If no Redis configured, deny by default for security
+    current_app.logger.warning("Redis not available for session validation")
+    return True  # Allow if Redis not configured (backwards compatibility)
+
+
+def get_limiter():
+    """Get rate limiter from app."""
+    return current_app.extensions.get('limiter')
+
+
+def token_required(f):
+    """Decorator to require valid JWT token from Authorization header only."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+        
+        # Get token from Authorization header ONLY (more secure)
+        if 'Authorization' in request.headers:
+            auth_header = request.headers['Authorization']
+            try:
+                token = auth_header.split(' ')[1]
+            except IndexError:
+                return jsonify({'error': 'Invalid token format'}), 401
+        
+        if not token:
+            return jsonify({'error': 'Token is missing'}), 401
+        
+        # Check if token is blacklisted
+        if redis_client and redis_client.get(f'blacklist:{token}'):
+            return jsonify({'error': 'Token has been revoked'}), 401
+        
+        try:
+            data = jwt.decode(
+                token,
+                current_app.config['JWT_SECRET_KEY'],
+                algorithms=['HS256']
+            )
+            current_user = User.query.get(data['user_id'])
+            
+            if not current_user:
+                return jsonify({'error': 'User not found'}), 401
+            
+            if not current_user.is_active:
+                return jsonify({'error': 'Account is disabled'}), 401
+            
+            # Validate session exists (single device enforcement)
+            token_jti = data.get('jti')
+            if not token_jti:
+                # Old tokens without jti must re-login for security
+                return jsonify({'error': 'Session invalid. Please login again.', 'code': 'SESSION_INVALID'}), 401
+            
+            if not validate_session(current_user.id, token_jti):
+                return jsonify({'error': 'Session expired. You may have logged in from another device.', 'code': 'SESSION_EXPIRED'}), 401
+                
+        except jwt.ExpiredSignatureError:
+            return jsonify({'error': 'Token has expired'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'error': 'Invalid token'}), 401
+        
+        return f(current_user, *args, **kwargs)
+    
+    return decorated
+
+
+def token_required_query_param(f):
+    """
+    Decorator for endpoints that need to accept tokens via query parameter.
+    Only for GET requests (e.g., viewing attachments in <img> or <iframe>).
+    Security: Logs usage for monitoring.
+    """
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+        token_source = 'header'
+        
+        # First try Authorization header
+        if 'Authorization' in request.headers:
+            auth_header = request.headers['Authorization']
+            try:
+                token = auth_header.split(' ')[1]
+            except IndexError:
+                pass
+        
+        # Fallback to query parameter ONLY for GET requests
+        if not token and request.method == 'GET':
+            token = request.args.get('token')
+            if token:
+                token_source = 'query_param'
+                # Log query param token usage for security monitoring
+                current_app.logger.info(
+                    f"Token via query param: {request.path} from {request.remote_addr}"
+                )
+        
+        if not token:
+            return jsonify({'error': 'Token is missing'}), 401
+        
+        # Check if token is blacklisted
+        if redis_client and redis_client.get(f'blacklist:{token}'):
+            return jsonify({'error': 'Token has been revoked'}), 401
+        
+        try:
+            data = jwt.decode(
+                token,
+                current_app.config['JWT_SECRET_KEY'],
+                algorithms=['HS256']
+            )
+            current_user = User.query.get(data['user_id'])
+            
+            if not current_user:
+                return jsonify({'error': 'User not found'}), 401
+            
+            if not current_user.is_active:
+                return jsonify({'error': 'Account is disabled'}), 401
+            
+            # Validate session exists (single device enforcement)
+            token_jti = data.get('jti')
+            if not token_jti:
+                return jsonify({'error': 'Session invalid. Please login again.', 'code': 'SESSION_INVALID'}), 401
+            
+            if not validate_session(current_user.id, token_jti):
+                return jsonify({'error': 'Session expired. You may have logged in from another device.', 'code': 'SESSION_EXPIRED'}), 401
+                
+        except jwt.ExpiredSignatureError:
+            return jsonify({'error': 'Token has expired'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'error': 'Invalid token'}), 401
+        
+        return f(current_user, *args, **kwargs)
+    
+    return decorated
+
+
+def admin_required(f):
+    """Decorator to require admin privileges."""
+    @wraps(f)
+    @token_required
+    def decorated(current_user, *args, **kwargs):
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        return f(current_user, *args, **kwargs)
+    return decorated
+
+
+def generate_tokens(user, invalidate_existing=True):
+    """Generate access and refresh tokens with session tracking."""
+    # Generate unique session ID (JTI - JWT ID)
+    token_jti = secrets.token_urlsafe(16)
+    
+    # Invalidate existing sessions if max_sessions is 1 (default)
+    max_sessions = getattr(user, 'max_sessions', 1) or 1
+    if invalidate_existing and max_sessions == 1:
+        invalidate_user_sessions(user.id)
+    
+    # Get token expiry from config (already timedelta objects)
+    access_expires = current_app.config.get('JWT_ACCESS_TOKEN_EXPIRES')
+    if isinstance(access_expires, timedelta):
+        access_exp = datetime.utcnow() + access_expires
+    else:
+        access_exp = datetime.utcnow() + timedelta(hours=1)
+    
+    refresh_expires = current_app.config.get('JWT_REFRESH_TOKEN_EXPIRES')
+    if isinstance(refresh_expires, timedelta):
+        refresh_exp = datetime.utcnow() + refresh_expires
+    else:
+        refresh_exp = datetime.utcnow() + timedelta(days=30)
+    
+    access_token = jwt.encode(
+        {
+            'user_id': user.id,
+            'email': user.email,
+            'is_admin': user.is_admin,
+            'jti': token_jti,  # Session identifier
+            'exp': access_exp
+        },
+        current_app.config['JWT_SECRET_KEY'],
+        algorithm='HS256'
+    )
+    
+    refresh_token = jwt.encode(
+        {
+            'user_id': user.id,
+            'type': 'refresh',
+            'jti': token_jti,  # Same session identifier
+            'exp': refresh_exp
+        },
+        current_app.config['JWT_SECRET_KEY'],
+        algorithm='HS256'
+    )
+    
+    # Create session in Redis
+    create_session(user.id, token_jti)
+    
+    return access_token, refresh_token
+
+
+@auth_bp.route('/register', methods=['POST'])
+def register():
+    """Register a new user."""
+    # Rate limit check
+    limiter = get_limiter()
+    if limiter:
+        try:
+            limiter.check()
+        except:
+            pass  # Continue if rate limiter fails
+    
+    data = request.get_json()
+    
+    # Validate required fields
+    required = ['email', 'password']
+    for field in required:
+        if not data.get(field):
+            return jsonify({'error': f'{field} is required'}), 400
+    
+    # Check if email exists
+    if User.query.filter_by(email=data['email'].lower()).first():
+        return jsonify({'error': 'Email already registered'}), 409
+    
+    # Check password strength
+    password = data['password']
+    if len(password) < 8:
+        return jsonify({'error': 'Password must be at least 8 characters'}), 400
+    
+    # Parse name if provided
+    first_name = data.get('first_name', '')
+    last_name = data.get('last_name', '')
+    if data.get('name') and not first_name:
+        # Split full name into first/last
+        name_parts = data['name'].split(' ', 1)
+        first_name = name_parts[0]
+        last_name = name_parts[1] if len(name_parts) > 1 else ''
+    
+    # Check if this is the first user (make them admin)
+    # SECURITY: Only the first user in the system can become admin through self-registration
+    # After first admin exists, new admins can ONLY be created by existing admins
+    is_first_user = User.query.count() == 0
+    
+    # Create user - SECURITY: is_admin is NEVER taken from request data
+    # It's only True for the very first user, or when created by an admin via /admin/users
+    user = User(
+        email=data['email'].lower(),
+        username=data.get('username', data['email'].split('@')[0]),
+        first_name=first_name,
+        last_name=last_name,
+        language=data.get('language', 'en'),
+        timezone=data.get('timezone', 'UTC'),
+        is_admin=is_first_user,  # ONLY first user becomes admin - this is NOT from request data
+    )
+    user.set_password(password)
+    
+    db.session.add(user)
+    db.session.commit()
+    
+    # Log registration
+    ActivityLog.log(
+        event_type='registration',
+        event_category='auth',
+        user_id=user.id,
+        description=f'New user registered: {user.email}',
+        success=True
+    )
+    security_audit.account_created(user.id, user.email)
+    
+    # Send verification email (if email is enabled)
+    if current_app.config.get('MAIL_ENABLED'):
+        try:
+            from app.services.email_service import email_verification_service
+            token = user.generate_verification_token()
+            email_verification_service.send_verification_email(user, token)
+        except Exception as e:
+            current_app.logger.warning(f"Failed to send verification email: {e}")
+    
+    # Generate tokens
+    access_token, refresh_token = generate_tokens(user)
+    
+    return jsonify({
+        'message': 'Registration successful',
+        'user': user.to_dict(),
+        'access_token': access_token,
+        'refresh_token': refresh_token,
+    }), 201
+
+
+def parse_user_agent(ua_string):
+    """Parse user agent string for device info."""
+    if not ua_string:
+        return {}
+    
+    result = {
+        'device_type': 'desktop',
+        'browser': None,
+        'browser_version': None,
+        'os': None,
+        'os_version': None,
+    }
+    
+    ua_lower = ua_string.lower()
+    
+    # Device type
+    if 'mobile' in ua_lower or ('android' in ua_lower and 'mobile' in ua_lower):
+        result['device_type'] = 'mobile'
+    elif 'tablet' in ua_lower or 'ipad' in ua_lower:
+        result['device_type'] = 'tablet'
+    
+    # Browser detection
+    if 'firefox' in ua_lower:
+        result['browser'] = 'Firefox'
+        match = re.search(r'firefox[/\s]?([\d.]+)', ua_lower)
+        if match:
+            result['browser_version'] = match.group(1)
+    elif 'edg/' in ua_lower or 'edge/' in ua_lower:
+        result['browser'] = 'Edge'
+        match = re.search(r'edg[e]?[/\s]?([\d.]+)', ua_lower)
+        if match:
+            result['browser_version'] = match.group(1)
+    elif 'chrome' in ua_lower and 'chromium' not in ua_lower:
+        result['browser'] = 'Chrome'
+        match = re.search(r'chrome[/\s]?([\d.]+)', ua_lower)
+        if match:
+            result['browser_version'] = match.group(1)
+    elif 'safari' in ua_lower and 'chrome' not in ua_lower:
+        result['browser'] = 'Safari'
+        match = re.search(r'version[/\s]?([\d.]+)', ua_lower)
+        if match:
+            result['browser_version'] = match.group(1)
+    elif 'opera' in ua_lower or 'opr/' in ua_lower:
+        result['browser'] = 'Opera'
+    
+    # OS detection
+    if 'windows' in ua_lower:
+        result['os'] = 'Windows'
+        if 'windows nt 10' in ua_lower:
+            result['os_version'] = '10/11'
+        elif 'windows nt 6.3' in ua_lower:
+            result['os_version'] = '8.1'
+        elif 'windows nt 6.1' in ua_lower:
+            result['os_version'] = '7'
+    elif 'mac os x' in ua_lower or 'macintosh' in ua_lower:
+        result['os'] = 'macOS'
+        match = re.search(r'mac os x[/\s]?([\d_]+)', ua_lower)
+        if match:
+            result['os_version'] = match.group(1).replace('_', '.')
+    elif 'android' in ua_lower:
+        result['os'] = 'Android'
+        match = re.search(r'android[/\s]?([\d.]+)', ua_lower)
+        if match:
+            result['os_version'] = match.group(1)
+    elif 'iphone' in ua_lower or 'ipad' in ua_lower:
+        result['os'] = 'iOS'
+        match = re.search(r'os[/\s]?([\d_]+)', ua_lower)
+        if match:
+            result['os_version'] = match.group(1).replace('_', '.')
+    elif 'linux' in ua_lower:
+        result['os'] = 'Linux'
+        if 'ubuntu' in ua_lower:
+            result['os'] = 'Ubuntu'
+        elif 'fedora' in ua_lower:
+            result['os'] = 'Fedora'
+    
+    return result
+
+
+@auth_bp.route('/login', methods=['POST'])
+def login():
+    """Login user with account lockout protection and IP/device blocking."""
+    data = request.get_json()
+    
+    email = data.get('email', '').lower()
+    password = data.get('password', '')
+    totp_code = data.get('totp_code')
+    backup_code = data.get('backup_code', '').upper().replace('-', '').replace(' ', '') if data.get('backup_code') else None
+    
+    if not email or not password:
+        return jsonify({'error': 'Email and password required'}), 400
+    
+    # Get IP address and user agent for blocking checks
+    ip_address = request.remote_addr or request.headers.get('X-Forwarded-For', '').split(',')[0].strip()
+    user_agent = request.headers.get('User-Agent', '')
+    
+    # Check if IP is blocked
+    ip_blocked, blocked_ip_record = BlockedIP.is_blocked(ip_address)
+    if ip_blocked:
+        ActivityLog.log(
+            event_type='login_blocked_ip',
+            event_category='auth',
+            description=f'Login blocked - IP address blocked: {ip_address}',
+            success=False,
+            error_message='IP address is blocked',
+            extra_data={'email': email, 'ip': ip_address, 'block_id': blocked_ip_record.id}
+        )
+        return jsonify({
+            'error': 'Access denied. Your IP address has been blocked due to suspicious activity. Contact support if you believe this is an error.',
+            'blocked': True,
+            'block_type': 'ip'
+        }), 403
+    
+    # Check if device is blocked  
+    device_blocked, blocked_device_record = BlockedDevice.is_blocked(user_agent, ip_address)
+    if device_blocked:
+        ActivityLog.log(
+            event_type='login_blocked_device',
+            event_category='auth',
+            description=f'Login blocked - device blocked: {blocked_device_record.device_fingerprint[:8]}...',
+            success=False,
+            error_message='Device is blocked',
+            extra_data={'email': email, 'device_id': blocked_device_record.id}
+        )
+        return jsonify({
+            'error': 'Access denied. This device has been blocked due to suspicious activity. Contact support if you believe this is an error.',
+            'blocked': True,
+            'block_type': 'device'
+        }), 403
+    
+    # Check if account is locked
+    locked, remaining_seconds = is_account_locked(email)
+    if locked:
+        remaining_minutes = remaining_seconds // 60
+        ActivityLog.log(
+            event_type='login_blocked_lockout',
+            event_category='auth',
+            description=f'Login blocked - account locked: {email}',
+            success=False,
+            error_message='Account temporarily locked',
+            extra_data={'email': email, 'remaining_seconds': remaining_seconds}
+        )
+        security_audit.login_locked(email, remaining_seconds // 60)
+        return jsonify({
+            'error': f'Account temporarily locked. Try again in {remaining_minutes} minutes.',
+            'locked': True,
+            'retry_after': remaining_seconds
+        }), 429
+    
+    user = User.query.filter_by(email=email).first()
+    
+    if not user or not user.check_password(password):
+        # Record failed attempt and check for lockout (by email)
+        is_locked, lockout_time, attempts = record_failed_login(email)
+        
+        # Get location info for IP tracking
+        location_info = get_ip_location(ip_address)
+        
+        # Record failed attempt for IP (auto-blocks after 3 attempts)
+        ip_now_blocked, ip_record, ip_attempts = BlockedIP.record_failed_attempt(
+            ip_address=ip_address,
+            email=email,
+            user_id=user.id if user else None,
+            location_info=location_info,
+            max_attempts=3
+        )
+        
+        # Parse device info for device tracking
+        device_info = parse_user_agent(user_agent) if user_agent else None
+        
+        # Record failed attempt for device (auto-blocks after 3 attempts)
+        device_now_blocked, device_record, device_attempts = BlockedDevice.record_failed_attempt(
+            user_agent=user_agent,
+            ip_address=ip_address,
+            email=email,
+            user_id=user.id if user else None,
+            device_info=device_info,
+            max_attempts=3
+        )
+        
+        # Log failed login attempt
+        ActivityLog.log(
+            event_type='login_failed',
+            event_category='auth',
+            user_id=user.id if user else None,
+            description=f'Failed login attempt for email: {email} (attempt {attempts}/{MAX_LOGIN_ATTEMPTS})',
+            success=False,
+            error_message='Invalid credentials',
+            extra_data={
+                'email': email, 
+                'attempt_number': attempts,
+                'ip_attempts': ip_attempts,
+                'device_attempts': device_attempts,
+                'ip_blocked': ip_now_blocked,
+                'device_blocked': device_now_blocked
+            }
+        )
+        security_audit.login_failed(email, 'Invalid credentials', attempts)
+        
+        # Check if IP or device just got blocked
+        if ip_now_blocked:
+            return jsonify({
+                'error': 'Too many failed attempts from this IP address. Access has been blocked.',
+                'blocked': True,
+                'block_type': 'ip'
+            }), 403
+        
+        if device_now_blocked:
+            return jsonify({
+                'error': 'Too many failed attempts from this device. Access has been blocked.',
+                'blocked': True,
+                'block_type': 'device'
+            }), 403
+        
+        if is_locked:
+            return jsonify({
+                'error': f'Too many failed attempts. Account locked for {LOCKOUT_DURATION // 60} minutes.',
+                'locked': True,
+                'retry_after': lockout_time
+            }), 429
+        
+        # Show remaining attempts warning after 3 failures
+        remaining = MAX_LOGIN_ATTEMPTS - attempts
+        if remaining <= 2:
+            return jsonify({
+                'error': f'Invalid email or password. {remaining} attempts remaining before lockout.'
+            }), 401
+        
+        return jsonify({'error': 'Invalid email or password'}), 401
+    
+    if not user.is_active:
+        # Log blocked login attempt
+        ActivityLog.log(
+            event_type='login_blocked',
+            event_category='auth',
+            user_id=user.id,
+            description=f'Login blocked - account disabled: {email}',
+            success=False,
+            error_message='Account disabled'
+        )
+        return jsonify({'error': 'Account is disabled'}), 401
+    
+    # Check 2FA if enabled
+    if user.two_factor_enabled:
+        if not totp_code and not backup_code:
+            return jsonify({
+                'requires_2fa': True,
+                'message': '2FA code required'
+            }), 200
+        
+        code_valid = False
+        used_backup_code = False
+        
+        # Try TOTP code first
+        if totp_code:
+            totp = pyotp.TOTP(user.two_factor_secret)
+            code_valid = totp.verify(totp_code)
+        
+        # Try backup code if TOTP failed or wasn't provided
+        if not code_valid and backup_code and user.two_factor_backup_codes:
+            from werkzeug.security import check_password_hash
+            remaining_codes = []
+            
+            for hashed_code in user.two_factor_backup_codes:
+                if not code_valid and check_password_hash(hashed_code, backup_code):
+                    code_valid = True
+                    used_backup_code = True
+                    # Don't add this code to remaining (it's used up)
+                else:
+                    remaining_codes.append(hashed_code)
+            
+            if code_valid:
+                # Update remaining backup codes
+                user.two_factor_backup_codes = remaining_codes if remaining_codes else None
+        
+        if not code_valid:
+            # Log failed 2FA attempt
+            ActivityLog.log(
+                event_type='2fa_failed',
+                event_category='auth',
+                user_id=user.id,
+                description=f'Failed 2FA verification for: {email}',
+                success=False,
+                error_message='Invalid 2FA code'
+            )
+            security_audit.two_factor_failed(user.id, user.email)
+            return jsonify({'error': 'Invalid 2FA code'}), 401
+    
+    # Clear failed login attempts on successful login
+    clear_failed_logins(email)
+    
+    # Clear IP and device failed attempts (if not blocked)
+    BlockedIP.clear_attempts(ip_address)
+    BlockedDevice.clear_attempts(user_agent, ip_address)
+    
+    # Check for new device login
+    new_device, device_info = is_new_device(user.id)
+    
+    # Check for suspicious location (new country)
+    ip_address = get_real_client_ip()
+    current_location = get_ip_location(ip_address)
+    suspicious_location, location_info, known_locations = is_suspicious_location(user.id, current_location)
+    
+    # Update last login
+    user.last_login = datetime.utcnow()
+    db.session.commit()
+    
+    # Generate tokens
+    access_token, refresh_token = generate_tokens(user)
+    
+    # Register device and location as known
+    register_device(user.id)
+    if location_info and location_info.get('country_code'):
+        register_user_location(user.id, location_info['country_code'])
+    
+    # Send new device login alert email
+    if new_device and current_app.config.get('MAIL_ENABLED'):
+        try:
+            from app.services.email_service import send_new_login_alert
+            send_new_login_alert(user, device_info)
+        except Exception as e:
+            current_app.logger.warning(f"Failed to send new device login alert: {e}")
+    
+    # Send suspicious location alert (even if same device, new country is suspicious)
+    if suspicious_location and current_app.config.get('MAIL_ENABLED'):
+        try:
+            from app.services.email_service import send_suspicious_location_alert
+            send_suspicious_location_alert(user, location_info, list(known_locations))
+        except Exception as e:
+            current_app.logger.warning(f"Failed to send suspicious location alert: {e}")
+    
+    # Log successful login
+    ActivityLog.log(
+        event_type='login_success',
+        event_category='auth',
+        user_id=user.id,
+        description=f'Successful login for: {email}',
+        success=True,
+        extra_data={
+            'used_2fa': user.two_factor_enabled,
+            'used_backup_code': used_backup_code if user.two_factor_enabled else False,
+            'new_device': new_device,
+            'suspicious_location': suspicious_location,
+            'ip_address': ip_address,
+            'location': location_info
+        }
+    )
+    
+    # Security audit log
+    location_str = location_info.get('city', '') + ', ' + location_info.get('country', '') if location_info else None
+    security_audit.login_success(user.id, user.email, new_device, location_str)
+    
+    if suspicious_location and location_info:
+        previous_countries = ', '.join(known_locations) if known_locations else 'Unknown'
+        security_audit.suspicious_location(
+            user.id, user.email,
+            previous_countries,
+            location_info.get('country', 'Unknown')
+        )
+    
+    return jsonify({
+        'message': 'Login successful',
+        'user': user.to_dict(),
+        'access_token': access_token,
+        'refresh_token': refresh_token,
+        'new_device': new_device,
+        'suspicious_location': suspicious_location,
+    })
+
+
+@auth_bp.route('/refresh', methods=['POST'])
+def refresh_token():
+    """Refresh access token."""
+    data = request.get_json()
+    refresh = data.get('refresh_token')
+    
+    if not refresh:
+        return jsonify({'error': 'Refresh token required'}), 400
+    
+    try:
+        payload = jwt.decode(
+            refresh,
+            current_app.config['JWT_SECRET_KEY'],
+            algorithms=['HS256']
+        )
+        
+        if payload.get('type') != 'refresh':
+            return jsonify({'error': 'Invalid token type'}), 401
+        
+        user = User.query.get(payload['user_id'])
+        if not user or not user.is_active:
+            return jsonify({'error': 'User not found or disabled'}), 401
+        
+        # Validate session still exists
+        token_jti = payload.get('jti')
+        if not token_jti:
+            return jsonify({'error': 'Session invalid. Please login again.', 'code': 'SESSION_INVALID'}), 401
+        
+        if not validate_session(user.id, token_jti):
+            return jsonify({'error': 'Session expired. Please login again.', 'code': 'SESSION_EXPIRED'}), 401
+        
+        # Generate new tokens but don't invalidate existing session (same session continues)
+        access_token, new_refresh = generate_tokens(user, invalidate_existing=False)
+        
+        return jsonify({
+            'access_token': access_token,
+            'refresh_token': new_refresh,
+        })
+        
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Refresh token expired'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'error': 'Invalid refresh token'}), 401
+
+
+@auth_bp.route('/logout', methods=['POST'])
+@token_required
+def logout(current_user):
+    """Logout user and blacklist token."""
+    token = request.headers.get('Authorization', '').split(' ')[-1]
+    
+    if redis_client:
+        # Blacklist token for its remaining lifetime
+        try:
+            payload = jwt.decode(
+                token,
+                current_app.config['JWT_SECRET_KEY'],
+                algorithms=['HS256']
+            )
+            exp = payload.get('exp', 0)
+            ttl = max(0, exp - int(datetime.utcnow().timestamp()))
+            redis_client.setex(f'blacklist:{token}', ttl, '1')
+            
+            # Also invalidate the session
+            token_jti = payload.get('jti')
+            if token_jti:
+                session_key = f'session:{current_user.id}:{token_jti}'
+                redis_client.delete(session_key)
+        except:
+            pass
+    
+    # Log logout
+    ActivityLog.log(
+        event_type='logout',
+        event_category='auth',
+        user_id=current_user.id,
+        description=f'User logged out: {current_user.email}',
+        success=True
+    )
+    security_audit.logout(current_user.id, current_user.email)
+    
+    return jsonify({'message': 'Logged out successfully'})
+
+
+@auth_bp.route('/me', methods=['GET'])
+@token_required
+def get_current_user(current_user):
+    """Get current user profile."""
+    return jsonify(current_user.to_dict())
+
+
+@auth_bp.route('/me', methods=['PUT'])
+@token_required
+def update_profile(current_user):
+    """Update current user profile and preferences."""
+    data = request.get_json()
+    
+    # Sensitive fields that require password verification
+    sensitive_fields = ['email', 'username', 'name', 'first_name', 'last_name']
+    
+    # Check if any sensitive field is being changed
+    is_sensitive_change = any(
+        field in data and data[field] != getattr(current_user, field if field != 'name' else 'display_name', None)
+        for field in sensitive_fields
+    )
+    
+    # If sensitive change, require password (and 2FA if enabled)
+    if is_sensitive_change:
+        password = data.get('current_password')
+        if not password:
+            return jsonify({
+                'error': 'Password required for account changes',
+                'requires_verification': True
+            }), 401
+        
+        if not current_user.check_password(password):
+            return jsonify({'error': 'Incorrect password'}), 401
+        
+        # Check 2FA if enabled
+        if current_user.two_factor_enabled:
+            totp_code = data.get('totp_code')
+            if not totp_code:
+                return jsonify({
+                    'error': '2FA code required',
+                    'requires_2fa': True
+                }), 401
+            
+            totp = pyotp.TOTP(current_user.two_factor_secret)
+            if not totp.verify(totp_code, valid_window=1):
+                return jsonify({'error': 'Invalid 2FA code'}), 401
+    
+    # Updateable profile fields
+    profile_fields = ['first_name', 'last_name', 'username']
+    
+    # Updateable preference fields - these persist user settings
+    preference_fields = [
+        'language', 'timezone', 'theme', 'currency',
+        'distance_unit', 'volume_unit', 'date_format',
+        'country_preference', 'notification_email',
+        # Location settings
+        'location_lat', 'location_lon', 'location_name', 'location_auto_detect'
+    ]
+    
+    # Email notification preference fields
+    email_notification_fields = [
+        'notifications_enabled',
+        'email_insurance_alerts',
+        'email_tax_alerts',
+        'email_service_alerts',
+        'email_reminder_alerts',
+        'email_smart_alerts',
+        'weekly_report_enabled',
+        'monthly_report_enabled',
+        'alert_days_before'
+    ]
+    
+    # Handle 'name' field (split into first/last)
+    if 'name' in data:
+        name_parts = data['name'].split(' ', 1)
+        current_user.first_name = name_parts[0]
+        current_user.last_name = name_parts[1] if len(name_parts) > 1 else ''
+    
+    # Handle email update with validation
+    if 'email' in data and data['email']:
+        new_email = data['email'].lower().strip()
+        if new_email != current_user.email:
+            # Check if email is already taken by another user
+            existing = User.query.filter(
+                User.email == new_email,
+                User.id != current_user.id
+            ).first()
+            if existing:
+                return jsonify({'error': 'Email is already in use'}), 400
+            current_user.email = new_email
+    
+    # Handle username update with validation
+    if 'username' in data and data['username']:
+        new_username = data['username'].strip()
+        if new_username != current_user.username:
+            # Check if username is already taken by another user
+            existing = User.query.filter(
+                User.username == new_username,
+                User.id != current_user.id
+            ).first()
+            if existing:
+                return jsonify({'error': 'Username is already in use'}), 400
+            current_user.username = new_username
+    
+    # Update profile fields
+    for field in profile_fields:
+        if field in data:
+            setattr(current_user, field, data[field])
+    
+    # Update preference fields (with special handling for location coordinates)
+    for field in preference_fields:
+        if field in data:
+            value = data[field]
+            # Explicit float conversion for coordinates
+            if field in ('location_lat', 'location_lon') and value is not None:
+                try:
+                    # Handle string values that might have comma as decimal separator
+                    if isinstance(value, str):
+                        value = value.replace(',', '.').strip()
+                    value = float(value) if value != '' else None
+                    # Validate coordinate ranges
+                    if value is not None:
+                        if field == 'location_lat' and not (-90 <= value <= 90):
+                            continue  # Invalid latitude, skip
+                        if field == 'location_lon' and not (-180 <= value <= 180):
+                            continue  # Invalid longitude, skip
+                except (ValueError, TypeError):
+                    continue  # Skip invalid values
+            setattr(current_user, field, value)
+    
+    # Update email notification fields
+    for field in email_notification_fields:
+        if field in data:
+            setattr(current_user, field, data[field])
+    
+    db.session.commit()
+    
+    return jsonify({
+        'message': 'Profile updated',
+        'user': current_user.to_dict(include_private=True)
+    })
+
+
+@auth_bp.route('/password', methods=['PUT'])
+@token_required
+def change_password(current_user):
+    """Change user password with enhanced security validation."""
+    data = request.get_json()
+    
+    current_password = data.get('current_password')
+    new_password = data.get('new_password')
+    confirm_password = data.get('confirm_password')
+    
+    if not current_password or not new_password:
+        return jsonify({'error': 'Current and new password required'}), 400
+    
+    # Verify password confirmation
+    if confirm_password and new_password != confirm_password:
+        return jsonify({'error': 'New passwords do not match'}), 400
+    
+    if not current_user.check_password(current_password):
+        return jsonify({'error': 'Current password is incorrect'}), 401
+    
+    # Check 2FA if enabled
+    if current_user.two_factor_enabled:
+        totp_code = data.get('totp_code')
+        if not totp_code:
+            return jsonify({
+                'error': '2FA code required',
+                'requires_2fa': True
+            }), 401
+        
+        totp = pyotp.TOTP(current_user.two_factor_secret)
+        if not totp.verify(totp_code, valid_window=1):
+            return jsonify({'error': 'Invalid 2FA code'}), 401
+    
+    # Validate password strength
+    is_valid, errors, score, strength = validate_password_strength(new_password)
+    
+    if not is_valid:
+        return jsonify({
+            'error': errors[0] if errors else 'Password is too weak',
+            'password_errors': errors,
+            'strength_score': score,
+            'strength': strength
+        }), 400
+    
+    # Check that new password is different from current
+    if current_user.check_password(new_password):
+        return jsonify({'error': 'New password must be different from current password'}), 400
+    
+    current_user.set_password(new_password)
+    current_user.must_change_password = False  # Clear the forced password change flag
+    db.session.commit()
+    
+    # Log password change
+    ActivityLog.log(
+        event_type='password_change',
+        event_category='auth',
+        user_id=current_user.id,
+        description=f'Password changed for: {current_user.email}',
+        success=True
+    )
+    security_audit.password_change(current_user.id, current_user.email, success=True)
+    
+    return jsonify({
+        'message': 'Password changed successfully',
+        'strength': strength,
+        'strength_score': score
+    })
+
+
+@auth_bp.route('/password/validate', methods=['POST'])
+@token_required
+def validate_password(current_user):
+    """Validate password strength without changing it. Includes breach check."""
+    data = request.get_json()
+    password = data.get('password', '')
+    
+    is_valid, errors, score, strength = validate_password_strength(password)
+    
+    # Check for breach count separately for detailed feedback
+    breach_count = check_password_breach(password)
+    
+    return jsonify({
+        'is_valid': is_valid,
+        'errors': errors,
+        'strength_score': score,
+        'strength': strength,
+        'breach_count': breach_count,
+        'is_breached': breach_count > 0
+    })
+
+
+@auth_bp.route('/password/check', methods=['POST'])
+def check_password_public():
+    """Public endpoint to check password strength during registration.
+    Rate limited to prevent abuse.
+    """
+    data = request.get_json()
+    password = data.get('password', '')
+    
+    if not password:
+        return jsonify({'error': 'Password required'}), 400
+    
+    is_valid, errors, score, strength = validate_password_strength(password)
+    breach_count = check_password_breach(password)
+    
+    return jsonify({
+        'is_valid': is_valid,
+        'errors': errors,
+        'strength_score': score,
+        'strength': strength,
+        'breach_count': breach_count,
+        'is_breached': breach_count > 0
+    })
+
+
+@auth_bp.route('/2fa/setup', methods=['POST'])
+@token_required
+def setup_2fa(current_user):
+    """Generate TOTP secret and QR code for 2FA setup."""
+    if current_user.two_factor_enabled:
+        return jsonify({'error': '2FA is already enabled'}), 400
+    
+    # Generate secret
+    secret = pyotp.random_base32()
+    current_user.two_factor_secret = secret
+    db.session.commit()
+    
+    # Generate provisioning URI
+    totp = pyotp.TOTP(secret)
+    app_name = current_app.config.get('APP_NAME', 'GearCargo')
+    uri = totp.provisioning_uri(
+        name=current_user.email,
+        issuer_name=app_name
+    )
+    
+    # Generate QR code
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(uri)
+    qr.make(fit=True)
+    
+    img = qr.make_image(fill_color='black', back_color='white')
+    buffer = io.BytesIO()
+    img.save(buffer, format='PNG')
+    qr_base64 = base64.b64encode(buffer.getvalue()).decode()
+    
+    return jsonify({
+        'secret': secret,
+        'qr_code': f'data:image/png;base64,{qr_base64}',
+        'provisioning_uri': uri,
+    })
+
+
+@auth_bp.route('/2fa/verify', methods=['POST'])
+@token_required
+def verify_2fa(current_user):
+    """Verify and enable 2FA."""
+    data = request.get_json()
+    code = data.get('code')
+    
+    if not code:
+        return jsonify({'error': 'Verification code required'}), 400
+    
+    if not current_user.two_factor_secret:
+        return jsonify({'error': 'Please setup 2FA first'}), 400
+    
+    totp = pyotp.TOTP(current_user.two_factor_secret)
+    if not totp.verify(code):
+        return jsonify({'error': 'Invalid verification code'}), 401
+    
+    # Generate backup codes
+    import secrets
+    backup_codes = [secrets.token_hex(4).upper() for _ in range(10)]
+    
+    # Store hashed backup codes for security
+    from werkzeug.security import generate_password_hash
+    hashed_codes = [generate_password_hash(code, method='pbkdf2:sha256') for code in backup_codes]
+    
+    current_user.two_factor_backup_codes = hashed_codes
+    current_user.two_factor_enabled = True
+    db.session.commit()
+    
+    # Log 2FA enabled
+    ActivityLog.log(
+        event_type='2fa_enabled',
+        event_category='auth',
+        user_id=current_user.id,
+        description=f'2FA enabled for: {current_user.email}',
+        success=True
+    )
+    security_audit.two_factor_change(current_user.id, current_user.email, enabled=True)
+    
+    return jsonify({
+        'message': '2FA enabled successfully',
+        'backup_codes': backup_codes,  # Return plain codes only once
+    })
+
+
+@auth_bp.route('/2fa/disable', methods=['POST'])
+@token_required
+def disable_2fa(current_user):
+    """Disable 2FA."""
+    data = request.get_json()
+    password = data.get('password')
+    
+    if not password or not current_user.check_password(password):
+        return jsonify({'error': 'Password verification failed'}), 401
+    
+    current_user.two_factor_enabled = False
+    current_user.two_factor_secret = None
+    current_user.two_factor_backup_codes = None
+    db.session.commit()
+    
+    # Log 2FA disabled
+    ActivityLog.log(
+        event_type='2fa_disabled',
+        event_category='auth',
+        user_id=current_user.id,
+        description=f'2FA disabled for: {current_user.email}',
+        success=True
+    )
+    security_audit.two_factor_change(current_user.id, current_user.email, enabled=False)
+    
+    return jsonify({'message': '2FA disabled successfully'})
+
+
+@auth_bp.route('/2fa/verify-backup', methods=['POST'])
+@token_required
+def verify_backup_code(current_user):
+    """Verify a backup code during login."""
+    data = request.get_json()
+    backup_code = data.get('backup_code', '').upper().replace('-', '').replace(' ', '')
+    
+    if not backup_code:
+        return jsonify({'error': 'Backup code required'}), 400
+    
+    if not current_user.two_factor_backup_codes:
+        return jsonify({'error': 'No backup codes available'}), 400
+    
+    # Check each hashed backup code
+    from werkzeug.security import check_password_hash
+    
+    remaining_codes = []
+    code_valid = False
+    
+    for hashed_code in current_user.two_factor_backup_codes:
+        if not code_valid and check_password_hash(hashed_code, backup_code):
+            code_valid = True
+            # Don't add this code to remaining (it's used up)
+        else:
+            remaining_codes.append(hashed_code)
+    
+    if not code_valid:
+        return jsonify({'error': 'Invalid backup code'}), 401
+    
+    # Update remaining backup codes
+    current_user.two_factor_backup_codes = remaining_codes if remaining_codes else None
+    db.session.commit()
+    
+    return jsonify({
+        'message': 'Backup code verified',
+        'remaining_codes': len(remaining_codes)
+    })
+
+
+@auth_bp.route('/2fa/regenerate-backup', methods=['POST'])
+@token_required
+def regenerate_backup_codes(current_user):
+    """Regenerate backup codes (requires password)."""
+    data = request.get_json()
+    password = data.get('password')
+    
+    if not password or not current_user.check_password(password):
+        return jsonify({'error': 'Password verification failed'}), 401
+    
+    if not current_user.two_factor_enabled:
+        return jsonify({'error': '2FA is not enabled'}), 400
+    
+    # Generate new backup codes
+    import secrets
+    backup_codes = [secrets.token_hex(4).upper() for _ in range(10)]
+    
+    # Store hashed backup codes
+    from werkzeug.security import generate_password_hash
+    hashed_codes = [generate_password_hash(code, method='pbkdf2:sha256') for code in backup_codes]
+    
+    current_user.two_factor_backup_codes = hashed_codes
+    db.session.commit()
+    
+    return jsonify({
+        'message': 'Backup codes regenerated',
+        'backup_codes': backup_codes,
+    })
+
+
+@auth_bp.route('/2fa/status', methods=['GET'])
+@token_required
+def get_2fa_status(current_user):
+    """Get 2FA status for current user."""
+    return jsonify({
+        'enabled': current_user.two_factor_enabled,
+        'has_backup_codes': bool(current_user.two_factor_backup_codes),
+        'backup_codes_count': len(current_user.two_factor_backup_codes) if current_user.two_factor_backup_codes else 0
+    })
+
+
+@auth_bp.route('/password-reset/request', methods=['POST'])
+def request_password_reset():
+    """Request password reset email."""
+    from app.services.email_service import PasswordResetEmailService
+    
+    data = request.get_json()
+    email = data.get('email', '').lower()
+    
+    if not email:
+        return jsonify({'error': 'Email is required'}), 400
+    
+    user = User.query.filter_by(email=email).first()
+    
+    # Always return success to prevent email enumeration
+    if user:
+        token = user.generate_reset_token()
+        db.session.commit()
+        # Send password reset email
+        PasswordResetEmailService.send_password_reset_email(user, token)
+    
+    return jsonify({
+        'message': 'If that email exists, a reset link has been sent'
+    })
+
+
+@auth_bp.route('/password-reset/verify', methods=['POST'])
+def verify_reset_token():
+    """Verify password reset token."""
+    data = request.get_json()
+    token = data.get('token')
+    new_password = data.get('new_password')
+    
+    if not token or not new_password:
+        return jsonify({'error': 'Token and new password required'}), 400
+    
+    user = User.verify_reset_token(token)
+    
+    if not user:
+        return jsonify({'error': 'Invalid or expired reset token'}), 401
+    
+    if len(new_password) < 8:
+        return jsonify({'error': 'Password must be at least 8 characters'}), 400
+    
+    user.set_password(new_password)
+    user.password_reset_token = None
+    user.password_reset_expires = None
+    db.session.commit()
+    
+    return jsonify({'message': 'Password reset successfully'})
+
+
+# ============================================================
+# EMAIL VERIFICATION ENDPOINTS
+# ============================================================
+
+@auth_bp.route('/email/send-verification', methods=['POST'])
+@token_required
+def send_verification_email(current_user):
+    """Send email verification email to current user."""
+    from app.services.email_service import email_verification_service
+    
+    if current_user.email_verified:
+        return jsonify({'message': 'Email already verified'}), 200
+    
+    if not current_app.config.get('MAIL_ENABLED'):
+        return jsonify({'error': 'Email service is not enabled'}), 503
+    
+    # Generate verification token
+    token = current_user.generate_verification_token()
+    
+    # Send verification email
+    success = email_verification_service.send_verification_email(current_user, token)
+    
+    if success:
+        return jsonify({'message': 'Verification email sent'})
+    else:
+        return jsonify({'error': 'Failed to send verification email'}), 500
+
+
+@auth_bp.route('/email/verify', methods=['POST'])
+def verify_email():
+    """Verify email with token."""
+    data = request.get_json()
+    token = data.get('token')
+    
+    if not token:
+        return jsonify({'error': 'Token is required'}), 400
+    
+    user = User.verify_email_token(token)
+    
+    if not user:
+        return jsonify({'error': 'Invalid or expired verification token'}), 401
+    
+    user.mark_email_verified()
+    
+    # Log the verification
+    ActivityLog.log(
+        event_type='email_verified',
+        event_category='auth',
+        user_id=user.id,
+        description=f'Email verified for: {user.email}',
+        success=True
+    )
+    
+    return jsonify({
+        'message': 'Email verified successfully',
+        'user': user.to_dict()
+    })
+
+
+@auth_bp.route('/email/resend-verification', methods=['POST'])
+def resend_verification_email():
+    """Resend verification email (public endpoint - for login page)."""
+    from app.services.email_service import email_verification_service
+    
+    data = request.get_json()
+    email = data.get('email', '').lower()
+    
+    if not email:
+        return jsonify({'error': 'Email is required'}), 400
+    
+    # Always return success to prevent email enumeration
+    user = User.query.filter_by(email=email).first()
+    
+    if user and not user.email_verified:
+        if current_app.config.get('MAIL_ENABLED'):
+            token = user.generate_verification_token()
+            email_verification_service.send_verification_email(user, token)
+    
+    return jsonify({
+        'message': 'If that email exists and is unverified, a verification link has been sent'
+    })
+
+
+@auth_bp.route('/email/test', methods=['POST'])
+@token_required
+def send_test_email(current_user):
+    """Send a test email to verify email notification settings."""
+    if not current_app.config.get('MAIL_ENABLED'):
+        return jsonify({'error': 'Email notifications are not enabled on this server'}), 503
+    
+    from app.services.email_service import EmailService
+    
+    success = EmailService.send_test_email(current_user)
+    
+    if success:
+        return jsonify({'message': 'Test email sent successfully'})
+    else:
+        return jsonify({'error': 'Failed to send test email'}), 500
+
+
+@auth_bp.route('/email/settings', methods=['GET'])
+@token_required
+def get_email_settings(current_user):
+    """Get current user's email notification settings."""
+    return jsonify({
+        'email_enabled_on_server': current_app.config.get('MAIL_ENABLED', False),
+        'notifications_enabled': current_user.notifications_enabled if current_user.notifications_enabled is not None else True,
+        'notification_email': current_user.notification_email or current_user.email,
+        'email_insurance_alerts': current_user.email_insurance_alerts if current_user.email_insurance_alerts is not None else True,
+        'email_tax_alerts': current_user.email_tax_alerts if current_user.email_tax_alerts is not None else True,
+        'email_service_alerts': current_user.email_service_alerts if current_user.email_service_alerts is not None else True,
+        'email_reminder_alerts': current_user.email_reminder_alerts if current_user.email_reminder_alerts is not None else True,
+        'email_smart_alerts': current_user.email_smart_alerts if current_user.email_smart_alerts is not None else True,
+        'weekly_report_enabled': current_user.weekly_report_enabled if current_user.weekly_report_enabled is not None else False,
+        'monthly_report_enabled': current_user.monthly_report_enabled if current_user.monthly_report_enabled is not None else True,
+        'alert_days_before': current_user.alert_days_before or 14
+    })
+
+
+# ============================================================
+# Avatar Management Endpoints
+# ============================================================
+
+@auth_bp.route('/avatar', methods=['POST'])
+@token_required
+def upload_avatar(current_user):
+    """Upload a new avatar image. Keeps history of previous avatars."""
+    import os
+    import uuid
+    import imghdr
+    import json
+    from werkzeug.utils import secure_filename
+    
+    # Security constants
+    MAX_FILE_SIZE = 2 * 1024 * 1024  # 2MB max for avatars
+    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+    ALLOWED_MIME_TYPES = {'image/png', 'image/jpeg', 'image/gif', 'image/webp'}
+    MAX_AVATAR_HISTORY = 10  # Keep last 10 avatars
+    
+    if 'avatar' not in request.files:
+        return jsonify({'error': 'No avatar file provided'}), 400
+    
+    avatar = request.files['avatar']
+    
+    if avatar.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+    
+    # Check file size
+    avatar.seek(0, 2)
+    size = avatar.tell()
+    avatar.seek(0)
+    
+    if size > MAX_FILE_SIZE:
+        return jsonify({'error': 'File too large. Maximum size is 2MB'}), 400
+    
+    # Validate file extension
+    filename = secure_filename(avatar.filename)
+    extension = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
+    
+    if extension not in ALLOWED_EXTENSIONS:
+        return jsonify({'error': f'Invalid file type. Allowed: {", ".join(ALLOWED_EXTENSIONS)}'}), 400
+    
+    # Validate MIME type
+    if avatar.content_type not in ALLOWED_MIME_TYPES:
+        return jsonify({'error': 'Invalid file type'}), 400
+    
+    # Validate actual file content (magic bytes)
+    header = avatar.read(512)
+    avatar.seek(0)
+    detected_type = imghdr.what(None, h=header)
+    
+    if detected_type not in {'png', 'jpeg', 'gif', 'webp'}:
+        return jsonify({'error': 'Invalid image file'}), 400
+    
+    # Create avatars directory
+    avatar_dir = os.path.join(current_app.root_path, '..', 'uploads', 'avatars', str(current_user.id))
+    os.makedirs(avatar_dir, mode=0o750, exist_ok=True)
+    
+    # Generate unique filename
+    ext = detected_type if detected_type != 'jpeg' else 'jpg'
+    unique_filename = f"{uuid.uuid4().hex}.{ext}"
+    file_path = os.path.join(avatar_dir, unique_filename)
+    
+    # Ensure file_path is within avatar_dir
+    if not os.path.abspath(file_path).startswith(os.path.abspath(avatar_dir)):
+        return jsonify({'error': 'Invalid file path'}), 400
+    
+    # Save new avatar
+    avatar.save(file_path)
+    os.chmod(file_path, 0o640)
+    
+    # Update avatar history in user preferences
+    avatar_url = f"/uploads/avatars/{current_user.id}/{unique_filename}"
+    avatar_history = current_user.preferences.get('avatar_history', []) if current_user.preferences else []
+    
+    # Add current avatar to history if exists and not already in history
+    if current_user.avatar and current_user.avatar not in avatar_history:
+        avatar_history.insert(0, current_user.avatar)
+    
+    # Trim history to max limit
+    if len(avatar_history) > MAX_AVATAR_HISTORY:
+        # Delete old avatar files that are being removed from history
+        for old_url in avatar_history[MAX_AVATAR_HISTORY:]:
+            old_filename = os.path.basename(old_url)
+            old_path = os.path.join(avatar_dir, old_filename)
+            if os.path.exists(old_path) and os.path.abspath(old_path).startswith(os.path.abspath(avatar_dir)):
+                try:
+                    os.remove(old_path)
+                except:
+                    pass
+        avatar_history = avatar_history[:MAX_AVATAR_HISTORY]
+    
+    # Update user preferences
+    if not current_user.preferences:
+        current_user.preferences = {}
+    current_user.preferences = {**current_user.preferences, 'avatar_history': avatar_history}
+    
+    # Set new avatar
+    current_user.avatar = avatar_url
+    db.session.commit()
+    
+    return jsonify({
+        'message': 'Avatar uploaded successfully',
+        'avatar_url': avatar_url,
+        'avatar_history': avatar_history
+    })
+
+
+@auth_bp.route('/avatars', methods=['GET'])
+@token_required
+def get_avatars(current_user):
+    """Get current avatar and avatar history."""
+    avatar_history = current_user.preferences.get('avatar_history', []) if current_user.preferences else []
+    
+    return jsonify({
+        'current_avatar': current_user.avatar,
+        'avatar_history': avatar_history
+    })
+
+
+@auth_bp.route('/avatar/select', methods=['PUT'])
+@token_required
+def select_avatar(current_user):
+    """Select an avatar from history as the current avatar."""
+    import os
+    
+    data = request.get_json()
+    avatar_url = data.get('avatar_url')
+    
+    if not avatar_url:
+        return jsonify({'error': 'Avatar URL is required'}), 400
+    
+    # Validate the URL belongs to this user
+    expected_prefix = f"/uploads/avatars/{current_user.id}/"
+    if not avatar_url.startswith(expected_prefix):
+        return jsonify({'error': 'Invalid avatar URL'}), 400
+    
+    # Check if the file exists
+    avatar_dir = os.path.join(current_app.root_path, '..', 'uploads', 'avatars', str(current_user.id))
+    filename = os.path.basename(avatar_url)
+    file_path = os.path.join(avatar_dir, filename)
+    
+    if not os.path.exists(file_path):
+        return jsonify({'error': 'Avatar not found'}), 404
+    
+    # Update avatar history
+    avatar_history = current_user.preferences.get('avatar_history', []) if current_user.preferences else []
+    
+    # Remove selected from history (it will become current)
+    if avatar_url in avatar_history:
+        avatar_history.remove(avatar_url)
+    
+    # Add current avatar to history
+    if current_user.avatar and current_user.avatar not in avatar_history:
+        avatar_history.insert(0, current_user.avatar)
+    
+    # Update preferences and current avatar
+    if not current_user.preferences:
+        current_user.preferences = {}
+    current_user.preferences = {**current_user.preferences, 'avatar_history': avatar_history}
+    current_user.avatar = avatar_url
+    db.session.commit()
+    
+    return jsonify({
+        'message': 'Avatar selected successfully',
+        'avatar_url': avatar_url,
+        'avatar_history': avatar_history
+    })
+
+
+@auth_bp.route('/avatar/<filename>', methods=['DELETE'])
+@token_required
+def delete_avatar(current_user, filename):
+    """Delete an avatar from history."""
+    import os
+    from werkzeug.utils import secure_filename
+    
+    # Secure the filename
+    safe_filename = secure_filename(filename)
+    if safe_filename != filename:
+        return jsonify({'error': 'Invalid filename'}), 400
+    
+    avatar_dir = os.path.join(current_app.root_path, '..', 'uploads', 'avatars', str(current_user.id))
+    file_path = os.path.join(avatar_dir, safe_filename)
+    
+    # Ensure file_path is within avatar_dir
+    if not os.path.abspath(file_path).startswith(os.path.abspath(avatar_dir)):
+        return jsonify({'error': 'Invalid file path'}), 400
+    
+    avatar_url = f"/uploads/avatars/{current_user.id}/{safe_filename}"
+    
+    # Cannot delete current avatar
+    if current_user.avatar == avatar_url:
+        return jsonify({'error': 'Cannot delete current avatar. Select another avatar first.'}), 400
+    
+    # Remove from history
+    avatar_history = current_user.preferences.get('avatar_history', []) if current_user.preferences else []
+    if avatar_url in avatar_history:
+        avatar_history.remove(avatar_url)
+        if not current_user.preferences:
+            current_user.preferences = {}
+        current_user.preferences = {**current_user.preferences, 'avatar_history': avatar_history}
+        db.session.commit()
+    
+    # Delete file
+    if os.path.exists(file_path):
+        os.remove(file_path)
+    
+    return jsonify({
+        'message': 'Avatar deleted successfully',
+        'avatar_history': avatar_history
+    })
+
+
+@auth_bp.route('/avatar', methods=['DELETE'])
+@token_required
+def remove_current_avatar(current_user):
+    """Remove current avatar (set to no avatar)."""
+    import os
+    
+    if not current_user.avatar:
+        return jsonify({'error': 'No avatar to remove'}), 404
+    
+    # Move current avatar to history
+    avatar_history = current_user.preferences.get('avatar_history', []) if current_user.preferences else []
+    if current_user.avatar not in avatar_history:
+        avatar_history.insert(0, current_user.avatar)
+    
+    # Update preferences
+    if not current_user.preferences:
+        current_user.preferences = {}
+    current_user.preferences = {**current_user.preferences, 'avatar_history': avatar_history}
+    
+    # Clear current avatar
+    current_user.avatar = None
+    db.session.commit()
+    
+    return jsonify({
+        'message': 'Avatar removed successfully',
+        'avatar_history': avatar_history
+    })
+
+
+# ============================================================
+# SECURITY QUESTIONS FOR ACCOUNT RECOVERY
+# ============================================================
+
+# Predefined security questions for consistency
+SECURITY_QUESTIONS = [
+    "What was the name of your first pet?",
+    "What is your mother's maiden name?",
+    "What was the name of your first school?",
+    "In what city were you born?",
+    "What is the name of your favorite childhood friend?",
+    "What was your childhood nickname?",
+    "What is your oldest sibling's middle name?",
+    "What is the name of the first street you lived on?",
+    "What was the make of your first car?",
+    "What was your dream job as a child?",
+    "What is your favorite movie?",
+    "What was the first concert you attended?",
+    "What is your favorite book?",
+    "What is your favorite sports team?",
+    "What was the name of your first employer?",
+]
+
+
+@auth_bp.route('/security-questions/available', methods=['GET'])
+def get_available_security_questions():
+    """Get list of available predefined security questions."""
+    return jsonify({
+        'questions': SECURITY_QUESTIONS
+    })
+
+
+@auth_bp.route('/security-questions', methods=['GET'])
+@token_required
+def get_user_security_questions(current_user):
+    """Get user's configured security questions (without answers)."""
+    if not current_user.has_security_questions():
+        return jsonify({
+            'configured': False,
+            'questions': []
+        })
+    
+    return jsonify({
+        'configured': True,
+        'questions': current_user.get_security_questions(),
+        'set_at': current_user.security_questions_set_at.isoformat() if current_user.security_questions_set_at else None
+    })
+
+
+@auth_bp.route('/security-questions', methods=['POST'])
+@token_required
+def set_security_questions(current_user):
+    """
+    Set or update security questions for account recovery.
+    Requires password verification.
+    """
+    data = request.get_json()
+    
+    password = data.get('password')
+    questions = data.get('questions', [])  # [{question: str, answer: str}, ...]
+    
+    if not password or not current_user.check_password(password):
+        return jsonify({'error': 'Password verification failed'}), 401
+    
+    # Require at least 2 questions
+    if len(questions) < 2:
+        return jsonify({'error': 'At least 2 security questions are required'}), 400
+    
+    # Validate each question has both fields
+    for q in questions:
+        if not q.get('question') or not q.get('answer'):
+            return jsonify({'error': 'Each security question must have both question and answer'}), 400
+        
+        # Validate answer is meaningful (at least 2 characters)
+        if len(q['answer'].strip()) < 2:
+            return jsonify({'error': 'Answer must be at least 2 characters'}), 400
+    
+    # Check 2FA if enabled
+    if current_user.two_factor_enabled:
+        totp_code = data.get('totp_code')
+        if not totp_code:
+            return jsonify({
+                'error': '2FA code required',
+                'requires_2fa': True
+            }), 401
+        
+        totp = pyotp.TOTP(current_user.two_factor_secret)
+        if not totp.verify(totp_code, valid_window=1):
+            return jsonify({'error': 'Invalid 2FA code'}), 401
+    
+    # Set the security questions
+    current_user.set_security_questions(questions)
+    
+    # Security audit log
+    security_audit.log(
+        security_audit.EVENT_PROFILE_UPDATED,
+        user_id=current_user.id,
+        user_email=current_user.email,
+        details={'action': 'security_questions_set', 'question_count': len(questions)}
+    )
+    
+    # Log activity
+    ActivityLog.log(
+        event_type='security_questions_set',
+        event_category='auth',
+        user_id=current_user.id,
+        description=f'Security questions set for: {current_user.email}',
+        success=True,
+        extra_data={'question_count': len(questions)}
+    )
+    
+    return jsonify({
+        'message': 'Security questions set successfully',
+        'question_count': len(questions)
+    })
+
+
+@auth_bp.route('/security-questions/first-time', methods=['POST'])
+@token_required
+def set_security_questions_first_time(current_user):
+    """
+    Set security questions for first-time setup (after forced password change).
+    Does NOT require password re-entry since the user just authenticated.
+    This endpoint should only be used right after password change flow.
+    """
+    data = request.get_json()
+    
+    questions = data.get('questions', [])  # [{question: str, answer: str}, ...]
+    
+    # Only allow if user doesn't already have security questions
+    # This prevents abuse of the simpler endpoint
+    if current_user.has_security_questions():
+        return jsonify({'error': 'Security questions already configured. Use the regular endpoint to update.'}), 400
+    
+    # Require at least 2 questions
+    if len(questions) < 2:
+        return jsonify({'error': 'At least 2 security questions are required'}), 400
+    
+    # Validate each question has both fields
+    for q in questions:
+        if not q.get('question') or not q.get('answer'):
+            return jsonify({'error': 'Each security question must have both question and answer'}), 400
+        
+        # Validate answer is meaningful (at least 2 characters)
+        if len(q['answer'].strip()) < 2:
+            return jsonify({'error': 'Answer must be at least 2 characters'}), 400
+    
+    # Set the security questions
+    current_user.set_security_questions(questions)
+    
+    # Security audit log
+    security_audit.log(
+        security_audit.EVENT_PROFILE_UPDATED,
+        user_id=current_user.id,
+        user_email=current_user.email,
+        details={'action': 'security_questions_first_time', 'question_count': len(questions)}
+    )
+    
+    # Log activity
+    ActivityLog.log(
+        event_type='security_questions_set',
+        event_category='auth',
+        user_id=current_user.id,
+        description=f'Security questions set (first time) for: {current_user.email}',
+        success=True,
+        extra_data={'question_count': len(questions), 'first_time': True}
+    )
+    
+    return jsonify({
+        'message': 'Security questions set successfully',
+        'question_count': len(questions)
+    })
+
+
+@auth_bp.route('/password/recover/questions', methods=['POST'])
+def get_recovery_questions():
+    """
+    Get security questions for an email address (for password recovery).
+    Rate limited to prevent enumeration.
+    """
+    data = request.get_json()
+    email = data.get('email', '').lower().strip()
+    
+    if not email:
+        return jsonify({'error': 'Email is required'}), 400
+    
+    user = User.query.filter_by(email=email).first()
+    
+    # Always return same structure to prevent user enumeration
+    if not user or not user.has_security_questions():
+        # Add small delay to make timing attacks harder
+        import time
+        time.sleep(0.3)
+        return jsonify({
+            'available': False,
+            'message': 'Security questions not available for this account'
+        })
+    
+    return jsonify({
+        'available': True,
+        'questions': user.get_security_questions()
+    })
+
+
+@auth_bp.route('/password/recover/verify-answers', methods=['POST'])
+def verify_recovery_answers():
+    """
+    Verify security question answers and issue a password reset token.
+    Rate limited to prevent brute force attacks.
+    """
+    data = request.get_json()
+    email = data.get('email', '').lower().strip()
+    answers = data.get('answers', [])  # List of answers in order
+    
+    if not email or not answers:
+        return jsonify({'error': 'Email and answers are required'}), 400
+    
+    # Check rate limiting for this email (similar to login lockout)
+    attempts_key = f'security_answer_attempts:{email}'
+    if redis_client:
+        try:
+            attempts = redis_client.get(attempts_key)
+            if attempts and int(attempts) >= 5:
+                return jsonify({
+                    'error': 'Too many failed attempts. Please try again later.',
+                    'locked': True
+                }), 429
+        except Exception as e:
+            current_app.logger.error(f"Redis error checking answer attempts: {e}")
+    
+    user = User.query.filter_by(email=email).first()
+    
+    if not user:
+        # Record attempt even for non-existent users (prevents enumeration)
+        if redis_client:
+            try:
+                redis_client.incr(attempts_key)
+                redis_client.expire(attempts_key, 900)  # 15 min lockout
+            except:
+                pass
+        return jsonify({'error': 'Verification failed'}), 401
+    
+    if not user.has_security_questions():
+        return jsonify({'error': 'Security questions not configured'}), 400
+    
+    # Verify the answers
+    if not user.verify_security_answers(answers):
+        # Record failed attempt
+        if redis_client:
+            try:
+                redis_client.incr(attempts_key)
+                redis_client.expire(attempts_key, 900)
+            except:
+                pass
+        
+        # Log failed verification
+        security_audit.log(
+            security_audit.EVENT_PASSWORD_RESET_REQUEST,
+            user_id=user.id,
+            user_email=user.email,
+            success=False,
+            details={'method': 'security_questions', 'reason': 'wrong_answers'}
+        )
+        
+        return jsonify({'error': 'One or more answers are incorrect'}), 401
+    
+    # Clear failed attempts on success
+    if redis_client:
+        try:
+            redis_client.delete(attempts_key)
+        except:
+            pass
+    
+    # Generate a one-time password reset token
+    reset_token = user.generate_reset_token(expires_hours=1)  # Only 1 hour for security question recovery
+    
+    # Log successful security question verification
+    security_audit.log(
+        security_audit.EVENT_PASSWORD_RESET_REQUEST,
+        user_id=user.id,
+        user_email=user.email,
+        success=True,
+        details={'method': 'security_questions'}
+    )
+    
+    return jsonify({
+        'success': True,
+        'message': 'Security questions verified. You can now reset your password.',
+        'reset_token': reset_token,
+        'expires_in': 3600  # 1 hour
+    })
+
+
+@auth_bp.route('/password/recover/reset', methods=['POST'])
+def reset_password_with_token():
+    """
+    Reset password using the token from security question verification.
+    """
+    data = request.get_json()
+    reset_token = data.get('reset_token')
+    new_password = data.get('new_password')
+    confirm_password = data.get('confirm_password')
+    
+    if not reset_token or not new_password:
+        return jsonify({'error': 'Reset token and new password are required'}), 400
+    
+    if confirm_password and new_password != confirm_password:
+        return jsonify({'error': 'Passwords do not match'}), 400
+    
+    user = User.verify_reset_token(reset_token)
+    if not user:
+        return jsonify({'error': 'Invalid or expired reset token'}), 401
+    
+    # Validate password strength
+    is_valid, errors, score, strength = validate_password_strength(new_password)
+    
+    if not is_valid:
+        return jsonify({
+            'error': errors[0] if errors else 'Password is too weak',
+            'password_errors': errors,
+            'strength_score': score,
+            'strength': strength
+        }), 400
+    
+    # Set the new password
+    user.set_password(new_password)
+    user.password_reset_token = None
+    user.password_reset_expires = None
+    user.must_change_password = False
+    db.session.commit()
+    
+    # Invalidate all existing sessions for security
+    invalidate_user_sessions(user.id)
+    
+    # Log password reset
+    security_audit.log(
+        security_audit.EVENT_PASSWORD_RESET_COMPLETE,
+        user_id=user.id,
+        user_email=user.email,
+        details={'method': 'security_questions'}
+    )
+    
+    security_audit.password_change(user.id, user.email, success=True)
+    
+    ActivityLog.log(
+        event_type='password_reset',
+        event_category='auth',
+        user_id=user.id,
+        description=f'Password reset via security questions: {user.email}',
+        success=True
+    )
+    
+    return jsonify({
+        'message': 'Password reset successfully. Please login with your new password.',
+        'strength': strength
+    })

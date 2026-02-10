@@ -1,0 +1,1316 @@
+"""
+GearCargo - Vehicles Routes
+"""
+
+from datetime import datetime
+from flask import Blueprint, request, jsonify, current_app
+from sqlalchemy import func
+
+from app import db
+from app.models import Vehicle, Entry, FuelEntry, ServiceEntry, RepairEntry
+from app.routes.auth import token_required
+
+vehicles_bp = Blueprint('vehicles', __name__)
+
+
+@vehicles_bp.route('', methods=['GET'])
+@token_required
+def get_vehicles(current_user):
+    """Get all active (non-archived) vehicles for current user."""
+    vehicles = Vehicle.query.filter_by(
+        user_id=current_user.id,
+        archived=False
+    ).order_by(Vehicle.display_order.asc(), Vehicle.created_at.desc()).all()
+    
+    return jsonify({
+        'vehicles': [v.to_dict() for v in vehicles],
+        'count': len(vehicles)
+    })
+
+
+@vehicles_bp.route('/archived', methods=['GET'])
+@token_required
+def get_archived_vehicles(current_user):
+    """Get all archived vehicles for current user."""
+    vehicles = Vehicle.query.filter_by(
+        user_id=current_user.id,
+        archived=True
+    ).order_by(Vehicle.archived_at.desc()).all()
+    
+    return jsonify({
+        'vehicles': [v.to_dict() for v in vehicles],
+        'count': len(vehicles)
+    })
+
+
+@vehicles_bp.route('/<int:vehicle_id>/archive', methods=['POST'])
+@token_required
+def archive_vehicle(current_user, vehicle_id):
+    """Archive a vehicle."""
+    vehicle = Vehicle.query.filter_by(
+        id=vehicle_id,
+        user_id=current_user.id
+    ).first()
+    
+    if not vehicle:
+        return jsonify({'error': 'Vehicle not found'}), 404
+    
+    if vehicle.archived:
+        return jsonify({'error': 'Vehicle is already archived'}), 400
+    
+    vehicle.archived = True
+    vehicle.archived_at = datetime.utcnow()
+    db.session.commit()
+    
+    return jsonify({
+        'message': 'Vehicle archived successfully',
+        'vehicle': vehicle.to_dict()
+    })
+
+
+@vehicles_bp.route('/<int:vehicle_id>/unarchive', methods=['POST'])
+@token_required
+def unarchive_vehicle(current_user, vehicle_id):
+    """Restore an archived vehicle."""
+    vehicle = Vehicle.query.filter_by(
+        id=vehicle_id,
+        user_id=current_user.id
+    ).first()
+    
+    if not vehicle:
+        return jsonify({'error': 'Vehicle not found'}), 404
+    
+    if not vehicle.archived:
+        return jsonify({'error': 'Vehicle is not archived'}), 400
+    
+    vehicle.archived = False
+    vehicle.archived_at = None
+    db.session.commit()
+    
+    return jsonify({
+        'message': 'Vehicle restored successfully',
+        'vehicle': vehicle.to_dict()
+    })
+
+
+@vehicles_bp.route('', methods=['POST'])
+@token_required
+def create_vehicle(current_user):
+    """Create a new vehicle."""
+    data = request.get_json()
+    
+    # Validate required fields
+    if not data.get('name'):
+        return jsonify({'error': 'Vehicle name is required'}), 400
+    
+    # Check vehicle limit (only for non-admin users, or admin-created managed users with a limit)
+    if current_user.vehicle_limit is not None and current_user.vehicle_limit > 0:
+        current_vehicle_count = Vehicle.query.filter_by(
+            user_id=current_user.id,
+            archived=False
+        ).count()
+        if current_vehicle_count >= current_user.vehicle_limit:
+            return jsonify({
+                'error': 'Vehicle limit reached',
+                'code': 'VEHICLE_LIMIT_REACHED',
+                'limit': current_user.vehicle_limit,
+                'current': current_vehicle_count
+            }), 403
+    
+    vehicle = Vehicle(
+        user_id=current_user.id,
+        name=data['name'],
+        make=data.get('make') or None,
+        model=data.get('model') or None,
+        year=data.get('year'),
+        vin=data.get('vin') or None,  # Convert empty string to None for unique constraint
+        license_plate=data.get('license_plate') or None,
+        color=data.get('color') or None,
+        fuel_type=data.get('fuel_type', 'petrol'),
+        engine_cc=data.get('engine_cc'),
+        transmission=data.get('transmission'),
+        drivetrain=data.get('drivetrain'),
+        current_mileage=data.get('current_mileage', 0),
+        distance_unit=data.get('distance_unit', 'km'),
+        purchase_date=datetime.fromisoformat(data['purchase_date']).date() if data.get('purchase_date') else None,
+        purchase_price=data.get('purchase_price'),
+        monthly_budget=data.get('monthly_budget'),
+    )
+    
+    db.session.add(vehicle)
+    db.session.commit()
+    
+    return jsonify({
+        'message': 'Vehicle created successfully',
+        'vehicle': vehicle.to_dict()
+    }), 201
+
+
+@vehicles_bp.route('/<int:vehicle_id>', methods=['GET'])
+@token_required
+def get_vehicle(current_user, vehicle_id):
+    """Get a specific vehicle."""
+    vehicle = Vehicle.query.filter_by(
+        id=vehicle_id,
+        user_id=current_user.id
+    ).first()
+    
+    if not vehicle:
+        return jsonify({'error': 'Vehicle not found'}), 404
+    
+    return jsonify(vehicle.to_dict(include_stats=True))
+
+
+@vehicles_bp.route('/<int:vehicle_id>', methods=['PUT'])
+@token_required
+def update_vehicle(current_user, vehicle_id):
+    """Update a vehicle."""
+    vehicle = Vehicle.query.filter_by(
+        id=vehicle_id,
+        user_id=current_user.id
+    ).first()
+    
+    if not vehicle:
+        return jsonify({'error': 'Vehicle not found'}), 404
+    
+    data = request.get_json()
+    
+    # Update allowed fields
+    allowed = ['name', 'make', 'model', 'year', 'vin', 'license_plate',
+               'color', 'fuel_type', 'engine_size', 'transmission',
+               'drive_type', 'body_type', 'current_mileage', 'notes',
+               'is_active', 'photo_url']
+    
+    for field in allowed:
+        if field in data:
+            if field == 'current_mileage':
+                # Ensure mileage doesn't decrease
+                if data[field] < vehicle.current_mileage:
+                    return jsonify({'error': 'Mileage cannot decrease'}), 400
+            setattr(vehicle, field, data[field])
+    
+    db.session.commit()
+    
+    return jsonify({
+        'message': 'Vehicle updated',
+        'vehicle': vehicle.to_dict()
+    })
+
+
+@vehicles_bp.route('/<int:vehicle_id>', methods=['DELETE'])
+@token_required
+def delete_vehicle(current_user, vehicle_id):
+    """Delete a vehicle (soft delete by default)."""
+    vehicle = Vehicle.query.filter_by(
+        id=vehicle_id,
+        user_id=current_user.id
+    ).first()
+    
+    if not vehicle:
+        return jsonify({'error': 'Vehicle not found'}), 404
+    
+    # Check if hard delete requested
+    hard_delete = request.args.get('hard', 'false').lower() == 'true'
+    
+    if hard_delete:
+        # Delete all related entries
+        Entry.query.filter_by(vehicle_id=vehicle_id).delete()
+        db.session.delete(vehicle)
+    else:
+        vehicle.is_active = False
+    
+    db.session.commit()
+    
+    return jsonify({'message': 'Vehicle deleted'})
+
+
+@vehicles_bp.route('/reorder', methods=['POST'])
+@token_required
+def reorder_vehicles(current_user):
+    """Reorder vehicles for dashboard display.
+    
+    Expects JSON body: { "order": [id1, id2, id3, ...] }
+    where the array contains vehicle IDs in the desired display order.
+    """
+    data = request.get_json()
+    
+    if not data or 'order' not in data:
+        return jsonify({'error': 'Order array is required'}), 400
+    
+    order = data['order']
+    
+    if not isinstance(order, list):
+        return jsonify({'error': 'Order must be an array of vehicle IDs'}), 400
+    
+    # Validate all IDs belong to current user
+    user_vehicle_ids = set(
+        v.id for v in Vehicle.query.filter_by(user_id=current_user.id).all()
+    )
+    
+    for vehicle_id in order:
+        if not isinstance(vehicle_id, int):
+            return jsonify({'error': 'All IDs must be integers'}), 400
+        if vehicle_id not in user_vehicle_ids:
+            return jsonify({'error': f'Vehicle {vehicle_id} not found or not owned by user'}), 404
+    
+    # Update display_order for each vehicle
+    for idx, vehicle_id in enumerate(order):
+        vehicle = Vehicle.query.get(vehicle_id)
+        if vehicle:
+            vehicle.display_order = idx
+    
+    db.session.commit()
+    
+    return jsonify({
+        'message': 'Vehicles reordered successfully',
+        'order': order
+    })
+
+
+@vehicles_bp.route('/<int:vehicle_id>/stats', methods=['GET'])
+@token_required
+def get_vehicle_stats(current_user, vehicle_id):
+    """Get statistics for a vehicle."""
+    vehicle = Vehicle.query.filter_by(
+        id=vehicle_id,
+        user_id=current_user.id
+    ).first()
+    
+    if not vehicle:
+        return jsonify({'error': 'Vehicle not found'}), 404
+    
+    from datetime import datetime, timedelta
+    from sqlalchemy import extract
+    
+    # Current date info
+    now = datetime.utcnow()
+    today = now.date()  # Convert to date for comparison with entry dates
+    current_year = now.year
+    current_month = now.month
+    
+    # Get all entries
+    fuel_entries = FuelEntry.query.filter_by(vehicle_id=vehicle_id).all()
+    service_entries = ServiceEntry.query.filter_by(vehicle_id=vehicle_id).all()
+    repair_entries = RepairEntry.query.filter_by(vehicle_id=vehicle_id).all()
+    
+    # Filter to only past/today service entries (exclude future scheduled services)
+    past_service_entries = [e for e in service_entries if e.date and e.date <= today]
+    
+    # Get parking and tax entries if they exist
+    try:
+        from app.models.parking import ParkingEntry
+        parking_entries = ParkingEntry.query.filter_by(vehicle_id=vehicle_id).all()
+        parking_costs = sum(float(e.amount or 0) for e in parking_entries)
+    except:
+        parking_costs = 0
+    
+    try:
+        from app.models.tax import TaxEntry
+        tax_entries = TaxEntry.query.filter_by(vehicle_id=vehicle_id).all()
+        tax_costs = sum(float(e.amount or 0) for e in tax_entries)
+    except:
+        tax_costs = 0
+    
+    # Get insurance policies
+    try:
+        from app.models.insurance import InsurancePolicy
+        insurance_policies = InsurancePolicy.query.filter_by(vehicle_id=vehicle_id).all()
+        # Show per-payment premium cost (what user actually pays each time)
+        insurance_costs = 0
+        insurance_annual_cost = 0  # Keep annual for reference
+        for policy in insurance_policies:
+            premium = float(policy.premium or 0)
+            frequency = policy.payment_frequency or 'annual'
+            insurance_costs += premium  # Per-payment amount
+            # Calculate annual for total costs
+            if frequency == 'monthly':
+                insurance_annual_cost += premium * 12
+            elif frequency == 'quarterly':
+                insurance_annual_cost += premium * 4
+            elif frequency in ('semi-annual', 'semi_annual'):
+                insurance_annual_cost += premium * 2
+            else:  # annual/yearly
+                insurance_annual_cost += premium
+    except:
+        insurance_policies = []
+        insurance_costs = 0
+        insurance_annual_cost = 0
+    
+    # Calculate totals (use past_service_entries to exclude future scheduled services)
+    total_fuel_cost = sum(float(e.total_price or 0) for e in fuel_entries)
+    total_service_cost = sum(float(e.amount or 0) for e in past_service_entries)
+    total_repair_cost = sum(float(e.amount or 0) for e in repair_entries)
+    total_costs = total_fuel_cost + total_service_cost + total_repair_cost + parking_costs + tax_costs + insurance_annual_cost
+    
+    # Calculate this month's costs (use past_service_entries)
+    costs_this_month = 0
+    monthly_insurance_cost = 0  # Track insurance separately for this month
+    
+    for e in fuel_entries:
+        if e.date and e.date.year == current_year and e.date.month == current_month:
+            costs_this_month += float(e.total_price or 0)
+    for e in past_service_entries:
+        if e.date and e.date.year == current_year and e.date.month == current_month:
+            costs_this_month += float(e.amount or 0)
+    for e in repair_entries:
+        if e.date and e.date.year == current_year and e.date.month == current_month:
+            costs_this_month += float(e.amount or 0)
+    
+    # Add parking costs for this month
+    try:
+        for e in parking_entries:
+            if e.date and e.date.year == current_year and e.date.month == current_month:
+                costs_this_month += float(e.amount or 0)
+    except:
+        pass
+    
+    # Add tax costs for this month
+    try:
+        for e in tax_entries:
+            if e.date and e.date.year == current_year and e.date.month == current_month:
+                costs_this_month += float(e.amount or 0)
+    except:
+        pass
+    
+    # Add insurance costs for this month based on payment frequency
+    # Only include if the policy is active in the current month
+    current_date = today
+    for policy in insurance_policies:
+        if not policy.start_date:
+            continue
+        
+        # Check if policy is active (started and not ended)
+        policy_started = (policy.start_date.year < current_year or 
+                         (policy.start_date.year == current_year and policy.start_date.month <= current_month))
+        policy_ended = (policy.end_date and 
+                       (policy.end_date.year < current_year or 
+                        (policy.end_date.year == current_year and policy.end_date.month < current_month)))
+        
+        if not policy_started or policy_ended:
+            continue
+        
+        premium = float(policy.premium or 0)
+        frequency = policy.payment_frequency or 'annual'
+        
+        if frequency == 'monthly':
+            # Monthly: add premium every month the policy is active
+            monthly_insurance_cost += premium
+            costs_this_month += premium
+        elif frequency == 'quarterly':
+            # Quarterly: add premium every 3 months from start date
+            start_month = policy.start_date.month
+            months_diff = (current_year - policy.start_date.year) * 12 + (current_month - start_month)
+            if months_diff >= 0 and months_diff % 3 == 0:
+                monthly_insurance_cost += premium
+                costs_this_month += premium
+        elif frequency in ('semi-annual', 'semi_annual'):
+            # Semi-annual: add premium every 6 months from start date
+            start_month = policy.start_date.month
+            months_diff = (current_year - policy.start_date.year) * 12 + (current_month - start_month)
+            if months_diff >= 0 and months_diff % 6 == 0:
+                monthly_insurance_cost += premium
+                costs_this_month += premium
+        elif frequency in ('annual', 'yearly', 'one_time'):
+            # Annual/one-time: add premium only in the start month
+            if policy.start_date.year == current_year and policy.start_date.month == current_month:
+                monthly_insurance_cost += premium
+                costs_this_month += premium
+    
+    # YTD costs (Year To Date) - use past_service_entries
+    ytd_spent = 0
+    for e in fuel_entries:
+        if e.date and e.date.year == current_year:
+            ytd_spent += float(e.total_price or 0)
+    for e in past_service_entries:
+        if e.date and e.date.year == current_year:
+            ytd_spent += float(e.amount or 0)
+    for e in repair_entries:
+        if e.date and e.date.year == current_year:
+            ytd_spent += float(e.amount or 0)
+    
+    # Add parking YTD
+    try:
+        for e in parking_entries:
+            if e.date and e.date.year == current_year:
+                ytd_spent += float(e.amount or 0)
+    except:
+        pass
+    
+    # Add tax YTD
+    try:
+        for e in tax_entries:
+            if e.date and e.date.year == current_year:
+                ytd_spent += float(e.amount or 0)
+    except:
+        pass
+    
+    # Add insurance YTD costs based on payment frequency
+    for policy in insurance_policies:
+        if policy.start_date:
+            premium = float(policy.premium or 0)
+            frequency = policy.payment_frequency or 'annual'
+            # Calculate how many payments have been made this year
+            if frequency == 'monthly':
+                # Count months from January or policy start to current month
+                start_month = max(1, policy.start_date.month) if policy.start_date.year == current_year else 1
+                end_month = current_month
+                if policy.end_date and policy.end_date.year == current_year:
+                    end_month = min(end_month, policy.end_date.month)
+                if policy.start_date.year <= current_year and (not policy.end_date or policy.end_date.year >= current_year):
+                    ytd_spent += premium * max(0, end_month - start_month + 1)
+            elif frequency == 'quarterly':
+                # Count quarterly payments in current year
+                if policy.start_date.year <= current_year:
+                    start_month = policy.start_date.month
+                    payments = 0
+                    for q in range(4):
+                        payment_month = start_month + q * 3
+                        if payment_month <= 12 and payment_month <= current_month:
+                            if not policy.end_date or policy.end_date >= today:
+                                payments += 1
+                    ytd_spent += premium * payments
+            elif frequency in ('semi-annual', 'semi_annual'):
+                if policy.start_date.year <= current_year:
+                    start_month = policy.start_date.month
+                    payments = 0
+                    for s in range(2):
+                        payment_month = start_month + s * 6
+                        if payment_month <= 12 and payment_month <= current_month:
+                            if not policy.end_date or policy.end_date >= today:
+                                payments += 1
+                    ytd_spent += premium * payments
+            elif frequency in ('annual', 'yearly', 'one_time'):
+                if policy.start_date.year == current_year and policy.start_date.month <= current_month:
+                    ytd_spent += premium
+    
+    # Average fuel consumption (L/100km)
+    avg_consumption = None
+    if fuel_entries:
+        efficiencies = [e.fuel_efficiency for e in fuel_entries if e.fuel_efficiency]
+        if efficiencies:
+            avg_consumption = sum(efficiencies) / len(efficiencies)
+    
+    # Next service due - check both reminders AND future service entries
+    next_service = None
+    next_service_title = None
+    next_service_days = None
+    
+    try:
+        # First check reminders
+        from app.models.reminder import Reminder
+        upcoming_reminder = Reminder.query.filter_by(
+            vehicle_id=vehicle_id,
+            completed=False,
+            dismissed=False
+        ).filter(
+            Reminder.due_date >= now
+        ).order_by(Reminder.due_date.asc()).first()
+        
+        if upcoming_reminder:
+            next_service = upcoming_reminder.due_date.strftime('%Y-%m-%d')
+            next_service_title = upcoming_reminder.title
+            next_service_days = (upcoming_reminder.due_date - now).days
+    except Exception as e:
+        pass
+    
+    # Also check for future service entries (scheduled services with date in the future)
+    try:
+        future_service = ServiceEntry.query.filter(
+            ServiceEntry.vehicle_id == vehicle_id,
+            ServiceEntry.date >= now
+        ).order_by(ServiceEntry.date.asc()).first()
+        
+        if future_service:
+            service_date = future_service.date
+            # Use the earlier of reminder or scheduled service
+            if not next_service or service_date < datetime.strptime(next_service, '%Y-%m-%d').date():
+                next_service = service_date.strftime('%Y-%m-%d')
+                next_service_title = future_service.title or future_service.service_type or 'Scheduled Service'
+                next_service_days = (service_date - now).days
+    except Exception as e:
+        pass
+    
+    # Also check for service entries with next_due_date set (past services with next service scheduled)
+    try:
+        from sqlalchemy import or_
+        service_with_next_due = ServiceEntry.query.filter(
+            ServiceEntry.vehicle_id == vehicle_id,
+            ServiceEntry.next_due_date.isnot(None),
+            ServiceEntry.next_due_date >= now
+        ).order_by(ServiceEntry.next_due_date.asc()).first()
+        
+        if service_with_next_due:
+            due_date = service_with_next_due.next_due_date
+            # Use the earlier of existing next_service or this due date
+            if not next_service or due_date < datetime.strptime(next_service, '%Y-%m-%d').date():
+                next_service = due_date.strftime('%Y-%m-%d')
+                next_service_title = f"Next {service_with_next_due.title or service_with_next_due.service_type or 'Service'}"
+                next_service_days = (due_date - now).days
+    except Exception as e:
+        pass
+    
+    return jsonify({
+        'vehicle_id': vehicle_id,
+        'total_costs': float(total_costs),
+        'ytd_spent': float(ytd_spent),
+        'costs_this_month': float(costs_this_month),
+        'monthly_insurance_cost': float(monthly_insurance_cost),  # Insurance cost for this month only
+        'fuel_costs': float(total_fuel_cost),
+        'service_costs': float(total_service_cost),
+        'repair_costs': float(total_repair_cost),
+        'parking_costs': float(parking_costs),
+        'tax_costs': float(tax_costs),
+        'insurance_costs': float(insurance_costs),  # Per-payment premium amount
+        'insurance_annual_cost': float(insurance_annual_cost),  # Annualized insurance cost
+        'service_count': len(past_service_entries),
+        'repair_count': len(repair_entries),
+        'fuel_count': len(fuel_entries),
+        'insurance_count': len(insurance_policies),
+        'avg_consumption': float(avg_consumption) if avg_consumption else None,
+        'next_service': next_service,
+        'next_service_title': next_service_title,
+        'next_service_days': next_service_days,
+    })
+
+
+@vehicles_bp.route('/<int:vehicle_id>/timeline', methods=['GET'])
+@token_required
+def get_vehicle_timeline(current_user, vehicle_id):
+    """Get timeline of all entries for a vehicle."""
+    vehicle = Vehicle.query.filter_by(
+        id=vehicle_id,
+        user_id=current_user.id
+    ).first()
+    
+    if not vehicle:
+        return jsonify({'error': 'Vehicle not found'}), 404
+    
+    # Pagination
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    
+    # Get all entries sorted by date
+    entries = Entry.query.filter_by(
+        vehicle_id=vehicle_id
+    ).order_by(Entry.date.desc()).all()
+    
+    # Convert entries to dicts
+    timeline_entries = [e.to_dict() for e in entries]
+    
+    # Also get insurance policies and add them to timeline
+    try:
+        from app.models.insurance import InsurancePolicy
+        insurance_policies = InsurancePolicy.query.filter_by(vehicle_id=vehicle_id).all()
+        for policy in insurance_policies:
+            # Show per-payment premium amount, not annualized cost
+            premium = float(policy.premium or 0)
+            frequency = policy.payment_frequency or 'annual'
+            
+            # Calculate annualized cost for reference
+            if frequency == 'monthly':
+                annual_cost = premium * 12
+            elif frequency == 'quarterly':
+                annual_cost = premium * 4
+            elif frequency in ('semi-annual', 'semi_annual'):
+                annual_cost = premium * 2
+            else:
+                annual_cost = premium
+            
+            timeline_entries.append({
+                'id': policy.id,
+                'type': 'insurance',
+                'title': policy.provider,
+                'description': f"{policy.provider} - {policy.policy_number or 'Policy'}",
+                'amount': premium,  # Show per-payment amount, not annualized
+                'cost': premium,    # Show per-payment amount, not annualized
+                'annual_cost': annual_cost,  # Include annualized cost for reference
+                'payment_frequency': frequency,
+                'date': policy.start_date.isoformat() if policy.start_date else None,
+                'vehicle_id': policy.vehicle_id,
+                'created_at': policy.created_at.isoformat() if policy.created_at else None,
+                'policy_type': policy.policy_type,
+                'status': policy.status,
+            })
+    except Exception as e:
+        pass
+    
+    # Sort all entries by date descending
+    timeline_entries.sort(key=lambda x: x.get('date') or '', reverse=True)
+    
+    # Paginate
+    total = len(timeline_entries)
+    start = (page - 1) * per_page
+    end = start + per_page
+    paginated_entries = timeline_entries[start:end]
+    
+    return jsonify({
+        'entries': paginated_entries,
+        'total': total,
+        'pages': (total + per_page - 1) // per_page,
+        'current_page': page,
+        'has_next': end < total,
+        'has_prev': page > 1,
+    })
+
+
+@vehicles_bp.route('/<int:vehicle_id>/mileage', methods=['POST'])
+@token_required
+def update_mileage(current_user, vehicle_id):
+    """Update vehicle mileage."""
+    vehicle = Vehicle.query.filter_by(
+        id=vehicle_id,
+        user_id=current_user.id
+    ).first()
+    
+    if not vehicle:
+        return jsonify({'error': 'Vehicle not found'}), 404
+    
+    data = request.get_json()
+    new_mileage = data.get('mileage')
+    
+    if not new_mileage:
+        return jsonify({'error': 'Mileage is required'}), 400
+    
+    if new_mileage < vehicle.current_mileage:
+        return jsonify({'error': 'Mileage cannot decrease'}), 400
+    
+    vehicle.current_mileage = new_mileage
+    db.session.commit()
+    
+    return jsonify({
+        'message': 'Mileage updated',
+        'current_mileage': vehicle.current_mileage
+    })
+
+
+@vehicles_bp.route('/summary', methods=['GET'])
+@token_required
+def get_vehicles_summary(current_user):
+    """Get summary of all vehicles."""
+    vehicles = Vehicle.query.filter_by(
+        user_id=current_user.id,
+        is_active=True
+    ).all()
+    
+    total_cost = 0
+    total_fuel = 0
+    
+    for vehicle in vehicles:
+        # Quick sum of costs
+        fuel_cost = db.session.query(func.sum(FuelEntry.total_price)).filter_by(
+            vehicle_id=vehicle.id
+        ).scalar() or 0
+        
+        service_cost = db.session.query(func.sum(ServiceEntry.amount)).filter_by(
+            vehicle_id=vehicle.id
+        ).scalar() or 0
+        
+        repair_cost = db.session.query(func.sum(RepairEntry.amount)).filter_by(
+            vehicle_id=vehicle.id
+        ).scalar() or 0
+        
+        total_cost += fuel_cost + service_cost + repair_cost
+        
+        total_fuel += db.session.query(func.sum(FuelEntry.liters)).filter_by(
+            vehicle_id=vehicle.id
+        ).scalar() or 0
+    
+    return jsonify({
+        'vehicle_count': len(vehicles),
+        'total_cost': float(total_cost),
+        'total_fuel_volume': float(total_fuel),
+        'vehicles': [v.to_dict() for v in vehicles],
+    })
+
+
+@vehicles_bp.route('/<int:vehicle_id>/photo', methods=['POST'])
+@token_required
+def upload_vehicle_photo(current_user, vehicle_id):
+    """Upload a photo for a vehicle."""
+    import os
+    import uuid
+    import imghdr
+    from werkzeug.utils import secure_filename
+    
+    # Security constants
+    MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB max
+    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+    ALLOWED_MIME_TYPES = {'image/png', 'image/jpeg', 'image/gif', 'image/webp'}
+    
+    vehicle = Vehicle.query.filter_by(
+        id=vehicle_id,
+        user_id=current_user.id
+    ).first()
+    
+    if not vehicle:
+        return jsonify({'error': 'Vehicle not found'}), 404
+    
+    if 'photo' not in request.files:
+        return jsonify({'error': 'No photo provided'}), 400
+    
+    photo = request.files['photo']
+    
+    if photo.filename == '':
+        return jsonify({'error': 'No photo selected'}), 400
+    
+    # Check file size
+    photo.seek(0, 2)  # Seek to end
+    size = photo.tell()
+    photo.seek(0)  # Reset to beginning
+    
+    if size > MAX_FILE_SIZE:
+        return jsonify({'error': 'File too large. Maximum size is 5MB'}), 400
+    
+    # Validate file extension
+    filename = secure_filename(photo.filename)
+    extension = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
+    
+    if extension not in ALLOWED_EXTENSIONS:
+        return jsonify({'error': f'Invalid file type. Allowed: {", ".join(ALLOWED_EXTENSIONS)}'}), 400
+    
+    # Validate MIME type from content-type header
+    if photo.content_type not in ALLOWED_MIME_TYPES:
+        return jsonify({'error': 'Invalid file type'}), 400
+    
+    # Validate actual file content (magic bytes)
+    header = photo.read(512)
+    photo.seek(0)
+    detected_type = imghdr.what(None, h=header)
+    
+    if detected_type not in {'png', 'jpeg', 'gif', 'webp'}:
+        return jsonify({'error': 'Invalid image file'}), 400
+    
+    # Create uploads directory with secure permissions
+    upload_dir = os.path.join(current_app.root_path, '..', 'uploads', 'vehicles')
+    os.makedirs(upload_dir, mode=0o750, exist_ok=True)
+    
+    # Generate unique filename (prevent path traversal)
+    unique_filename = f"{vehicle.id}_{uuid.uuid4().hex}.{detected_type if detected_type != 'jpeg' else 'jpg'}"
+    file_path = os.path.join(upload_dir, unique_filename)
+    
+    # Ensure file_path is within upload_dir (prevent path traversal)
+    if not os.path.abspath(file_path).startswith(os.path.abspath(upload_dir)):
+        return jsonify({'error': 'Invalid file path'}), 400
+    
+    # Delete old photo if exists
+    if vehicle.photo:
+        old_path = os.path.join(upload_dir, os.path.basename(vehicle.photo))
+        if os.path.exists(old_path) and os.path.abspath(old_path).startswith(os.path.abspath(upload_dir)):
+            os.remove(old_path)
+    
+    # Save new photo with secure permissions
+    photo.save(file_path)
+    os.chmod(file_path, 0o640)  # Owner rw, group r, others none
+    
+    # Update vehicle record
+    vehicle.photo = f"/uploads/vehicles/{unique_filename}"
+    db.session.commit()
+    
+    return jsonify({
+        'message': 'Photo uploaded successfully',
+        'photo_url': vehicle.photo
+    })
+
+
+@vehicles_bp.route('/<int:vehicle_id>/photo', methods=['DELETE'])
+@token_required
+def delete_vehicle_photo(current_user, vehicle_id):
+    """Delete a vehicle's photo."""
+    import os
+    
+    vehicle = Vehicle.query.filter_by(
+        id=vehicle_id,
+        user_id=current_user.id
+    ).first()
+    
+    if not vehicle:
+        return jsonify({'error': 'Vehicle not found'}), 404
+    
+    if not vehicle.photo:
+        return jsonify({'error': 'No photo to delete'}), 404
+    
+    # Delete file
+    upload_dir = os.path.join(current_app.root_path, '..', 'uploads', 'vehicles')
+    old_path = os.path.join(upload_dir, os.path.basename(vehicle.photo))
+    if os.path.exists(old_path):
+        os.remove(old_path)
+    
+    vehicle.photo = None
+    db.session.commit()
+    
+    return jsonify({'message': 'Photo deleted successfully'})
+
+
+# CO2 emission factors (kg CO2 per liter of fuel)
+CO2_EMISSION_FACTORS = {
+    'petrol': 2.31,      # kg CO2/liter
+    'gasoline': 2.31,
+    'regular': 2.31,
+    'premium': 2.31,
+    'diesel': 2.68,      # kg CO2/liter
+    'e85': 1.61,         # kg CO2/liter (ethanol blend)
+    'lpg': 1.51,         # kg CO2/liter
+    'cng': 2.75,         # kg CO2/kg (natural gas)
+    'electric': 0,       # No direct emissions
+    'hybrid': 1.85,      # Estimated average
+}
+
+# Benchmark fuel efficiency (L/100km) by vehicle type
+BENCHMARK_EFFICIENCY = {
+    'petrol': 8.0,
+    'gasoline': 8.0,
+    'diesel': 6.5,
+    'hybrid': 5.0,
+    'electric': 0,  # kWh/100km typically 15-20
+}
+
+
+@vehicles_bp.route('/<int:vehicle_id>/health', methods=['GET'])
+@token_required
+def get_vehicle_health(current_user, vehicle_id):
+    """Get comprehensive vehicle health data including carbon footprint and maintenance status."""
+    from datetime import datetime, timedelta
+    from app.models.reminder import Reminder
+    from app.models import TaxEntry, ParkingEntry
+    from app.models.insurance import InsurancePolicy
+    
+    vehicle = Vehicle.query.filter_by(
+        id=vehicle_id,
+        user_id=current_user.id
+    ).first()
+    
+    if not vehicle:
+        return jsonify({'error': 'Vehicle not found'}), 404
+    
+    now = datetime.utcnow()
+    today = now.date()
+    current_year = now.year
+    one_year_ago = now - timedelta(days=365)
+    six_months_ago = now - timedelta(days=180)
+    
+    # Get all entries
+    fuel_entries = FuelEntry.query.filter_by(vehicle_id=vehicle_id).order_by(FuelEntry.date.desc()).all()
+    service_entries = ServiceEntry.query.filter_by(vehicle_id=vehicle_id).order_by(ServiceEntry.date.desc()).all()
+    repair_entries = RepairEntry.query.filter_by(vehicle_id=vehicle_id).order_by(RepairEntry.date.desc()).all()
+    
+    # ============================================
+    # CARBON FOOTPRINT TRACKER
+    # ============================================
+    
+    fuel_type = (vehicle.fuel_type or 'petrol').lower()
+    emission_factor = CO2_EMISSION_FACTORS.get(fuel_type, 2.31)
+    
+    # Calculate total CO2 emissions
+    total_liters_all_time = sum(float(e.liters or 0) for e in fuel_entries)
+    total_co2_all_time = total_liters_all_time * emission_factor  # kg
+    
+    # YTD emissions
+    ytd_fuel_entries = [e for e in fuel_entries if e.date and e.date.year == current_year]
+    ytd_liters = sum(float(e.liters or 0) for e in ytd_fuel_entries)
+    ytd_co2 = ytd_liters * emission_factor
+    
+    # Last 12 months emissions
+    yearly_fuel_entries = [e for e in fuel_entries if e.date and e.date >= one_year_ago.date()]
+    yearly_liters = sum(float(e.liters or 0) for e in yearly_fuel_entries)
+    yearly_co2 = yearly_liters * emission_factor
+    
+    # Monthly breakdown for chart (last 12 months)
+    monthly_emissions = {}
+    for e in yearly_fuel_entries:
+        if e.date:
+            key = e.date.strftime('%Y-%m')
+            liters = float(e.liters or 0)
+            monthly_emissions[key] = monthly_emissions.get(key, 0) + (liters * emission_factor)
+    
+    # Calculate eco-driving score (0-100)
+    efficiencies = [e.fuel_efficiency for e in fuel_entries if e.fuel_efficiency and e.fuel_efficiency > 0]
+    avg_efficiency = sum(efficiencies) / len(efficiencies) if efficiencies else None
+    
+    benchmark = BENCHMARK_EFFICIENCY.get(fuel_type, 8.0)
+    eco_score = 50  # Default
+    if avg_efficiency and benchmark > 0:
+        # Score based on how close to or better than benchmark
+        ratio = benchmark / avg_efficiency  # Higher is better
+        eco_score = min(100, max(0, int(ratio * 60 + 20)))
+    
+    # CO2 per km
+    total_distance = sum(e.trip_distance or 0 for e in fuel_entries if e.trip_distance)
+    co2_per_km = (total_co2_all_time / total_distance * 1000) if total_distance > 0 else None  # grams/km
+    
+    # Carbon offset recommendations
+    trees_needed_yearly = yearly_co2 / 21  # Average tree absorbs ~21kg CO2/year
+    
+    carbon_footprint = {
+        'total_co2_kg': round(total_co2_all_time, 1),
+        'ytd_co2_kg': round(ytd_co2, 1),
+        'yearly_co2_kg': round(yearly_co2, 1),
+        'co2_per_km_grams': round(co2_per_km, 1) if co2_per_km else None,
+        'emission_factor': emission_factor,
+        'fuel_type': fuel_type,
+        'monthly_emissions': monthly_emissions,
+        'eco_score': eco_score,
+        'avg_efficiency': round(avg_efficiency, 2) if avg_efficiency else None,
+        'benchmark_efficiency': benchmark,
+        'trees_to_offset_yearly': round(trees_needed_yearly, 1),
+        'carbon_offset_cost_usd': round(yearly_co2 * 0.02, 2),  # ~$20/ton average offset cost
+    }
+    
+    # Fuel efficiency tips based on data
+    fuel_tips = []
+    if avg_efficiency:
+        if avg_efficiency > benchmark * 1.2:
+            fuel_tips.append({
+                'id': 'high_consumption',
+                'severity': 'warning',
+                'title': 'Higher than average consumption',
+                'description': f'Your average {avg_efficiency:.1f} L/100km is above the {benchmark:.1f} L/100km benchmark for {fuel_type} vehicles.',
+                'actions': [
+                    'Check tire pressure regularly',
+                    'Remove excess weight from vehicle',
+                    'Avoid aggressive acceleration',
+                    'Use cruise control on highways'
+                ]
+            })
+        elif avg_efficiency <= benchmark * 0.9:
+            fuel_tips.append({
+                'id': 'efficient_driving',
+                'severity': 'success',
+                'title': 'Excellent fuel efficiency!',
+                'description': f'Your {avg_efficiency:.1f} L/100km beats the {benchmark:.1f} L/100km benchmark.',
+                'actions': ['Keep up the eco-friendly driving habits!']
+            })
+    
+    # Check for efficiency degradation
+    recent_entries = [e for e in fuel_entries[:5] if e.fuel_efficiency]
+    older_entries = [e for e in fuel_entries[10:20] if e.fuel_efficiency]
+    if len(recent_entries) >= 3 and len(older_entries) >= 3:
+        recent_avg = sum(e.fuel_efficiency for e in recent_entries) / len(recent_entries)
+        older_avg = sum(e.fuel_efficiency for e in older_entries) / len(older_entries)
+        if recent_avg > older_avg * 1.15:
+            fuel_tips.append({
+                'id': 'efficiency_drop',
+                'severity': 'warning',
+                'title': 'Fuel efficiency has decreased',
+                'description': f'Recent consumption ({recent_avg:.1f} L/100km) is higher than before ({older_avg:.1f} L/100km).',
+                'actions': [
+                    'Check air filter condition',
+                    'Consider engine tune-up',
+                    'Check for tire wear/alignment',
+                    'Monitor driving patterns'
+                ]
+            })
+    
+    # ============================================
+    # MAINTENANCE HEALTH
+    # ============================================
+    
+    # Calculate days since last service
+    last_service = service_entries[0] if service_entries else None
+    days_since_service = None
+    if last_service and last_service.date:
+        days_since_service = (today - last_service.date).days
+    
+    # Calculate maintenance score (0-100)
+    maintenance_score = 100
+    maintenance_issues = []
+    
+    # Check service frequency
+    past_services = [s for s in service_entries if s.date and s.date <= today]
+    if len(past_services) >= 2:
+        # Average days between services
+        dates = sorted([s.date for s in past_services], reverse=True)
+        intervals = [(dates[i] - dates[i+1]).days for i in range(len(dates)-1)]
+        avg_interval = sum(intervals) / len(intervals) if intervals else 365
+        
+        if avg_interval > 365:
+            maintenance_score -= 20
+            maintenance_issues.append({
+                'id': 'infrequent_service',
+                'severity': 'warning',
+                'title': 'Infrequent servicing',
+                'description': f'Average {int(avg_interval)} days between services. Recommended: at least yearly.',
+            })
+    elif len(past_services) < 2 and vehicle.current_mileage and vehicle.current_mileage > 10000:
+        maintenance_score -= 15
+        maintenance_issues.append({
+            'id': 'few_services',
+            'severity': 'info',
+            'title': 'Limited service history',
+            'description': 'Consider documenting regular maintenance to maintain vehicle value.',
+        })
+    
+    # Check if overdue for service
+    if days_since_service and days_since_service > 365:
+        maintenance_score -= 25
+        maintenance_issues.append({
+            'id': 'overdue_service',
+            'severity': 'error',
+            'title': 'Service overdue',
+            'description': f'Last service was {days_since_service} days ago. Schedule maintenance soon.',
+        })
+    elif days_since_service and days_since_service > 270:
+        maintenance_score -= 10
+        maintenance_issues.append({
+            'id': 'service_due_soon',
+            'severity': 'warning',
+            'title': 'Service due soon',
+            'description': f'Last service was {days_since_service} days ago.',
+        })
+    
+    # Check repair frequency (too many repairs = issues)
+    recent_repairs = [r for r in repair_entries if r.date and r.date >= six_months_ago.date()]
+    if len(recent_repairs) >= 3:
+        maintenance_score -= 15
+        maintenance_issues.append({
+            'id': 'frequent_repairs',
+            'severity': 'warning',
+            'title': 'Frequent repairs detected',
+            'description': f'{len(recent_repairs)} repairs in the last 6 months. Consider a comprehensive inspection.',
+        })
+    
+    # ============================================
+    # COMPONENT WEAR INDICATORS
+    # ============================================
+    
+    # Estimate component status based on mileage and service history
+    current_mileage = vehicle.current_mileage or 0
+    
+    # Standard maintenance intervals (km)
+    MAINTENANCE_INTERVALS = {
+        'oil_change': 10000,
+        'air_filter': 20000,
+        'cabin_filter': 25000,
+        'brake_pads': 50000,
+        'brake_fluid': 40000,
+        'transmission_fluid': 60000,
+        'coolant': 50000,
+        'spark_plugs': 40000,
+        'timing_belt': 100000,
+        'tires': 50000,
+        'battery': 50000,  # Or 4-5 years
+    }
+    
+    # Service keywords to detect
+    SERVICE_KEYWORDS = {
+        'oil_change': ['oil change', 'oil filter', 'motor oil', 'schimb ulei', 'cambio aceite'],
+        'air_filter': ['air filter', 'filtru aer', 'filtro aire'],
+        'cabin_filter': ['cabin filter', 'ac filter', 'hvac', 'filtru habitaclu', 'filtro habitáculo'],
+        'brake_pads': ['brake pad', 'disc brake', 'frana', 'pastillas de freno'],
+        'brake_fluid': ['brake fluid', 'lichid frana', 'líquido de frenos'],
+        'transmission_fluid': ['transmission', 'gearbox', 'cutie viteze', 'transmisión'],
+        'coolant': ['coolant', 'antifreeze', 'antigel', 'anticongelante'],
+        'spark_plugs': ['spark plug', 'ignition', 'bujie', 'bujía'],
+        'timing_belt': ['timing belt', 'timing chain', 'curea distributie', 'correa de distribución'],
+        'tires': ['tire', 'tyre', 'wheel', 'anvelope', 'cauciuc', 'neumático'],
+        'battery': ['battery', 'acumulator', 'baterie', 'batería'],
+    }
+    
+    component_status = {}
+    for component, interval in MAINTENANCE_INTERVALS.items():
+        keywords = SERVICE_KEYWORDS.get(component, [])
+        
+        # Find last service for this component
+        last_service_date = None
+        last_service_mileage = None
+        for s in service_entries:
+            title_lower = (s.title or '').lower()
+            notes_lower = (s.notes or '').lower()
+            if any(kw in title_lower or kw in notes_lower for kw in keywords):
+                last_service_date = s.date
+                last_service_mileage = s.odometer
+                break
+        
+        # Calculate wear percentage
+        wear_pct = 0
+        km_since_service = current_mileage - (last_service_mileage or 0) if last_service_mileage else current_mileage
+        
+        if km_since_service > 0:
+            wear_pct = min(100, int((km_since_service / interval) * 100))
+        
+        # Determine status
+        status = 'good'
+        if wear_pct >= 100:
+            status = 'overdue'
+        elif wear_pct >= 80:
+            status = 'due_soon'
+        elif wear_pct >= 50:
+            status = 'fair'
+        
+        component_status[component] = {
+            'wear_percentage': wear_pct,
+            'status': status,
+            'interval_km': interval,
+            'km_since_last': km_since_service,
+            'last_service_date': last_service_date.isoformat() if last_service_date else None,
+            'last_service_mileage': last_service_mileage,
+        }
+    
+    # ============================================
+    # COST EFFICIENCY
+    # ============================================
+    
+    # Calculate cost per km
+    total_costs = sum(float(e.total_price or 0) for e in fuel_entries)
+    total_costs += sum(float(e.amount or 0) for e in service_entries if e.date and e.date <= today)
+    total_costs += sum(float(e.amount or 0) for e in repair_entries)
+    
+    cost_per_km = None
+    if total_distance > 0:
+        cost_per_km = total_costs / total_distance
+    
+    # Monthly cost trend
+    monthly_costs = {}
+    for e in fuel_entries:
+        if e.date and e.date >= one_year_ago.date():
+            key = e.date.strftime('%Y-%m')
+            monthly_costs[key] = monthly_costs.get(key, 0) + float(e.total_price or 0)
+    for e in service_entries:
+        if e.date and e.date >= one_year_ago.date() and e.date <= today:
+            key = e.date.strftime('%Y-%m')
+            monthly_costs[key] = monthly_costs.get(key, 0) + float(e.amount or 0)
+    for e in repair_entries:
+        if e.date and e.date >= one_year_ago.date():
+            key = e.date.strftime('%Y-%m')
+            monthly_costs[key] = monthly_costs.get(key, 0) + float(e.amount or 0)
+    
+    # ============================================
+    # OVERALL HEALTH SCORE
+    # ============================================
+    
+    # Component health score
+    overdue_components = sum(1 for c in component_status.values() if c['status'] == 'overdue')
+    due_soon_components = sum(1 for c in component_status.values() if c['status'] == 'due_soon')
+    component_health = max(0, 100 - (overdue_components * 15) - (due_soon_components * 5))
+    
+    # Calculate overall score
+    overall_score = int(
+        (maintenance_score * 0.35) +
+        (component_health * 0.35) +
+        (eco_score * 0.3)
+    )
+    
+    # Determine health status
+    if overall_score >= 80:
+        health_status = 'excellent'
+    elif overall_score >= 60:
+        health_status = 'good'
+    elif overall_score >= 40:
+        health_status = 'fair'
+    else:
+        health_status = 'needs_attention'
+    
+    # ============================================
+    # VEHICLE AGE & WARRANTY
+    # ============================================
+    
+    vehicle_age_years = None
+    if vehicle.year:
+        vehicle_age_years = current_year - vehicle.year
+    
+    warranty_status = 'unknown'
+    warranty_tips = []
+    if vehicle_age_years:
+        if vehicle_age_years <= 3:
+            warranty_status = 'likely_covered'
+            warranty_tips.append('Your vehicle may still be under manufacturer warranty.')
+        elif vehicle_age_years <= 5:
+            warranty_status = 'extended_possible'
+            warranty_tips.append('Consider extended warranty options if not already purchased.')
+        else:
+            warranty_status = 'likely_expired'
+            warranty_tips.append('Standard warranty likely expired. Focus on preventive maintenance.')
+    
+    # ============================================
+    # RECOMMENDED ACTIONS (Prioritized)
+    # ============================================
+    
+    recommended_actions = []
+    
+    # High priority - overdue components
+    for comp, data in component_status.items():
+        if data['status'] == 'overdue':
+            recommended_actions.append({
+                'priority': 'high',
+                'type': 'maintenance',
+                'component': comp,
+                'title': f'{comp.replace("_", " ").title()} - Overdue',
+                'description': f'Last done {data["km_since_last"]:,} km ago. Recommended interval: {data["interval_km"]:,} km.',
+            })
+    
+    # Medium priority - due soon
+    for comp, data in component_status.items():
+        if data['status'] == 'due_soon':
+            recommended_actions.append({
+                'priority': 'medium',
+                'type': 'maintenance',
+                'component': comp,
+                'title': f'{comp.replace("_", " ").title()} - Due Soon',
+                'description': f'At {data["wear_percentage"]}% of maintenance interval.',
+            })
+    
+    # Add maintenance issues
+    for issue in maintenance_issues:
+        if issue['severity'] == 'error':
+            recommended_actions.append({
+                'priority': 'high',
+                'type': 'service',
+                'title': issue['title'],
+                'description': issue['description'],
+            })
+        elif issue['severity'] == 'warning':
+            recommended_actions.append({
+                'priority': 'medium',
+                'type': 'service',
+                'title': issue['title'],
+                'description': issue['description'],
+            })
+    
+    # Carbon offset recommendation if significant emissions
+    if yearly_co2 > 1000:  # More than 1 ton/year
+        recommended_actions.append({
+            'priority': 'low',
+            'type': 'environment',
+            'title': 'Consider carbon offset',
+            'description': f'Your annual emissions of {yearly_co2:.0f} kg CO2 could be offset for ~${yearly_co2 * 0.02:.2f}.',
+        })
+    
+    # Sort by priority
+    priority_order = {'high': 0, 'medium': 1, 'low': 2}
+    recommended_actions.sort(key=lambda x: priority_order.get(x['priority'], 3))
+    
+    return jsonify({
+        'vehicle_id': vehicle_id,
+        'vehicle_name': vehicle.name,
+        'overall_score': overall_score,
+        'health_status': health_status,
+        'scores': {
+            'maintenance': maintenance_score,
+            'components': component_health,
+            'eco_driving': eco_score,
+        },
+        'carbon_footprint': carbon_footprint,
+        'fuel_tips': fuel_tips,
+        'maintenance': {
+            'score': maintenance_score,
+            'last_service_date': last_service.date.isoformat() if last_service and last_service.date else None,
+            'days_since_service': days_since_service,
+            'total_services': len([s for s in service_entries if s.date and s.date <= today]),
+            'total_repairs': len(repair_entries),
+            'issues': maintenance_issues,
+        },
+        'components': component_status,
+        'cost_efficiency': {
+            'total_costs': round(total_costs, 2),
+            'total_distance_km': total_distance,
+            'cost_per_km': round(cost_per_km, 3) if cost_per_km else None,
+            'monthly_costs': monthly_costs,
+        },
+        'vehicle_info': {
+            'age_years': vehicle_age_years,
+            'current_mileage': current_mileage,
+            'fuel_type': fuel_type,
+            'warranty_status': warranty_status,
+            'warranty_tips': warranty_tips,
+        },
+        'recommended_actions': recommended_actions[:10],  # Top 10
+    })

@@ -1,0 +1,172 @@
+# GearCargo - Docker Compose Configuration
+# Version: 1.0
+# 
+# Usage:
+#   Basic (no Ollama):     docker compose up -d
+#   With local Ollama:     docker compose --profile ollama-local up -d
+#   With external Ollama:  Set OLLAMA_BASE_URL in .env, then docker compose up -d
+
+#version: '3.8'
+
+services:
+  # ============================================================
+  # BACKEND API + STATIC FILE SERVER
+  # Serves both API endpoints and built React frontend
+  # ============================================================
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gearcargo-backend
+    ports:
+      - "${APP_PORT:-5000}:5000"
+    environment:
+      - FLASK_ENV=${FLASK_ENV:-production}
+      - DATABASE_URL=postgresql://gearcargo:${DB_PASSWORD}@db:5432/gearcargo
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
+      - SECRET_KEY=${SECRET_KEY}
+      - APP_URL=${APP_URL:-http://localhost:5000}
+      
+      # Security - JWT
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - JWT_ACCESS_TOKEN_EXPIRES=${JWT_ACCESS_TOKEN_EXPIRES:-3600}
+      - JWT_REFRESH_TOKEN_EXPIRES=${JWT_REFRESH_TOKEN_EXPIRES:-2592000}
+      
+      # Security - CORS (comma-separated allowed origins)
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5000}
+      - CORS_SUPPORTS_CREDENTIALS=${CORS_SUPPORTS_CREDENTIALS:-true}
+      
+      # Security - CSRF Protection
+      - WTF_CSRF_ENABLED=${WTF_CSRF_ENABLED:-true}
+      - WTF_CSRF_SECRET_KEY=${WTF_CSRF_SECRET_KEY}
+      
+      # Security - Rate Limiting
+      - RATELIMIT_ENABLED=${RATELIMIT_ENABLED:-true}
+      - RATELIMIT_DEFAULT=${RATELIMIT_DEFAULT:-200 per day}
+      - RATELIMIT_STORAGE_URL=redis://:${REDIS_PASSWORD:-changeme}@redis:6379/1
+      
+      # Security - Session
+      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-true}
+      - SESSION_COOKIE_HTTPONLY=${SESSION_COOKIE_HTTPONLY:-true}
+      - SESSION_COOKIE_SAMESITE=${SESSION_COOKIE_SAMESITE:-Lax}
+      
+      # Encryption Key (for sensitive data at rest)
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      
+      # Ollama configuration (external instance)
+      - OLLAMA_ENABLED=${OLLAMA_ENABLED:-true}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2}
+      - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-30}
+      
+      # Theme
+      - DEFAULT_THEME=${DEFAULT_THEME:-dark}
+      
+      # Default Admin (optional - created on first startup if no users exist)
+      # Remove these after first deployment for security
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      
+      # Email
+      - MAIL_ENABLED=${MAIL_ENABLED:-false}
+      - MAIL_SERVER=${MAIL_SERVER:-}
+      - MAIL_PORT=${MAIL_PORT:-587}
+      - MAIL_USE_TLS=${MAIL_USE_TLS:-true}
+      - MAIL_USERNAME=${MAIL_USERNAME:-}
+      - MAIL_PASSWORD=${MAIL_PASSWORD:-}
+      - MAIL_DEFAULT_SENDER=${MAIL_DEFAULT_SENDER:-noreply@gearcargo.local}
+      # Push Notifications (VAPID)
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
+      - VAPID_SUBJECT=${VAPID_SUBJECT:-mailto:admin@gearcargo.local}
+    user: "${PUID:-1000}:${PGID:-1000}"
+    volumes:
+      - ./volumes/attachments:/app/volumes/attachments
+      - ./volumes/backups:/app/volumes/backups
+      - ./volumes/uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - gearcargo-net
+
+  # ============================================================
+  # POSTGRESQL DATABASE
+  # ============================================================
+  db:
+    image: postgres:16-alpine
+    container_name: gearcargo-db
+    environment:
+      - POSTGRES_USER=gearcargo
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=gearcargo
+    volumes:
+      - ./volumes/db:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gearcargo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - gearcargo-net
+
+  # ============================================================
+  # REDIS CACHE/SESSIONS
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: gearcargo-redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-changeme}
+    volumes:
+      - ./volumes/redis:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - gearcargo-net
+
+  # ============================================================
+  # OLLAMA ML SERVICE (OPTIONAL)
+  # Use: docker compose --profile ollama-local up -d
+  # Or set OLLAMA_BASE_URL in .env to use external instance
+  # ============================================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: gearcargo-ollama
+    profiles: ["ollama-local"]
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ./volumes/ollama:/root/.ollama
+    restart: unless-stopped
+    # NVIDIA GPU support
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - gearcargo-net
+
+networks:
+  gearcargo-net:
+    driver: bridge
+    name: gearcargo-network

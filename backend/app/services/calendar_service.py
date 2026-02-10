@@ -1,0 +1,626 @@
+"""
+GearCargo - Calendar Sync Service
+Supports: Google Calendar, Nextcloud, Baikal, Radicale, Generic CalDAV
+"""
+
+from datetime import datetime, date, timedelta
+from flask import current_app
+from typing import Optional, Dict, List, Any, Tuple
+import logging
+import caldav
+from caldav.elements import dav, cdav
+from icalendar import Calendar, Event, Alarm
+from cryptography.fernet import Fernet
+import base64
+import hashlib
+import uuid
+
+logger = logging.getLogger(__name__)
+
+
+# ============================================================
+# CALENDAR PROVIDERS CONFIGURATION
+# ============================================================
+
+CALENDAR_PROVIDERS = {
+    'google': {
+        'name': 'Google Calendar',
+        'caldav_url': 'https://apidata.googleusercontent.com/caldav/v2/{email}/events',
+        'requires_oauth': True,
+        'help_url': 'https://support.google.com/calendar/answer/37111',
+        'setup_guide': '''
+            <h4>Google Calendar Setup</h4>
+            <ol>
+                <li>Go to <a href="https://myaccount.google.com/apppasswords" target="_blank">Google App Passwords</a></li>
+                <li>Sign in with your Google account</li>
+                <li>Select "Other (Custom name)" and enter "GearCargo"</li>
+                <li>Click "Generate" and copy the 16-character password</li>
+                <li>Use your Gmail address as username</li>
+                <li>Use the generated app password as password</li>
+            </ol>
+            <p><strong>CalDAV URL:</strong> https://apidata.googleusercontent.com/caldav/v2/{your-email}/events</p>
+        '''
+    },
+    'nextcloud': {
+        'name': 'Nextcloud',
+        'caldav_url': '{server}/remote.php/dav/calendars/{username}/',
+        'requires_oauth': False,
+        'help_url': 'https://docs.nextcloud.com/server/latest/user_manual/en/groupware/calendar.html',
+        'setup_guide': '''
+            <h4>Nextcloud Calendar Setup</h4>
+            <ol>
+                <li>Log in to your Nextcloud instance</li>
+                <li>Go to Settings → Security</li>
+                <li>Create a new App Password for "GearCargo"</li>
+                <li>Enter your Nextcloud server URL (e.g., https://cloud.example.com)</li>
+                <li>Use your Nextcloud username</li>
+                <li>Use the generated app password</li>
+            </ol>
+            <p><strong>CalDAV URL format:</strong> https://your-server/remote.php/dav/calendars/username/</p>
+        '''
+    },
+    'baikal': {
+        'name': 'Baïkal',
+        'caldav_url': '{server}/dav.php/calendars/{username}/',
+        'requires_oauth': False,
+        'help_url': 'https://sabre.io/baikal/',
+        'setup_guide': '''
+            <h4>Baïkal Calendar Setup</h4>
+            <ol>
+                <li>Log in to your Baïkal admin panel</li>
+                <li>Create a user if you haven't already</li>
+                <li>Note your Baïkal server URL</li>
+                <li>Enter your Baïkal username and password</li>
+            </ol>
+            <p><strong>CalDAV URL format:</strong> https://your-server/dav.php/calendars/username/</p>
+        '''
+    },
+    'radicale': {
+        'name': 'Radicale',
+        'caldav_url': '{server}/{username}/',
+        'requires_oauth': False,
+        'help_url': 'https://radicale.org/v3.html',
+        'setup_guide': '''
+            <h4>Radicale Calendar Setup</h4>
+            <ol>
+                <li>Ensure Radicale is running on your server</li>
+                <li>Enter your Radicale server URL (e.g., https://cal.example.com)</li>
+                <li>Enter your Radicale username and password</li>
+                <li>The calendar will be auto-created if it doesn't exist</li>
+            </ol>
+            <p><strong>CalDAV URL format:</strong> https://your-server/username/</p>
+        '''
+    },
+    'caldav': {
+        'name': 'Generic CalDAV',
+        'caldav_url': '',
+        'requires_oauth': False,
+        'help_url': '',
+        'setup_guide': '''
+            <h4>Generic CalDAV Setup</h4>
+            <ol>
+                <li>Find your CalDAV server URL from your provider</li>
+                <li>Enter the full CalDAV URL to your calendar</li>
+                <li>Enter your username and password</li>
+                <li>Test the connection to verify settings</li>
+            </ol>
+            <p><strong>Common CalDAV URL patterns:</strong></p>
+            <ul>
+                <li>Fastmail: https://caldav.fastmail.com/dav/calendars/user/{email}/</li>
+                <li>iCloud: https://caldav.icloud.com/</li>
+                <li>Synology: https://your-nas:5001/caldav/username/</li>
+            </ul>
+        '''
+    }
+}
+
+
+# ============================================================
+# ENCRYPTION HELPERS
+# ============================================================
+
+def get_encryption_key() -> bytes:
+    """Get or generate encryption key for calendar credentials."""
+    secret_key = current_app.config.get('SECRET_KEY', 'default-secret-key')
+    # Derive a 32-byte key from SECRET_KEY
+    return base64.urlsafe_b64encode(hashlib.sha256(secret_key.encode()).digest())
+
+
+def encrypt_password(password: str) -> str:
+    """Encrypt a password for storage."""
+    if not password:
+        return ''
+    fernet = Fernet(get_encryption_key())
+    return fernet.encrypt(password.encode()).decode()
+
+
+def decrypt_password(encrypted: str) -> str:
+    """Decrypt a stored password."""
+    if not encrypted:
+        return ''
+    try:
+        fernet = Fernet(get_encryption_key())
+        return fernet.decrypt(encrypted.encode()).decode()
+    except Exception as e:
+        logger.error(f"Failed to decrypt password: {e}")
+        return ''
+
+
+# ============================================================
+# CALENDAR SERVICE CLASS
+# ============================================================
+
+class CalendarService:
+    """Service for syncing with CalDAV calendars."""
+    
+    def __init__(self, user):
+        """Initialize with user's calendar settings."""
+        self.user = user
+        self.client = None
+        self.calendar = None
+        self._connected = False
+    
+    @property
+    def is_configured(self) -> bool:
+        """Check if calendar is configured for this user."""
+        return bool(
+            self.user.calendar_enabled and
+            self.user.calendar_provider and
+            self.user.calendar_url and
+            self.user.calendar_username
+        )
+    
+    def connect(self) -> Tuple[bool, str]:
+        """Connect to the CalDAV server."""
+        if not self.is_configured:
+            return False, "Calendar not configured"
+        
+        try:
+            password = decrypt_password(self.user.calendar_password)
+            
+            self.client = caldav.DAVClient(
+                url=self.user.calendar_url,
+                username=self.user.calendar_username,
+                password=password
+            )
+            
+            # Try to get the principal (validates credentials)
+            principal = self.client.principal()
+            
+            # Get or create calendar
+            calendars = principal.calendars()
+            
+            if self.user.calendar_id:
+                # Try to find specific calendar
+                for cal in calendars:
+                    if cal.id == self.user.calendar_id or cal.name == self.user.calendar_id:
+                        self.calendar = cal
+                        break
+            
+            if not self.calendar and calendars:
+                # Use first available calendar
+                self.calendar = calendars[0]
+            
+            if not self.calendar:
+                # Try to create a new calendar
+                try:
+                    self.calendar = principal.make_calendar(name="GearCargo")
+                except Exception:
+                    return False, "No calendars found and couldn't create one"
+            
+            self._connected = True
+            return True, f"Connected to calendar: {self.calendar.name if hasattr(self.calendar, 'name') else 'Default'}"
+            
+        except caldav.lib.error.AuthorizationError:
+            return False, "Authentication failed. Check username and password."
+        except caldav.lib.error.NotFoundError:
+            return False, "Calendar URL not found. Check the URL."
+        except Exception as e:
+            logger.error(f"Calendar connection error: {e}")
+            return False, f"Connection failed: {str(e)}"
+    
+    def get_calendars(self) -> List[Dict[str, str]]:
+        """Get list of available calendars."""
+        if not self._connected:
+            success, _ = self.connect()
+            if not success:
+                return []
+        
+        try:
+            principal = self.client.principal()
+            calendars = principal.calendars()
+            return [
+                {
+                    'id': str(cal.id) if hasattr(cal, 'id') else str(cal.url),
+                    'name': cal.name if hasattr(cal, 'name') else 'Calendar'
+                }
+                for cal in calendars
+            ]
+        except Exception as e:
+            logger.error(f"Failed to get calendars: {e}")
+            return []
+    
+    def create_event(
+        self,
+        title: str,
+        start: datetime,
+        end: datetime = None,
+        description: str = None,
+        location: str = None,
+        all_day: bool = False,
+        reminder_minutes: int = 60,
+        uid: str = None
+    ) -> Tuple[bool, str]:
+        """Create a calendar event."""
+        if not self._connected:
+            success, msg = self.connect()
+            if not success:
+                return False, msg
+        
+        try:
+            # Create iCalendar event
+            cal = Calendar()
+            cal.add('prodid', '-//GearCargo//Vehicle Management//EN')
+            cal.add('version', '2.0')
+            
+            event = Event()
+            event.add('uid', uid or str(uuid.uuid4()))
+            event.add('dtstamp', datetime.utcnow())
+            event.add('summary', title)
+            
+            if all_day:
+                event.add('dtstart', start.date() if isinstance(start, datetime) else start)
+                if end:
+                    event.add('dtend', end.date() if isinstance(end, datetime) else end)
+            else:
+                event.add('dtstart', start)
+                event.add('dtend', end or start + timedelta(hours=1))
+            
+            if description:
+                event.add('description', description)
+            
+            if location:
+                event.add('location', location)
+            
+            # Add reminder/alarm
+            if reminder_minutes > 0:
+                alarm = Alarm()
+                alarm.add('action', 'DISPLAY')
+                alarm.add('trigger', timedelta(minutes=-reminder_minutes))
+                alarm.add('description', f'Reminder: {title}')
+                event.add_component(alarm)
+            
+            cal.add_component(event)
+            
+            # Save to CalDAV server
+            self.calendar.save_event(cal.to_ical().decode('utf-8'))
+            
+            logger.info(f"Calendar event created: {title}")
+            return True, event['uid']
+            
+        except Exception as e:
+            logger.error(f"Failed to create calendar event: {e}")
+            return False, str(e)
+    
+    def update_event(self, uid: str, **kwargs) -> Tuple[bool, str]:
+        """Update an existing calendar event."""
+        if not self._connected:
+            success, msg = self.connect()
+            if not success:
+                return False, msg
+        
+        try:
+            # Find and delete existing event
+            events = self.calendar.search(uid=uid)
+            if events:
+                events[0].delete()
+            
+            # Create updated event with same UID
+            return self.create_event(uid=uid, **kwargs)
+            
+        except Exception as e:
+            logger.error(f"Failed to update calendar event: {e}")
+            return False, str(e)
+    
+    def delete_event(self, uid: str) -> Tuple[bool, str]:
+        """Delete a calendar event."""
+        if not self._connected:
+            success, msg = self.connect()
+            if not success:
+                return False, msg
+        
+        try:
+            events = self.calendar.search(uid=uid)
+            if events:
+                events[0].delete()
+                logger.info(f"Calendar event deleted: {uid}")
+                return True, "Event deleted"
+            return True, "Event not found (may already be deleted)"
+            
+        except Exception as e:
+            logger.error(f"Failed to delete calendar event: {e}")
+            return False, str(e)
+
+
+# ============================================================
+# ENTRY SYNC HELPERS
+# ============================================================
+
+def sync_entry_to_calendar(user, entry_type: str, entry: Any, action: str = 'create') -> Tuple[bool, str]:
+    """
+    Sync a vehicle entry to the user's calendar.
+    
+    Args:
+        user: User object with calendar settings
+        entry_type: Type of entry ('service', 'repair', 'reminder', 'insurance', 'tax')
+        entry: The entry object to sync
+        action: 'create', 'update', or 'delete'
+    
+    Returns:
+        Tuple of (success, message)
+    """
+    if not user.calendar_enabled:
+        return True, "Calendar sync disabled"
+    
+    calendar_service = CalendarService(user)
+    if not calendar_service.is_configured:
+        return True, "Calendar not configured"
+    
+    try:
+        # Get vehicle name for context
+        vehicle_name = ""
+        if hasattr(entry, 'vehicle') and entry.vehicle:
+            vehicle_name = f"{entry.vehicle.make} {entry.vehicle.model}" if entry.vehicle.make else entry.vehicle.nickname or "Vehicle"
+        
+        # Generate UID for tracking
+        uid = f"gearcargo-{entry_type}-{entry.id}@car.ascunse.uk"
+        
+        # Build event details based on entry type
+        event_data = get_event_data_for_entry(entry_type, entry, vehicle_name)
+        
+        if not event_data:
+            return False, f"Unknown entry type: {entry_type}"
+        
+        if action == 'delete':
+            return calendar_service.delete_event(uid)
+        
+        # Create or update event
+        success, result = calendar_service.create_event(
+            uid=uid,
+            title=event_data['title'],
+            start=event_data['start'],
+            end=event_data.get('end'),
+            description=event_data.get('description'),
+            location=event_data.get('location'),
+            all_day=event_data.get('all_day', True),
+            reminder_minutes=event_data.get('reminder_minutes', 1440)  # 24 hours default
+        )
+        
+        return success, result
+        
+    except Exception as e:
+        logger.error(f"Calendar sync error: {e}")
+        return False, str(e)
+
+
+def get_event_data_for_entry(entry_type: str, entry: Any, vehicle_name: str) -> Optional[Dict]:
+    """Generate event data based on entry type."""
+    
+    if entry_type == 'service':
+        # Service entry
+        title = f"🔧 Service Due: {vehicle_name}"
+        if hasattr(entry, 'service_type') and entry.service_type:
+            title = f"🔧 {entry.service_type}: {vehicle_name}"
+        
+        # Use next_service_date if available, otherwise scheduled date
+        event_date = getattr(entry, 'next_service_date', None) or getattr(entry, 'date', None)
+        if not event_date:
+            return None
+        
+        description = f"Vehicle: {vehicle_name}\n"
+        if hasattr(entry, 'service_type'):
+            description += f"Service: {entry.service_type}\n"
+        if hasattr(entry, 'notes') and entry.notes:
+            description += f"Notes: {entry.notes}\n"
+        if hasattr(entry, 'mileage') and entry.mileage:
+            description += f"Mileage: {entry.mileage}\n"
+        
+        return {
+            'title': title,
+            'start': event_date if isinstance(event_date, datetime) else datetime.combine(event_date, datetime.min.time()),
+            'description': description,
+            'all_day': True,
+            'reminder_minutes': 1440  # 1 day before
+        }
+    
+    elif entry_type == 'repair':
+        title = f"🛠️ Repair: {vehicle_name}"
+        if hasattr(entry, 'description') and entry.description:
+            title = f"🛠️ {entry.description[:30]}: {vehicle_name}"
+        
+        event_date = getattr(entry, 'date', None)
+        if not event_date:
+            return None
+        
+        description = f"Vehicle: {vehicle_name}\n"
+        if hasattr(entry, 'description') and entry.description:
+            description += f"Repair: {entry.description}\n"
+        if hasattr(entry, 'cost') and entry.cost:
+            description += f"Cost: {entry.cost}\n"
+        if hasattr(entry, 'notes') and entry.notes:
+            description += f"Notes: {entry.notes}\n"
+        
+        return {
+            'title': title,
+            'start': event_date if isinstance(event_date, datetime) else datetime.combine(event_date, datetime.min.time()),
+            'description': description,
+            'all_day': True,
+            'reminder_minutes': 0  # No reminder for past repairs
+        }
+    
+    elif entry_type == 'reminder':
+        title = f"📅 {entry.title}: {vehicle_name}" if vehicle_name else f"📅 {entry.title}"
+        
+        event_date = getattr(entry, 'due_date', None)
+        if not event_date:
+            return None
+        
+        description = f"Reminder: {entry.title}\n"
+        if hasattr(entry, 'notes') and entry.notes:
+            description += f"Notes: {entry.notes}\n"
+        if vehicle_name:
+            description += f"Vehicle: {vehicle_name}\n"
+        
+        return {
+            'title': title,
+            'start': event_date if isinstance(event_date, datetime) else datetime.combine(event_date, datetime.min.time()),
+            'description': description,
+            'all_day': True,
+            'reminder_minutes': 1440
+        }
+    
+    elif entry_type == 'insurance':
+        title = f"🛡️ Insurance Expiry: {vehicle_name}"
+        
+        event_date = getattr(entry, 'end_date', None)
+        if not event_date:
+            return None
+        
+        description = f"Vehicle: {vehicle_name}\n"
+        description += "Insurance policy expires on this date.\n"
+        if hasattr(entry, 'provider') and entry.provider:
+            description += f"Provider: {entry.provider}\n"
+        if hasattr(entry, 'policy_number') and entry.policy_number:
+            description += f"Policy #: {entry.policy_number}\n"
+        
+        return {
+            'title': title,
+            'start': event_date if isinstance(event_date, datetime) else datetime.combine(event_date, datetime.min.time()),
+            'description': description,
+            'all_day': True,
+            'reminder_minutes': 10080  # 7 days before
+        }
+    
+    elif entry_type == 'tax':
+        title = f"📋 Road Tax Due: {vehicle_name}"
+        
+        event_date = getattr(entry, 'due_date', None) or getattr(entry, 'end_date', None)
+        if not event_date:
+            return None
+        
+        description = f"Vehicle: {vehicle_name}\n"
+        description += "Road tax payment due on this date.\n"
+        if hasattr(entry, 'amount') and entry.amount:
+            description += f"Amount: {entry.amount}\n"
+        
+        return {
+            'title': title,
+            'start': event_date if isinstance(event_date, datetime) else datetime.combine(event_date, datetime.min.time()),
+            'description': description,
+            'all_day': True,
+            'reminder_minutes': 10080  # 7 days before
+        }
+    
+    return None
+
+
+def sync_all_entries_for_user(user) -> Dict[str, Any]:
+    """Sync all vehicle entries to calendar for a user."""
+    from app.models import ServiceEntry, RepairEntry, Reminder, InsurancePolicy, TaxEntry, Vehicle
+    
+    results = {
+        'synced': 0,
+        'failed': 0,
+        'errors': []
+    }
+    
+    if not user.calendar_enabled:
+        return results
+    
+    calendar_service = CalendarService(user)
+    if not calendar_service.is_configured:
+        return results
+    
+    # Get all user's vehicles
+    vehicles = Vehicle.query.filter_by(user_id=user.id).all()
+    
+    for vehicle in vehicles:
+        # Sync services
+        services = ServiceEntry.query.filter_by(vehicle_id=vehicle.id).all()
+        for service in services:
+            success, msg = sync_entry_to_calendar(user, 'service', service)
+            if success:
+                results['synced'] += 1
+            else:
+                results['failed'] += 1
+                results['errors'].append(f"Service {service.id}: {msg}")
+        
+        # Sync reminders
+        reminders = Reminder.query.filter_by(vehicle_id=vehicle.id).all()
+        for reminder in reminders:
+            success, msg = sync_entry_to_calendar(user, 'reminder', reminder)
+            if success:
+                results['synced'] += 1
+            else:
+                results['failed'] += 1
+                results['errors'].append(f"Reminder {reminder.id}: {msg}")
+        
+        # Sync insurance
+        policies = InsurancePolicy.query.filter_by(vehicle_id=vehicle.id).all()
+        for policy in policies:
+            success, msg = sync_entry_to_calendar(user, 'insurance', policy)
+            if success:
+                results['synced'] += 1
+            else:
+                results['failed'] += 1
+                results['errors'].append(f"Insurance {policy.id}: {msg}")
+        
+        # Sync taxes
+        taxes = TaxEntry.query.filter_by(vehicle_id=vehicle.id).all()
+        for tax in taxes:
+            success, msg = sync_entry_to_calendar(user, 'tax', tax)
+            if success:
+                results['synced'] += 1
+            else:
+                results['failed'] += 1
+                results['errors'].append(f"Tax {tax.id}: {msg}")
+    
+    logger.info(f"Calendar sync complete for user {user.id}: {results['synced']} synced, {results['failed']} failed")
+    return results
+
+
+# ============================================================
+# PROVIDER HELPERS
+# ============================================================
+
+def get_provider_info(provider: str) -> Optional[Dict]:
+    """Get information about a calendar provider."""
+    return CALENDAR_PROVIDERS.get(provider)
+
+
+def get_all_providers() -> List[Dict]:
+    """Get list of all supported providers."""
+    return [
+        {'id': key, **{k: v for k, v in val.items() if k != 'setup_guide'}}
+        for key, val in CALENDAR_PROVIDERS.items()
+    ]
+
+
+def build_caldav_url(provider: str, server: str, username: str, email: str = None) -> str:
+    """Build the CalDAV URL for a provider."""
+    provider_info = CALENDAR_PROVIDERS.get(provider)
+    if not provider_info:
+        return server
+    
+    url_template = provider_info.get('caldav_url', '')
+    if not url_template:
+        return server
+    
+    # Clean up server URL
+    server = server.rstrip('/')
+    
+    return url_template.format(
+        server=server,
+        username=username,
+        email=email or username
+    )

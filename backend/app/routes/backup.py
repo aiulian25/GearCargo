@@ -1,0 +1,1260 @@
+"""
+GearCargo - Backup Routes
+Comprehensive backup system with auto-backups, external destinations, and attachments
+"""
+
+import os
+import json
+import zipfile
+import shutil
+import hashlib
+import requests
+from datetime import datetime, timedelta
+from io import BytesIO
+from flask import Blueprint, request, jsonify, current_app, send_file
+
+from app import db
+from app.models import (User, Vehicle, FuelEntry, ServiceEntry, RepairEntry,
+                       TaxEntry, ParkingEntry, Reminder, InsurancePolicy,
+                       Attachment, Backup, BackupSchedule, Todo)
+from app.routes.auth import token_required
+from app.utils.security_audit import security_audit
+
+backup_bp = Blueprint('backup', __name__)
+
+
+def get_backup_folder():
+    """Get backup folder path."""
+    return current_app.config.get('BACKUP_FOLDER', '/app/volumes/backups')
+
+
+def get_attachment_folder():
+    """Get attachments folder path."""
+    return current_app.config.get('UPLOAD_FOLDER', '/app/volumes/attachments')
+
+
+def get_uploads_folder():
+    """Get general uploads folder path (for vehicle photos, etc)."""
+    return os.path.join(current_app.root_path, '..', 'uploads')
+
+
+def calculate_checksum(data):
+    """Calculate SHA-256 checksum of data."""
+    if isinstance(data, str):
+        data = data.encode('utf-8')
+    return hashlib.sha256(data).hexdigest()
+
+
+def gather_user_data(user, include_attachments=True):
+    """Gather all user data for backup."""
+    export_data = {
+        'version': '2.0',
+        'exported_at': datetime.utcnow().isoformat(),
+        'user': {
+            'email': user.email,
+            'name': user.display_name,
+            'username': user.username,
+            'preferences': {
+                'theme': user.theme,
+                'language': user.language,
+                'monthly_report_enabled': user.monthly_report_enabled,
+            }
+        },
+        'vehicles': [],
+        'reminders': [],
+        'insurance_policies': [],
+        'todos': [],
+        'attachments': [],
+    }
+    
+    # Get all vehicles
+    vehicles = Vehicle.query.filter_by(user_id=user.id).all()
+    
+    for vehicle in vehicles:
+        vehicle_data = vehicle.to_dict()
+        
+        # Add entries for this vehicle
+        vehicle_data['fuel_entries'] = [
+            e.to_dict() for e in FuelEntry.query.filter_by(vehicle_id=vehicle.id).all()
+        ]
+        vehicle_data['service_entries'] = [
+            e.to_dict() for e in ServiceEntry.query.filter_by(vehicle_id=vehicle.id).all()
+        ]
+        vehicle_data['repair_entries'] = [
+            e.to_dict() for e in RepairEntry.query.filter_by(vehicle_id=vehicle.id).all()
+        ]
+        vehicle_data['tax_entries'] = [
+            e.to_dict() for e in TaxEntry.query.filter_by(vehicle_id=vehicle.id).all()
+        ]
+        vehicle_data['parking_entries'] = [
+            e.to_dict() for e in ParkingEntry.query.filter_by(vehicle_id=vehicle.id).all()
+        ]
+        
+        export_data['vehicles'].append(vehicle_data)
+    
+    # Get reminders
+    export_data['reminders'] = [
+        r.to_dict() for r in Reminder.query.filter_by(user_id=user.id).all()
+    ]
+    
+    # Get insurance policies
+    export_data['insurance_policies'] = [
+        p.to_dict() for p in InsurancePolicy.query.filter_by(user_id=user.id).all()
+    ]
+    
+    # Get todos
+    try:
+        export_data['todos'] = [
+            t.to_dict() for t in Todo.query.filter_by(user_id=user.id).all()
+        ]
+    except:
+        export_data['todos'] = []
+    
+    # Get attachments metadata (files added to zip separately)
+    if include_attachments:
+        attachments = Attachment.query.filter_by(user_id=user.id).all()
+        export_data['attachments'] = [a.to_dict() for a in attachments]
+    
+    return export_data
+
+
+def create_backup_zip(user, include_attachments=True):
+    """Create a complete backup ZIP file with data and attachments."""
+    export_data = gather_user_data(user, include_attachments)
+    
+    # Create in-memory ZIP
+    zip_buffer = BytesIO()
+    
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+        # Add JSON data
+        data_json = json.dumps(export_data, indent=2, default=str)
+        zf.writestr('backup_data.json', data_json)
+        
+        # Add manifest
+        manifest = {
+            'version': '2.0',
+            'created_at': datetime.utcnow().isoformat(),
+            'user_email': user.email,
+            'include_attachments': include_attachments,
+            'checksum': calculate_checksum(data_json),
+        }
+        zf.writestr('manifest.json', json.dumps(manifest, indent=2))
+        
+        # Add attachments if requested
+        if include_attachments:
+            attachment_folder = get_attachment_folder()
+            attachments = Attachment.query.filter_by(user_id=user.id).all()
+            
+            for attachment in attachments:
+                if attachment.filepath and os.path.exists(attachment.filepath):
+                    # Store with relative path in ZIP
+                    arcname = f'attachments/{attachment.id}/{attachment.filename}'
+                    zf.write(attachment.filepath, arcname)
+            
+            # Add vehicle photos
+            uploads_folder = get_uploads_folder()
+            vehicles = Vehicle.query.filter_by(user_id=user.id).all()
+            
+            for vehicle in vehicles:
+                if vehicle.photo:
+                    # Extract filename from photo path like "/uploads/vehicles/1_abc123.jpg"
+                    photo_filename = os.path.basename(vehicle.photo)
+                    photo_path = os.path.join(uploads_folder, 'vehicles', photo_filename)
+                    
+                    if os.path.exists(photo_path):
+                        arcname = f'uploads/vehicles/{vehicle.id}/{photo_filename}'
+                        zf.write(photo_path, arcname)
+    
+    zip_buffer.seek(0)
+    return zip_buffer, export_data
+
+
+def save_backup_to_disk(user, zip_buffer, include_attachments=True):
+    """Save backup ZIP to local storage."""
+    backup_folder = get_backup_folder()
+    user_folder = os.path.join(backup_folder, str(user.id))
+    
+    # Ensure folder exists
+    os.makedirs(user_folder, exist_ok=True)
+    
+    # Generate filename
+    timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+    filename = f'backup_{timestamp}.zip'
+    filepath = os.path.join(user_folder, filename)
+    
+    # Write file
+    with open(filepath, 'wb') as f:
+        f.write(zip_buffer.read())
+    
+    # Get file size
+    file_size = os.path.getsize(filepath)
+    
+    return filename, filepath, file_size
+
+
+def send_to_external_server(backup_data, schedule):
+    """Send backup to external server via HTTPS."""
+    if not schedule.external_enabled or not schedule.external_url:
+        return None, "External backup not configured"
+    
+    try:
+        headers = {
+            'Content-Type': 'application/octet-stream',
+            'X-API-Key': schedule.external_api_key or '',
+            'X-Backup-Path': schedule.external_path or '/backups',
+        }
+        
+        # Validate URL is HTTPS for security
+        if not schedule.external_url.startswith('https://'):
+            return None, "External URL must use HTTPS for security"
+        
+        response = requests.put(
+            schedule.external_url,
+            data=backup_data,
+            headers=headers,
+            timeout=300,  # 5 minutes timeout for large backups
+            verify=True  # Verify SSL certificate
+        )
+        
+        if response.status_code in [200, 201]:
+            return response.json() if response.content else {'status': 'success'}, None
+        else:
+            return None, f"External server returned {response.status_code}: {response.text}"
+    
+    except requests.exceptions.SSLError as e:
+        return None, f"SSL certificate error: {str(e)}"
+    except requests.exceptions.Timeout:
+        return None, "Connection to external server timed out"
+    except requests.exceptions.RequestException as e:
+        return None, f"Failed to connect to external server: {str(e)}"
+
+
+def cleanup_old_backups(user_id, max_backups=10, retention_days=90):
+    """Clean up old backups based on retention policy."""
+    backup_folder = get_backup_folder()
+    user_folder = os.path.join(backup_folder, str(user_id))
+    
+    if not os.path.exists(user_folder):
+        return 0
+    
+    # Get all backup files
+    files = []
+    for f in os.listdir(user_folder):
+        if f.startswith('backup_') and f.endswith('.zip'):
+            filepath = os.path.join(user_folder, f)
+            mtime = os.path.getmtime(filepath)
+            files.append((filepath, mtime))
+    
+    # Sort by modification time (newest first)
+    files.sort(key=lambda x: x[1], reverse=True)
+    
+    deleted = 0
+    cutoff_time = datetime.utcnow() - timedelta(days=retention_days)
+    cutoff_timestamp = cutoff_time.timestamp()
+    
+    for i, (filepath, mtime) in enumerate(files):
+        should_delete = False
+        
+        # Delete if exceeds max_backups
+        if i >= max_backups:
+            should_delete = True
+        
+        # Delete if older than retention_days
+        if mtime < cutoff_timestamp:
+            should_delete = True
+        
+        if should_delete:
+            try:
+                os.remove(filepath)
+                deleted += 1
+            except:
+                pass
+    
+    # Also clean up database records
+    old_backups = Backup.query.filter(
+        Backup.user_id == user_id,
+        Backup.created_at < cutoff_time,
+        Backup.cloud_file_id.is_(None)
+    ).all()
+    
+    for backup in old_backups:
+        db.session.delete(backup)
+    
+    db.session.commit()
+    
+    return deleted
+
+
+@backup_bp.route('/status', methods=['GET'])
+@token_required
+def get_backup_status(current_user):
+    """Get backup status and settings."""
+    schedule = BackupSchedule.query.filter_by(user_id=current_user.id).first()
+    
+    # Get last successful backup
+    last_backup = Backup.query.filter_by(
+        user_id=current_user.id,
+        status='completed'
+    ).order_by(Backup.created_at.desc()).first()
+    
+    # Count available backups
+    backup_folder = get_backup_folder()
+    user_folder = os.path.join(backup_folder, str(current_user.id))
+    available_backups = []
+    
+    if os.path.exists(user_folder):
+        for f in sorted(os.listdir(user_folder), reverse=True):
+            if f.startswith('backup_') and f.endswith('.zip'):
+                filepath = os.path.join(user_folder, f)
+                stat = os.stat(filepath)
+                available_backups.append({
+                    'filename': f,
+                    'size': stat.st_size,
+                    'size_human': format_file_size(stat.st_size),
+                    'created_at': datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                })
+    
+    return jsonify({
+        'schedule': schedule.to_dict() if schedule else None,
+        'last_backup': last_backup.created_at.isoformat() if last_backup else None,
+        'last_backup_details': last_backup.to_dict() if last_backup else None,
+        'available_backups': available_backups[:10],  # Limit to 10 most recent
+        'total_backup_count': len(available_backups),
+    })
+
+
+def format_file_size(size):
+    """Format file size in human-readable format."""
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size < 1024:
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TB"
+
+
+@backup_bp.route('/export', methods=['POST'])
+@token_required
+def export_data(current_user):
+    """Export user data as JSON or ZIP with attachments."""
+    data = request.get_json() or {}
+    format_type = data.get('format', 'zip')  # json, zip
+    include_attachments = data.get('include_attachments', True)
+    save_to_storage = data.get('save_to_storage', False)
+    
+    # Create backup record
+    backup = Backup(
+        user_id=current_user.id,
+        backup_type='export',
+        format=format_type,
+        status='in_progress',
+        started_at=datetime.utcnow(),
+    )
+    db.session.add(backup)
+    db.session.commit()
+    
+    try:
+        if format_type == 'json':
+            # Simple JSON export
+            export_data = gather_user_data(current_user, include_attachments=False)
+            
+            backup.status = 'completed'
+            backup.completed_at = datetime.utcnow()
+            backup.vehicles_count = len(export_data['vehicles'])
+            backup.entries_count = sum(
+                len(v.get('fuel_entries', [])) +
+                len(v.get('service_entries', [])) +
+                len(v.get('repair_entries', [])) +
+                len(v.get('tax_entries', [])) +
+                len(v.get('parking_entries', []))
+                for v in export_data['vehicles']
+            )
+            backup.reminders_count = len(export_data['reminders'])
+            
+            json_data = json.dumps(export_data, indent=2, default=str)
+            backup.file_size = len(json_data.encode('utf-8'))
+            backup.checksum = calculate_checksum(json_data)
+            db.session.commit()
+            
+            # Security audit log for data export
+            security_audit.data_export(current_user.id, current_user.email, 'json')
+            
+            buffer = BytesIO(json_data.encode('utf-8'))
+            return send_file(
+                buffer,
+                mimetype='application/json',
+                as_attachment=True,
+                download_name=f'gearcargo_export_{datetime.utcnow().strftime("%Y%m%d")}.json'
+            )
+        
+        else:
+            # Full ZIP backup with attachments
+            zip_buffer, export_data = create_backup_zip(current_user, include_attachments)
+            
+            # Count attachments
+            attachments_count = len(export_data.get('attachments', []))
+            
+            backup.status = 'completed'
+            backup.completed_at = datetime.utcnow()
+            backup.vehicles_count = len(export_data['vehicles'])
+            backup.entries_count = sum(
+                len(v.get('fuel_entries', [])) +
+                len(v.get('service_entries', [])) +
+                len(v.get('repair_entries', [])) +
+                len(v.get('tax_entries', [])) +
+                len(v.get('parking_entries', []))
+                for v in export_data['vehicles']
+            )
+            backup.reminders_count = len(export_data['reminders'])
+            backup.attachments_count = attachments_count
+            
+            # Get ZIP size
+            zip_buffer.seek(0, 2)
+            backup.file_size = zip_buffer.tell()
+            zip_buffer.seek(0)
+            
+            # Optionally save to storage
+            if save_to_storage:
+                filename, filepath, _ = save_backup_to_disk(current_user, zip_buffer, include_attachments)
+                backup.filename = filename
+                backup.filepath = filepath
+                zip_buffer.seek(0)  # Reset for download
+            
+            db.session.commit()
+            
+            # Security audit log for data export
+            security_audit.data_export(current_user.id, current_user.email, f'zip (attachments: {include_attachments})')
+            
+            return send_file(
+                zip_buffer,
+                mimetype='application/zip',
+                as_attachment=True,
+                download_name=f'gearcargo_backup_{datetime.utcnow().strftime("%Y%m%d")}.zip'
+            )
+    
+    except Exception as e:
+        backup.status = 'failed'
+        backup.error_message = str(e)
+        backup.completed_at = datetime.utcnow()
+        db.session.commit()
+        current_app.logger.error(f'Backup export failed: {e}')
+        return jsonify({'error': 'Backup failed. Please try again later.'}), 500
+
+
+@backup_bp.route('/import', methods=['POST'])
+@token_required
+def import_data(current_user):
+    """Import data from backup file (JSON or ZIP)."""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    
+    file = request.files['file']
+    
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+    
+    merge_mode = request.form.get('merge_mode', 'merge')  # merge, replace
+    
+    try:
+        filename = file.filename.lower()
+        
+        if filename.endswith('.zip'):
+            # ZIP backup with attachments
+            return restore_from_zip(current_user, file, merge_mode)
+        elif filename.endswith('.json'):
+            # JSON-only backup
+            return restore_from_json(current_user, file, merge_mode)
+        else:
+            return jsonify({'error': 'Unsupported file format. Use .json or .zip'}), 400
+    
+    except json.JSONDecodeError as e:
+        security_audit.data_import(current_user.id, current_user.email, 'unknown', success=False)
+        current_app.logger.error(f'Backup import JSON error: {e}')
+        return jsonify({'error': 'Invalid backup file format. Please ensure the file is a valid JSON or ZIP backup.'}), 400
+    except Exception as e:
+        security_audit.data_import(current_user.id, current_user.email, 'unknown', success=False)
+        current_app.logger.error(f'Backup import failed: {e}')
+        return jsonify({'error': 'Import failed. Please try again later.'}), 500
+
+
+def restore_from_json(user, file, merge_mode='merge'):
+    """Restore from JSON backup file."""
+    content = file.read().decode('utf-8')
+    backup_data = json.loads(content)
+    
+    imported, _, _ = import_backup_data(user, backup_data, merge_mode)
+    
+    return jsonify({
+        'message': 'Import completed',
+        'imported': imported
+    })
+
+
+def restore_from_zip(user, file, merge_mode='merge'):
+    """Restore from ZIP backup file with attachments."""
+    zip_data = BytesIO(file.read())
+    
+    with zipfile.ZipFile(zip_data, 'r') as zf:
+        # Read manifest
+        if 'manifest.json' in zf.namelist():
+            manifest = json.loads(zf.read('manifest.json').decode('utf-8'))
+            current_app.logger.info(f'Restoring backup version {manifest.get("version", "1.0")}')
+        
+        # Read backup data
+        if 'backup_data.json' not in zf.namelist():
+            return jsonify({'error': 'Invalid backup file: missing backup_data.json'}), 400
+        
+        backup_data = json.loads(zf.read('backup_data.json').decode('utf-8'))
+        
+        # Import data and get vehicle ID mapping and entry ID mapping
+        imported, vehicle_id_map, entry_id_map = import_backup_data(user, backup_data, merge_mode)
+        
+        # Add attachments and vehicle_photos counter
+        imported['attachments'] = 0
+        imported['vehicle_photos'] = 0
+        
+        # Track mapping of old attachment IDs to new attachment IDs
+        attachment_id_map = {}
+        
+        # Restore attachments
+        attachment_folder = get_attachment_folder()
+        user_attachment_folder = os.path.join(attachment_folder, str(user.id))
+        os.makedirs(user_attachment_folder, exist_ok=True)
+        
+        # Build a map of old attachment IDs to their metadata from backup_data
+        attachment_metadata = {}
+        for att in backup_data.get('attachments', []):
+            attachment_metadata[str(att.get('id'))] = att
+        
+        # Restore vehicle photos
+        uploads_folder = get_uploads_folder()
+        vehicle_photo_folder = os.path.join(uploads_folder, 'vehicles')
+        os.makedirs(vehicle_photo_folder, mode=0o750, exist_ok=True)
+        
+        for name in zf.namelist():
+            if name.startswith('uploads/vehicles/'):
+                parts = name.split('/')
+                if len(parts) >= 4:
+                    # Path is: uploads/vehicles/{old_vehicle_id}/{filename}
+                    old_vehicle_id_str = parts[2]
+                    filename = parts[3]
+                    
+                    if not filename:  # Skip directory entries
+                        continue
+                    
+                    try:
+                        old_vehicle_id = int(old_vehicle_id_str)
+                    except ValueError:
+                        continue
+                    
+                    # Get new vehicle ID
+                    new_vehicle_id = vehicle_id_map.get(old_vehicle_id)
+                    if not new_vehicle_id:
+                        continue
+                    
+                    # Extract file
+                    content = zf.read(name)
+                    
+                    # Create new filename with new vehicle ID
+                    # Old filename format: {old_id}_{uuid}.{ext}
+                    # New filename format: {new_id}_{uuid}.{ext}
+                    ext = filename.rsplit('.', 1)[1] if '.' in filename else 'jpg'
+                    import uuid
+                    new_filename = f"{new_vehicle_id}_{uuid.uuid4().hex}.{ext}"
+                    new_filepath = os.path.join(vehicle_photo_folder, new_filename)
+                    
+                    with open(new_filepath, 'wb') as f:
+                        f.write(content)
+                    os.chmod(new_filepath, 0o640)
+                    
+                    # Update vehicle photo field
+                    vehicle = Vehicle.query.get(new_vehicle_id)
+                    if vehicle:
+                        vehicle.photo = f"/uploads/vehicles/{new_filename}"
+                        imported['vehicle_photos'] += 1
+            
+            elif name.startswith('attachments/'):
+                parts = name.split('/')
+                if len(parts) >= 3:
+                    # Extract attachment_id and filename from path
+                    old_id = parts[1]
+                    filename = parts[2]
+                    
+                    if not filename:  # Skip directory entries
+                        continue
+                    
+                    # Extract file
+                    content = zf.read(name)
+                    
+                    # Save file to disk
+                    new_filepath = os.path.join(user_attachment_folder, filename)
+                    
+                    with open(new_filepath, 'wb') as f:
+                        f.write(content)
+                    
+                    # Create attachment record in database
+                    att_meta = attachment_metadata.get(old_id, {})
+                    
+                    # Map old vehicle_id to new vehicle_id
+                    old_vehicle_id = att_meta.get('vehicle_id')
+                    new_vehicle_id = vehicle_id_map.get(old_vehicle_id) if old_vehicle_id else None
+                    
+                    # Map old entry_id to new entry_id
+                    old_entry_id = att_meta.get('entry_id')
+                    new_entry_id = entry_id_map.get(old_entry_id) if old_entry_id else None
+                    
+                    attachment = Attachment(
+                        user_id=user.id,
+                        filename=filename,
+                        original_filename=att_meta.get('original_filename', filename),
+                        filepath=new_filepath,
+                        file_type=att_meta.get('file_type'),
+                        file_size=len(content),
+                        description=att_meta.get('description'),
+                        category=att_meta.get('category'),
+                        tags=att_meta.get('tags'),
+                        vehicle_id=new_vehicle_id,
+                        entry_id=new_entry_id,
+                    )
+                    db.session.add(attachment)
+                    db.session.flush()  # Get the new attachment ID
+                    
+                    # Track old to new attachment ID mapping
+                    try:
+                        old_id_int = int(old_id)
+                        attachment_id_map[old_id_int] = attachment.id
+                    except ValueError:
+                        pass
+                    
+                    imported['attachments'] += 1
+        
+        # Update insurance policies with new document_attachment_id
+        if attachment_id_map:
+            for policy_data in backup_data.get('insurance_policies', []):
+                old_att_id = policy_data.get('document_attachment_id')
+                if old_att_id and old_att_id in attachment_id_map:
+                    # Find the insurance policy we just created (by matching unique fields)
+                    policy = InsurancePolicy.query.filter_by(
+                        user_id=user.id,
+                        policy_number=policy_data.get('policy_number'),
+                        provider=policy_data.get('provider')
+                    ).first()
+                    if policy:
+                        policy.document_attachment_id = attachment_id_map[old_att_id]
+        
+        db.session.commit()
+    
+    # Security audit log for data import
+    security_audit.data_import(current_user.id, current_user.email, 'zip' if hasattr(file, 'filename') and file.filename.endswith('.zip') else 'json', success=True)
+    
+    return jsonify({
+        'message': 'Import completed',
+        'imported': imported
+    })
+
+
+def import_backup_data(user, backup_data, merge_mode='merge'):
+    """Import backup data into database."""
+    imported = {
+        'vehicles': 0,
+        'fuel_entries': 0,
+        'service_entries': 0,
+        'repair_entries': 0,
+        'tax_entries': 0,
+        'parking_entries': 0,
+        'reminders': 0,
+        'insurance_policies': 0,
+        'todos': 0,
+    }
+    
+    # Track mapping of old vehicle IDs to new vehicle IDs
+    vehicle_id_map = {}
+    # Track mapping of old entry IDs to new entry IDs (for attachments)
+    entry_id_map = {}
+    
+    # Import vehicles
+    for vehicle_data in backup_data.get('vehicles', []):
+        old_vehicle_id = vehicle_data.get('id')
+        
+        # Check if vehicle already exists (by VIN or license plate)
+        existing = None
+        if vehicle_data.get('vin'):
+            existing = Vehicle.query.filter_by(
+                user_id=user.id,
+                vin=vehicle_data['vin']
+            ).first()
+        
+        if not existing and vehicle_data.get('license_plate'):
+            existing = Vehicle.query.filter_by(
+                user_id=user.id,
+                license_plate=vehicle_data['license_plate']
+            ).first()
+        
+        if existing:
+            vehicle = existing
+            if merge_mode == 'replace':
+                for key in ['name', 'make', 'model', 'year', 'fuel_type', 'current_mileage', 'archived']:
+                    if key in vehicle_data and vehicle_data[key] is not None:
+                        setattr(vehicle, key, vehicle_data[key])
+                # Handle archived_at separately (datetime parsing)
+                if vehicle_data.get('archived_at'):
+                    try:
+                        vehicle.archived_at = datetime.fromisoformat(vehicle_data['archived_at'].replace('Z', '+00:00'))
+                    except:
+                        pass
+        else:
+            # Parse archived_at datetime if present
+            archived_at = None
+            if vehicle_data.get('archived_at'):
+                try:
+                    archived_at = datetime.fromisoformat(vehicle_data['archived_at'].replace('Z', '+00:00'))
+                except:
+                    pass
+            
+            vehicle = Vehicle(
+                user_id=user.id,
+                name=vehicle_data.get('name', 'Imported Vehicle'),
+                make=vehicle_data.get('make'),
+                model=vehicle_data.get('model'),
+                year=vehicle_data.get('year'),
+                vin=vehicle_data.get('vin'),
+                license_plate=vehicle_data.get('license_plate'),
+                fuel_type=vehicle_data.get('fuel_type'),
+                current_mileage=vehicle_data.get('current_mileage') or vehicle_data.get('initial_mileage', 0),
+                archived=vehicle_data.get('archived', False),
+                archived_at=archived_at,
+            )
+            db.session.add(vehicle)
+            db.session.flush()
+            imported['vehicles'] += 1
+        
+        # Map old vehicle ID to new vehicle ID
+        if old_vehicle_id:
+            vehicle_id_map[old_vehicle_id] = vehicle.id
+        
+        # Import fuel entries
+        for entry_data in vehicle_data.get('fuel_entries', []):
+            old_entry_id = entry_data.get('id')
+            # Parse date - handle both 'date' and 'entry_date' field names for compatibility
+            date_str = entry_data.get('date') or entry_data.get('entry_date')
+            entry_date = datetime.fromisoformat(date_str).date() if date_str else datetime.utcnow().date()
+            
+            entry = FuelEntry(
+                user_id=user.id,
+                vehicle_id=vehicle.id,
+                date=entry_date,
+                odometer=entry_data.get('odometer') or entry_data.get('mileage'),
+                amount=entry_data.get('amount') or entry_data.get('total_price') or entry_data.get('total_cost'),
+                liters=entry_data.get('liters') or entry_data.get('volume'),
+                price_per_liter=entry_data.get('price_per_liter') or entry_data.get('price_per_unit'),
+                total_price=entry_data.get('total_price') or entry_data.get('total_cost'),
+                fuel_type=entry_data.get('fuel_type'),
+                full_tank=entry_data.get('full_tank', entry_data.get('is_full_tank', True)),
+                station=entry_data.get('station'),
+            )
+            db.session.add(entry)
+            db.session.flush()  # Get the new entry ID
+            if old_entry_id:
+                entry_id_map[old_entry_id] = entry.id
+            imported['fuel_entries'] += 1
+        
+        # Import service entries
+        for entry_data in vehicle_data.get('service_entries', []):
+            old_entry_id = entry_data.get('id')
+            date_str = entry_data.get('date') or entry_data.get('entry_date')
+            entry_date = datetime.fromisoformat(date_str).date() if date_str else datetime.utcnow().date()
+            
+            entry = ServiceEntry(
+                user_id=user.id,
+                vehicle_id=vehicle.id,
+                date=entry_date,
+                odometer=entry_data.get('odometer') or entry_data.get('mileage'),
+                amount=entry_data.get('amount') or entry_data.get('cost'),
+                service_type=entry_data.get('service_type'),
+                description=entry_data.get('description'),
+                provider=entry_data.get('provider'),
+                garage_name=entry_data.get('garage_name'),
+            )
+            db.session.add(entry)
+            db.session.flush()  # Get the new entry ID
+            if old_entry_id:
+                entry_id_map[old_entry_id] = entry.id
+            imported['service_entries'] += 1
+        
+        # Import repair entries
+        for entry_data in vehicle_data.get('repair_entries', []):
+            old_entry_id = entry_data.get('id')
+            date_str = entry_data.get('date') or entry_data.get('entry_date')
+            entry_date = datetime.fromisoformat(date_str).date() if date_str else datetime.utcnow().date()
+            
+            entry = RepairEntry(
+                user_id=user.id,
+                vehicle_id=vehicle.id,
+                date=entry_date,
+                odometer=entry_data.get('odometer') or entry_data.get('mileage'),
+                amount=entry_data.get('amount') or entry_data.get('cost'),
+                repair_type=entry_data.get('repair_type'),
+                description=entry_data.get('description'),
+                provider=entry_data.get('provider'),
+                garage_name=entry_data.get('garage_name'),
+            )
+            db.session.add(entry)
+            db.session.flush()  # Get the new entry ID
+            if old_entry_id:
+                entry_id_map[old_entry_id] = entry.id
+            imported['repair_entries'] += 1
+        
+        # Import tax entries
+        for entry_data in vehicle_data.get('tax_entries', []):
+            old_entry_id = entry_data.get('id')
+            date_str = entry_data.get('date') or entry_data.get('entry_date')
+            entry_date = datetime.fromisoformat(date_str).date() if date_str else datetime.utcnow().date()
+            
+            # Parse due_date if present
+            due_date = None
+            if entry_data.get('due_date'):
+                due_date = datetime.fromisoformat(entry_data['due_date']).date()
+            
+            # Parse next_due_date if present
+            next_due_date = None
+            if entry_data.get('next_due_date'):
+                next_due_date = datetime.fromisoformat(entry_data['next_due_date']).date()
+            
+            entry = TaxEntry(
+                user_id=user.id,
+                vehicle_id=vehicle.id,
+                date=entry_date,
+                amount=entry_data.get('amount') or entry_data.get('cost'),
+                tax_type=entry_data.get('tax_type'),
+                title=entry_data.get('title'),
+                description=entry_data.get('description'),
+                notes=entry_data.get('notes'),
+                tax_year=entry_data.get('tax_year'),
+                tax_period=entry_data.get('tax_period'),
+                status=entry_data.get('status', 'paid'),
+                due_date=due_date,
+                reference_number=entry_data.get('reference_number'),
+                recurring=entry_data.get('recurring', False),
+                recurrence_type=entry_data.get('recurrence_type'),
+                next_due_date=next_due_date,
+                reminder_days=entry_data.get('reminder_days', 30),
+                # Note: insurance_policy_id will be linked separately after all policies are imported
+            )
+            db.session.add(entry)
+            db.session.flush()  # Get the new entry ID
+            if old_entry_id:
+                entry_id_map[old_entry_id] = entry.id
+            imported['tax_entries'] += 1
+        
+        # Import parking entries
+        for entry_data in vehicle_data.get('parking_entries', []):
+            old_entry_id = entry_data.get('id')
+            date_str = entry_data.get('date') or entry_data.get('entry_date')
+            entry_date = datetime.fromisoformat(date_str).date() if date_str else datetime.utcnow().date()
+            
+            entry = ParkingEntry(
+                user_id=user.id,
+                vehicle_id=vehicle.id,
+                date=entry_date,
+                amount=entry_data.get('amount') or entry_data.get('cost'),
+                parking_type=entry_data.get('parking_type'),
+                location=entry_data.get('location'),
+            )
+            db.session.add(entry)
+            db.session.flush()  # Get the new entry ID
+            if old_entry_id:
+                entry_id_map[old_entry_id] = entry.id
+            imported['parking_entries'] += 1
+    
+    # Import reminders
+    for reminder_data in backup_data.get('reminders', []):
+        reminder = Reminder(
+            user_id=user.id,
+            title=reminder_data.get('title'),
+            description=reminder_data.get('description'),
+            reminder_type=reminder_data.get('reminder_type', 'custom'),
+            due_date=datetime.fromisoformat(reminder_data['due_date']).date() if reminder_data.get('due_date') else None,
+            priority=reminder_data.get('priority', 'medium'),
+        )
+        db.session.add(reminder)
+        imported['reminders'] += 1
+    
+    # Import insurance policies
+    for policy_data in backup_data.get('insurance_policies', []):
+        # Find the vehicle by name or use first vehicle
+        vehicle_id = None
+        old_vehicle_id = policy_data.get('vehicle_id')
+        if old_vehicle_id and old_vehicle_id in vehicle_id_map:
+            vehicle_id = vehicle_id_map[old_vehicle_id]
+        elif vehicles:
+            vehicle_id = vehicles[0].id
+        
+        if vehicle_id:
+            policy = InsurancePolicy(
+                user_id=user.id,
+                vehicle_id=vehicle_id,
+                policy_number=policy_data.get('policy_number'),
+                provider=policy_data.get('provider'),
+                policy_type=policy_data.get('policy_type') or policy_data.get('coverage_type'),
+                premium=policy_data.get('premium'),
+                payment_frequency=policy_data.get('payment_frequency'),
+                coverage_amount=policy_data.get('coverage_amount'),
+                deductible=policy_data.get('deductible'),
+                start_date=datetime.fromisoformat(policy_data['start_date']).date() if policy_data.get('start_date') else None,
+                end_date=datetime.fromisoformat(policy_data['end_date']).date() if policy_data.get('end_date') else None,
+                agent_name=policy_data.get('agent_name'),
+                agent_phone=policy_data.get('agent_phone'),
+                agent_email=policy_data.get('agent_email'),
+                claims_phone=policy_data.get('claims_phone'),
+                status=policy_data.get('status', 'active'),
+                auto_renew=policy_data.get('auto_renew', False),
+                notes=policy_data.get('notes'),
+                currency=policy_data.get('currency'),
+            )
+            db.session.add(policy)
+            imported['insurance_policies'] += 1
+    
+    # Import todos
+    for todo_data in backup_data.get('todos', []):
+        try:
+            todo = Todo(
+                user_id=user.id,
+                title=todo_data.get('title'),
+                description=todo_data.get('description'),
+                priority=todo_data.get('priority', 'medium'),
+                status=todo_data.get('status', 'pending'),
+            )
+            db.session.add(todo)
+            imported['todos'] += 1
+        except:
+            pass
+    
+    db.session.commit()
+    return imported, vehicle_id_map, entry_id_map
+
+
+@backup_bp.route('/restore/<filename>', methods=['POST'])
+@token_required
+def restore_from_storage(current_user, filename):
+    """Restore from a backup stored on server."""
+    # Validate filename (prevent directory traversal)
+    if '..' in filename or '/' in filename or '\\' in filename:
+        return jsonify({'error': 'Invalid filename'}), 400
+    
+    backup_folder = get_backup_folder()
+    user_folder = os.path.join(backup_folder, str(current_user.id))
+    filepath = os.path.join(user_folder, filename)
+    
+    if not os.path.exists(filepath):
+        return jsonify({'error': 'Backup file not found'}), 404
+    
+    merge_mode = request.json.get('merge_mode', 'merge') if request.json else 'merge'
+    
+    try:
+        with open(filepath, 'rb') as f:
+            class FileWrapper:
+                def __init__(self, file, name):
+                    self.file = file
+                    self.filename = name
+                def read(self):
+                    return self.file.read()
+            
+            wrapper = FileWrapper(f, filename)
+            
+            if filename.endswith('.zip'):
+                return restore_from_zip(current_user, wrapper, merge_mode)
+            elif filename.endswith('.json'):
+                return restore_from_json(current_user, wrapper, merge_mode)
+            else:
+                return jsonify({'error': 'Unsupported file format'}), 400
+    
+    except Exception as e:
+        current_app.logger.error(f'Restore from storage failed: {e}')
+        return jsonify({'error': 'Restore failed. Please try again later.'}), 500
+
+
+@backup_bp.route('/delete/<filename>', methods=['DELETE'])
+@token_required
+def delete_backup(current_user, filename):
+    """Delete a stored backup file."""
+    if '..' in filename or '/' in filename or '\\' in filename:
+        return jsonify({'error': 'Invalid filename'}), 400
+    
+    backup_folder = get_backup_folder()
+    user_folder = os.path.join(backup_folder, str(current_user.id))
+    filepath = os.path.join(user_folder, filename)
+    
+    if not os.path.exists(filepath):
+        return jsonify({'error': 'Backup file not found'}), 404
+    
+    try:
+        os.remove(filepath)
+        return jsonify({'message': 'Backup deleted successfully'})
+    except Exception as e:
+        current_app.logger.error(f'Failed to delete backup {filename}: {e}')
+        return jsonify({'error': 'Failed to delete backup. Please try again later.'}), 500
+
+
+@backup_bp.route('/history', methods=['GET'])
+@token_required
+def get_backup_history(current_user):
+    """Get backup history."""
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    
+    backups = Backup.query.filter_by(
+        user_id=current_user.id
+    ).order_by(Backup.created_at.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+    
+    return jsonify({
+        'backups': [b.to_dict() for b in backups.items],
+        'total': backups.total,
+        'pages': backups.pages,
+        'current_page': page,
+    })
+
+
+@backup_bp.route('/schedule', methods=['GET'])
+@token_required
+def get_backup_schedule(current_user):
+    """Get backup schedule settings."""
+    schedule = BackupSchedule.query.filter_by(user_id=current_user.id).first()
+    
+    if not schedule:
+        return jsonify({
+            'enabled': False,
+            'message': 'No backup schedule configured'
+        })
+    
+    return jsonify(schedule.to_dict())
+
+
+@backup_bp.route('/schedule', methods=['PUT'])
+@token_required
+def update_backup_schedule(current_user):
+    """Update backup schedule settings."""
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+    
+    schedule = BackupSchedule.query.filter_by(user_id=current_user.id).first()
+    
+    if not schedule:
+        schedule = BackupSchedule(user_id=current_user.id)
+        db.session.add(schedule)
+    
+    # Validate frequency
+    valid_frequencies = ['weekly', 'monthly', 'quarterly']
+    if data.get('frequency') and data['frequency'] not in valid_frequencies:
+        return jsonify({'error': f'Invalid frequency. Must be one of: {", ".join(valid_frequencies)}'}), 400
+    
+    # Validate day_of_week (0-6)
+    if data.get('day_of_week') is not None:
+        dow = data['day_of_week']
+        if not isinstance(dow, int) or dow < 0 or dow > 6:
+            return jsonify({'error': 'day_of_week must be 0-6 (Monday-Sunday)'}), 400
+    
+    # Validate day_of_month (1-31)
+    if data.get('day_of_month') is not None:
+        dom = data['day_of_month']
+        if not isinstance(dom, int) or dom < 1 or dom > 31:
+            return jsonify({'error': 'day_of_month must be 1-31'}), 400
+    
+    # Validate hour (0-23)
+    if data.get('hour') is not None:
+        hour = data['hour']
+        if not isinstance(hour, int) or hour < 0 or hour > 23:
+            return jsonify({'error': 'hour must be 0-23'}), 400
+    
+    # Validate external URL is HTTPS
+    if data.get('external_enabled') and data.get('external_url'):
+        if not data['external_url'].startswith('https://'):
+            return jsonify({'error': 'External URL must use HTTPS for security'}), 400
+    
+    # Update allowed fields
+    allowed = [
+        'enabled', 'frequency', 'day_of_week', 'day_of_month', 'hour',
+        'backup_type', 'include_attachments',
+        'external_enabled', 'external_url', 'external_api_key', 'external_path',
+        'cloud_enabled', 'cloud_provider',
+        'retention_days', 'max_backups',
+        'notify_on_success', 'notify_on_failure'
+    ]
+    
+    for field in allowed:
+        if field in data:
+            setattr(schedule, field, data[field])
+    
+    # Calculate next run time if enabled
+    if schedule.enabled:
+        schedule.calculate_next_run()
+    
+    db.session.commit()
+    
+    return jsonify({
+        'message': 'Backup schedule updated',
+        'schedule': schedule.to_dict()
+    })
+
+
+@backup_bp.route('/run-now', methods=['POST'])
+@token_required
+def run_backup_now(current_user):
+    """Trigger an immediate backup."""
+    data = request.get_json() or {}
+    include_attachments = data.get('include_attachments', True)
+    send_external = data.get('send_external', False)
+    
+    # Create backup record
+    backup = Backup(
+        user_id=current_user.id,
+        backup_type='manual',
+        format='zip',
+        status='in_progress',
+        started_at=datetime.utcnow(),
+    )
+    db.session.add(backup)
+    db.session.commit()
+    
+    try:
+        # Create backup
+        zip_buffer, export_data = create_backup_zip(current_user, include_attachments)
+        
+        # Save to disk
+        filename, filepath, file_size = save_backup_to_disk(current_user, zip_buffer, include_attachments)
+        
+        backup.filename = filename
+        backup.filepath = filepath
+        backup.file_size = file_size
+        backup.vehicles_count = len(export_data['vehicles'])
+        backup.entries_count = sum(
+            len(v.get('fuel_entries', [])) +
+            len(v.get('service_entries', [])) +
+            len(v.get('repair_entries', [])) +
+            len(v.get('tax_entries', [])) +
+            len(v.get('parking_entries', []))
+            for v in export_data['vehicles']
+        )
+        backup.reminders_count = len(export_data['reminders'])
+        backup.attachments_count = len(export_data.get('attachments', []))
+        
+        # Send to external server if requested
+        if send_external:
+            schedule = BackupSchedule.query.filter_by(user_id=current_user.id).first()
+            if schedule and schedule.external_enabled:
+                zip_buffer.seek(0)
+                result, error = send_to_external_server(zip_buffer.read(), schedule)
+                if error:
+                    backup.error_message = f"Backup saved locally, but external upload failed: {error}"
+        
+        backup.status = 'completed'
+        backup.completed_at = datetime.utcnow()
+        
+        # Cleanup old backups
+        schedule = BackupSchedule.query.filter_by(user_id=current_user.id).first()
+        if schedule:
+            cleanup_old_backups(
+                current_user.id,
+                max_backups=schedule.max_backups,
+                retention_days=schedule.retention_days
+            )
+        
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Backup completed successfully',
+            'backup': backup.to_dict()
+        })
+    
+    except Exception as e:
+        backup.status = 'failed'
+        backup.error_message = str(e)
+        backup.completed_at = datetime.utcnow()
+        db.session.commit()
+        current_app.logger.error(f'Manual backup failed: {e}')
+        return jsonify({'error': 'Backup failed. Please try again later.'}), 500
+
+
+@backup_bp.route('/external/test', methods=['POST'])
+@token_required
+def test_external_connection(current_user):
+    """Test connection to external backup server."""
+    data = request.get_json()
+    
+    if not data.get('url'):
+        return jsonify({'error': 'URL is required'}), 400
+    
+    url = data['url']
+    api_key = data.get('api_key', '')
+    
+    # Validate HTTPS
+    if not url.startswith('https://'):
+        return jsonify({'error': 'URL must use HTTPS for security'}), 400
+    
+    try:
+        headers = {
+            'Content-Type': 'application/json',
+            'X-API-Key': api_key,
+        }
+        
+        response = requests.get(
+            url,
+            headers=headers,
+            timeout=10,
+            verify=True
+        )
+        
+        return jsonify({
+            'success': response.status_code in [200, 204],
+            'status_code': response.status_code,
+            'message': 'Connection successful' if response.status_code in [200, 204] else f'Server returned {response.status_code}'
+        })
+    
+    except requests.exceptions.SSLError as e:
+        current_app.logger.warning(f'External backup SSL error: {e}')
+        return jsonify({'success': False, 'error': 'SSL certificate verification failed. Please check the server certificate.'}), 200
+    except requests.exceptions.Timeout:
+        return jsonify({'success': False, 'error': 'Connection timed out'}), 200
+    except requests.exceptions.RequestException as e:
+        current_app.logger.warning(f'External backup connection failed: {e}')
+        return jsonify({'success': False, 'error': 'Connection failed. Please check the URL and try again.'}), 200
+
+
+@backup_bp.route('/stats', methods=['GET'])
+@token_required
+def get_backup_stats(current_user):
+    """Get backup statistics."""
+    backups = Backup.query.filter_by(user_id=current_user.id).all()
+    
+    total_size = sum(b.file_size or 0 for b in backups)
+    successful = sum(1 for b in backups if b.status == 'completed')
+    failed = sum(1 for b in backups if b.status == 'failed')
+    
+    last_backup = Backup.query.filter_by(
+        user_id=current_user.id,
+        status='completed'
+    ).order_by(Backup.created_at.desc()).first()
+    
+    # Get storage usage
+    backup_folder = get_backup_folder()
+    user_folder = os.path.join(backup_folder, str(current_user.id))
+    storage_used = 0
+    
+    if os.path.exists(user_folder):
+        for f in os.listdir(user_folder):
+            filepath = os.path.join(user_folder, f)
+            if os.path.isfile(filepath):
+                storage_used += os.path.getsize(filepath)
+    
+    return jsonify({
+        'total_backups': len(backups),
+        'successful': successful,
+        'failed': failed,
+        'total_size': total_size,
+        'total_size_human': format_file_size(total_size),
+        'storage_used': storage_used,
+        'storage_used_human': format_file_size(storage_used),
+        'last_backup': last_backup.to_dict() if last_backup else None,
+    })
