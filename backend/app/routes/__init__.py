@@ -20,6 +20,7 @@ from app.routes.push import push_bp
 from app.routes.external import external_bp
 from app.routes.todos import todos_bp
 from app.routes.reports import reports_bp
+from app.routes.widget import widget_bp
 
 __all__ = [
     'auth_bp',
@@ -40,6 +41,7 @@ __all__ = [
     'external_bp',
     'todos_bp',
     'reports_bp',
+    'widget_bp',
 ]
 
 
@@ -67,6 +69,7 @@ def register_blueprints(app):
         (external_bp, '/api/external'),
         (todos_bp, '/api/todos'),
         (reports_bp, '/api/reports'),
+        (widget_bp, '/api/widget'),
     ]
     
     for bp, prefix in blueprints:

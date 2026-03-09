@@ -115,7 +115,15 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 - Export to external servers (HTTPS)
 - JSON and ZIP backup formats
 - Import from backup files
-- Data migration tools
+- **LubeLogger import** — migrate from LubeLogger with full data conversion
+- Distance unit conversion on import (km ↔ miles)
+- Attachment import linked to corresponding entries
+
+### 🔌 Integrations
+- **Gethomepage widget** — customapi widget with vehicle stats, service records, reminders
+- API key authentication for external services
+- Widget API endpoints for third-party dashboards
+- CalDAV calendar sync (Google, Nextcloud, Baikal, Radicale)
 
 ### 📱 Mobile-First PWA
 - Installable on any device (iOS, Android, Desktop)
@@ -128,7 +136,7 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 - Multi-language support (English, Romanian, Spanish)
 - Customizable date formats
 - Multiple currency support (EUR, GBP, USD, RON, etc.)
-- Distance units (km/miles)
+- Per-vehicle distance units (km/miles)
 - Volume units (liters/gallons)
 
 ---
@@ -637,7 +645,19 @@ Base URL: \`/api/\`
 | \`/api/attachments\` | GET/POST | File attachments |
 | \`/api/reports/generate\` | POST | Generate PDF report |
 | \`/api/backup/export\` | POST | Export backup |
+### Widget API (Gethomepage)
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/api/widget/v1/homepage` | GET | API Key | Summary stats (vehicles, services, reminders) |
+| `/api/widget/v1/vehicles` | GET | API Key | Per-vehicle detail stats |
+| `/api/widget/api-key` | POST | JWT | Generate/regenerate API key |
+| `/api/widget/api-key` | GET | JWT | Get current API key |
+| `/api/widget/api-key` | DELETE | JWT | Revoke API key |
 
+### Import
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/backup/import/lubelog` | POST | Import LubeLogger backup (.zip) |
 ---
 
 ## Project Structure

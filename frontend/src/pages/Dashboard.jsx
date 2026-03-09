@@ -645,10 +645,10 @@ export default function Dashboard() {
   const handleDeleteVehicle = async (e, vehicleId) => {
     e.preventDefault()
     e.stopPropagation()
-    if (!confirm('Are you sure you want to delete this vehicle?')) return
+    if (!confirm('Permanently delete this vehicle and ALL its data (fuel, services, repairs, taxes, insurance, attachments)? This cannot be undone.')) return
     
     try {
-      await vehicleApi.delete(vehicleId)
+      await vehicleApi.hardDelete(vehicleId)
       setVehicles(vehicles.filter(v => v.id !== vehicleId))
     } catch (error) {
       console.error('Failed to delete vehicle:', error)

@@ -305,7 +305,7 @@ export default function VehicleDetail() {
     { 
       id: 'totalMileage',
       label: t('vehicleDetail.totalMileage') || 'Total Mileage',
-      value: `${(vehicle.current_mileage || 0).toLocaleString()} km`,
+      value: `${(vehicle.current_mileage || 0).toLocaleString()} ${vehicle.distance_unit || 'km'}`,
       icon: Icons.speedometer,
       color: 'text-cyan-500',
       bgColor: 'bg-cyan-500/10'
@@ -507,7 +507,7 @@ export default function VehicleDetail() {
               <div className="flex items-center gap-2">
                 <div className="flex items-baseline gap-1">
                   <span className="text-lg font-bold">{(vehicle.current_mileage || 0).toLocaleString()}</span>
-                  <span className="text-xs opacity-80">km</span>
+                  <span className="text-xs opacity-80">{vehicle.distance_unit || 'km'}</span>
                 </div>
                 {!isArchived && (
                   <span className="opacity-60 group-hover:opacity-100 transition-opacity">
@@ -649,7 +649,7 @@ export default function VehicleDetail() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-2">
-                  {t('vehicles.currentMileage') || 'Current Mileage'} (km)
+                  {t('vehicles.currentMileage') || 'Current Mileage'} ({vehicle?.distance_unit || 'km'})
                 </label>
                 <input
                   type="number"
@@ -667,7 +667,7 @@ export default function VehicleDetail() {
                   <p className="text-red-500 text-xs mt-1">{mileageError}</p>
                 )}
                 <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                  {t('vehicles.previousMileage') || 'Previous'}: {(vehicle?.current_mileage || 0).toLocaleString()} km
+                  {t('vehicles.previousMileage') || 'Previous'}: {(vehicle?.current_mileage || 0).toLocaleString()} {vehicle?.distance_unit || 'km'}
                 </p>
               </div>
               

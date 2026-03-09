@@ -70,11 +70,14 @@ const Icons = {
 export default function BackupSettings() {
   const { t } = useTranslation()
   const fileInputRef = useRef(null)
+  const lubelogFileInputRef = useRef(null)
   
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [backing, setBacking] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [importingLubelog, setImportingLubelog] = useState(false)
+  const [lubelogDistanceUnit, setLubelogDistanceUnit] = useState('miles')
   const [testingConnection, setTestingConnection] = useState(false)
   
   const [status, setStatus] = useState(null)
@@ -250,6 +253,61 @@ export default function BackupSettings() {
     }
   }
   
+  const handleLubelogImportClick = () => {
+    lubelogFileInputRef.current?.click()
+  }
+
+  const handleLubelogImportFile = async (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (!file.name.toLowerCase().endsWith('.zip')) {
+      toast.error(t('backup.lubelogInvalidFile') || 'Please select a LubeLogger backup ZIP file')
+      event.target.value = ''
+      return
+    }
+
+    if (!window.confirm(t('backup.lubelogImportConfirm') || 'Import data from LubeLogger backup? This will create new vehicles and entries.')) {
+      event.target.value = ''
+      return
+    }
+
+    setImportingLubelog(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('merge_mode', 'merge')
+      formData.append('distance_unit', lubelogDistanceUnit)
+
+      const response = await backupApi.importLubelog(formData)
+
+      const imported = response.data.imported || {}
+      const summary = []
+      if (imported.vehicles > 0) summary.push(`${imported.vehicles} ${t('backup.vehicles') || 'vehicles'}`)
+      if (imported.fuel_entries > 0) summary.push(`${imported.fuel_entries} ${t('backup.fuelEntries') || 'fuel entries'}`)
+      if (imported.service_entries > 0) summary.push(`${imported.service_entries} ${t('backup.serviceEntries') || 'service entries'}`)
+      if (imported.repair_entries > 0) summary.push(`${imported.repair_entries} ${t('backup.repairEntries') || 'repair entries'}`)
+      if (imported.tax_entries > 0) summary.push(`${imported.tax_entries} ${t('backup.taxEntries') || 'tax entries'}`)
+      if (imported.insurance_policies > 0) summary.push(`${imported.insurance_policies} ${t('backup.insurancePolicies') || 'insurance policies'}`)
+      if (imported.reminders > 0) summary.push(`${imported.reminders} ${t('backup.reminders') || 'reminders'}`)
+      if (imported.attachments > 0) summary.push(`${imported.attachments} ${t('backup.attachments') || 'attachments'}`)
+
+      toast.success(
+        summary.length > 0
+          ? `${t('backup.lubelogImportSuccess') || 'LubeLogger import completed'}: ${summary.join(', ')}`
+          : t('backup.lubelogImportSuccess') || 'LubeLogger import completed'
+      )
+
+      setTimeout(() => window.location.reload(), 1500)
+    } catch (error) {
+      console.error('LubeLogger import failed:', error)
+      toast.error(error.response?.data?.error || t('backup.lubelogImportFailed') || 'Failed to import LubeLogger data')
+    } finally {
+      setImportingLubelog(false)
+      event.target.value = ''
+    }
+  }
+
   const restoreBackup = async (filename) => {
     if (!window.confirm(t('backup.restoreConfirm') || 'Restore this backup? This will merge data with your existing records.')) {
       return
@@ -389,6 +447,69 @@ export default function BackupSettings() {
         />
       </div>
       
+      {/* Import from LubeLogger */}
+      <div className="bg-[var(--color-bg-tertiary)] rounded-xl p-4">
+        <div className="flex items-center gap-3 mb-3">
+          <span className="text-[var(--color-text-muted)]">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+            </svg>
+          </span>
+          <div>
+            <span className="text-sm font-medium">{t('backup.lubelogImport') || 'Import from LubeLogger'}</span>
+            <p className="text-2xs text-[var(--color-text-muted)]">
+              {t('backup.lubelogImportDesc') || 'Import vehicles, fuel logs, services, and more from a LubeLogger backup'}
+            </p>
+          </div>
+        </div>
+
+        {/* Distance Unit Selector */}
+        <div className="mb-3">
+          <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-2">
+            {t('backup.distanceUnit') || 'Distance Unit'}
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            {['miles', 'km'].map((unit) => (
+              <button
+                key={unit}
+                type="button"
+                onClick={() => setLubelogDistanceUnit(unit)}
+                className={`py-2 px-3 rounded-lg text-sm font-medium transition-all ${
+                  lubelogDistanceUnit === unit
+                    ? 'bg-[var(--color-accent)] text-white'
+                    : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]/80'
+                }`}
+              >
+                {unit === 'miles' ? (t('backup.miles') || 'Miles') : (t('backup.km') || 'Kilometres')}
+              </button>
+            ))}
+          </div>
+          <p className="text-2xs text-[var(--color-text-muted)] mt-1">
+            {t('backup.distanceUnitHint') || 'Odometer readings will be converted if needed'}
+          </p>
+        </div>
+
+        <button
+          onClick={handleLubelogImportClick}
+          disabled={importingLubelog}
+          className="w-full py-2.5 px-4 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]/80 transition-colors flex items-center justify-center gap-2"
+        >
+          {importingLubelog ? (
+            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+          ) : (
+            Icons.upload
+          )}
+          <span>{importingLubelog ? (t('backup.importing') || 'Importing...') : (t('backup.selectLubelogBackup') || 'Select LubeLogger Backup (.zip)')}</span>
+        </button>
+        <input
+          ref={lubelogFileInputRef}
+          type="file"
+          accept=".zip"
+          onChange={handleLubelogImportFile}
+          className="hidden"
+        />
+      </div>
+
       {/* Auto Backup Toggle */}
       <div className="bg-[var(--color-bg-tertiary)] rounded-xl p-4">
         <div className="flex items-center justify-between mb-4">

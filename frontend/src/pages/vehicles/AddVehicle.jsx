@@ -12,6 +12,7 @@ export default function AddVehicle() {
   const [photoPreview, setPhotoPreview] = useState(null)
   const [photoFile, setPhotoFile] = useState(null)
   const [showDimensions, setShowDimensions] = useState(false)
+  const [distanceUnit, setDistanceUnit] = useState('km')
   const fileInputRef = useRef(null)
   const cameraInputRef = useRef(null)
   
@@ -59,6 +60,7 @@ export default function AddVehicle() {
         vehicle_height_cm: data.vehicle_height_cm ? parseInt(data.vehicle_height_cm) : null,
         vehicle_width_cm: data.vehicle_width_cm ? parseInt(data.vehicle_width_cm) : null,
         vehicle_weight_kg: data.vehicle_weight_kg ? parseInt(data.vehicle_weight_kg) : null,
+        distance_unit: distanceUnit,
       })
       
       // Upload photo if selected
@@ -280,10 +282,33 @@ export default function AddVehicle() {
             </select>
           </div>
           
+          {/* Distance Unit Toggle */}
+          <div>
+            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              {t('vehicles.distanceUnit') || 'Distance Unit'}
+            </label>
+            <div className="flex rounded-xl overflow-hidden border border-[var(--color-border)]">
+              {['km', 'miles'].map(unit => (
+                <button
+                  key={unit}
+                  type="button"
+                  onClick={() => setDistanceUnit(unit)}
+                  className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                    distanceUnit === unit
+                      ? 'bg-[var(--color-accent)] text-white'
+                      : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-elevated)]'
+                  }`}
+                >
+                  {unit === 'km' ? (t('vehicles.kilometres') || 'Kilometres') : (t('vehicles.miles') || 'Miles')}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-[var(--color-text-muted)] mb-1">
-                {t('vehicles.currentMileage')} (km)
+                {t('vehicles.currentMileage')} ({distanceUnit === 'miles' ? (t('vehicles.miles') || 'miles') : 'km'})
               </label>
               <input
                 type="number"

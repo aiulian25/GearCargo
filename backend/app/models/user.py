@@ -65,6 +65,9 @@ class User(UserMixin, db.Model):
     vehicle_limit = db.Column(db.Integer, default=10)
     max_sessions = db.Column(db.Integer, default=10)  # Max concurrent sessions (1 = single device)
     
+    # API Key for external integrations (Gethomepage, etc.)
+    api_key = db.Column(db.String(64), unique=True, index=True)
+    
     # Email Notifications
     notifications_enabled = db.Column(db.Boolean, default=True)  # Master switch
     notification_email = db.Column(db.String(120))  # Optional separate email

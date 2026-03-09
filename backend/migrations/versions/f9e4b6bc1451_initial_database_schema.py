@@ -53,6 +53,7 @@ def upgrade():
         sa.Column('must_change_password', sa.Boolean(), nullable=True),
         sa.Column('vehicle_limit', sa.Integer(), nullable=True),
         sa.Column('max_sessions', sa.Integer(), nullable=True),
+        sa.Column('api_key', sa.String(length=64), nullable=True),
         sa.Column('notifications_enabled', sa.Boolean(), nullable=True),
         sa.Column('notification_email', sa.String(length=120), nullable=True),
         sa.Column('email_insurance_alerts', sa.Boolean(), nullable=True),
@@ -85,6 +86,7 @@ def upgrade():
     )
     op.create_index(op.f('ix_users_email'), 'users', ['email'], unique=False)
     op.create_index(op.f('ix_users_username'), 'users', ['username'], unique=False)
+    op.create_index(op.f('ix_users_api_key'), 'users', ['api_key'], unique=True)
 
     # Create vehicles table
     op.create_table('vehicles',

@@ -884,6 +884,9 @@ export const translations = {
       updateFailed: 'Failed to update vehicle',
       loadFailed: 'Failed to load vehicle',
       updateSuccess: 'Vehicle updated successfully',
+      distanceUnit: 'Distance Unit',
+      kilometres: 'Kilometres',
+      miles: 'Miles',
     },
     
     // Fuel Log
@@ -1956,6 +1959,26 @@ export const translations = {
       updating: 'Updating...',
     },
     
+    // Integrations
+    integrations: {
+      title: 'Integrations',
+      description: 'Gethomepage widget & API access',
+      apiKey: 'API Key',
+      apiKeyDesc: 'Used to authenticate external services like Gethomepage',
+      generate: 'Generate API Key',
+      regenerate: 'Regenerate',
+      regenerateConfirm: 'Regenerate API key? The old key will stop working.',
+      revoke: 'Revoke',
+      revokeConfirm: 'Revoke API key? External integrations will stop working.',
+      keyGenerated: 'API key generated',
+      keyFailed: 'Failed to generate API key',
+      keyRevoked: 'API key revoked',
+      revokeFailed: 'Failed to revoke API key',
+      gethomepage: 'Gethomepage',
+      gethomepageDesc: 'Add to your Gethomepage services.yaml:',
+      endpoints: 'Available endpoints:',
+    },
+    
     // Backup System
     backup: {
       title: 'Auto Backup',
@@ -2033,6 +2056,19 @@ export const translations = {
       // Info
       infoTitle: 'About Backups',
       infoText: 'Backups include all your vehicles, fuel logs, service records, repairs, taxes, reminders, and uploaded attachments. You can restore from any backup at any time.',
+      // LubeLogger import
+      lubelogImport: 'Import from LubeLogger',
+      lubelogImportDesc: 'Import vehicles, fuel logs, services, and more from a LubeLogger backup',
+      lubelogInvalidFile: 'Please select a LubeLogger backup ZIP file',
+      lubelogImportConfirm: 'Import data from LubeLogger backup? This will create new vehicles and entries.',
+      lubelogImportSuccess: 'LubeLogger import completed',
+      lubelogImportFailed: 'Failed to import LubeLogger data',
+      distanceUnit: 'Distance Unit',
+      miles: 'Miles',
+      km: 'Kilometres',
+      distanceUnitHint: 'Odometer readings will be converted if needed',
+      selectLubelogBackup: 'Select LubeLogger Backup (.zip)',
+      importing: 'Importing...',
     },
   },
   
@@ -2918,6 +2954,9 @@ export const translations = {
       updateFailed: 'Nu s-a putut actualiza vehiculul',
       loadFailed: 'Nu s-a putut încărca vehiculul',
       updateSuccess: 'Vehicul actualizat cu succes',
+      distanceUnit: 'Unitate de Distanță',
+      kilometres: 'Kilometri',
+      miles: 'Mile',
     },
     
     // Fuel Log
@@ -3991,6 +4030,26 @@ export const translations = {
       updating: 'Se actualizează...',
     },
     
+    // Integrations
+    integrations: {
+      title: 'Integrări',
+      description: 'Widget Gethomepage și acces API',
+      apiKey: 'Cheie API',
+      apiKeyDesc: 'Folosită pentru autentificarea serviciilor externe precum Gethomepage',
+      generate: 'Generează Cheie API',
+      regenerate: 'Regenerează',
+      regenerateConfirm: 'Regenerezi cheia API? Cheia veche nu va mai funcționa.',
+      revoke: 'Revocă',
+      revokeConfirm: 'Revoci cheia API? Integrările externe nu vor mai funcționa.',
+      keyGenerated: 'Cheie API generată',
+      keyFailed: 'Nu s-a putut genera cheia API',
+      keyRevoked: 'Cheie API revocată',
+      revokeFailed: 'Nu s-a putut revoca cheia API',
+      gethomepage: 'Gethomepage',
+      gethomepageDesc: 'Adaugă în fișierul services.yaml din Gethomepage:',
+      endpoints: 'Endpoint-uri disponibile:',
+    },
+    
     // Backup System
     backup: {
       title: 'Backup Automat',
@@ -4068,6 +4127,19 @@ export const translations = {
       // Info
       infoTitle: 'Despre Backup-uri',
       infoText: 'Backup-urile includ toate vehiculele tale, jurnalele de alimentare, înregistrările de service, reparațiile, taxele, memento-urile și atașamentele încărcate. Poți restaura din orice backup în orice moment.',
+      // LubeLogger import
+      lubelogImport: 'Import din LubeLogger',
+      lubelogImportDesc: 'Importă vehicule, alimentări, service-uri și altele dintr-un backup LubeLogger',
+      lubelogInvalidFile: 'Te rugăm să selectezi un fișier ZIP de backup LubeLogger',
+      lubelogImportConfirm: 'Importi datele din backup-ul LubeLogger? Se vor crea vehicule și înregistrări noi.',
+      lubelogImportSuccess: 'Import LubeLogger finalizat',
+      lubelogImportFailed: 'Nu s-au putut importa datele din LubeLogger',
+      distanceUnit: 'Unitate de Distanță',
+      miles: 'Mile',
+      km: 'Kilometri',
+      distanceUnitHint: 'Citirile odometrului vor fi convertite dacă este necesar',
+      selectLubelogBackup: 'Selectează Backup LubeLogger (.zip)',
+      importing: 'Se importă...',
     },
   },
   
@@ -4953,6 +5025,9 @@ export const translations = {
       updateFailed: 'Error al actualizar vehículo',
       loadFailed: 'Error al cargar vehículo',
       updateSuccess: 'Vehículo actualizado correctamente',
+      distanceUnit: 'Unidad de Distancia',
+      kilometres: 'Kilómetros',
+      miles: 'Millas',
     },
     
     // Fuel Log
@@ -6031,6 +6106,26 @@ export const translations = {
       updating: 'Actualizando...',
     },
     
+    // Integrations
+    integrations: {
+      title: 'Integraciones',
+      description: 'Widget Gethomepage y acceso API',
+      apiKey: 'Clave API',
+      apiKeyDesc: 'Usada para autenticar servicios externos como Gethomepage',
+      generate: 'Generar Clave API',
+      regenerate: 'Regenerar',
+      regenerateConfirm: '¿Regenerar clave API? La clave anterior dejará de funcionar.',
+      revoke: 'Revocar',
+      revokeConfirm: '¿Revocar clave API? Las integraciones externas dejarán de funcionar.',
+      keyGenerated: 'Clave API generada',
+      keyFailed: 'Error al generar clave API',
+      keyRevoked: 'Clave API revocada',
+      revokeFailed: 'Error al revocar clave API',
+      gethomepage: 'Gethomepage',
+      gethomepageDesc: 'Añade a tu services.yaml de Gethomepage:',
+      endpoints: 'Endpoints disponibles:',
+    },
+    
     // Backup System
     backup: {
       title: 'Copia de Seguridad Automática',
@@ -6108,6 +6203,19 @@ export const translations = {
       // Info
       infoTitle: 'Sobre las Copias de Seguridad',
       infoText: 'Las copias de seguridad incluyen todos tus vehículos, registros de combustible, servicios, reparaciones, impuestos, recordatorios y adjuntos subidos. Puedes restaurar desde cualquier copia en cualquier momento.',
+      // LubeLogger import
+      lubelogImport: 'Importar desde LubeLogger',
+      lubelogImportDesc: 'Importa vehículos, registros de combustible, servicios y más desde una copia de LubeLogger',
+      lubelogInvalidFile: 'Por favor selecciona un archivo ZIP de respaldo LubeLogger',
+      lubelogImportConfirm: '¿Importar datos de la copia de LubeLogger? Se crearán nuevos vehículos y registros.',
+      lubelogImportSuccess: 'Importación de LubeLogger completada',
+      lubelogImportFailed: 'Error al importar datos de LubeLogger',
+      distanceUnit: 'Unidad de Distancia',
+      miles: 'Millas',
+      km: 'Kilómetros',
+      distanceUnitHint: 'Las lecturas del odómetro se convertirán si es necesario',
+      selectLubelogBackup: 'Seleccionar Respaldo LubeLogger (.zip)',
+      importing: 'Importando...',
     },
   },
 }

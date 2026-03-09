@@ -136,7 +136,7 @@ export default function FuelEntries() {
                   )}
                 </div>
                 <p className="text-2xs text-[var(--color-text-muted)]">
-                  {entry.date} • {entry.mileage?.toLocaleString()} km
+                  {entry.date} • {entry.mileage?.toLocaleString()} {vehicles.find(v => v.id === entry.vehicle_id)?.distance_unit || 'km'}
                   {vehicles.length > 1 && entry.vehicle_name && ` • ${entry.vehicle_name}`}
                 </p>
               </div>

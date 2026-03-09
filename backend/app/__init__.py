@@ -169,6 +169,33 @@ def create_app(config_class=None):
     from app.routes import register_blueprints
     register_blueprints(app)
     
+    # Strip security headers from widget API responses using WSGI middleware
+    # (runs after all Flask after_request handlers including Talisman)
+    _strip_headers = [
+        'Content-Security-Policy', 'X-Frame-Options', 'X-XSS-Protection',
+        'X-Content-Type-Options', 'Referrer-Policy', 'Feature-Policy',
+        'Permissions-Policy', 'Strict-Transport-Security',
+    ]
+    _original_wsgi = app.wsgi_app
+    
+    class WidgetHeaderMiddleware:
+        def __init__(self, wsgi):
+            self.wsgi = wsgi
+        def __call__(self, environ, start_response):
+            path = environ.get('PATH_INFO', '')
+            if path.startswith('/api/widget/v1/'):
+                def custom_start_response(status, headers, exc_info=None):
+                    headers = [(k, v) for k, v in headers
+                               if k not in _strip_headers and k != 'Access-Control-Allow-Origin']
+                    headers.append(('Access-Control-Allow-Origin', '*'))
+                    headers.append(('Access-Control-Allow-Headers', 'X-API-Key, Content-Type'))
+                    headers.append(('Access-Control-Allow-Methods', 'GET, OPTIONS'))
+                    return start_response(status, headers, exc_info)
+                return self.wsgi(environ, custom_start_response)
+            return self.wsgi(environ, start_response)
+    
+    app.wsgi_app = WidgetHeaderMiddleware(_original_wsgi)
+    
     # ================================================================
     # STATIC FILE SERVING (React SPA)
     # ================================================================
@@ -285,9 +312,7 @@ def init_default_admin(app):
             username=admin_username,
             is_admin=True,
             must_change_password=True,
-            calendar_enabled=True,  # Enable calendar sync by default
-            push_enabled=True,  # Enable push notifications by default
-            email_notifications_enabled=True  # Enable email notifications by default
+            calendar_enabled=True  # Enable calendar sync by default
         )
         admin.set_password(admin_password)
         

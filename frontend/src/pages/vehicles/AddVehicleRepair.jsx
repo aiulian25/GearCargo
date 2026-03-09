@@ -226,7 +226,7 @@ export default function AddVehicleRepair() {
           <div className="flex-1">
             <p className="font-medium">{vehicle?.name}</p>
             <p className="text-xs text-[var(--color-text-secondary)]">
-              {vehicle?.make} {vehicle?.model} • {(vehicle?.current_mileage || 0).toLocaleString()} km
+              {vehicle?.make} {vehicle?.model} • {(vehicle?.current_mileage || 0).toLocaleString()} {vehicle?.distance_unit || 'km'}
             </p>
           </div>
         </div>

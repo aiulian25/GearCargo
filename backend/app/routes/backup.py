@@ -476,6 +476,59 @@ def import_data(current_user):
         return jsonify({'error': 'Import failed. Please try again later.'}), 500
 
 
+@backup_bp.route('/import/lubelog', methods=['POST'])
+@token_required
+def import_lubelog(current_user):
+    """Import data from a LubeLogger backup ZIP file.
+
+    LubeLogger (https://github.com/hargata/lubelog) stores data in a LiteDB
+    database. This endpoint parses the backup ZIP containing the LiteDB file,
+    images, and documents, and imports them into GearCargo.
+    """
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+
+    file = request.files['file']
+
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+
+    if not file.filename.lower().endswith('.zip'):
+        return jsonify({'error': 'LubeLogger backup must be a ZIP file'}), 400
+
+    merge_mode = request.form.get('merge_mode', 'merge')
+    distance_unit = request.form.get('distance_unit')
+    if distance_unit and distance_unit not in ('km', 'miles'):
+        distance_unit = None
+
+    try:
+        from app.services.lubelog_import import import_lubelog_to_gearcargo
+
+        zip_data = BytesIO(file.read())
+        result = import_lubelog_to_gearcargo(current_user, zip_data, merge_mode, distance_unit=distance_unit)
+
+        if result.get('error'):
+            security_audit.data_import(current_user.id, current_user.email, 'lubelog', success=False)
+            return jsonify({'error': result['error']}), 400
+
+        security_audit.data_import(current_user.id, current_user.email, 'lubelog', success=True)
+
+        return jsonify({
+            'message': 'LubeLogger import completed successfully',
+            'imported': result.get('imported', {}),
+            'summary': result.get('summary', {}),
+        })
+
+    except ValueError as e:
+        security_audit.data_import(current_user.id, current_user.email, 'lubelog', success=False)
+        current_app.logger.error(f'LubeLogger import validation error: {e}')
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        security_audit.data_import(current_user.id, current_user.email, 'lubelog', success=False)
+        current_app.logger.error(f'LubeLogger import failed: {e}')
+        return jsonify({'error': 'LubeLogger import failed. Please ensure the file is a valid LubeLogger backup ZIP.'}), 500
+
+
 def restore_from_json(user, file, merge_mode='merge'):
     """Restore from JSON backup file."""
     content = file.read().decode('utf-8')

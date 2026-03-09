@@ -12,6 +12,7 @@ import SecurityBlocking from '../../components/admin/SecurityBlocking'
 import TwoFactorSetup from '../../components/settings/TwoFactorSetup'
 import SecurityQuestionsSetup from '../../components/settings/SecurityQuestionsSetup'
 import BackupSettings from '../../components/settings/BackupSettings'
+import IntegrationSettings from '../../components/settings/IntegrationSettings'
 import PrivacyPolicy from '../../components/settings/PrivacyPolicy'
 import TermsOfService from '../../components/settings/TermsOfService'
 import toast from 'react-hot-toast'
@@ -185,6 +186,7 @@ export default function Settings() {
   const [show2FASetup, setShow2FASetup] = useState(false)
   const [showSecurityQuestionsSetup, setShowSecurityQuestionsSetup] = useState(false)
   const [showBackupSettings, setShowBackupSettings] = useState(false)
+  const [showIntegrations, setShowIntegrations] = useState(false)
   const [showEmailSettings, setShowEmailSettings] = useState(false)
   const [showCalendarSettings, setShowCalendarSettings] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
@@ -430,7 +432,7 @@ export default function Settings() {
     if (!window.confirm(t('archive.deleteConfirm') || 'Permanently delete this vehicle and all its data? This cannot be undone.')) return
     
     try {
-      await vehicleApi.delete(vehicleId)
+      await vehicleApi.hardDelete(vehicleId)
       setArchivedVehicles(prev => prev.filter(v => v.id !== vehicleId))
       toast.success(t('archive.deleteSuccess') || 'Vehicle deleted permanently')
     } catch (error) {
@@ -1715,6 +1717,37 @@ export default function Settings() {
         {showBackupSettings && (
           <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
             <BackupSettings />
+          </div>
+        )}
+      </div>
+      
+      {/* Integrations */}
+      <div className="card mb-4">
+        <button
+          onClick={() => setShowIntegrations(!showIntegrations)}
+          className="w-full flex items-center justify-between"
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-purple-500">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 11a9 9 0 0 1 9 9" /><path d="M4 4a16 16 0 0 1 16 16" /><circle cx="5" cy="19" r="1" />
+              </svg>
+            </span>
+            <div className="text-left">
+              <h3 className="text-sm font-medium">{t('integrations.title') || 'Integrations'}</h3>
+              <p className="text-2xs text-[var(--color-text-muted)]">
+                {t('integrations.description') || 'Gethomepage widget & API access'}
+              </p>
+            </div>
+          </div>
+          <span className="text-[var(--color-text-muted)]">
+            {showIntegrations ? SettingsIcons.chevronUp : SettingsIcons.chevronDown}
+          </span>
+        </button>
+        
+        {showIntegrations && (
+          <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+            <IntegrationSettings />
           </div>
         )}
       </div>

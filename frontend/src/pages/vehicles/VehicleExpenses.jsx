@@ -591,7 +591,7 @@ export default function VehicleExpenses() {
               {fuelEntries.map(entry => (
                 <tr key={entry.id} className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)]">
                   <td className="py-3 px-4">{formatDate(entry.date)}</td>
-                  <td className="py-3 px-4">{entry.odometer?.toLocaleString()} km</td>
+                  <td className="py-3 px-4">{entry.odometer?.toLocaleString()} {vehicle?.distance_unit || 'km'}</td>
                   <td className="py-3 px-4">{entry.liters} L</td>
                   <td className="py-3 px-4 text-[var(--color-accent)]">{formatCurrency(entry.price_per_liter)}</td>
                   <td className="py-3 px-4 text-[var(--color-accent)] font-medium">{formatCurrency(entry.total_price)}</td>
@@ -648,7 +648,7 @@ export default function VehicleExpenses() {
                 <tr key={entry.id} className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)]">
                   <td className="py-3 px-4">{formatDate(entry.date)}</td>
                   <td className="py-3 px-4">{entry.service_type || entry.title || '-'}</td>
-                  <td className="py-3 px-4">{entry.odometer?.toLocaleString()} km</td>
+                  <td className="py-3 px-4">{entry.odometer?.toLocaleString()} {vehicle?.distance_unit || 'km'}</td>
                   <td className="py-3 px-4">{formatCurrency(entry.parts_cost || 0)}</td>
                   <td className="py-3 px-4">{formatCurrency(entry.labor_cost || 0)}</td>
                   <td className="py-3 px-4 text-[var(--color-accent)] font-medium">{formatCurrency(entry.amount)}</td>

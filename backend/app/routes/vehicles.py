@@ -2,12 +2,14 @@
 GearCargo - Vehicles Routes
 """
 
+import os
 from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app
 from sqlalchemy import func
 
 from app import db
 from app.models import Vehicle, Entry, FuelEntry, ServiceEntry, RepairEntry
+from app.models.attachment import Attachment
 from app.routes.auth import token_required
 
 vehicles_bp = Blueprint('vehicles', __name__)
@@ -177,9 +179,10 @@ def update_vehicle(current_user, vehicle_id):
     
     # Update allowed fields
     allowed = ['name', 'make', 'model', 'year', 'vin', 'license_plate',
-               'color', 'fuel_type', 'engine_size', 'transmission',
+               'color', 'fuel_type', 'engine_cc', 'transmission',
                'drive_type', 'body_type', 'current_mileage', 'notes',
-               'is_active', 'photo_url']
+               'is_active', 'photo_url', 'distance_unit', 'tank_capacity',
+               'vehicle_height_cm', 'vehicle_width_cm', 'vehicle_weight_kg']
     
     for field in allowed:
         if field in data:
@@ -213,8 +216,18 @@ def delete_vehicle(current_user, vehicle_id):
     hard_delete = request.args.get('hard', 'false').lower() == 'true'
     
     if hard_delete:
-        # Delete all related entries
-        Entry.query.filter_by(vehicle_id=vehicle_id).delete()
+        # Delete physical attachment files
+        attachments = Attachment.query.filter_by(vehicle_id=vehicle_id).all()
+        upload_folder = current_app.config.get('UPLOAD_FOLDER', 'uploads')
+        for att in attachments:
+            if att.filepath:
+                file_path = os.path.join(upload_folder, att.filepath) if not os.path.isabs(att.filepath) else att.filepath
+                try:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                except OSError:
+                    pass
+        # Cascade delete via SQLAlchemy relationships
         db.session.delete(vehicle)
     else:
         vehicle.is_active = False

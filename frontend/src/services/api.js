@@ -110,6 +110,7 @@ export const vehicleApi = {
   create: (data) => api.post('/vehicles', data),
   update: (id, data) => api.put(`/vehicles/${id}`, data),
   delete: (id) => api.delete(`/vehicles/${id}`),
+  hardDelete: (id) => api.delete(`/vehicles/${id}?hard=true`),
   archive: (id) => api.post(`/vehicles/${id}/archive`),
   unarchive: (id) => api.post(`/vehicles/${id}/unarchive`),
   getStats: (id) => api.get(`/vehicles/${id}/stats`),
@@ -250,6 +251,12 @@ export const authApi = {
     api.post('/auth/password/recover/reset', { reset_token: resetToken, new_password: newPassword, confirm_password: confirmPassword }),
 }
 
+export const widgetApi = {
+  getApiKey: () => api.get('/widget/api-key'),
+  generateApiKey: () => api.post('/widget/api-key'),
+  revokeApiKey: () => api.delete('/widget/api-key'),
+}
+
 export const backupApi = {
   // Get backup status and available backups
   getStatus: () => api.get('/backup/status'),
@@ -291,6 +298,11 @@ export const backupApi = {
   // Test external server connection
   testExternalConnection: (url, apiKey = '') => 
     api.post('/backup/external/test', { url, api_key: apiKey }),
+  
+  // Import from LubeLogger backup
+  importLubelog: (formData) => api.post('/backup/import/lubelog', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
 }
 
 export const taxApi = {
