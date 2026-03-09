@@ -218,6 +218,7 @@ def create_app(config_class=None):
         return send_from_directory(uploads_path, filename)
     
     @app.route('/sw.js')
+    @limiter.exempt
     def service_worker():
         """Serve service worker with correct headers."""
         response = send_from_directory(app.static_folder, 'sw.js')
@@ -226,6 +227,7 @@ def create_app(config_class=None):
         return response
     
     @app.route('/manifest.json')
+    @limiter.exempt
     def manifest():
         """Serve PWA manifest."""
         response = send_from_directory(app.static_folder, 'manifest.json')
@@ -233,17 +235,20 @@ def create_app(config_class=None):
         return response
     
     @app.route('/favicon.ico')
+    @limiter.exempt
     def favicon():
         """Serve favicon."""
         return send_from_directory(app.static_folder, 'favicon.ico')
     
     @app.route('/logo.png')
+    @limiter.exempt
     def logo():
         """Serve app logo."""
         return send_from_directory(os.path.join(app.static_folder, 'icons'), 'logo.png')
     
     @app.route('/', defaults={'path': ''})
     @app.route('/<path:path>')
+    @limiter.exempt
     def serve_spa(path):
         """Serve React SPA - all routes fallback to index.html."""
         if path and os.path.exists(os.path.join(app.static_folder, path)):

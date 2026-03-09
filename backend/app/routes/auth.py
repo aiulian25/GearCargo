@@ -854,7 +854,12 @@ def parse_user_agent(ua_string):
 @auth_bp.route('/login', methods=['POST'])
 def login():
     """Login user with account lockout protection and IP/device blocking."""
-    data = request.get_json()
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'Invalid request body'}), 400
+    except Exception:
+        return jsonify({'error': 'Invalid JSON'}), 400
     
     email = data.get('email', '').lower()
     password = data.get('password', '')
@@ -869,7 +874,12 @@ def login():
     user_agent = request.headers.get('User-Agent', '')
     
     # Check if IP is blocked
-    ip_blocked, blocked_ip_record = BlockedIP.is_blocked(ip_address)
+    try:
+        ip_blocked, blocked_ip_record = BlockedIP.is_blocked(ip_address)
+    except Exception as e:
+        current_app.logger.error(f'Database error checking blocked IP: {e}')
+        ip_blocked = False
+        blocked_ip_record = None
     if ip_blocked:
         ActivityLog.log(
             event_type='login_blocked_ip',
@@ -886,7 +896,12 @@ def login():
         }), 403
     
     # Check if device is blocked  
-    device_blocked, blocked_device_record = BlockedDevice.is_blocked(user_agent, ip_address)
+    try:
+        device_blocked, blocked_device_record = BlockedDevice.is_blocked(user_agent, ip_address)
+    except Exception as e:
+        current_app.logger.error(f'Database error checking blocked device: {e}')
+        device_blocked = False
+        blocked_device_record = None
     if device_blocked:
         ActivityLog.log(
             event_type='login_blocked_device',
@@ -921,7 +936,12 @@ def login():
             'retry_after': remaining_seconds
         }), 429
     
-    user = User.query.filter_by(email=email).first()
+    try:
+        user = User.query.filter_by(email=email).first()
+    except Exception as e:
+        current_app.logger.error(f'Database error during login query: {e}')
+        db.session.rollback()
+        return jsonify({'error': 'Database error. Please try again or contact support.'}), 500
     
     if not user or not user.check_password(password):
         # Record failed attempt and check for lockout (by email)
@@ -931,26 +951,36 @@ def login():
         location_info = get_ip_location(ip_address)
         
         # Record failed attempt for IP (auto-blocks after 3 attempts)
-        ip_now_blocked, ip_record, ip_attempts = BlockedIP.record_failed_attempt(
-            ip_address=ip_address,
-            email=email,
-            user_id=user.id if user else None,
-            location_info=location_info,
-            max_attempts=3
-        )
+        try:
+            ip_now_blocked, ip_record, ip_attempts = BlockedIP.record_failed_attempt(
+                ip_address=ip_address,
+                email=email,
+                user_id=user.id if user else None,
+                location_info=location_info,
+                max_attempts=3
+            )
+        except Exception as e:
+            current_app.logger.error(f'Failed to record IP attempt: {e}')
+            db.session.rollback()
+            ip_now_blocked, ip_record, ip_attempts = False, None, 0
         
         # Parse device info for device tracking
         device_info = parse_user_agent(user_agent) if user_agent else None
         
         # Record failed attempt for device (auto-blocks after 3 attempts)
-        device_now_blocked, device_record, device_attempts = BlockedDevice.record_failed_attempt(
-            user_agent=user_agent,
-            ip_address=ip_address,
-            email=email,
-            user_id=user.id if user else None,
-            device_info=device_info,
-            max_attempts=3
-        )
+        try:
+            device_now_blocked, device_record, device_attempts = BlockedDevice.record_failed_attempt(
+                user_agent=user_agent,
+                ip_address=ip_address,
+                email=email,
+                user_id=user.id if user else None,
+                device_info=device_info,
+                max_attempts=3
+            )
+        except Exception as e:
+            current_app.logger.error(f'Failed to record device attempt: {e}')
+            db.session.rollback()
+            device_now_blocked, device_record, device_attempts = False, None, 0
         
         # Log failed login attempt
         ActivityLog.log(

@@ -141,9 +141,8 @@ export default function IntegrationSettings() {
     href: ${baseUrl}
     widget:
       type: customapi
-      url: ${baseUrl}/api/widget/v1/homepage
-      headers:
-        X-API-Key: ${apiKey}
+      url: ${baseUrl}/api/widget/v1/homepage?key=${apiKey}
+      display: block
       mappings:
         - field: vehicles
           label: Vehicles
@@ -158,7 +157,7 @@ export default function IntegrationSettings() {
           label: Next Reminder
           format: text`}</pre>
             <button
-              onClick={() => copyToClipboard(`- GearCargo:\n    icon: mdi-car\n    href: ${baseUrl}\n    widget:\n      type: customapi\n      url: ${baseUrl}/api/widget/v1/homepage\n      headers:\n        X-API-Key: ${apiKey}\n      mappings:\n        - field: vehicles\n          label: Vehicles\n          format: number\n        - field: service_records\n          label: Service Records\n          format: number\n        - field: reminders\n          label: Reminders\n          format: number\n        - field: next_reminder\n          label: Next Reminder\n          format: text`, 'config')}
+              onClick={() => copyToClipboard(`- GearCargo:\n    icon: mdi-car\n    href: ${baseUrl}\n    widget:\n      type: customapi\n      url: ${baseUrl}/api/widget/v1/homepage?key=${apiKey}\n      display: block\n      mappings:\n        - field: vehicles\n          label: Vehicles\n          format: number\n        - field: service_records\n          label: Service Records\n          format: number\n        - field: reminders\n          label: Reminders\n          format: number\n        - field: next_reminder\n          label: Next Reminder\n          format: text`, 'config')}
               className="absolute top-2 right-2 btn btn-ghost btn-sm"
               title="Copy config"
             >

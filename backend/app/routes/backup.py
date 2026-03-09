@@ -524,9 +524,10 @@ def import_lubelog(current_user):
         current_app.logger.error(f'LubeLogger import validation error: {e}')
         return jsonify({'error': str(e)}), 400
     except Exception as e:
+        db.session.rollback()
         security_audit.data_import(current_user.id, current_user.email, 'lubelog', success=False)
-        current_app.logger.error(f'LubeLogger import failed: {e}')
-        return jsonify({'error': 'LubeLogger import failed. Please ensure the file is a valid LubeLogger backup ZIP.'}), 500
+        current_app.logger.error(f'LubeLogger import failed: {e}', exc_info=True)
+        return jsonify({'error': f'LubeLogger import failed: {type(e).__name__}: {e}'}), 500
 
 
 def restore_from_json(user, file, merge_mode='merge'):
@@ -1225,9 +1226,12 @@ def run_backup_now(current_user):
         backup.status = 'failed'
         backup.error_message = str(e)
         backup.completed_at = datetime.utcnow()
-        db.session.commit()
-        current_app.logger.error(f'Manual backup failed: {e}')
-        return jsonify({'error': 'Backup failed. Please try again later.'}), 500
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        current_app.logger.error(f'Manual backup failed: {e}', exc_info=True)
+        return jsonify({'error': f'Backup failed: {type(e).__name__}: {e}'}), 500
 
 
 @backup_bp.route('/external/test', methods=['POST'])

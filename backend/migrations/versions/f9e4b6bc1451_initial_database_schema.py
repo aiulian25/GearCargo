@@ -565,9 +565,74 @@ def upgrade():
     )
     op.create_index(op.f('ix_push_subscriptions_user_id'), 'push_subscriptions', ['user_id'], unique=False)
 
+    # Create backup_schedules table
+    op.create_table('backup_schedules',
+        sa.Column('id', sa.Integer(), nullable=False),
+        sa.Column('user_id', sa.Integer(), nullable=False),
+        sa.Column('enabled', sa.Boolean(), nullable=True),
+        sa.Column('frequency', sa.String(length=20), nullable=True),
+        sa.Column('day_of_week', sa.Integer(), nullable=True),
+        sa.Column('day_of_month', sa.Integer(), nullable=True),
+        sa.Column('hour', sa.Integer(), nullable=True),
+        sa.Column('backup_type', sa.String(length=20), nullable=True),
+        sa.Column('include_attachments', sa.Boolean(), nullable=True),
+        sa.Column('external_enabled', sa.Boolean(), nullable=True),
+        sa.Column('external_url', sa.String(length=500), nullable=True),
+        sa.Column('external_api_key', sa.String(length=255), nullable=True),
+        sa.Column('external_path', sa.String(length=255), nullable=True),
+        sa.Column('cloud_enabled', sa.Boolean(), nullable=True),
+        sa.Column('cloud_provider', sa.String(length=50), nullable=True),
+        sa.Column('cloud_credentials', sa.Text(), nullable=True),
+        sa.Column('retention_days', sa.Integer(), nullable=True),
+        sa.Column('max_backups', sa.Integer(), nullable=True),
+        sa.Column('notify_on_success', sa.Boolean(), nullable=True),
+        sa.Column('notify_on_failure', sa.Boolean(), nullable=True),
+        sa.Column('last_run_at', sa.DateTime(), nullable=True),
+        sa.Column('last_status', sa.String(length=20), nullable=True),
+        sa.Column('last_error', sa.Text(), nullable=True),
+        sa.Column('next_run_at', sa.DateTime(), nullable=True),
+        sa.Column('created_at', sa.DateTime(), nullable=True),
+        sa.Column('updated_at', sa.DateTime(), nullable=True),
+        sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+        sa.PrimaryKeyConstraint('id'),
+        sa.UniqueConstraint('user_id')
+    )
+
+    # Create notification_logs table
+    op.create_table('notification_logs',
+        sa.Column('id', sa.Integer(), nullable=False),
+        sa.Column('user_id', sa.Integer(), nullable=False),
+        sa.Column('subscription_id', sa.Integer(), nullable=True),
+        sa.Column('notification_type', sa.String(length=50), nullable=False),
+        sa.Column('title', sa.String(length=255), nullable=False),
+        sa.Column('body', sa.Text(), nullable=True),
+        sa.Column('data', sa.JSON(), nullable=True),
+        sa.Column('reminder_id', sa.Integer(), nullable=True),
+        sa.Column('prediction_id', sa.Integer(), nullable=True),
+        sa.Column('vehicle_id', sa.Integer(), nullable=True),
+        sa.Column('channel', sa.String(length=20), nullable=False),
+        sa.Column('status', sa.String(length=20), nullable=True),
+        sa.Column('error_message', sa.Text(), nullable=True),
+        sa.Column('clicked_at', sa.DateTime(), nullable=True),
+        sa.Column('action_taken', sa.String(length=50), nullable=True),
+        sa.Column('scheduled_at', sa.DateTime(), nullable=True),
+        sa.Column('sent_at', sa.DateTime(), nullable=True),
+        sa.Column('created_at', sa.DateTime(), nullable=True),
+        sa.ForeignKeyConstraint(['prediction_id'], ['prediction_alerts.id'], ),
+        sa.ForeignKeyConstraint(['reminder_id'], ['reminders.id'], ),
+        sa.ForeignKeyConstraint(['subscription_id'], ['push_subscriptions.id'], ),
+        sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+        sa.ForeignKeyConstraint(['vehicle_id'], ['vehicles.id'], ),
+        sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_notification_logs_subscription_id'), 'notification_logs', ['subscription_id'], unique=False)
+    op.create_index(op.f('ix_notification_logs_user_id'), 'notification_logs', ['user_id'], unique=False)
+
 
 def downgrade():
     # Drop all tables in reverse order
+    op.drop_table('notification_logs')
+    op.drop_table('backup_schedules')
     op.drop_table('push_subscriptions')
     op.drop_table('blocked_devices')
     op.drop_table('blocked_ips')
