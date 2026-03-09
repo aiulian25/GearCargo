@@ -46,7 +46,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install Python dependencies
 COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip uninstall -y wheel setuptools || true
 
 # Copy backend code
 COPY backend/ .
@@ -54,13 +55,12 @@ COPY backend/ .
 # Copy built frontend from stage 1
 COPY --from=frontend-builder /frontend/dist /app/static
 
-# Create non-root user
-RUN useradd -m -u 1000 gearcargo && \
-    mkdir -p /app/volumes/attachments /app/volumes/backups && \
+# Create non-root user and install gosu for privilege dropping
+RUN apt-get update && apt-get install -y --no-install-recommends gosu && rm -rf /var/lib/apt/lists/* && \
+    useradd -m -u 1000 gearcargo && \
+    mkdir -p /app/volumes/attachments /app/volumes/backups /app/uploads && \
     chown -R gearcargo:gearcargo /app && \
     chmod +x /app/docker-entrypoint.sh
-
-USER gearcargo
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

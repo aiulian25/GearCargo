@@ -2,8 +2,8 @@
 
 # Web Framework
 Flask==3.0.0
-gunicorn==21.2.0
-Werkzeug==3.0.1
+gunicorn==22.0.0
+Werkzeug==3.0.6
 
 # Database
 Flask-SQLAlchemy==3.1.1
@@ -24,7 +24,7 @@ PyOTP==2.9.0
 qrcode[pil]==7.4.2
 Flask-Talisman==1.1.0
 Flask-Limiter==3.5.0
-Flask-Cors==4.0.0
+Flask-Cors==5.0.1
 Flask-WTF==1.2.1
 
 # Compression
@@ -42,11 +42,11 @@ email-validator==2.1.0
 
 # OCR
 pytesseract==0.3.10
-Pillow==10.1.0
+Pillow==12.1.1
 
 # PDF Generation
 reportlab==4.0.7
-weasyprint==60.1
+weasyprint==68.0
 
 # Scheduling
 APScheduler==3.10.4
@@ -73,4 +73,4 @@ uuid==1.30
 shortuuid==1.0.11
 
 # Data encryption
-cryptography==41.0.7
+cryptography==46.0.5

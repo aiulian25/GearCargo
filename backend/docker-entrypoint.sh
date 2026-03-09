@@ -3,6 +3,12 @@ set -e
 
 echo "Starting GearCargo..."
 
+# Fix volume permissions (entrypoint runs as root, volumes may be owned by host root)
+if [ "$(id -u)" = "0" ]; then
+    echo "Fixing volume permissions..."
+    chown -R gearcargo:gearcargo /app/volumes /app/uploads 2>/dev/null || true
+fi
+
 # Wait for database to be ready
 echo "Waiting for database..."
 for i in $(seq 1 30); do
@@ -83,5 +89,9 @@ PYEOF
 
 echo "Database setup complete."
 
-# Start Gunicorn
-exec gunicorn --config gunicorn.conf.py "app:create_app()"
+# Start Gunicorn (drop to non-root user if running as root)
+if [ "$(id -u)" = "0" ]; then
+    exec gosu gearcargo gunicorn --config gunicorn.conf.py "app:create_app()"
+else
+    exec gunicorn --config gunicorn.conf.py "app:create_app()"
+fi
