@@ -374,11 +374,12 @@ export const externalApi = {
     if (location) params.append('location', location)
     return api.get(`/external/weather?${params}`)
   },
-  getFuelPrices: (country = 'UK', location = '', lat = null, lon = null) => {
+  getFuelPrices: (country = 'UK', location = '', lat = null, lon = null, forceRefresh = false) => {
     const params = new URLSearchParams({ country })
     if (location) params.append('location', location)
     if (lat) params.append('lat', lat)
     if (lon) params.append('lon', lon)
+    if (forceRefresh) params.append('force_refresh', 'true')
     return api.get(`/external/fuel-prices?${params}`)
   },
   getAirQuality: (lat, lon) => {

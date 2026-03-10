@@ -72,6 +72,17 @@ def init_scheduler(app):
         args=[app]
     )
     
+    # Fuel price auto-refresh — every Monday at 10 AM UTC
+    # (after UK Gov & EU Oil Bulletin publish their weekly updates)
+    scheduler.add_job(
+        id='refresh_fuel_prices',
+        func=refresh_fuel_prices,
+        trigger='cron',
+        day_of_week='mon',
+        hour=10,
+        args=[app]
+    )
+    
     scheduler.start()
     app.logger.info('Scheduler initialized')
 
@@ -644,3 +655,17 @@ def send_monthly_reports(app):
         
         db.session.commit()
         app.logger.info(f'Monthly reports: sent to {sent_count} users')
+
+
+def refresh_fuel_prices(app):
+    """Refresh fuel prices for all supported countries from live APIs.
+    
+    Called weekly by scheduler (Monday 10 AM) and can be triggered manually.
+    """
+    with app.app_context():
+        from app.services.fuel_price_service import refresh_all_prices
+        try:
+            updated, failed = refresh_all_prices(app)
+            app.logger.info(f'Fuel price refresh: {updated} countries updated, {failed} failed')
+        except Exception as e:
+            app.logger.error(f'Fuel price refresh job failed: {e}')

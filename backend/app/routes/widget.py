@@ -47,7 +47,7 @@ def homepage_widget(current_user):
 
     Usage in Gethomepage services.yaml:
       - GearCargo:
-          icon: mdi-car
+          icon: https://your-gearcargo-url/icons/logo.png
           href: https://your-gearcargo-url
           widget:
             type: customapi
