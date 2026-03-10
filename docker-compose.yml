@@ -90,6 +90,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    labels:
+      - homepage.group=Apps
+      - homepage.name=GearCargo
+      - homepage.icon=${APP_URL:-http://localhost:5000}/logo.png
+      - homepage.href=${APP_URL:-http://localhost:5000}
+      - homepage.description=Vehicle management & expense tracking
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]

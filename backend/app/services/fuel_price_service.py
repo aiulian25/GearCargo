@@ -450,6 +450,16 @@ def _parse_uk_csv(text):
             date_val = _normalize_date(val)
             continue
 
+        # Skip non-price columns (duty rates, VAT rates, etc.)
+        if any(skip in kl for skip in ('duty', 'vat', 'rate', 'tax')):
+            continue
+
+        # Only match columns that look like pump/retail prices
+        if not any(tag in kl for tag in ('price', 'pump', 'ulsp', 'ulsd',
+                                          'diesel', 'petrol', 'unleaded',
+                                          'super', 'premium')):
+            continue
+
         # Numeric value
         try:
             num = float(val.replace(',', ''))
