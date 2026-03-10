@@ -169,6 +169,10 @@ def create_app(config_class=None):
     from app.routes import register_blueprints
     register_blueprints(app)
     
+    # Exempt widget API from rate limiting (uses API key auth, polled frequently by Gethomepage)
+    from app.routes.widget import widget_bp
+    limiter.exempt(widget_bp)
+    
     # Strip security headers from widget API responses using WSGI middleware
     # (runs after all Flask after_request handlers including Talisman)
     _strip_headers = [
