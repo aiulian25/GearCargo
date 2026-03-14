@@ -1884,7 +1884,6 @@ def upload_avatar(current_user):
     """Upload a new avatar image. Keeps history of previous avatars."""
     import os
     import uuid
-    import imghdr
     import json
     from werkzeug.utils import secure_filename
     
@@ -1892,6 +1891,12 @@ def upload_avatar(current_user):
     MAX_FILE_SIZE = 2 * 1024 * 1024  # 2MB max for avatars
     ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
     ALLOWED_MIME_TYPES = {'image/png', 'image/jpeg', 'image/gif', 'image/webp'}
+    IMAGE_SIGNATURES = {
+        b'\xff\xd8\xff': 'jpg',
+        b'\x89PNG\r\n\x1a\n': 'png',
+        b'GIF87a': 'gif',
+        b'GIF89a': 'gif',
+    }
     MAX_AVATAR_HISTORY = 10  # Keep last 10 avatars
     
     if 'avatar' not in request.files:
@@ -1922,11 +1927,17 @@ def upload_avatar(current_user):
         return jsonify({'error': 'Invalid file type'}), 400
     
     # Validate actual file content (magic bytes)
-    header = avatar.read(512)
+    header = avatar.read(12)
     avatar.seek(0)
-    detected_type = imghdr.what(None, h=header)
+    detected_type = None
+    for sig, img_type in IMAGE_SIGNATURES.items():
+        if header.startswith(sig):
+            detected_type = img_type
+            break
+    if header[:4] == b'RIFF' and header[8:12] == b'WEBP':
+        detected_type = 'webp'
     
-    if detected_type not in {'png', 'jpeg', 'gif', 'webp'}:
+    if detected_type is None:
         return jsonify({'error': 'Invalid image file'}), 400
     
     # Create avatars directory
@@ -1934,8 +1945,7 @@ def upload_avatar(current_user):
     os.makedirs(avatar_dir, mode=0o750, exist_ok=True)
     
     # Generate unique filename
-    ext = detected_type if detected_type != 'jpeg' else 'jpg'
-    unique_filename = f"{uuid.uuid4().hex}.{ext}"
+    unique_filename = f"{uuid.uuid4().hex}.{detected_type}"
     file_path = os.path.join(avatar_dir, unique_filename)
     
     # Ensure file_path is within avatar_dir
@@ -1976,10 +1986,11 @@ def upload_avatar(current_user):
     current_user.avatar = avatar_url
     db.session.commit()
     
+    from app.utils import sign_upload_url
     return jsonify({
         'message': 'Avatar uploaded successfully',
-        'avatar_url': avatar_url,
-        'avatar_history': avatar_history
+        'avatar_url': sign_upload_url(avatar_url),
+        'avatar_history': [sign_upload_url(u) for u in avatar_history]
     })
 
 
@@ -1987,11 +1998,12 @@ def upload_avatar(current_user):
 @token_required
 def get_avatars(current_user):
     """Get current avatar and avatar history."""
+    from app.utils import sign_upload_url
     avatar_history = current_user.preferences.get('avatar_history', []) if current_user.preferences else []
     
     return jsonify({
-        'current_avatar': current_user.avatar,
-        'avatar_history': avatar_history
+        'current_avatar': sign_upload_url(current_user.avatar),
+        'avatar_history': [sign_upload_url(u) for u in avatar_history]
     })
 
 
@@ -2000,9 +2012,13 @@ def get_avatars(current_user):
 def select_avatar(current_user):
     """Select an avatar from history as the current avatar."""
     import os
+    from urllib.parse import urlparse
     
     data = request.get_json()
-    avatar_url = data.get('avatar_url')
+    avatar_url = data.get('avatar_url', '')
+    
+    # Strip any signed-URL query parameters so we store the raw path
+    avatar_url = urlparse(avatar_url).path
     
     if not avatar_url:
         return jsonify({'error': 'Avatar URL is required'}), 400
@@ -2038,10 +2054,11 @@ def select_avatar(current_user):
     current_user.avatar = avatar_url
     db.session.commit()
     
+    from app.utils import sign_upload_url
     return jsonify({
         'message': 'Avatar selected successfully',
-        'avatar_url': avatar_url,
-        'avatar_history': avatar_history
+        'avatar_url': sign_upload_url(avatar_url),
+        'avatar_history': [sign_upload_url(u) for u in avatar_history]
     })
 
 
@@ -2083,9 +2100,10 @@ def delete_avatar(current_user, filename):
     if os.path.exists(file_path):
         os.remove(file_path)
     
+    from app.utils import sign_upload_url
     return jsonify({
         'message': 'Avatar deleted successfully',
-        'avatar_history': avatar_history
+        'avatar_history': [sign_upload_url(u) for u in avatar_history]
     })
 
 
@@ -2112,9 +2130,10 @@ def remove_current_avatar(current_user):
     current_user.avatar = None
     db.session.commit()
     
+    from app.utils import sign_upload_url
     return jsonify({
         'message': 'Avatar removed successfully',
-        'avatar_history': avatar_history
+        'avatar_history': [sign_upload_url(u) for u in avatar_history]
     })
 
 

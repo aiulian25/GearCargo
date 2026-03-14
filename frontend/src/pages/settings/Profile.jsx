@@ -557,7 +557,7 @@ export default function Profile() {
   }
   
   const handleDeleteAvatar = async (avatarUrl) => {
-    const filename = avatarUrl.split('/').pop()
+    const filename = avatarUrl.split('/').pop().split('?')[0]
     setError('')
     
     try {

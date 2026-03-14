@@ -742,13 +742,19 @@ def upload_vehicle_photo(current_user, vehicle_id):
     """Upload a photo for a vehicle."""
     import os
     import uuid
-    import imghdr
     from werkzeug.utils import secure_filename
     
     # Security constants
-    MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB max
+    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB max
     ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
     ALLOWED_MIME_TYPES = {'image/png', 'image/jpeg', 'image/gif', 'image/webp'}
+    # Magic bytes for image type detection
+    IMAGE_SIGNATURES = {
+        b'\xff\xd8\xff': 'jpg',
+        b'\x89PNG\r\n\x1a\n': 'png',
+        b'GIF87a': 'gif',
+        b'GIF89a': 'gif',
+    }
     
     vehicle = Vehicle.query.filter_by(
         id=vehicle_id,
@@ -772,7 +778,7 @@ def upload_vehicle_photo(current_user, vehicle_id):
     photo.seek(0)  # Reset to beginning
     
     if size > MAX_FILE_SIZE:
-        return jsonify({'error': 'File too large. Maximum size is 5MB'}), 400
+        return jsonify({'error': 'File too large. Maximum size is 10MB'}), 400
     
     # Validate file extension
     filename = secure_filename(photo.filename)
@@ -786,11 +792,18 @@ def upload_vehicle_photo(current_user, vehicle_id):
         return jsonify({'error': 'Invalid file type'}), 400
     
     # Validate actual file content (magic bytes)
-    header = photo.read(512)
+    header = photo.read(12)
     photo.seek(0)
-    detected_type = imghdr.what(None, h=header)
+    detected_type = None
+    for sig, img_type in IMAGE_SIGNATURES.items():
+        if header.startswith(sig):
+            detected_type = img_type
+            break
+    # WebP: starts with RIFF....WEBP
+    if header[:4] == b'RIFF' and header[8:12] == b'WEBP':
+        detected_type = 'webp'
     
-    if detected_type not in {'png', 'jpeg', 'gif', 'webp'}:
+    if detected_type is None:
         return jsonify({'error': 'Invalid image file'}), 400
     
     # Create uploads directory with secure permissions
@@ -798,7 +811,7 @@ def upload_vehicle_photo(current_user, vehicle_id):
     os.makedirs(upload_dir, mode=0o750, exist_ok=True)
     
     # Generate unique filename (prevent path traversal)
-    unique_filename = f"{vehicle.id}_{uuid.uuid4().hex}.{detected_type if detected_type != 'jpeg' else 'jpg'}"
+    unique_filename = f"{vehicle.id}_{uuid.uuid4().hex}.{detected_type}"
     file_path = os.path.join(upload_dir, unique_filename)
     
     # Ensure file_path is within upload_dir (prevent path traversal)
@@ -819,9 +832,10 @@ def upload_vehicle_photo(current_user, vehicle_id):
     vehicle.photo = f"/uploads/vehicles/{unique_filename}"
     db.session.commit()
     
+    from app.utils import sign_upload_url
     return jsonify({
         'message': 'Photo uploaded successfully',
-        'photo_url': vehicle.photo
+        'photo_url': sign_upload_url(vehicle.photo)
     })
 
 

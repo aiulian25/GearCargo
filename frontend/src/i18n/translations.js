@@ -537,6 +537,7 @@ export const translations = {
       optional: 'Optional',
       notes: 'Notes',
       optionalNotes: 'Optional notes...',
+      provider: 'Provider',
       error: 'Failed to add service entry',
     },
     
@@ -577,6 +578,7 @@ export const translations = {
       optional: 'Optional',
       notes: 'Notes',
       optionalNotes: 'Optional notes...',
+      provider: 'Provider',
       error: 'Failed to add repair entry',
     },
     
@@ -612,11 +614,13 @@ export const translations = {
       validityPeriod: 'Validity Period',
       validFrom: 'Valid From',
       validUntil: 'Valid Until',
+      dueDate: 'Due Date',
       additional: 'Additional',
       referenceNumber: 'Reference Number',
       optional: 'Optional',
       notes: 'Notes',
       optionalNotes: 'Optional notes...',
+      recurring: 'Recurring',
       error: 'Failed to add tax entry',
       linkedInsurance: 'Linked Insurance',
       linkedInsuranceHint: 'Link this tax to an insurance policy (optional)',
@@ -663,6 +667,7 @@ export const translations = {
       optionalNotes: 'Optional notes...',
       optional: 'Optional',
       document: 'Policy Document',
+      status: 'Status',
       error: 'Failed to add insurance policy',
     },
     
@@ -771,6 +776,7 @@ export const translations = {
       everyXKm: 'e.g., 10000',
       notes: 'Notes',
       optionalNotes: 'Optional notes...',
+      status: 'Status',
       error: 'Failed to add reminder',
     },
     
@@ -798,6 +804,7 @@ export const translations = {
       descPlaceholder: 'Add more details...',
       priority: 'Priority',
       dueDate: 'Due Date',
+      status: 'Status',
       error: 'Failed to add todo',
     },
     
@@ -2607,6 +2614,7 @@ export const translations = {
       optional: 'Opțional',
       notes: 'Notițe',
       optionalNotes: 'Notițe opționale...',
+      provider: 'Furnizor',
       error: 'Eroare la adăugarea service-ului',
     },
     
@@ -2647,6 +2655,7 @@ export const translations = {
       optional: 'Opțional',
       notes: 'Notițe',
       optionalNotes: 'Notițe opționale...',
+      provider: 'Furnizor',
       error: 'Eroare la adăugarea reparației',
     },
     
@@ -2682,11 +2691,13 @@ export const translations = {
       validityPeriod: 'Perioadă Valabilitate',
       validFrom: 'Valabil De La',
       validUntil: 'Valabil Până La',
+      dueDate: 'Data Scadentă',
       additional: 'Adițional',
       referenceNumber: 'Număr Referință',
       optional: 'Opțional',
       notes: 'Notițe',
       optionalNotes: 'Notițe opționale...',
+      recurring: 'Recurent',
       error: 'Eroare la adăugarea taxei',
       linkedInsurance: 'Asigurare Asociată',
       linkedInsuranceHint: 'Asociază această taxă cu o poliță de asigurare (opțional)',
@@ -2733,6 +2744,7 @@ export const translations = {
       optionalNotes: 'Notițe opționale...',
       optional: 'Opțional',
       document: 'Document Poliță',
+      status: 'Stare',
       error: 'Eroare la adăugarea poliței de asigurare',
     },
     
@@ -2841,6 +2853,7 @@ export const translations = {
       everyXKm: 'ex., 10000',
       notes: 'Notițe',
       optionalNotes: 'Notițe opționale...',
+      status: 'Stare',
       error: 'Eroare la adăugarea memento-ului',
     },
     
@@ -2868,6 +2881,7 @@ export const translations = {
       descPlaceholder: 'Adaugă mai multe detalii...',
       priority: 'Prioritate',
       dueDate: 'Data Scadentă',
+      status: 'Stare',
       error: 'Eroare la adăugarea sarcinii',
     },
     
@@ -4678,6 +4692,7 @@ export const translations = {
       optional: 'Opcional',
       notes: 'Notas',
       optionalNotes: 'Notas opcionales...',
+      provider: 'Proveedor',
       error: 'Error al añadir servicio',
     },
     
@@ -4718,6 +4733,7 @@ export const translations = {
       optional: 'Opcional',
       notes: 'Notas',
       optionalNotes: 'Notas opcionales...',
+      provider: 'Proveedor',
       error: 'Error al añadir reparación',
     },
     
@@ -4753,11 +4769,13 @@ export const translations = {
       validityPeriod: 'Período de Validez',
       validFrom: 'Válido Desde',
       validUntil: 'Válido Hasta',
+      dueDate: 'Fecha de Vencimiento',
       additional: 'Adicional',
       referenceNumber: 'Número de Referencia',
       optional: 'Opcional',
       notes: 'Notas',
       optionalNotes: 'Notas opcionales...',
+      recurring: 'Recurrente',
       error: 'Error al añadir impuesto',
       linkedInsurance: 'Seguro Vinculado',
       linkedInsuranceHint: 'Vincular este impuesto a una póliza de seguro (opcional)',
@@ -4804,6 +4822,7 @@ export const translations = {
       optionalNotes: 'Notas opcionales...',
       optional: 'Opcional',
       document: 'Documento de Póliza',
+      status: 'Estado',
       error: 'Error al añadir póliza de seguro',
     },
     
@@ -4912,6 +4931,7 @@ export const translations = {
       everyXKm: 'ej., 10000',
       notes: 'Notas',
       optionalNotes: 'Notas opcionales...',
+      status: 'Estado',
       error: 'Error al añadir recordatorio',
     },
     
@@ -4939,6 +4959,7 @@ export const translations = {
       descPlaceholder: 'Añade más detalles...',
       priority: 'Prioridad',
       dueDate: 'Fecha de Vencimiento',
+      status: 'Estado',
       error: 'Error al añadir tarea',
     },
     

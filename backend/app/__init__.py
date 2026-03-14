@@ -4,7 +4,7 @@ Vehicle Management PWA Backend
 """
 
 import os
-from flask import Flask, send_from_directory, jsonify
+from flask import Flask, send_from_directory, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_login import LoginManager
@@ -217,8 +217,20 @@ def create_app(config_class=None):
     @app.route('/uploads/<path:filename>')
     @limiter.exempt
     def serve_uploads(filename):
-        """Serve uploaded files (photos, etc.)."""
+        """Serve uploaded files with signed URL verification."""
+        from app.utils import verify_upload_signature
+
+        sig = request.args.get('sig', '')
+        exp = request.args.get('exp', '')
+        original_path = f'/uploads/{filename}'
+
+        if not verify_upload_signature(original_path, exp, sig):
+            return jsonify({'error': 'Forbidden'}), 403
+
         uploads_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'uploads')
+        full_path = os.path.join(uploads_path, filename)
+        if not os.path.isfile(full_path):
+            return jsonify({'error': 'File not found'}), 404
         return send_from_directory(uploads_path, filename)
     
     @app.route('/sw.js')

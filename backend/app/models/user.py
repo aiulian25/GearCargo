@@ -226,7 +226,14 @@ class User(UserMixin, db.Model):
         if self.first_name and self.last_name:
             return f"{self.first_name} {self.last_name}"
         return self.username
-    
+
+    def _signed_avatar_url(self):
+        """Return a signed URL for the user avatar."""
+        if not self.avatar:
+            return None
+        from app.utils import sign_upload_url
+        return sign_upload_url(self.avatar)
+
     def to_dict(self, include_private=False):
         """Convert to dictionary."""
         data = {
@@ -235,7 +242,7 @@ class User(UserMixin, db.Model):
             'name': self.display_name,  # Alias for frontend compatibility
             'email': self.email,
             'display_name': self.display_name,
-            'avatar': self.avatar,
+            'avatar': self._signed_avatar_url(),
             # User preferences - always included for frontend sync
             'language': self.language or 'en',
             'timezone': self.timezone or 'UTC',

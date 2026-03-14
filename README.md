@@ -95,6 +95,7 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 
 ### 🔒 Security Features
 - **Two-Factor Authentication (2FA)** - TOTP with backup codes
+- **Signed Upload URLs** - HMAC-SHA256 signed URLs for all uploaded files (photos, avatars)
 - **Account Lockout Protection** - Auto-locks after 5 failed attempts
 - **IP Blocking** - Auto-blocks IPs after 3 failed attempts
 - **Device Blocking** - Auto-blocks suspicious devices
@@ -264,7 +265,7 @@ docker compose -f docker-compose.simple.yml logs -f backend
 |---------|---------------------|---------------------------|----------------------------|
 | **Use Case** | Development | Full Production | Lightweight Production |
 | **Build Time** | ~2-5 minutes | ~2-5 minutes | ~2-5 minutes |
-| **Image Source** | Local build | Local build | Local build |
+| **Image Source** | Local build | Local build / GHCR | Local build / GHCR |
 | **Auto Migrations** | Manual | Manual | Manual |
 | **Debug Mode** | ✅ Enabled | ❌ Disabled | ❌ Disabled |
 | **Ollama AI** | Optional | Optional | ❌ Disabled |
@@ -714,6 +715,16 @@ git pull
 docker compose -f docker-compose.prod.yml build
 docker compose -f docker-compose.prod.yml up -d --force-recreate
 docker compose -f docker-compose.prod.yml logs -f backend
+\`\`\`
+
+### Pre-built Image (GHCR)
+\`\`\`bash
+# Pull latest image from GitHub Container Registry
+docker pull ghcr.io/aiulian25/gearcargo:latest
+
+# Or deploy directly using the deploy compose file
+docker compose -f docker-compose.deploy.yml pull
+docker compose -f docker-compose.deploy.yml up -d --force-recreate
 \`\`\`
 
 ---

@@ -91,7 +91,14 @@ class Vehicle(db.Model):
         """Update mileage if greater than current."""
         if new_mileage and new_mileage > (self.current_mileage or 0):
             self.current_mileage = new_mileage
-    
+
+    def _signed_photo_url(self):
+        """Return a signed URL for the vehicle photo."""
+        if not self.photo:
+            return None
+        from app.utils import sign_upload_url
+        return sign_upload_url(self.photo)
+
     def to_dict(self, include_stats=False):
         """Convert to dictionary."""
         data = {
@@ -110,8 +117,8 @@ class Vehicle(db.Model):
             'current_mileage': self.current_mileage,
             'distance_unit': self.distance_unit,
             'monthly_budget': float(self.monthly_budget) if self.monthly_budget else None,
-            'photo': self.photo,
-            'photo_url': self.photo,
+            'photo': self._signed_photo_url(),
+            'photo_url': self._signed_photo_url(),
             'archived': self.archived,
             'archived_at': self.archived_at.isoformat() if self.archived_at else None,
             'display_order': self.display_order or 0,
