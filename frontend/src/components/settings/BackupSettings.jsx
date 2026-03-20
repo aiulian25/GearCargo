@@ -98,7 +98,7 @@ export default function BackupSettings() {
     external_enabled: false,
     external_url: '',
     external_api_key: '',
-    external_path: '/backups',
+    external_path: '/GearCargo',
     retention_days: 90,
     max_backups: 10,
     notify_on_success: false,
@@ -853,7 +853,14 @@ export default function BackupSettings() {
                       className="flex-1 p-3 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-border)] placeholder-[var(--color-text-muted)]"
                     />
                     <button
-                      onClick={() => browseExternalFolders('/')}
+                      onClick={() => {
+                        // Start browsing at the parent of the current path
+                        const currentPath = schedule.external_path || '/GearCargo'
+                        const parent = currentPath.includes('/') && currentPath !== '/' 
+                          ? currentPath.split('/').slice(0, -1).join('/') || '/' 
+                          : '/'
+                        browseExternalFolders(parent)
+                      }}
                       disabled={browsingFolders || (!schedule.external_api_key && !schedule.has_external_api_key)}
                       className="px-3 py-2 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]/80 transition-colors disabled:opacity-50"
                       title={t('backup.browseFolders') || 'Browse folders'}
