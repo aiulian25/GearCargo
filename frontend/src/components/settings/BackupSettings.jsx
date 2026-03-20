@@ -167,8 +167,13 @@ export default function BackupSettings() {
   const runBackupNow = async () => {
     try {
       setBacking(true)
-      await backupApi.runNow(schedule.include_attachments, schedule.external_enabled)
-      toast.success(t('backup.backupComplete') || 'Backup completed successfully')
+      const response = await backupApi.runNow(schedule.include_attachments, schedule.external_enabled)
+      if (response.data.external_error) {
+        toast.error(`${t('backup.externalFailed') || 'External upload failed'}: ${response.data.external_error}`)
+        toast.success(t('backup.backupSavedLocally') || 'Backup saved locally')
+      } else {
+        toast.success(t('backup.backupComplete') || 'Backup completed successfully')
+      }
       loadBackupStatus()
     } catch (error) {
       console.error('Backup failed:', error)
@@ -922,6 +927,26 @@ export default function BackupSettings() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
+                      <button
+                        onClick={async () => {
+                          try {
+                            const response = await backupApi.downloadStored(backup.filename)
+                            const blob = new Blob([response.data], { type: 'application/zip' })
+                            const url = URL.createObjectURL(blob)
+                            const a = document.createElement('a')
+                            a.href = url
+                            a.download = backup.filename
+                            a.click()
+                            URL.revokeObjectURL(url)
+                          } catch (error) {
+                            toast.error(t('backup.downloadFailed') || 'Failed to download backup')
+                          }
+                        }}
+                        className="p-2 text-[var(--color-text-secondary)] hover:bg-[var(--color-accent)]/10 rounded-lg transition-colors"
+                        title={t('backup.download') || 'Download'}
+                      >
+                        {Icons.download}
+                      </button>
                       <button
                         onClick={() => restoreBackup(backup.filename)}
                         disabled={importing}

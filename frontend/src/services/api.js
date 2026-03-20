@@ -282,6 +282,9 @@ export const backupApi = {
   restoreFromStorage: (filename, mergeMode = 'merge') => 
     api.post(`/backup/restore/${filename}`, { merge_mode: mergeMode }),
   
+  // Download stored backup
+  downloadStored: (filename) => api.get(`/backup/download/${filename}`, { responseType: 'blob' }),
+
   // Delete stored backup
   deleteBackup: (filename) => api.delete(`/backup/delete/${filename}`),
   

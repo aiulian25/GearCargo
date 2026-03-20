@@ -1054,6 +1054,29 @@ def import_backup_data(user, backup_data, merge_mode='merge'):
     return imported, vehicle_id_map, entry_id_map
 
 
+@backup_bp.route('/download/<filename>', methods=['GET'])
+@token_required
+def download_stored_backup(current_user, filename):
+    """Download a stored backup file."""
+    # Validate filename (prevent directory traversal)
+    if '..' in filename or '/' in filename or '\\' in filename:
+        return jsonify({'error': 'Invalid filename'}), 400
+
+    backup_folder = get_backup_folder()
+    user_folder = os.path.join(backup_folder, str(current_user.id))
+    filepath = os.path.join(user_folder, filename)
+
+    if not os.path.exists(filepath):
+        return jsonify({'error': 'Backup file not found'}), 404
+
+    return send_file(
+        filepath,
+        mimetype='application/zip' if filename.endswith('.zip') else 'application/octet-stream',
+        as_attachment=True,
+        download_name=filename
+    )
+
+
 @backup_bp.route('/restore/<filename>', methods=['POST'])
 @token_required
 def restore_from_storage(current_user, filename):
@@ -1263,12 +1286,14 @@ def run_backup_now(current_user):
         backup.attachments_count = len(export_data.get('attachments', []))
         
         # Send to external server if requested
+        external_error = None
         if send_external:
             schedule = BackupSchedule.query.filter_by(user_id=current_user.id).first()
             if schedule and schedule.external_enabled:
                 zip_buffer.seek(0)
-                result, error = send_to_external_server(zip_buffer.read(), schedule)
+                result, error = send_to_external_server(zip_buffer.read(), schedule, filename=filename)
                 if error:
+                    external_error = error
                     backup.error_message = f"Backup saved locally, but external upload failed: {error}"
         
         backup.status = 'completed'
@@ -1285,10 +1310,14 @@ def run_backup_now(current_user):
         
         db.session.commit()
         
-        return jsonify({
-            'message': 'Backup completed successfully',
+        response_data = {
+            'message': 'Backup completed successfully' if not external_error else 'Backup saved locally, but external upload failed',
             'backup': backup.to_dict()
-        })
+        }
+        if external_error:
+            response_data['external_error'] = external_error
+        
+        return jsonify(response_data)
     
     except Exception as e:
         backup.status = 'failed'
