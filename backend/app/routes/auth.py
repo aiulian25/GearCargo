@@ -45,6 +45,72 @@ COMMON_PASSWORDS = {
 }
 
 
+def _normalize_host(hostname):
+    """Normalize host/domain values for safe comparisons."""
+    if not hostname:
+        return ''
+
+    # Keep the first value if a proxy provides a comma-separated list.
+    value = hostname.split(',')[0].strip().lower()
+
+    # Strip scheme/path if a full URL is provided by mistake.
+    value = re.sub(r'^https?://', '', value)
+    value = value.split('/')[0]
+    return value
+
+
+def _strip_port(hostname):
+    """Return hostname without port when present."""
+    if not hostname:
+        return ''
+    return hostname.split(':')[0]
+
+
+def _request_host():
+    """Resolve the external host from reverse-proxy aware headers."""
+    forwarded_host = request.headers.get('X-Forwarded-Host')
+    host = _normalize_host(forwarded_host or request.host or request.headers.get('Host', ''))
+    return host
+
+
+def _config_domain(key):
+    """Read and normalize configured domain from app config."""
+    return _normalize_host(current_app.config.get(key, ''))
+
+
+def _is_host_match(request_host, configured_host):
+    """Match host with or without explicit ports."""
+    if not request_host or not configured_host:
+        return False
+    return request_host == configured_host or _strip_port(request_host) == _strip_port(configured_host)
+
+
+def _is_request_on_domain(config_key):
+    """Check whether current request is on a configured domain."""
+    configured = _config_domain(config_key)
+    if not configured:
+        return False
+    return _is_host_match(_request_host(), configured)
+
+
+def _enforce_login_domain_policy(user):
+    """Enforce admin/user login segregation by configured domains."""
+    on_admin_domain = _is_request_on_domain('ADMIN_DOMAIN')
+    on_user_domain = _is_request_on_domain('USER_DOMAIN')
+
+    # If domains are not configured, skip policy enforcement.
+    if not on_admin_domain and not on_user_domain:
+        return None
+
+    if on_admin_domain and not user.is_admin:
+        return jsonify({'error': 'This domain is restricted to admin accounts'}), 403
+
+    if on_user_domain and user.is_admin:
+        return jsonify({'error': 'Admin accounts must login from the admin domain'}), 403
+
+    return None
+
+
 def validate_password_strength(password):
     """
     Validate password strength. Returns (is_valid, error_message, strength_score).
@@ -703,6 +769,18 @@ def register():
         if not data.get(field):
             return jsonify({'error': f'{field} is required'}), 400
     
+    # Public signup is closed once an admin exists.
+    if User.query.filter_by(is_admin=True).first():
+        return jsonify({'error': 'Public signup is disabled. Ask an admin to create your account.'}), 403
+
+    # Initial bootstrap signup can only happen from admin domain when configured.
+    if _config_domain('ADMIN_DOMAIN') and not _is_request_on_domain('ADMIN_DOMAIN'):
+        return jsonify({'error': 'Initial registration is only allowed on the admin domain'}), 403
+
+    # Explicitly block registration from user domain when configured.
+    if _is_request_on_domain('USER_DOMAIN'):
+        return jsonify({'error': 'Registration is not allowed on the user domain'}), 403
+
     # Check if email exists
     if User.query.filter_by(email=data['email'].lower()).first():
         return jsonify({'error': 'Email already registered'}), 409
@@ -1043,6 +1121,19 @@ def login():
             error_message='Account disabled'
         )
         return jsonify({'error': 'Account is disabled'}), 401
+
+    domain_policy_error = _enforce_login_domain_policy(user)
+    if domain_policy_error:
+        ActivityLog.log(
+            event_type='login_blocked_domain',
+            event_category='auth',
+            user_id=user.id,
+            description=f'Login blocked by domain policy for: {email}',
+            success=False,
+            error_message='Domain policy violation',
+            extra_data={'host': _request_host(), 'is_admin': user.is_admin}
+        )
+        return domain_policy_error
     
     # Check 2FA if enabled
     if user.two_factor_enabled:

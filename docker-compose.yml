@@ -68,6 +68,10 @@ services:
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       
+      # Domain-based access control (SECURITY)
+      - ADMIN_DOMAIN=${ADMIN_DOMAIN:-}
+      - USER_DOMAIN=${USER_DOMAIN:-}
+      
       # Email
       - MAIL_ENABLED=${MAIL_ENABLED:-false}
       - MAIL_SERVER=${MAIL_SERVER:-}
@@ -81,6 +85,14 @@ services:
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
       - VAPID_SUBJECT=${VAPID_SUBJECT:-mailto:admin@gearcargo.local}
     user: "${PUID:-1000}:${PGID:-1000}"
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     volumes:
       - ./volumes/attachments:/app/volumes/attachments
       - ./volumes/backups:/app/volumes/backups
@@ -118,6 +130,19 @@ services:
       - POSTGRES_USER=gearcargo
       - POSTGRES_PASSWORD=${DB_PASSWORD}
       - POSTGRES_DB=gearcargo
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    tmpfs:
+      - /tmp
+      - /run/postgresql
     volumes:
       - ./volumes/db:/var/lib/postgresql/data
     restart: unless-stopped
@@ -136,6 +161,16 @@ services:
     image: redis:7-alpine
     container_name: gearcargo-redis
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-changeme}
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETGID
+      - SETUID
     volumes:
       - ./volumes/redis:/data
     restart: unless-stopped

@@ -64,6 +64,10 @@ services:
       - ADMIN_USERNAME=${ADMIN_USERNAME:-}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       
+      # Domain-based access control (SECURITY)
+      - ADMIN_DOMAIN=${ADMIN_DOMAIN:-}
+      - USER_DOMAIN=${USER_DOMAIN:-}
+      
       # Ollama AI (optional)
       - OLLAMA_ENABLED=${OLLAMA_ENABLED:-false}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
@@ -90,6 +94,14 @@ services:
       - ./volumes/attachments:/app/volumes/attachments
       - ./volumes/backups:/app/volumes/backups
       - ./volumes/uploads:/app/uploads
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       db:
         condition: service_healthy
@@ -131,6 +143,19 @@ services:
       - POSTGRES_PASSWORD=${DB_PASSWORD}
       - POSTGRES_DB=gearcargo
       - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    tmpfs:
+      - /tmp
+      - /run/postgresql
     volumes:
       - ./volumes/db:/var/lib/postgresql/data
     restart: always
@@ -167,6 +192,16 @@ services:
       --requirepass ${REDIS_PASSWORD}
       --maxmemory 128mb
       --maxmemory-policy allkeys-lru
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETGID
+      - SETUID
     volumes:
       - ./volumes/redis:/data
     restart: always

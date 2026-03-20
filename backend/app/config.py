@@ -12,6 +12,8 @@ class Config:
     # App info
     APP_NAME = os.environ.get('APP_NAME', 'GearCargo')
     APP_URL = os.environ.get('APP_URL', 'http://localhost:5000')
+    ADMIN_DOMAIN = os.environ.get('ADMIN_DOMAIN', '').strip().lower()
+    USER_DOMAIN = os.environ.get('USER_DOMAIN', '').strip().lower()
     
     # Flask
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')

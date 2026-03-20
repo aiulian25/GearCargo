@@ -381,6 +381,8 @@ Visit https://vapidkeys.com/ (use only for testing)
 # Application
 APP_URL=https://gearcargo.yourdomain.com
 APP_PORT=5000
+ADMIN_DOMAIN=garaj.yourdomain.com
+USER_DOMAIN=car.yourdomain.com
 
 # Database (CHANGE THIS!)
 DB_PASSWORD=your-super-secure-database-password-here
@@ -460,16 +462,16 @@ ADMIN_PASSWORD=YourSecurePassword123!
 
 ---
 
-### Method 2: Self-Registration (First User Becomes Admin)
+### Method 2: Self-Registration (Bootstrap Only)
 
 If no \`ADMIN_EMAIL\`/\`ADMIN_PASSWORD\` environment variables are set:
 
 1. Start the containers normally
-2. Navigate to http://localhost:5000/register
+2. Navigate to your configured **admin domain** (or http://localhost:5000 if domains are not configured)
 3. **The first user to register automatically becomes the admin**
-4. All subsequent registrations create regular users
+4. After an admin exists, public self-registration is automatically disabled
 
-**Security Note:** This method is simpler but requires you to register immediately after deployment to prevent unauthorized admin creation.
+**Security Note:** This method is bootstrap-only and should be completed immediately after deployment. If \`ADMIN_DOMAIN\` is configured, first registration is only accepted from that domain.
 
 ### Verifying Admin Status
 
@@ -508,6 +510,8 @@ The admin user can:
 | \`DB_PASSWORD\` | ✅ Yes | PostgreSQL password | - |
 | \`REDIS_PASSWORD\` | ✅ Yes | Redis password | \`changeme\` |
 | \`APP_URL\` | ✅ Yes | Public URL of your app | \`http://localhost:5000\` |
+| \`ADMIN_DOMAIN\` | Optional | Domain reserved for admin logins | empty |
+| \`USER_DOMAIN\` | Optional | Domain reserved for non-admin logins | empty |
 | \`CORS_ORIGINS\` | ✅ Yes | Allowed origins (comma-separated) | \`http://localhost:5000\` |
 | \`WTF_CSRF_SECRET_KEY\` | ⚠️ Recommended | CSRF secret | Falls back to SECRET_KEY |
 | \`ENCRYPTION_KEY\` | ⚠️ Recommended | Data encryption key | - |
