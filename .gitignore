@@ -156,3 +156,6 @@ secrets/
 tmp/
 temp/
 *.tmp
+
+# Internal security audit
+Security.md
