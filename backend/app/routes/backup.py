@@ -789,7 +789,7 @@ def restore_from_zip(user, file, merge_mode='merge'):
         db.session.commit()
     
     # Security audit log for data import
-    security_audit.data_import(current_user.id, current_user.email, 'zip' if hasattr(file, 'filename') and file.filename.endswith('.zip') else 'json', success=True)
+    security_audit.data_import(user.id, user.email, 'zip', success=True)
     
     return jsonify({
         'message': 'Import completed',
