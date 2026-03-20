@@ -97,6 +97,7 @@ services:
       - ./volumes/attachments:/app/volumes/attachments
       - ./volumes/backups:/app/volumes/backups
       - ./volumes/uploads:/app/uploads
+      - ./volumes/logs:/app/volumes/logs
     depends_on:
       db:
         condition: service_healthy
@@ -169,6 +170,8 @@ services:
     cap_drop:
       - ALL
     cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
       - SETGID
       - SETUID
     volumes:

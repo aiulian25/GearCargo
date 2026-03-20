@@ -94,6 +94,8 @@ services:
       - ./volumes/attachments:/app/volumes/attachments
       - ./volumes/backups:/app/volumes/backups
       - ./volumes/uploads:/app/uploads
+      - ./volumes/logs:/app/volumes/logs
+    user: "1000:1000"
     read_only: true
     tmpfs:
       - /tmp
@@ -200,6 +202,8 @@ services:
     cap_drop:
       - ALL
     cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
       - SETGID
       - SETUID
     volumes:

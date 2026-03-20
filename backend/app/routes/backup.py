@@ -192,35 +192,103 @@ def save_backup_to_disk(user, zip_buffer, include_attachments=True):
     return filename, filepath, file_size
 
 
-def send_to_external_server(backup_data, schedule):
-    """Send backup to external server via HTTPS."""
+def _webdav_base_url(server_url):
+    """Build the WebDAV base URL from a Nextcloud/server URL.
+
+    If the URL already contains '/remote.php/dav' it is returned as-is.
+    Otherwise we append the standard Nextcloud WebDAV path.
+    """
+    url = server_url.rstrip('/')
+    if '/remote.php/dav' in url or '/remote.php/webdav' in url:
+        return url
+    # Standard Nextcloud WebDAV endpoint
+    return url + '/remote.php/dav/files'
+
+
+def _webdav_auth(schedule):
+    """Return a (username, password) tuple for WebDAV Basic auth.
+
+    The 'external_api_key' field stores either:
+      - "user:apppassword"  (preferred)
+      - plain app-password  (username taken from URL)
+    """
+    token = schedule.external_api_key or ''
+    if ':' in token:
+        parts = token.split(':', 1)
+        return (parts[0], parts[1])
+    # Fallback: use the token as password with empty user
+    return (token, token)
+
+
+def _webdav_upload_url(schedule, filename):
+    """Build the full WebDAV PUT URL for a backup file."""
+    base = _webdav_base_url(schedule.external_url)
+    auth = _webdav_auth(schedule)
+    path = (schedule.external_path or '/GearCargo').strip('/')
+    # Build: <base>/<user>/path/filename
+    return f"{base}/{auth[0]}/{path}/{filename}"
+
+
+def _ensure_webdav_folder(schedule):
+    """Create the target folder on the WebDAV server if it doesn't exist (MKCOL)."""
+    base = _webdav_base_url(schedule.external_url)
+    auth = _webdav_auth(schedule)
+    path = (schedule.external_path or '/GearCargo').strip('/')
+
+    # Create each path segment
+    segments = path.split('/')
+    current = f"{base}/{auth[0]}"
+    for segment in segments:
+        current = f"{current}/{segment}"
+        try:
+            requests.request(
+                'MKCOL', current,
+                auth=auth, timeout=15, verify=True
+            )
+        except requests.exceptions.RequestException:
+            pass  # Folder may already exist — MKCOL returns 405
+
+
+def send_to_external_server(backup_data, schedule, filename=None):
+    """Send backup to external server via WebDAV (Nextcloud compatible)."""
     if not schedule.external_enabled or not schedule.external_url:
         return None, "External backup not configured"
-    
+
+    # Validate URL is HTTPS for security
+    if not schedule.external_url.startswith('https://'):
+        return None, "External URL must use HTTPS for security"
+
+    if not filename:
+        filename = f'gearcargo_backup_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.zip'
+
     try:
-        headers = {
-            'Content-Type': 'application/octet-stream',
-            'X-API-Key': schedule.external_api_key or '',
-            'X-Backup-Path': schedule.external_path or '/backups',
-        }
-        
-        # Validate URL is HTTPS for security
-        if not schedule.external_url.startswith('https://'):
-            return None, "External URL must use HTTPS for security"
-        
+        auth = _webdav_auth(schedule)
+
+        # Ensure target folder exists
+        _ensure_webdav_folder(schedule)
+
+        # Upload via WebDAV PUT
+        upload_url = _webdav_upload_url(schedule, filename)
         response = requests.put(
-            schedule.external_url,
+            upload_url,
             data=backup_data,
-            headers=headers,
-            timeout=300,  # 5 minutes timeout for large backups
-            verify=True  # Verify SSL certificate
+            auth=auth,
+            headers={'Content-Type': 'application/octet-stream'},
+            timeout=300,
+            verify=True
         )
-        
-        if response.status_code in [200, 201]:
-            return response.json() if response.content else {'status': 'success'}, None
+
+        if response.status_code in [200, 201, 204]:
+            return {'status': 'success', 'filename': filename}, None
+        elif response.status_code == 401:
+            return None, "Authentication failed. Check your username and app password."
+        elif response.status_code == 403:
+            return None, "Permission denied. Check folder permissions on the server."
+        elif response.status_code == 409:
+            return None, "Target folder does not exist and could not be created."
         else:
-            return None, f"External server returned {response.status_code}: {response.text}"
-    
+            return None, f"Server returned {response.status_code}: {response.text[:200]}"
+
     except requests.exceptions.SSLError as e:
         return None, f"SSL certificate error: {str(e)}"
     except requests.exceptions.Timeout:
@@ -1237,46 +1305,127 @@ def run_backup_now(current_user):
 @backup_bp.route('/external/test', methods=['POST'])
 @token_required
 def test_external_connection(current_user):
-    """Test connection to external backup server."""
+    """Test connection to external backup server via WebDAV PROPFIND."""
     data = request.get_json()
-    
+
     if not data.get('url'):
         return jsonify({'error': 'URL is required'}), 400
-    
+
     url = data['url']
     api_key = data.get('api_key', '')
-    
+    path = data.get('path', '/GearCargo')
+
     # Validate HTTPS
     if not url.startswith('https://'):
         return jsonify({'error': 'URL must use HTTPS for security'}), 400
-    
+
+    # Build auth tuple
+    if ':' in api_key:
+        parts = api_key.split(':', 1)
+        auth = (parts[0], parts[1])
+    else:
+        auth = (api_key, api_key)
+
     try:
-        headers = {
-            'Content-Type': 'application/json',
-            'X-API-Key': api_key,
-        }
-        
-        response = requests.get(
-            url,
-            headers=headers,
+        # Test with WebDAV PROPFIND on the user root
+        base = _webdav_base_url(url)
+        propfind_url = f"{base}/{auth[0]}"
+
+        response = requests.request(
+            'PROPFIND',
+            propfind_url,
+            auth=auth,
+            headers={'Depth': '0', 'Content-Type': 'application/xml'},
             timeout=10,
             verify=True
         )
-        
-        return jsonify({
-            'success': response.status_code in [200, 204],
-            'status_code': response.status_code,
-            'message': 'Connection successful' if response.status_code in [200, 204] else f'Server returned {response.status_code}'
-        })
-    
+
+        if response.status_code in [200, 207]:  # 207 Multi-Status is normal for PROPFIND
+            return jsonify({
+                'success': True,
+                'message': 'WebDAV connection successful'
+            })
+        elif response.status_code == 401:
+            return jsonify({
+                'success': False,
+                'error': 'Authentication failed. Use format "username:app-password" in the API Key field.'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': f'Server returned {response.status_code}'
+            })
+
     except requests.exceptions.SSLError as e:
         current_app.logger.warning(f'External backup SSL error: {e}')
-        return jsonify({'success': False, 'error': 'SSL certificate verification failed. Please check the server certificate.'}), 200
+        return jsonify({'success': False, 'error': 'SSL certificate verification failed.'}), 200
     except requests.exceptions.Timeout:
         return jsonify({'success': False, 'error': 'Connection timed out'}), 200
     except requests.exceptions.RequestException as e:
         current_app.logger.warning(f'External backup connection failed: {e}')
-        return jsonify({'success': False, 'error': 'Connection failed. Please check the URL and try again.'}), 200
+        return jsonify({'success': False, 'error': 'Connection failed. Check the URL and try again.'}), 200
+
+
+@backup_bp.route('/external/browse', methods=['POST'])
+@token_required
+def browse_external_folders(current_user):
+    """List folders on the external WebDAV server for path selection."""
+    data = request.get_json()
+
+    if not data.get('url') or not data.get('api_key'):
+        return jsonify({'error': 'URL and API Key are required'}), 400
+
+    url = data['url']
+    api_key = data['api_key']
+    path = data.get('path', '/')  # Relative path to browse
+
+    if not url.startswith('https://'):
+        return jsonify({'error': 'URL must use HTTPS'}), 400
+
+    # Build auth
+    if ':' in api_key:
+        parts = api_key.split(':', 1)
+        auth = (parts[0], parts[1])
+    else:
+        auth = (api_key, api_key)
+
+    try:
+        base = _webdav_base_url(url)
+        browse_path = path.strip('/')
+        browse_url = f"{base}/{auth[0]}/{browse_path}" if browse_path else f"{base}/{auth[0]}"
+
+        response = requests.request(
+            'PROPFIND',
+            browse_url,
+            auth=auth,
+            headers={'Depth': '1', 'Content-Type': 'application/xml'},
+            timeout=10,
+            verify=True
+        )
+
+        if response.status_code not in [200, 207]:
+            return jsonify({'error': f'Server returned {response.status_code}'}), 400
+
+        # Parse WebDAV XML response for folder names
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(response.text)
+        ns = {'d': 'DAV:'}
+
+        folders = []
+        for resp_elem in root.findall('.//d:response', ns):
+            href = resp_elem.find('d:href', ns)
+            restype = resp_elem.find('.//d:resourcetype/d:collection', ns)
+            if href is not None and restype is not None:
+                folder_path = href.text.rstrip('/')
+                # Extract the folder name from the full href
+                name = folder_path.split('/')[-1] if '/' in folder_path else folder_path
+                if name and name != auth[0]:  # Skip the root user folder itself
+                    folders.append(name)
+
+        return jsonify({'folders': sorted(folders), 'current_path': path})
+
+    except requests.exceptions.RequestException as e:
+        return jsonify({'error': f'Failed to browse: {str(e)}'}), 400
 
 
 @backup_bp.route('/stats', methods=['GET'])

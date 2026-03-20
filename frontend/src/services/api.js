@@ -296,8 +296,12 @@ export const backupApi = {
     api.post('/backup/run-now', { include_attachments: includeAttachments, send_external: sendExternal }),
   
   // Test external server connection
-  testExternalConnection: (url, apiKey = '') => 
-    api.post('/backup/external/test', { url, api_key: apiKey }),
+  testExternalConnection: (url, apiKey = '', path = '/GearCargo') => 
+    api.post('/backup/external/test', { url, api_key: apiKey, path }),
+
+  // Browse external server folders (WebDAV)
+  browseExternalFolders: (url, apiKey, path = '/') =>
+    api.post('/backup/external/browse', { url, api_key: apiKey, path }),
   
   // Import from LubeLogger backup
   importLubelog: (formData) => api.post('/backup/import/lubelog', formData, {

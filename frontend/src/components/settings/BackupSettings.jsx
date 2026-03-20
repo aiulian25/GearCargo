@@ -101,6 +101,9 @@ export default function BackupSettings() {
   const [showExternalSettings, setShowExternalSettings] = useState(false)
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false)
   const [showBackupList, setShowBackupList] = useState(false)
+  const [browsingFolders, setBrowsingFolders] = useState(false)
+  const [externalFolders, setExternalFolders] = useState(null)
+  const [browsePath, setBrowsePath] = useState('/')
   
   const dayNames = [
     t('backup.monday') || 'Monday',
@@ -354,10 +357,10 @@ export default function BackupSettings() {
     
     try {
       setTestingConnection(true)
-      const response = await backupApi.testExternalConnection(schedule.external_url, schedule.external_api_key)
+      const response = await backupApi.testExternalConnection(schedule.external_url, schedule.external_api_key, schedule.external_path)
       
       if (response.data.success) {
-        toast.success(t('backup.connectionSuccess') || 'Connection successful')
+        toast.success(response.data.message || t('backup.connectionSuccess') || 'Connection successful')
       } else {
         toast.error(response.data.error || t('backup.connectionFailed') || 'Connection failed')
       }
@@ -367,6 +370,30 @@ export default function BackupSettings() {
     } finally {
       setTestingConnection(false)
     }
+  }
+
+  const browseExternalFolders = async (path = '/') => {
+    if (!schedule.external_url || !schedule.external_api_key) {
+      toast.error(t('backup.enterUrlAndKey') || 'Enter server URL and credentials first')
+      return
+    }
+    try {
+      setBrowsingFolders(true)
+      const response = await backupApi.browseExternalFolders(schedule.external_url, schedule.external_api_key, path)
+      setExternalFolders(response.data.folders)
+      setBrowsePath(path)
+    } catch (error) {
+      console.error('Browse failed:', error)
+      toast.error(error.response?.data?.error || 'Failed to browse folders')
+    } finally {
+      setBrowsingFolders(false)
+    }
+  }
+
+  const selectExternalFolder = (folder) => {
+    const newPath = browsePath === '/' ? `/${folder}` : `${browsePath}/${folder}`
+    handleScheduleChange('external_path', newPath)
+    setExternalFolders(null)
   }
   
   if (loading) {
@@ -672,10 +699,101 @@ export default function BackupSettings() {
                     type="password"
                     value={schedule.external_api_key}
                     onChange={(e) => handleScheduleChange('external_api_key', e.target.value)}
-                    placeholder="••••••••"
+                    placeholder="username:app-password"
                     className="w-full p-3 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-border)] placeholder-[var(--color-text-muted)]"
                   />
+                  <p className="text-2xs text-[var(--color-text-muted)] mt-1">
+                    {t('backup.apiKeyHint') || 'For Nextcloud: username:app-password'}
+                  </p>
                 </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-2">
+                    {t('backup.backupPath') || 'Backup Folder Path'}
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={schedule.external_path}
+                      onChange={(e) => handleScheduleChange('external_path', e.target.value)}
+                      placeholder="/GearCargo"
+                      className="flex-1 p-3 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-border)] placeholder-[var(--color-text-muted)]"
+                    />
+                    <button
+                      onClick={() => browseExternalFolders('/')}
+                      disabled={browsingFolders || !schedule.external_api_key}
+                      className="px-3 py-2 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]/80 transition-colors disabled:opacity-50"
+                      title={t('backup.browseFolders') || 'Browse folders'}
+                    >
+                      {browsingFolders ? (
+                        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        Icons.folder
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-2xs text-[var(--color-text-muted)] mt-1">
+                    {t('backup.backupPathHint') || 'Folder will be created automatically if it doesn\'t exist'}
+                  </p>
+                </div>
+
+                {/* Folder browser */}
+                {externalFolders !== null && (
+                  <div className="bg-[var(--color-bg-secondary)] rounded-lg p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-[var(--color-text-secondary)]">
+                        {browsePath === '/' ? 'Root' : browsePath}
+                      </span>
+                      <div className="flex gap-2">
+                        {browsePath !== '/' && (
+                          <button
+                            onClick={() => {
+                              const parent = browsePath.split('/').slice(0, -1).join('/') || '/'
+                              browseExternalFolders(parent)
+                            }}
+                            className="text-xs text-[var(--color-accent)] hover:underline"
+                          >
+                            ↑ {t('backup.parentFolder') || 'Up'}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setExternalFolders(null)}
+                          className="text-xs text-[var(--color-text-muted)] hover:underline"
+                        >
+                          {t('common.close') || 'Close'}
+                        </button>
+                      </div>
+                    </div>
+                    {externalFolders.length === 0 ? (
+                      <p className="text-2xs text-[var(--color-text-muted)] italic">
+                        {t('backup.noFolders') || 'No subfolders found'}
+                      </p>
+                    ) : (
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {externalFolders.map((folder) => (
+                          <div key={folder} className="flex items-center justify-between p-2 rounded hover:bg-[var(--color-bg-tertiary)] transition-colors">
+                            <button
+                              onClick={() => {
+                                const newPath = browsePath === '/' ? `/${folder}` : `${browsePath}/${folder}`
+                                browseExternalFolders(newPath)
+                              }}
+                              className="flex items-center gap-2 text-sm text-[var(--color-text-primary)] flex-1 text-left"
+                            >
+                              {Icons.folder}
+                              <span>{folder}</span>
+                            </button>
+                            <button
+                              onClick={() => selectExternalFolder(folder)}
+                              className="text-xs text-[var(--color-accent)] hover:underline px-2"
+                            >
+                              {t('backup.selectFolder') || 'Select'}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 
                 <button
                   onClick={testExternalConnection}
