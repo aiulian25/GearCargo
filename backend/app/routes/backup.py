@@ -5,6 +5,7 @@ Comprehensive backup system with auto-backups, external destinations, and attach
 
 import os
 import json
+import time
 import zipfile
 import shutil
 import hashlib
@@ -267,16 +268,36 @@ def send_to_external_server(backup_data, schedule, filename=None):
         # Ensure target folder exists
         _ensure_webdav_folder(schedule)
 
-        # Upload via WebDAV PUT
+        # Upload via WebDAV PUT with Nextcloud-compatible headers
         upload_url = _webdav_upload_url(schedule, filename)
+        headers = {
+            'Content-Type': 'application/octet-stream',
+            'X-OC-Mtime': str(int(time.time())),
+            'OCS-APIREQUEST': 'true',
+        }
+
         response = requests.put(
             upload_url,
             data=backup_data,
             auth=auth,
-            headers={'Content-Type': 'application/octet-stream'},
+            headers=headers,
             timeout=300,
             verify=True
         )
+
+        # Handle 423 Locked — delete the locked file and retry once
+        if response.status_code == 423:
+            current_app.logger.warning(f'WebDAV 423 Locked on {filename}, deleting and retrying')
+            requests.delete(upload_url, auth=auth, timeout=30, verify=True)
+            time.sleep(1)
+            response = requests.put(
+                upload_url,
+                data=backup_data,
+                auth=auth,
+                headers=headers,
+                timeout=300,
+                verify=True
+            )
 
         if response.status_code in [200, 201, 204]:
             return {'status': 'success', 'filename': filename}, None
@@ -286,6 +307,8 @@ def send_to_external_server(backup_data, schedule, filename=None):
             return None, "Permission denied. Check folder permissions on the server."
         elif response.status_code == 409:
             return None, "Target folder does not exist and could not be created."
+        elif response.status_code == 423:
+            return None, "File is locked on the server. Try again in a few minutes or unlock it in Nextcloud."
         else:
             return None, f"Server returned {response.status_code}: {response.text[:200]}"
 
