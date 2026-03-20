@@ -1230,6 +1230,9 @@ def update_backup_schedule(current_user):
     
     for field in allowed:
         if field in data:
+            # Don't overwrite stored API key with empty string
+            if field == 'external_api_key' and not data[field]:
+                continue
             setattr(schedule, field, data[field])
     
     # Calculate next run time if enabled
@@ -1331,6 +1334,59 @@ def run_backup_now(current_user):
         return jsonify({'error': f'Backup failed: {type(e).__name__}: {e}'}), 500
 
 
+@backup_bp.route('/send-external', methods=['POST'])
+@token_required
+def send_latest_to_external(current_user):
+    """Send the latest stored backup (or a specific one) to the external server."""
+    data = request.get_json() or {}
+    target_filename = data.get('filename')  # Optional: specific backup file
+
+    schedule = BackupSchedule.query.filter_by(user_id=current_user.id).first()
+    if not schedule or not schedule.external_enabled or not schedule.external_url:
+        return jsonify({'error': 'External backup is not configured. Enable it in settings first.'}), 400
+
+    backup_folder = get_backup_folder()
+    user_folder = os.path.join(backup_folder, str(current_user.id))
+
+    if target_filename:
+        # Validate filename (prevent directory traversal)
+        if '..' in target_filename or '/' in target_filename or '\\' in target_filename:
+            return jsonify({'error': 'Invalid filename'}), 400
+        filepath = os.path.join(user_folder, target_filename)
+    else:
+        # Find latest backup
+        if not os.path.exists(user_folder):
+            return jsonify({'error': 'No stored backups found. Run a backup first.'}), 404
+        files = sorted(
+            [f for f in os.listdir(user_folder) if f.startswith('backup_') and f.endswith('.zip')],
+            reverse=True
+        )
+        if not files:
+            return jsonify({'error': 'No stored backups found. Run a backup first.'}), 404
+        target_filename = files[0]
+        filepath = os.path.join(user_folder, target_filename)
+
+    if not os.path.exists(filepath):
+        return jsonify({'error': 'Backup file not found'}), 404
+
+    try:
+        with open(filepath, 'rb') as f:
+            backup_data = f.read()
+
+        result, error = send_to_external_server(backup_data, schedule, filename=target_filename)
+        if error:
+            return jsonify({'error': error}), 400
+
+        return jsonify({
+            'message': f'Backup sent to external server successfully',
+            'filename': target_filename,
+            'size': len(backup_data)
+        })
+    except Exception as e:
+        current_app.logger.error(f'Send to external failed: {e}', exc_info=True)
+        return jsonify({'error': f'Failed: {str(e)}'}), 500
+
+
 @backup_bp.route('/external/test', methods=['POST'])
 @token_required
 def test_external_connection(current_user):
@@ -1343,6 +1399,12 @@ def test_external_connection(current_user):
     url = data['url']
     api_key = data.get('api_key', '')
     path = data.get('path', '/GearCargo')
+
+    # Fall back to stored credentials if not provided
+    if not api_key:
+        schedule = BackupSchedule.query.filter_by(user_id=current_user.id).first()
+        if schedule and schedule.external_api_key:
+            api_key = schedule.external_api_key
 
     # Validate HTTPS
     if not url.startswith('https://'):
@@ -1401,12 +1463,21 @@ def browse_external_folders(current_user):
     """List folders on the external WebDAV server for path selection."""
     data = request.get_json()
 
-    if not data.get('url') or not data.get('api_key'):
-        return jsonify({'error': 'URL and API Key are required'}), 400
+    if not data.get('url'):
+        return jsonify({'error': 'URL is required'}), 400
 
     url = data['url']
-    api_key = data['api_key']
+    api_key = data.get('api_key', '')
     path = data.get('path', '/')  # Relative path to browse
+
+    # Fall back to stored credentials if not provided
+    if not api_key:
+        schedule = BackupSchedule.query.filter_by(user_id=current_user.id).first()
+        if schedule and schedule.external_api_key:
+            api_key = schedule.external_api_key
+
+    if not api_key:
+        return jsonify({'error': 'API Key is required'}), 400
 
     if not url.startswith('https://'):
         return jsonify({'error': 'URL must use HTTPS'}), 400
@@ -1422,6 +1493,94 @@ def browse_external_folders(current_user):
         base = _webdav_base_url(url)
         browse_path = path.strip('/')
         browse_url = f"{base}/{auth[0]}/{browse_path}" if browse_path else f"{base}/{auth[0]}"
+        # Ensure trailing slash for PROPFIND on collections
+        if not browse_url.endswith('/'):
+            browse_url += '/'
+
+        current_app.logger.info(f'WebDAV PROPFIND: {browse_url}')
+
+        response = requests.request(
+            'PROPFIND',
+            browse_url,
+            auth=auth,
+            headers={'Depth': '1', 'Content-Type': 'application/xml'},
+            timeout=10,
+            verify=True
+        )
+
+        current_app.logger.info(f'WebDAV PROPFIND response: {response.status_code}')
+
+        if response.status_code not in [200, 207]:
+            return jsonify({'error': f'Server returned {response.status_code}'}), 400
+
+        # Parse WebDAV XML response for folder names
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(response.text)
+        ns = {'d': 'DAV:'}
+
+        # The first <d:response> is always the queried folder itself — skip it
+        responses = root.findall('.//d:response', ns)
+        folders = []
+        for i, resp_elem in enumerate(responses):
+            # Skip the first entry (the queried directory itself)
+            if i == 0:
+                continue
+            restype = resp_elem.find('.//d:resourcetype/d:collection', ns)
+            if restype is not None:
+                href = resp_elem.find('d:href', ns)
+                if href is not None:
+                    # href is like /remote.php/dav/files/user/Documents/Folder/
+                    folder_path = href.text.rstrip('/')
+                    name = folder_path.split('/')[-1] if '/' in folder_path else folder_path
+                    # URL-decode the name
+                    from urllib.parse import unquote
+                    name = unquote(name)
+                    if name:
+                        folders.append(name)
+
+        return jsonify({'folders': sorted(folders), 'current_path': path})
+
+    except requests.exceptions.RequestException as e:
+        current_app.logger.warning(f'WebDAV browse failed: {e}')
+        return jsonify({'error': f'Failed to browse: {str(e)}'}), 400
+
+
+@backup_bp.route('/external/files', methods=['POST'])
+@token_required
+def browse_external_files(current_user):
+    """List backup files (.zip) on the external WebDAV server for restore."""
+    data = request.get_json()
+
+    if not data.get('url'):
+        return jsonify({'error': 'URL is required'}), 400
+
+    url = data['url']
+    api_key = data.get('api_key', '')
+    path = data.get('path', '/GearCargo')
+
+    # Fall back to stored credentials if not provided
+    if not api_key:
+        schedule = BackupSchedule.query.filter_by(user_id=current_user.id).first()
+        if schedule and schedule.external_api_key:
+            api_key = schedule.external_api_key
+
+    if not api_key:
+        return jsonify({'error': 'API Key is required'}), 400
+
+    if not url.startswith('https://'):
+        return jsonify({'error': 'URL must use HTTPS'}), 400
+
+    # Build auth
+    if ':' in api_key:
+        parts = api_key.split(':', 1)
+        auth = (parts[0], parts[1])
+    else:
+        auth = (api_key, api_key)
+
+    try:
+        base = _webdav_base_url(url)
+        browse_path = path.strip('/')
+        browse_url = f"{base}/{auth[0]}/{browse_path}/" if browse_path else f"{base}/{auth[0]}/"
 
         response = requests.request(
             'PROPFIND',
@@ -1435,26 +1594,274 @@ def browse_external_folders(current_user):
         if response.status_code not in [200, 207]:
             return jsonify({'error': f'Server returned {response.status_code}'}), 400
 
-        # Parse WebDAV XML response for folder names
         import xml.etree.ElementTree as ET
+        from urllib.parse import unquote
         root = ET.fromstring(response.text)
         ns = {'d': 'DAV:'}
 
-        folders = []
-        for resp_elem in root.findall('.//d:response', ns):
-            href = resp_elem.find('d:href', ns)
+        files = []
+        responses = root.findall('.//d:response', ns)
+        for i, resp_elem in enumerate(responses):
+            if i == 0:
+                continue  # Skip the queried directory itself
             restype = resp_elem.find('.//d:resourcetype/d:collection', ns)
-            if href is not None and restype is not None:
-                folder_path = href.text.rstrip('/')
-                # Extract the folder name from the full href
-                name = folder_path.split('/')[-1] if '/' in folder_path else folder_path
-                if name and name != auth[0]:  # Skip the root user folder itself
-                    folders.append(name)
+            if restype is None:
+                # It's a file, not a folder
+                href = resp_elem.find('d:href', ns)
+                size_elem = resp_elem.find('.//d:getcontentlength', ns)
+                lastmod_elem = resp_elem.find('.//d:getlastmodified', ns)
+                if href is not None:
+                    name = unquote(href.text.rstrip('/').split('/')[-1])
+                    if name.endswith('.zip'):
+                        files.append({
+                            'name': name,
+                            'size': int(size_elem.text) if size_elem is not None and size_elem.text else 0,
+                            'size_human': format_file_size(int(size_elem.text)) if size_elem is not None and size_elem.text else '?',
+                            'last_modified': lastmod_elem.text if lastmod_elem is not None else None,
+                        })
 
-        return jsonify({'folders': sorted(folders), 'current_path': path})
+        # Sort by name descending (newest first by convention)
+        files.sort(key=lambda f: f['name'], reverse=True)
+        return jsonify({'files': files, 'path': path})
 
     except requests.exceptions.RequestException as e:
+        current_app.logger.warning(f'WebDAV file browse failed: {e}')
         return jsonify({'error': f'Failed to browse: {str(e)}'}), 400
+
+
+@backup_bp.route('/external/restore', methods=['POST'])
+@token_required
+def restore_from_external(current_user):
+    """Download a backup file from external WebDAV server and restore it."""
+    data = request.get_json()
+
+    filename = data.get('filename')
+    if not filename:
+        return jsonify({'error': 'Filename is required'}), 400
+
+    # Validate filename
+    if '..' in filename or '/' in filename or '\\' in filename:
+        return jsonify({'error': 'Invalid filename'}), 400
+
+    if not filename.endswith('.zip'):
+        return jsonify({'error': 'Only .zip backup files are supported'}), 400
+
+    # Get schedule for credentials, or use provided ones
+    schedule = BackupSchedule.query.filter_by(user_id=current_user.id).first()
+    url = data.get('url') or (schedule.external_url if schedule else None)
+    api_key = data.get('api_key') or (schedule.external_api_key if schedule else None)
+    path = data.get('path') or (schedule.external_path if schedule else '/GearCargo')
+
+    if not url or not api_key:
+        return jsonify({'error': 'External backup credentials not configured'}), 400
+
+    if not url.startswith('https://'):
+        return jsonify({'error': 'URL must use HTTPS'}), 400
+
+    # Build auth
+    if ':' in api_key:
+        parts = api_key.split(':', 1)
+        auth = (parts[0], parts[1])
+    else:
+        auth = (api_key, api_key)
+
+    try:
+        base = _webdav_base_url(url)
+        file_path = path.strip('/')
+        download_url = f"{base}/{auth[0]}/{file_path}/{filename}"
+
+        current_app.logger.info(f'Downloading from external: {download_url}')
+
+        response = requests.get(
+            download_url,
+            auth=auth,
+            timeout=300,
+            verify=True,
+            stream=True
+        )
+
+        if response.status_code == 404:
+            return jsonify({'error': 'File not found on external server'}), 404
+        elif response.status_code == 401:
+            return jsonify({'error': 'Authentication failed'}), 401
+        elif response.status_code not in [200]:
+            return jsonify({'error': f'Server returned {response.status_code}'}), 400
+
+        # Read the file content
+        file_content = response.content
+        merge_mode = data.get('merge_mode', 'merge')
+
+        # Optionally save locally first
+        backup_folder = get_backup_folder()
+        user_folder = os.path.join(backup_folder, str(current_user.id))
+        os.makedirs(user_folder, exist_ok=True)
+        local_path = os.path.join(user_folder, filename)
+        with open(local_path, 'wb') as f:
+            f.write(file_content)
+
+        # Restore from the downloaded ZIP
+        zip_data = BytesIO(file_content)
+        with zipfile.ZipFile(zip_data, 'r') as zf:
+            if 'backup_data.json' not in zf.namelist():
+                return jsonify({'error': 'Invalid backup file: missing backup_data.json'}), 400
+
+            backup_data = json.loads(zf.read('backup_data.json').decode('utf-8'))
+            imported, vehicle_id_map, entry_id_map = import_backup_data(current_user, backup_data, merge_mode)
+
+            imported['attachments'] = 0
+            imported['vehicle_photos'] = 0
+            attachment_id_map = {}
+
+            attachment_folder = get_attachment_folder()
+            user_attachment_folder = os.path.join(attachment_folder, str(current_user.id))
+            os.makedirs(user_attachment_folder, exist_ok=True)
+
+            attachment_metadata = {}
+            for att in backup_data.get('attachments', []):
+                attachment_metadata[str(att.get('id'))] = att
+
+            uploads_folder = get_uploads_folder()
+            vehicle_photo_folder = os.path.join(uploads_folder, 'vehicles')
+            os.makedirs(vehicle_photo_folder, mode=0o750, exist_ok=True)
+
+            for name in zf.namelist():
+                if name.startswith('uploads/vehicles/'):
+                    parts = name.split('/')
+                    if len(parts) >= 4 and parts[3]:
+                        try:
+                            old_vehicle_id = int(parts[2])
+                        except ValueError:
+                            continue
+                        new_vehicle_id = vehicle_id_map.get(old_vehicle_id)
+                        if not new_vehicle_id:
+                            continue
+                        content = zf.read(name)
+                        ext = parts[3].rsplit('.', 1)[1] if '.' in parts[3] else 'jpg'
+                        import uuid
+                        new_filename_v = f"{new_vehicle_id}_{uuid.uuid4().hex}.{ext}"
+                        new_filepath = os.path.join(vehicle_photo_folder, new_filename_v)
+                        with open(new_filepath, 'wb') as f:
+                            f.write(content)
+                        os.chmod(new_filepath, 0o640)
+                        vehicle = Vehicle.query.get(new_vehicle_id)
+                        if vehicle:
+                            vehicle.photo = f"/uploads/vehicles/{new_filename_v}"
+                            imported['vehicle_photos'] += 1
+
+                elif name.startswith('attachments/'):
+                    parts = name.split('/')
+                    if len(parts) >= 3 and parts[2]:
+                        old_id = parts[1]
+                        att_filename = parts[2]
+                        content = zf.read(name)
+                        new_filepath = os.path.join(user_attachment_folder, att_filename)
+                        with open(new_filepath, 'wb') as f:
+                            f.write(content)
+                        att_meta = attachment_metadata.get(old_id, {})
+                        old_vehicle_id = att_meta.get('vehicle_id')
+                        new_vehicle_id = vehicle_id_map.get(old_vehicle_id) if old_vehicle_id else None
+                        old_entry_id = att_meta.get('entry_id')
+                        new_entry_id = entry_id_map.get(old_entry_id) if old_entry_id else None
+                        attachment = Attachment(
+                            user_id=current_user.id,
+                            filename=att_filename,
+                            original_filename=att_meta.get('original_filename', att_filename),
+                            filepath=new_filepath,
+                            file_type=att_meta.get('file_type'),
+                            file_size=len(content),
+                            description=att_meta.get('description'),
+                            category=att_meta.get('category'),
+                            tags=att_meta.get('tags'),
+                            vehicle_id=new_vehicle_id,
+                            entry_id=new_entry_id,
+                        )
+                        db.session.add(attachment)
+                        db.session.flush()
+                        try:
+                            attachment_id_map[int(old_id)] = attachment.id
+                        except ValueError:
+                            pass
+                        imported['attachments'] += 1
+
+            db.session.commit()
+
+        security_audit.data_import(current_user.id, current_user.email, 'external_zip', success=True)
+
+        return jsonify({
+            'message': 'Restore from external backup completed',
+            'imported': imported,
+            'saved_locally': True,
+            'local_filename': filename,
+        })
+
+    except requests.exceptions.Timeout:
+        return jsonify({'error': 'Download timed out'}), 504
+    except requests.exceptions.RequestException as e:
+        current_app.logger.error(f'External restore download failed: {e}')
+        return jsonify({'error': f'Failed to download: {str(e)}'}), 400
+    except zipfile.BadZipFile:
+        return jsonify({'error': 'Downloaded file is not a valid ZIP'}), 400
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'External restore failed: {e}', exc_info=True)
+        return jsonify({'error': f'Restore failed: {str(e)}'}), 500
+
+
+@backup_bp.route('/upload', methods=['POST'])
+@token_required
+def upload_backup(current_user):
+    """Upload a backup .zip file to stored backups (without restoring)."""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+
+    if not file.filename.lower().endswith('.zip'):
+        return jsonify({'error': 'Only .zip backup files are supported'}), 400
+
+    try:
+        content = file.read()
+
+        # Validate it's a real ZIP with backup_data.json
+        zip_data = BytesIO(content)
+        with zipfile.ZipFile(zip_data, 'r') as zf:
+            if 'backup_data.json' not in zf.namelist():
+                return jsonify({'error': 'Invalid backup file: missing backup_data.json'}), 400
+
+        # Save to backup storage
+        backup_folder = get_backup_folder()
+        user_folder = os.path.join(backup_folder, str(current_user.id))
+        os.makedirs(user_folder, exist_ok=True)
+
+        # Use original filename or generate one
+        safe_name = file.filename.replace('..', '').replace('/', '').replace('\\', '')
+        if not safe_name.startswith('backup_'):
+            safe_name = f'backup_{safe_name}'
+        filepath = os.path.join(user_folder, safe_name)
+
+        # Don't overwrite existing
+        if os.path.exists(filepath):
+            base, ext = os.path.splitext(safe_name)
+            safe_name = f'{base}_{datetime.utcnow().strftime("%H%M%S")}{ext}'
+            filepath = os.path.join(user_folder, safe_name)
+
+        with open(filepath, 'wb') as f:
+            f.write(content)
+
+        return jsonify({
+            'message': 'Backup uploaded successfully',
+            'filename': safe_name,
+            'size': len(content),
+            'size_human': format_file_size(len(content)),
+        })
+
+    except zipfile.BadZipFile:
+        return jsonify({'error': 'File is not a valid ZIP archive'}), 400
+    except Exception as e:
+        current_app.logger.error(f'Upload backup failed: {e}')
+        return jsonify({'error': 'Upload failed'}), 500
 
 
 @backup_bp.route('/stats', methods=['GET'])

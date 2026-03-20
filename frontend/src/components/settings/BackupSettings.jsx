@@ -71,14 +71,21 @@ export default function BackupSettings() {
   const { t } = useTranslation()
   const fileInputRef = useRef(null)
   const lubelogFileInputRef = useRef(null)
+  const uploadInputRef = useRef(null)
   
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [backing, setBacking] = useState(false)
+  const [sendingExternal, setSendingExternal] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importingLubelog, setImportingLubelog] = useState(false)
   const [lubelogDistanceUnit, setLubelogDistanceUnit] = useState('miles')
   const [testingConnection, setTestingConnection] = useState(false)
+  const [showApiKey, setShowApiKey] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [externalFiles, setExternalFiles] = useState(null)
+  const [browsingFiles, setBrowsingFiles] = useState(false)
+  const [restoringExternal, setRestoringExternal] = useState(false)
   
   const [status, setStatus] = useState(null)
   const [schedule, setSchedule] = useState({
@@ -348,6 +355,85 @@ export default function BackupSettings() {
       toast.error(t('backup.deleteFailed') || 'Failed to delete backup')
     }
   }
+
+  const handleUploadClick = () => {
+    uploadInputRef.current?.click()
+  }
+
+  const handleUploadFile = async (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (!file.name.toLowerCase().endsWith('.zip')) {
+      toast.error(t('backup.invalidZipFile') || 'Please select a .zip backup file')
+      event.target.value = ''
+      return
+    }
+
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const response = await backupApi.uploadBackup(formData)
+      toast.success(response.data.message || 'Backup uploaded')
+      loadBackupStatus()
+    } catch (error) {
+      console.error('Upload failed:', error)
+      toast.error(error.response?.data?.error || 'Failed to upload backup')
+    } finally {
+      setUploading(false)
+      event.target.value = ''
+    }
+  }
+
+  const browseExternalFiles = async () => {
+    if (!schedule.external_url || (!schedule.external_api_key && !schedule.has_external_api_key)) {
+      toast.error(t('backup.enterUrlAndKey') || 'Enter server URL and credentials first')
+      return
+    }
+    try {
+      setBrowsingFiles(true)
+      const response = await backupApi.browseExternalFiles(
+        schedule.external_url, schedule.external_api_key || null, schedule.external_path
+      )
+      setExternalFiles(response.data.files)
+    } catch (error) {
+      console.error('Browse files failed:', error)
+      toast.error(error.response?.data?.error || 'Failed to browse external files')
+    } finally {
+      setBrowsingFiles(false)
+    }
+  }
+
+  const restoreFromExternal = async (filename) => {
+    if (!window.confirm(t('backup.restoreExternalConfirm') || `Restore from external backup "${filename}"? This will merge data with your existing records.`)) {
+      return
+    }
+    try {
+      setRestoringExternal(true)
+      const response = await backupApi.restoreFromExternal(
+        filename, schedule.external_url, schedule.external_api_key || null, schedule.external_path
+      )
+      const imported = response.data.imported || {}
+      const summary = []
+      if (imported.vehicles > 0) summary.push(`${imported.vehicles} vehicles`)
+      if (imported.fuel_entries > 0) summary.push(`${imported.fuel_entries} fuel entries`)
+      if (imported.service_entries > 0) summary.push(`${imported.service_entries} service entries`)
+      if (imported.attachments > 0) summary.push(`${imported.attachments} attachments`)
+      toast.success(
+        summary.length > 0
+          ? `Restored: ${summary.join(', ')}`
+          : 'Restore completed'
+      )
+      setExternalFiles(null)
+      loadBackupStatus()
+    } catch (error) {
+      console.error('External restore failed:', error)
+      toast.error(error.response?.data?.error || 'Failed to restore from external')
+    } finally {
+      setRestoringExternal(false)
+    }
+  }
   
   const testExternalConnection = async () => {
     if (!schedule.external_url) {
@@ -378,13 +464,13 @@ export default function BackupSettings() {
   }
 
   const browseExternalFolders = async (path = '/') => {
-    if (!schedule.external_url || !schedule.external_api_key) {
+    if (!schedule.external_url || (!schedule.external_api_key && !schedule.has_external_api_key)) {
       toast.error(t('backup.enterUrlAndKey') || 'Enter server URL and credentials first')
       return
     }
     try {
       setBrowsingFolders(true)
-      const response = await backupApi.browseExternalFolders(schedule.external_url, schedule.external_api_key, path)
+      const response = await backupApi.browseExternalFolders(schedule.external_url, schedule.external_api_key || null, path)
       setExternalFolders(response.data.folders)
       setBrowsePath(path)
     } catch (error) {
@@ -443,7 +529,7 @@ export default function BackupSettings() {
       )}
       
       {/* Quick Actions */}
-      <div className="grid grid-cols-2 gap-3 mb-4">
+      <div className="grid grid-cols-3 gap-3 mb-4">
         <button
           onClick={downloadBackup}
           disabled={backing}
@@ -454,7 +540,7 @@ export default function BackupSettings() {
               <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
             ) : Icons.download}
           </span>
-          <span className="text-sm font-medium">{t('backup.downloadBackup') || 'Download'}</span>
+          <span className="text-xs font-medium">{t('backup.downloadBackup') || 'Download'}</span>
         </button>
         
         <button
@@ -465,9 +551,22 @@ export default function BackupSettings() {
           <span className="text-[var(--color-accent)]">
             {importing ? (
               <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+            ) : Icons.refresh}
+          </span>
+          <span className="text-xs font-medium">{t('backup.restoreBackup') || 'Restore'}</span>
+        </button>
+
+        <button
+          onClick={handleUploadClick}
+          disabled={uploading}
+          className="flex flex-col items-center gap-2 p-4 bg-[var(--color-bg-tertiary)] rounded-xl hover:bg-[var(--color-bg-tertiary)]/80 transition-colors"
+        >
+          <span className="text-[var(--color-accent)]">
+            {uploading ? (
+              <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
             ) : Icons.upload}
           </span>
-          <span className="text-sm font-medium">{t('backup.restoreBackup') || 'Restore'}</span>
+          <span className="text-xs font-medium">{t('backup.uploadBackup') || 'Upload'}</span>
         </button>
         
         <input
@@ -475,6 +574,13 @@ export default function BackupSettings() {
           type="file"
           accept=".json,.zip"
           onChange={handleImportFile}
+          className="hidden"
+        />
+        <input
+          ref={uploadInputRef}
+          type="file"
+          accept=".zip"
+          onChange={handleUploadFile}
           className="hidden"
         />
       </div>
@@ -700,15 +806,37 @@ export default function BackupSettings() {
                   <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-2">
                     {t('backup.apiKey') || 'API Key (optional)'}
                   </label>
-                  <input
-                    type="password"
-                    value={schedule.external_api_key}
-                    onChange={(e) => handleScheduleChange('external_api_key', e.target.value)}
-                    placeholder="username:app-password"
-                    className="w-full p-3 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-border)] placeholder-[var(--color-text-muted)]"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showApiKey ? 'text' : 'password'}
+                      value={schedule.external_api_key}
+                      onChange={(e) => handleScheduleChange('external_api_key', e.target.value)}
+                      placeholder={schedule.has_external_api_key && !schedule.external_api_key ? '••••••••••• (saved)' : 'username:app-password'}
+                      className="w-full p-3 pr-10 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-border)] placeholder-[var(--color-text-muted)]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowApiKey(!showApiKey)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+                      title={showApiKey ? 'Hide' : 'Show'}
+                    >
+                      {showApiKey ? (
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
+                        </svg>
+                      ) : (
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
                   <p className="text-2xs text-[var(--color-text-muted)] mt-1">
-                    {t('backup.apiKeyHint') || 'For Nextcloud: username:app-password'}
+                    {schedule.has_external_api_key && !schedule.external_api_key
+                      ? (t('backup.credentialsSaved') || 'Credentials are saved. Leave empty to keep existing, or enter new ones to update.')
+                      : (t('backup.apiKeyHint') || 'For Nextcloud: username:app-password')
+                    }
                   </p>
                 </div>
 
@@ -726,7 +854,7 @@ export default function BackupSettings() {
                     />
                     <button
                       onClick={() => browseExternalFolders('/')}
-                      disabled={browsingFolders || !schedule.external_api_key}
+                      disabled={browsingFolders || (!schedule.external_api_key && !schedule.has_external_api_key)}
                       className="px-3 py-2 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]/80 transition-colors disabled:opacity-50"
                       title={t('backup.browseFolders') || 'Browse folders'}
                     >
@@ -812,6 +940,78 @@ export default function BackupSettings() {
                   )}
                   <span>{t('backup.testConnection') || 'Test Connection'}</span>
                 </button>
+
+                {/* Restore from External */}
+                <div className="border-t border-[var(--color-border)] pt-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <span className="text-xs font-medium text-[var(--color-text-secondary)]">
+                        {t('backup.restoreFromExternal') || 'Restore from External'}
+                      </span>
+                      <p className="text-2xs text-[var(--color-text-muted)]">
+                        {t('backup.restoreFromExternalDesc') || 'Download and restore a backup from your external server'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={browseExternalFiles}
+                      disabled={browsingFiles || (!schedule.external_api_key && !schedule.has_external_api_key)}
+                      className="px-3 py-2 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]/80 transition-colors disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {browsingFiles ? (
+                        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        Icons.folder
+                      )}
+                      <span className="text-xs">{t('backup.browseFiles') || 'Browse Files'}</span>
+                    </button>
+                  </div>
+
+                  {externalFiles !== null && (
+                    <div className="bg-[var(--color-bg-secondary)] rounded-lg p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-[var(--color-text-secondary)]">
+                          {schedule.external_path || '/GearCargo'} — {externalFiles.length} {t('backup.filesFound') || 'backup files'}
+                        </span>
+                        <button
+                          onClick={() => setExternalFiles(null)}
+                          className="text-xs text-[var(--color-text-muted)] hover:underline"
+                        >
+                          {t('common.close') || 'Close'}
+                        </button>
+                      </div>
+                      {externalFiles.length === 0 ? (
+                        <p className="text-2xs text-[var(--color-text-muted)] italic">
+                          {t('backup.noFilesFound') || 'No .zip backup files found in this folder'}
+                        </p>
+                      ) : (
+                        <div className="space-y-1 max-h-60 overflow-y-auto">
+                          {externalFiles.map((file) => (
+                            <div key={file.name} className="flex items-center justify-between p-2 rounded hover:bg-[var(--color-bg-tertiary)] transition-colors">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm text-[var(--color-text-primary)] truncate">{file.name}</p>
+                                <p className="text-2xs text-[var(--color-text-muted)]">
+                                  {file.size_human}{file.last_modified ? ` • ${new Date(file.last_modified).toLocaleDateString()}` : ''}
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => restoreFromExternal(file.name)}
+                                disabled={restoringExternal}
+                                className="ml-2 px-3 py-1.5 text-xs text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
+                              >
+                                {restoringExternal ? (
+                                  <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                ) : (
+                                  Icons.refresh
+                                )}
+                                <span>{t('backup.restore') || 'Restore'}</span>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </>
             )}
           </div>
@@ -947,6 +1147,30 @@ export default function BackupSettings() {
                       >
                         {Icons.download}
                       </button>
+                      {schedule.external_enabled && (
+                        <button
+                          onClick={async () => {
+                            try {
+                              setSendingExternal(true)
+                              const response = await backupApi.sendToExternal(backup.filename)
+                              toast.success(response.data.message || 'Sent to external server')
+                            } catch (error) {
+                              toast.error(error.response?.data?.error || 'Failed to send to external server')
+                            } finally {
+                              setSendingExternal(false)
+                            }
+                          }}
+                          disabled={sendingExternal}
+                          className="p-2 text-[var(--color-text-secondary)] hover:bg-[var(--color-accent)]/10 rounded-lg transition-colors disabled:opacity-50"
+                          title={t('backup.sendToExternal') || 'Send to external server'}
+                        >
+                          {sendingExternal ? (
+                            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            Icons.cloud
+                          )}
+                        </button>
+                      )}
                       <button
                         onClick={() => restoreBackup(backup.filename)}
                         disabled={importing}
@@ -999,6 +1223,34 @@ export default function BackupSettings() {
           </>
         )}
       </button>
+
+      {/* Send to External Button - only show when external is configured */}
+      {schedule.external_enabled && status?.available_backups?.length > 0 && (
+        <button
+          onClick={async () => {
+            try {
+              setSendingExternal(true)
+              const response = await backupApi.sendToExternal()
+              toast.success(response.data.message || 'Latest backup sent to external server')
+            } catch (error) {
+              toast.error(error.response?.data?.error || 'Failed to send to external server')
+            } finally {
+              setSendingExternal(false)
+            }
+          }}
+          disabled={sendingExternal}
+          className="w-full py-3 px-4 bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] rounded-xl font-medium hover:bg-[var(--color-bg-tertiary)]/80 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+        >
+          {sendingExternal ? (
+            <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <>
+              {Icons.server}
+              <span>{t('backup.sendToExternal') || 'Send Latest to External'}</span>
+            </>
+          )}
+        </button>
+      )}
       
       {/* Info Box */}
       <div className="bg-blue-500/10 rounded-xl p-4">

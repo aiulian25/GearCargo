@@ -297,7 +297,11 @@ export const backupApi = {
   // Run backup now
   runNow: (includeAttachments = true, sendExternal = false) => 
     api.post('/backup/run-now', { include_attachments: includeAttachments, send_external: sendExternal }),
-  
+
+  // Send latest (or specific) backup to external server
+  sendToExternal: (filename = null) =>
+    api.post('/backup/send-external', { filename }),
+
   // Test external server connection
   testExternalConnection: (url, apiKey = '', path = '/GearCargo') => 
     api.post('/backup/external/test', { url, api_key: apiKey, path }),
@@ -305,6 +309,19 @@ export const backupApi = {
   // Browse external server folders (WebDAV)
   browseExternalFolders: (url, apiKey, path = '/') =>
     api.post('/backup/external/browse', { url, api_key: apiKey, path }),
+
+  // Browse external server files (WebDAV) - for restore
+  browseExternalFiles: (url, apiKey, path = '/GearCargo') =>
+    api.post('/backup/external/files', { url, api_key: apiKey, path }),
+
+  // Restore from external server file
+  restoreFromExternal: (filename, url = null, apiKey = null, path = null, mergeMode = 'merge') =>
+    api.post('/backup/external/restore', { filename, url, api_key: apiKey, path, merge_mode: mergeMode }),
+
+  // Upload a backup .zip file to stored backups
+  uploadBackup: (formData) => api.post('/backup/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
   
   // Import from LubeLogger backup
   importLubelog: (formData) => api.post('/backup/import/lubelog', formData, {

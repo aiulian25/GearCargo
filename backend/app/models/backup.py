@@ -214,6 +214,7 @@ class BackupSchedule(db.Model):
             'external_enabled': self.external_enabled,
             'external_url': self.external_url,
             'external_path': self.external_path,
+            'has_external_api_key': bool(self.external_api_key),
             # Don't expose external_api_key
             'cloud_enabled': self.cloud_enabled,
             'cloud_provider': self.cloud_provider,
