@@ -357,27 +357,18 @@ def process_scheduled_backups(app):
                     backup.status = 'completed'
                     backup.completed_at = datetime.utcnow()
                     
-                    # Send to external server if configured
+                    # Send to external server if configured (WebDAV/Nextcloud)
                     if schedule.external_enabled and schedule.external_url:
                         try:
-                            import requests
+                            from app.routes.backup import send_to_external_server
                             zip_buffer.seek(0)
-                            headers = {
-                                'Content-Type': 'application/octet-stream',
-                                'X-API-Key': schedule.external_api_key or '',
-                                'X-Backup-Path': schedule.external_path or '/backups',
-                            }
-                            response = requests.put(
-                                schedule.external_url,
-                                data=zip_buffer.read(),
-                                headers=headers,
-                                timeout=300,
-                                verify=True
-                            )
-                            if response.status_code not in [200, 201]:
-                                backup.error_message = f"External upload returned {response.status_code}"
+                            result, ext_error = send_to_external_server(zip_buffer.read(), schedule, filename=filename)
+                            if ext_error:
+                                backup.error_message = f"External upload failed: {ext_error}"
+                                app.logger.warning(f'Scheduled external backup failed for user {user.id}: {ext_error}')
                         except Exception as ext_error:
                             backup.error_message = f"External upload failed: {str(ext_error)}"
+                            app.logger.warning(f'Scheduled external backup exception for user {user.id}: {ext_error}')
                     
                     # Update schedule
                     schedule.last_run_at = now
