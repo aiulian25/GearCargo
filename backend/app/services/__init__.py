@@ -206,14 +206,10 @@ def cleanup_old_data(app):
 def process_scheduled_backups(app):
     """Process scheduled backups with weekly, monthly, and quarterly frequencies."""
     with app.app_context():
-        from app.models import BackupSchedule, Backup, User, Vehicle, FuelEntry, ServiceEntry
-        from app.models import RepairEntry, TaxEntry, ParkingEntry, Reminder, InsurancePolicy, Attachment
+        from app.models import BackupSchedule, Backup, User
+        from app.routes.backup import create_backup_zip, save_backup_to_disk
         from app import db
         import os
-        import json
-        import zipfile
-        from io import BytesIO
-        import hashlib
         
         now = datetime.utcnow()
         current_hour = now.hour
@@ -263,81 +259,13 @@ def process_scheduled_backups(app):
                     db.session.add(backup)
                     db.session.flush()
                     
-                    # Gather user data
-                    export_data = {
-                        'version': '2.0',
-                        'exported_at': now.isoformat(),
-                        'backup_type': 'scheduled',
-                        'frequency': schedule.frequency,
-                        'user': {
-                            'email': user.email,
-                            'name': user.name,
-                        },
-                        'vehicles': [],
-                        'reminders': [],
-                        'insurance_policies': [],
-                        'attachments': [],
-                    }
+                    include_attachments = getattr(schedule, 'include_attachments', True)
                     
-                    # Get vehicles and their entries
-                    vehicles = Vehicle.query.filter_by(user_id=user.id).all()
-                    for vehicle in vehicles:
-                        vehicle_data = vehicle.to_dict()
-                        vehicle_data['fuel_entries'] = [e.to_dict() for e in FuelEntry.query.filter_by(vehicle_id=vehicle.id).all()]
-                        vehicle_data['service_entries'] = [e.to_dict() for e in ServiceEntry.query.filter_by(vehicle_id=vehicle.id).all()]
-                        vehicle_data['repair_entries'] = [e.to_dict() for e in RepairEntry.query.filter_by(vehicle_id=vehicle.id).all()]
-                        vehicle_data['tax_entries'] = [e.to_dict() for e in TaxEntry.query.filter_by(vehicle_id=vehicle.id).all()]
-                        vehicle_data['parking_entries'] = [e.to_dict() for e in ParkingEntry.query.filter_by(vehicle_id=vehicle.id).all()]
-                        export_data['vehicles'].append(vehicle_data)
-                    
-                    export_data['reminders'] = [r.to_dict() for r in Reminder.query.filter_by(user_id=user.id).all()]
-                    export_data['insurance_policies'] = [p.to_dict() for p in InsurancePolicy.query.filter_by(user_id=user.id).all()]
-                    
-                    # Get attachments
-                    attachments = []
-                    if schedule.include_attachments:
-                        attachments = Attachment.query.filter_by(user_id=user.id).all()
-                        export_data['attachments'] = [a.to_dict() for a in attachments]
-                    
-                    # Create ZIP backup
-                    zip_buffer = BytesIO()
-                    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-                        data_json = json.dumps(export_data, indent=2, default=str)
-                        zf.writestr('backup_data.json', data_json)
-                        
-                        # Add manifest
-                        manifest = {
-                            'version': '2.0',
-                            'created_at': now.isoformat(),
-                            'backup_type': 'scheduled',
-                            'frequency': schedule.frequency,
-                            'user_email': user.email,
-                            'include_attachments': schedule.include_attachments,
-                            'checksum': hashlib.sha256(data_json.encode()).hexdigest(),
-                        }
-                        zf.writestr('manifest.json', json.dumps(manifest, indent=2))
-                        
-                        # Add attachments
-                        if schedule.include_attachments:
-                            for attachment in attachments:
-                                if attachment.filepath and os.path.exists(attachment.filepath):
-                                    arcname = f'attachments/{attachment.id}/{attachment.filename}'
-                                    zf.write(attachment.filepath, arcname)
+                    # Use shared backup function (includes dedup, vehicle photos, todos)
+                    zip_buffer, export_data = create_backup_zip(user, include_attachments)
                     
                     # Save to disk
-                    backup_folder = app.config.get('BACKUP_FOLDER', '/app/volumes/backups')
-                    user_folder = os.path.join(backup_folder, str(user.id))
-                    os.makedirs(user_folder, exist_ok=True)
-                    
-                    timestamp = now.strftime('%Y%m%d_%H%M%S')
-                    filename = f'backup_{timestamp}.zip'
-                    filepath = os.path.join(user_folder, filename)
-                    
-                    zip_buffer.seek(0)
-                    with open(filepath, 'wb') as f:
-                        f.write(zip_buffer.read())
-                    
-                    file_size = os.path.getsize(filepath)
+                    filename, filepath, file_size = save_backup_to_disk(user, zip_buffer, include_attachments)
                     
                     # Update backup record
                     backup.filename = filename
@@ -381,7 +309,7 @@ def process_scheduled_backups(app):
                     schedule.calculate_next_run()
                     
                     # Cleanup old backups
-                    cleanup_user_backups(user.id, schedule.max_backups, schedule.retention_days, user_folder, db)
+                    cleanup_user_backups(user.id, schedule.max_backups, schedule.retention_days, os.path.dirname(filepath), db)
                     
                     # Send notification if enabled
                     if schedule.notify_on_success:
