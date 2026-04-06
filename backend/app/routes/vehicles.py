@@ -196,9 +196,14 @@ def update_vehicle(current_user, vehicle_id):
     for field in allowed:
         if field in data:
             if field == 'current_mileage':
-                # Ensure mileage doesn't decrease
-                if data[field] < vehicle.current_mileage:
-                    return jsonify({'error': 'Mileage cannot decrease'}), 400
+                # Allow correcting mileage, but not below highest recorded entry
+                max_recorded = _get_max_recorded_odometer(current_user.id, vehicle_id)
+                if data[field] < max_recorded:
+                    return jsonify({
+                        'error': f'Mileage cannot be lower than the highest recorded entry ({max_recorded})',
+                        'message_key': 'vehicles.mileageBelowRecordedMax',
+                        'min_allowed_mileage': max_recorded,
+                    }), 400
             setattr(vehicle, field, data[field])
     
     db.session.commit()

@@ -19,9 +19,10 @@ from datetime import datetime, timedelta
 from io import BytesIO
 from flask import Blueprint, request, jsonify, current_app, send_file
 from sqlalchemy.engine.url import make_url
+from sqlalchemy import func
 
 from app import db
-from app.models import (User, Vehicle, FuelEntry, ServiceEntry, RepairEntry,
+from app.models import (User, Vehicle, Entry, FuelEntry, ServiceEntry, RepairEntry,
                        TaxEntry, ParkingEntry, Reminder, InsurancePolicy,
                        Attachment, Backup, BackupSchedule, Todo)
 from app.routes.auth import token_required, admin_required
@@ -1636,6 +1637,18 @@ def import_backup_data(user, backup_data, merge_mode='merge'):
             imported['todos'] += 1
         except:
             pass
+    
+    # Recalculate current_mileage for all imported/merged vehicles
+    for new_vehicle_id in vehicle_id_map.values():
+        max_odometer = db.session.query(func.max(Entry.odometer)).filter(
+            Entry.user_id == user.id,
+            Entry.vehicle_id == new_vehicle_id,
+            Entry.odometer.isnot(None)
+        ).scalar()
+        if max_odometer:
+            vehicle = Vehicle.query.get(new_vehicle_id)
+            if vehicle and (vehicle.current_mileage or 0) < max_odometer:
+                vehicle.current_mileage = max_odometer
     
     db.session.commit()
     return imported, vehicle_id_map, entry_id_map
