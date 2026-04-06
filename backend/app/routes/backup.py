@@ -14,6 +14,7 @@ import hashlib
 import tempfile
 import subprocess
 import uuid
+import re
 import requests
 from datetime import datetime, timedelta
 from io import BytesIO
@@ -489,7 +490,9 @@ def create_backup_zip(user, include_attachments=True):
         manifest = {
             'version': '2.0',
             'created_at': datetime.utcnow().isoformat(),
+            'app_name': current_app.config.get('APP_NAME', 'GearCargo'),
             'user_email': user.email,
+            'user_name': user.display_name or user.username or '',
             'include_attachments': include_attachments,
             'checksum': calculate_checksum(data_json),
         }
@@ -543,9 +546,13 @@ def save_backup_to_disk(user, zip_buffer, include_attachments=True):
     # Ensure folder exists
     os.makedirs(user_folder, exist_ok=True)
     
-    # Generate filename
+    # Generate filename with app name and username
+    app_name = current_app.config.get('APP_NAME', 'GearCargo')
+    # Sanitise for filename safety
+    safe_app = re.sub(r'[^\w\-]', '_', app_name)
+    safe_user = re.sub(r'[^\w\-]', '_', user.display_name or user.username or user.email.split('@')[0])
     timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
-    filename = f'backup_{timestamp}.zip'
+    filename = f'{safe_app}_{safe_user}_{timestamp}.zip'
     filepath = os.path.join(user_folder, filename)
     
     # Write file
@@ -880,14 +887,18 @@ def get_backup_status(current_user):
     
     if os.path.exists(user_folder):
         for f in sorted(os.listdir(user_folder), reverse=True):
-            if f.startswith('backup_') and f.endswith('.zip'):
+            if f.endswith('.zip'):
                 filepath = os.path.join(user_folder, f)
                 stat = os.stat(filepath)
+                created = datetime.fromtimestamp(stat.st_mtime)
+                # Build display label from filename parts
+                label = _backup_display_label(f, created)
                 available_backups.append({
                     'filename': f,
                     'size': stat.st_size,
                     'size_human': format_file_size(stat.st_size),
-                    'created_at': datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                    'created_at': created.isoformat(),
+                    'label': label,
                 })
     
     return jsonify({
@@ -897,6 +908,25 @@ def get_backup_status(current_user):
         'available_backups': available_backups[:10],  # Limit to 10 most recent
         'total_backup_count': len(available_backups),
     })
+
+
+def _backup_display_label(filename, created_dt):
+    """Build a human-readable label for a backup file."""
+    # Strip extension
+    name = filename.rsplit('.', 1)[0]
+    # New format: AppName_User_YYYYMMDD_HHMMSS
+    # Old format: backup_YYYYMMDD_HHMMSS
+    parts = name.split('_')
+    if len(parts) >= 4 and parts[-1].isdigit() and parts[-2].isdigit():
+        # New naming: everything before the last two parts is app+user
+        prefix_parts = parts[:-2]
+        app_user = ' '.join(prefix_parts)
+    elif name.startswith('backup'):
+        app_user = 'Backup'
+    else:
+        app_user = name
+    date_str = created_dt.strftime('%d/%m/%Y %H:%M')
+    return f'{app_user} — {date_str}'
 
 
 def format_file_size(size):

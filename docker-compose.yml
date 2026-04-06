@@ -62,6 +62,9 @@ services:
       # Theme
       - DEFAULT_THEME=${DEFAULT_THEME:-dark}
       
+      # App name (used in backup filenames)
+      - APP_NAME=${APP_NAME:-GearCargo}
+      
       # Default Admin (optional - created on first startup if no users exist)
       # Remove these after first deployment for security
       - ADMIN_EMAIL=${ADMIN_EMAIL:-}

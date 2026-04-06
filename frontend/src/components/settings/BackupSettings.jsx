@@ -1430,7 +1430,7 @@ export default function BackupSettings() {
                   >
                     <div>
                       <p className="text-sm font-medium">
-                        {new Date(backup.created_at).toLocaleDateString()}
+                        {backup.label || new Date(backup.created_at).toLocaleString()}
                       </p>
                       <p className="text-2xs text-[var(--color-text-muted)]">
                         {backup.size_human}
