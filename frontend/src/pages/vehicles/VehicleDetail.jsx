@@ -227,18 +227,15 @@ export default function VehicleDetail() {
       return
     }
     
-    if (mileageValue < (vehicle?.current_mileage || 0)) {
-      setMileageError(t('vehicles.mileageCannotDecrease') || 'Mileage cannot be less than current value')
-      return
-    }
-    
     setIsSavingMileage(true)
     try {
       await vehicleApi.updateMileage(id, mileageValue)
       setVehicle(prev => ({ ...prev, current_mileage: mileageValue }))
       setShowMileageModal(false)
     } catch (error) {
-      setMileageError(error.response?.data?.error || t('common.errorOccurred') || 'An error occurred')
+      const messageKey = error.response?.data?.message_key
+      const apiError = error.response?.data?.error
+      setMileageError((messageKey ? t(messageKey) : null) || apiError || t('common.errorOccurred') || 'An error occurred')
     } finally {
       setIsSavingMileage(false)
     }
@@ -483,61 +480,66 @@ export default function VehicleDetail() {
       
       {/* Main Content */}
       <div className="p-4 space-y-4">
-        {/* Vehicle Photo Section */}
-        <div className="card overflow-hidden">
-          <div className="relative h-48 bg-gradient-to-br from-[var(--color-bg-tertiary)] to-[var(--color-bg-secondary)]">
-            {vehicle.photo_url ? (
-              <img 
-                src={vehicle.photo_url} 
-                alt={vehicle.name}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-[var(--color-text-muted)]">
-                {Icons.car}
-              </div>
-            )}
-            {/* Mileage Badge - Clickable */}
-            <button
-              onClick={handleOpenMileageModal}
-              disabled={isArchived}
-              className="absolute bottom-3 right-3 bg-black/70 backdrop-blur-sm text-white px-3 py-1.5 rounded-lg hover:bg-black/80 transition-colors group disabled:cursor-not-allowed"
-              title={t('vehicles.updateMileage') || 'Update mileage'}
-            >
-              <div className="flex items-center gap-2">
-                <div className="flex items-baseline gap-1">
-                  <span className="text-lg font-bold">{(vehicle.current_mileage || 0).toLocaleString()}</span>
-                  <span className="text-xs opacity-80">{vehicle.distance_unit || 'km'}</span>
+        {/* Desktop: side-by-side | Mobile: stacked */}
+        <div className="flex flex-col lg:flex-row lg:gap-4 gap-4">
+          {/* Vehicle Photo Section */}
+          <div className="card overflow-hidden lg:w-[380px] xl:w-[440px] lg:flex-shrink-0 lg:self-start lg:sticky lg:top-[60px]">
+            <div className="relative h-48 lg:h-auto lg:aspect-[4/5] bg-gradient-to-br from-[var(--color-bg-tertiary)] to-[var(--color-bg-secondary)]">
+              {vehicle.photo_url ? (
+                <img 
+                  src={vehicle.photo_url} 
+                  alt={vehicle.name}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-[var(--color-text-muted)]">
+                  {Icons.car}
                 </div>
-                {!isArchived && (
-                  <span className="opacity-60 group-hover:opacity-100 transition-opacity">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                    </svg>
-                  </span>
-                )}
-              </div>
-            </button>
-          </div>
-        </div>
-        
-        {/* Stats Cards Grid */}
-        <div className="grid grid-cols-2 gap-3">
-          {statsCards.map(stat => (
-            <div key={stat.id} className="card flex items-center gap-3 p-3">
-              <div className={`w-10 h-10 rounded-lg ${stat.bgColor} flex items-center justify-center ${stat.color}`}>
-                {stat.icon}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-[var(--color-text-muted)] truncate">{stat.label}</p>
-                <p className="text-sm font-bold truncate">{stat.value}</p>
-                {stat.subValue && (
-                  <p className="text-xs text-[var(--color-text-secondary)] truncate">{stat.subValue}</p>
-                )}
-              </div>
+              )}
+              {/* Mileage Badge - Clickable */}
+              <button
+                onClick={handleOpenMileageModal}
+                disabled={isArchived}
+                className="absolute bottom-3 right-3 bg-black/70 backdrop-blur-sm text-white px-3 py-1.5 rounded-lg hover:bg-black/80 transition-colors group disabled:cursor-not-allowed"
+                title={t('vehicles.updateMileage') || 'Update mileage'}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-lg font-bold">{(vehicle.current_mileage || 0).toLocaleString()}</span>
+                    <span className="text-xs opacity-80">{vehicle.distance_unit || 'km'}</span>
+                  </div>
+                  {!isArchived && (
+                    <span className="opacity-60 group-hover:opacity-100 transition-opacity">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                      </svg>
+                    </span>
+                  )}
+                </div>
+              </button>
             </div>
-          ))}
+          </div>
+          
+          {/* Stats Cards Grid */}
+          <div className="flex-1 min-w-0">
+            <div className="grid grid-cols-2 gap-3">
+              {statsCards.map(stat => (
+                <div key={stat.id} className="card flex items-center gap-3 p-3">
+                  <div className={`w-10 h-10 rounded-lg ${stat.bgColor} flex items-center justify-center ${stat.color}`}>
+                    {stat.icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-[var(--color-text-muted)] truncate">{stat.label}</p>
+                    <p className="text-sm font-bold truncate">{stat.value}</p>
+                    {stat.subValue && (
+                      <p className="text-xs text-[var(--color-text-secondary)] truncate">{stat.subValue}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
         
         {/* Recent Activity Section */}
@@ -659,7 +661,7 @@ export default function VehicleDetail() {
                     setMileageError('')
                   }}
                   className="input w-full text-lg font-mono"
-                  min={vehicle?.current_mileage || 0}
+                  min={0}
                   placeholder="0"
                   autoFocus
                 />

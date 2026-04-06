@@ -1,105 +1,105 @@
 #!/bin/bash
 
-# GearCargo Restore Script
-# Restores from backup archive
+set -euo pipefail
 
-set -e
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BACKUP_ROOT="${BACKUP_ROOT:-${ROOT_DIR}/volumes/backups/system}"
+ATTACHMENTS_DIR="${ATTACHMENTS_DIR:-${ROOT_DIR}/volumes/attachments}"
+UPLOADS_DIR="${UPLOADS_DIR:-${ROOT_DIR}/volumes/uploads}"
+DB_SERVICE="${DB_SERVICE:-db}"
+BACKEND_SERVICE="${BACKEND_SERVICE:-backend}"
+DB_USER="${DB_USER:-gearcargo}"
+DB_NAME="${DB_NAME:-gearcargo}"
+DB_PASSWORD="${DB_PASSWORD:-${POSTGRES_PASSWORD:-}}"
+RESTORE_FORCE="${RESTORE_FORCE:-false}"
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
-
-# Check arguments
-if [ -z "$1" ]; then
-    echo -e "${YELLOW}Usage: ./restore.sh <backup_file.tar.gz>${NC}"
-    echo ""
-    echo "Available backups:"
-    ls -lh ./data/backups/*.tar.gz 2>/dev/null || echo "No backups found in ./data/backups/"
+if [[ $# -lt 1 ]]; then
+    echo "Usage: ./restore.sh <backup_file.tar.gz>" >&2
+    echo >&2
+    echo "Available backups:" >&2
+    find "${BACKUP_ROOT}" -type f -name '*.tar.gz' | sort -r >&2 || true
     exit 1
 fi
 
 BACKUP_FILE="$1"
-
-if [ ! -f "$BACKUP_FILE" ]; then
-    echo -e "${RED}❌ Backup file not found: $BACKUP_FILE${NC}"
+if [[ ! -f "${BACKUP_FILE}" ]]; then
+    echo "Backup file not found: ${BACKUP_FILE}" >&2
     exit 1
 fi
 
-# Determine docker compose command
-if docker compose version &> /dev/null; then
-    DOCKER_COMPOSE="docker compose"
+if docker compose version >/dev/null 2>&1; then
+    DOCKER_COMPOSE=(docker compose)
 else
-    DOCKER_COMPOSE="docker-compose"
+    DOCKER_COMPOSE=(docker-compose)
 fi
 
-echo -e "${YELLOW}"
-echo "╔═══════════════════════════════════════════════════════════════╗"
-echo "║                   GearCargo Restore                           ║"
-echo "║                                                               ║"
-echo "║  ⚠  WARNING: This will overwrite existing data!              ║"
-echo "╚═══════════════════════════════════════════════════════════════╝"
-echo -e "${NC}"
+run_db_command() {
+    if [[ -n "${DB_PASSWORD}" ]]; then
+        "${DOCKER_COMPOSE[@]}" exec -T -e PGPASSWORD="${DB_PASSWORD}" "${DB_SERVICE}" "$@"
+    else
+        "${DOCKER_COMPOSE[@]}" exec -T "${DB_SERVICE}" "$@"
+    fi
+}
 
-read -p "Are you sure you want to restore from $BACKUP_FILE? (yes/no): " confirm
-if [ "$confirm" != "yes" ]; then
-    echo "Restore cancelled."
-    exit 0
+clear_directory() {
+    local target_dir="$1"
+    mkdir -p "${target_dir}"
+    find "${target_dir}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+}
+
+copy_dir_contents() {
+    local source_dir="$1"
+    local target_dir="$2"
+
+    mkdir -p "${target_dir}"
+    if [[ -d "${source_dir}" ]]; then
+        tar -C "${source_dir}" -cf - . | tar -C "${target_dir}" -xf -
+    fi
+}
+
+TEMP_DIR="$(mktemp -d)"
+cleanup() {
+    rm -rf "${TEMP_DIR}"
+}
+trap cleanup EXIT
+
+if [[ "${RESTORE_FORCE}" != "true" ]]; then
+    echo "This will replace the GearCargo database, attachments, and uploads from ${BACKUP_FILE}."
+    read -r -p "Type 'yes' to continue: " confirm
+    if [[ "${confirm}" != "yes" ]]; then
+        echo "Restore cancelled"
+        exit 0
+    fi
 fi
 
-# Create temp directory for extraction
-TEMP_DIR=$(mktemp -d)
-echo -e "${YELLOW}Extracting backup...${NC}"
-tar -xzf "$BACKUP_FILE" -C "$TEMP_DIR"
+echo "Extracting backup archive"
+tar -xzf "${BACKUP_FILE}" -C "${TEMP_DIR}"
 
-# Find the database dump
-DB_DUMP=$(ls "$TEMP_DIR"/*_db.sql.gz 2>/dev/null | head -1)
-UPLOADS_ARCHIVE=$(ls "$TEMP_DIR"/*_uploads.tar.gz 2>/dev/null | head -1)
-
-if [ -z "$DB_DUMP" ]; then
-    echo -e "${RED}❌ No database dump found in backup${NC}"
-    rm -rf "$TEMP_DIR"
+if [[ ! -f "${TEMP_DIR}/database/database.sql.gz" ]]; then
+    echo "Backup archive is missing database/database.sql.gz" >&2
     exit 1
 fi
 
-# Stop the backend to prevent connections
-echo -e "${YELLOW}Stopping backend service...${NC}"
-$DOCKER_COMPOSE stop backend
+echo "Stopping backend service"
+"${DOCKER_COMPOSE[@]}" stop "${BACKEND_SERVICE}"
 
-# Restore database
-echo -e "${YELLOW}Restoring database...${NC}"
-gunzip -c "$DB_DUMP" | $DOCKER_COMPOSE exec -T db psql -U postgres -d gearcargo
+restore_ok=false
+trap 'if [[ "${restore_ok}" != "true" ]]; then "${DOCKER_COMPOSE[@]}" start "${BACKEND_SERVICE}" >/dev/null 2>&1 || true; fi; cleanup' EXIT
 
-if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✓ Database restored${NC}"
-else
-    echo -e "${RED}❌ Database restore failed${NC}"
-    $DOCKER_COMPOSE start backend
-    rm -rf "$TEMP_DIR"
-    exit 1
-fi
+echo "Restoring PostgreSQL database"
+gunzip -c "${TEMP_DIR}/database/database.sql.gz" | run_db_command psql -v ON_ERROR_STOP=1 -U "${DB_USER}" -d "${DB_NAME}"
 
-# Restore uploads if available
-if [ -n "$UPLOADS_ARCHIVE" ] && [ -f "$UPLOADS_ARCHIVE" ]; then
-    echo -e "${YELLOW}Restoring uploads...${NC}"
-    mkdir -p ./data
-    tar -xzf "$UPLOADS_ARCHIVE" -C ./data
-    echo -e "${GREEN}✓ Uploads restored${NC}"
-fi
+echo "Restoring attachments"
+clear_directory "${ATTACHMENTS_DIR}"
+copy_dir_contents "${TEMP_DIR}/media/attachments" "${ATTACHMENTS_DIR}"
 
-# Start backend
-echo -e "${YELLOW}Starting backend service...${NC}"
-$DOCKER_COMPOSE start backend
+echo "Restoring uploads"
+clear_directory "${UPLOADS_DIR}"
+copy_dir_contents "${TEMP_DIR}/media/uploads" "${UPLOADS_DIR}"
 
-# Cleanup
-rm -rf "$TEMP_DIR"
+echo "Starting backend service"
+"${DOCKER_COMPOSE[@]}" start "${BACKEND_SERVICE}"
+restore_ok=true
 
-echo -e "${GREEN}"
-echo "╔═══════════════════════════════════════════════════════════════╗"
-echo "║               Restore Completed Successfully!                 ║"
-echo "╚═══════════════════════════════════════════════════════════════╝"
-echo -e "${NC}"
-
-echo "Note: You may need to restart all services for changes to take effect:"
-echo "  $DOCKER_COMPOSE restart"
+echo "Restore completed successfully"
+echo "Source archive: ${BACKUP_FILE}"

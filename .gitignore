@@ -33,6 +33,7 @@ pip-log.txt
 pip-delete-this-directory.txt
 
 # Unit test / coverage reports
+tests/
 htmlcov/
 .tox/
 .nox/
@@ -85,7 +86,10 @@ celerybeat-schedule
 
 # Environments
 .env
-.env.test
+.env.*
+!.env.example
+!.env.production
+!.env.simple
 .venv
 env/
 venv/
@@ -156,6 +160,13 @@ secrets/
 tmp/
 temp/
 *.tmp
+
+# Backup archives
+*.zip
+*.tar.gz
+
+# Dev requirements
+backend/requirements-dev.txt
 
 # Internal security audit
 Security.md

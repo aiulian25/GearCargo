@@ -357,18 +357,22 @@ def process_scheduled_backups(app):
                     backup.status = 'completed'
                     backup.completed_at = datetime.utcnow()
                     
-                    # Send to external server if configured (WebDAV/Nextcloud)
-                    if schedule.external_enabled and schedule.external_url:
-                        try:
-                            from app.routes.backup import send_to_external_server
-                            zip_buffer.seek(0)
-                            result, ext_error = send_to_external_server(zip_buffer.read(), schedule, filename=filename)
-                            if ext_error:
-                                backup.error_message = f"External upload failed: {ext_error}"
-                                app.logger.warning(f'Scheduled external backup failed for user {user.id}: {ext_error}')
-                        except Exception as ext_error:
-                            backup.error_message = f"External upload failed: {str(ext_error)}"
-                            app.logger.warning(f'Scheduled external backup exception for user {user.id}: {ext_error}')
+                    # Send to all configured external destinations.
+                    try:
+                        from app.routes.backup import send_to_all_external_destinations
+                        zip_buffer.seek(0)
+                        _, external_errors = send_to_all_external_destinations(
+                            zip_buffer.read(),
+                            schedule,
+                            filename=filename,
+                        )
+                        if external_errors:
+                            joined_errors = '; '.join(external_errors)
+                            backup.error_message = f"External upload failed: {joined_errors}"
+                            app.logger.warning(f'Scheduled external backup failed for user {user.id}: {joined_errors}')
+                    except Exception as ext_error:
+                        backup.error_message = f"External upload failed: {str(ext_error)}"
+                        app.logger.warning(f'Scheduled external backup exception for user {user.id}: {ext_error}')
                     
                     # Update schedule
                     schedule.last_run_at = now

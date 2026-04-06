@@ -96,7 +96,7 @@ class Config:
     OLLAMA_TIMEOUT = int(os.environ.get('OLLAMA_TIMEOUT', 30))
     
     # File uploads
-    MAX_CONTENT_LENGTH = 100 * 1024 * 1024  # 100 MB
+    MAX_CONTENT_LENGTH = int(os.environ.get('MAX_UPLOAD_SIZE_MB', 200)) * 1024 * 1024
     UPLOAD_FOLDER = '/app/volumes/attachments'
     BACKUP_FOLDER = '/app/volumes/backups'
     ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'bmp', 'tiff'}

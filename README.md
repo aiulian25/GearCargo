@@ -109,6 +109,10 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 - **Security Headers** - HSTS, CSP, X-Frame-Options via Flask-Talisman
 - **Encrypted Backups** - AES encryption for backup files
 - **Activity Logging** - Comprehensive audit trail
+- **SSRF Protection** - Private/internal IP blocking on CalDAV URLs
+- **Startup Secret Validation** - Refuses to start in production with default/insecure secrets
+- **Calendar Feed Token Expiry** - 90-day expiration on CalDAV feed tokens
+- **Read-only Root Filesystem** - Container runs with read-only rootfs
 
 ### 💾 Data Management
 - Automatic scheduled backups
@@ -119,6 +123,9 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 - **LubeLogger import** — migrate from LubeLogger with full data conversion
 - Distance unit conversion on import (km ↔ miles)
 - Attachment import linked to corresponding entries
+- **Import deduplication** — prevents duplicate entries on re-import
+- **Backup deduplication** — eliminates duplicate attachment files in ZIP exports
+- **Configurable upload limit** — up to 200 MB by default (adjustable via `MAX_UPLOAD_SIZE_MB`)
 
 ### 🔌 Integrations
 - **Gethomepage widget** — customapi widget with vehicle stats, service records, reminders
@@ -259,21 +266,70 @@ docker compose -f docker-compose.simple.yml logs -f backend
 
 ---
 
+### Option 4: Pre-built Image (`docker-compose.deploy.yml`)
+
+Best for: Quick deployment without building, CI/CD pipelines
+
+```bash
+# 1. Copy and configure environment
+cp .env.example .env
+nano .env  # Edit all required values
+
+# 2. Login to GitHub Container Registry
+echo "YOUR_GITHUB_PAT" | docker login ghcr.io -u YOUR_USERNAME --password-stdin
+
+# 3. Deploy
+docker compose -f docker-compose.deploy.yml up -d
+
+# 4. Update to latest
+docker compose -f docker-compose.deploy.yml pull
+docker compose -f docker-compose.deploy.yml up -d --force-recreate
+```
+
+**Features:**
+- No build step required — pulls pre-built image from GHCR
+- Identical security hardening as production
+- Resource limits and log rotation
+- Fastest deployment method
+
+---
+
+### Option 5: Synology NAS (`docker-compose.synology.yml`)
+
+Best for: Synology DiskStation users
+
+```bash
+# 1. Configure environment
+cp .env.example .env
+nano .env  # Edit all values, set APP_PORT=5050
+
+# 2. Login to GHCR
+echo "YOUR_GITHUB_PAT" | sudo docker login ghcr.io -u YOUR_USERNAME --password-stdin
+
+# 3. Deploy
+sudo docker compose -f docker-compose.synology.yml up -d
+```
+
+**Features:**
+- Defaults to port 5050 (DSM uses 5000/5001)
+- Supports PUID/PGID for NAS permissions
+- No resource limits (Synology kernels lack CPU CFS scheduler)
+- Pre-built image from GHCR
+
+---
+
 ### Deployment File Comparison
 
-| Feature | \`docker-compose.yml\` | \`docker-compose.prod.yml\` | \`docker-compose.simple.yml\` |
-|---------|---------------------|---------------------------|----------------------------|
-| **Use Case** | Development | Full Production | Lightweight Production |
-| **Build Time** | ~2-5 minutes | ~2-5 minutes | ~2-5 minutes |
-| **Image Source** | Local build | Local build / GHCR | Local build / GHCR |
-| **Auto Migrations** | Manual | Manual | Manual |
-| **Debug Mode** | ✅ Enabled | ❌ Disabled | ❌ Disabled |
-| **Ollama AI** | Optional | Optional | ❌ Disabled |
-| **Resource Limits** | None | 2 CPU, 1GB RAM | 2 CPU, 1GB RAM |
-| **Log Rotation** | No | Yes (10MB × 3) | Yes (10MB × 3) |
-| **Session Security** | Relaxed | Strict (HTTPS) | Strict (HTTPS) |
-| **Rate Limiting** | 200/day | 100/hour | 100/hour |
-| **Best For** | Local dev | AI features | Minimal setup |
+| Feature | `docker-compose.yml` | `docker-compose.prod.yml` | `docker-compose.simple.yml` | `docker-compose.deploy.yml` | `docker-compose.synology.yml` |
+|---------|---------------------|---------------------------|----------------------------|----------------------------|-------------------------------|
+| **Use Case** | Development | Full Production | Lightweight Production | Pre-built Image | Synology NAS |
+| **Image Source** | Local build | Local build | Local build | GHCR | GHCR |
+| **Debug Mode** | ✅ Enabled | ❌ Disabled | ❌ Disabled | ❌ Disabled | ❌ Disabled |
+| **Ollama AI** | Optional | Optional | ❌ Disabled | Optional | Optional |
+| **Resource Limits** | None | 2 CPU, 1GB | 2 CPU, 1GB | 2 CPU, 1GB | None (Synology) |
+| **Log Rotation** | No | Yes | Yes | Yes | Yes |
+| **Read-only FS** | Yes | Yes | Yes | Yes | Yes |
+| **Best For** | Local dev | Self-hosted + AI | Minimal VPS | Quick deploy | NAS users |
 
 ---
 
@@ -522,6 +578,7 @@ The admin user can:
 | \`VAPID_PRIVATE_KEY\` | Optional | Push notification private key | - |
 | \`OLLAMA_ENABLED\` | Optional | Enable AI features | \`false\` |
 | \`OLLAMA_BASE_URL\` | Optional | Ollama server URL | \`http://host.docker.internal:11434\` |
+| \`MAX_UPLOAD_SIZE_MB\` | Optional | Max file upload size in MB | \`200\` |
 
 ### JWT Token Expiration
 
@@ -546,14 +603,20 @@ The admin user can:
 Configure automatic backups in Settings > Backup:
 - Schedule daily/weekly backups
 - Set retention period
-- Configure external backup server (HTTPS)
+- Configure one or more external backup destinations (HTTPS)
+- Each destination can be independently enabled/disabled per user
+- Reorder destinations to control primary destination precedence
+- Toggle credential visibility per destination (credentials stay masked by default)
 
 ### Manual Backup
 
 **Using the backup script:**
 \`\`\`bash
-./backup.sh
-# Creates: ./volumes/backups/gearcargo_backup_YYYYMMDD_HHMMSS.tar.gz
+./backup.sh daily
+# Creates: ./volumes/backups/system/daily/gearcargo_daily_YYYYMMDD_HHMMSS.tar.gz
+
+BACKUP_FREQUENCY=weekly ./backup.sh
+# Keeps the latest 3 weekly full-state archives
 \`\`\`
 
 **Using the web interface:**
@@ -561,11 +624,29 @@ Configure automatic backups in Settings > Backup:
 2. Click "Create Backup"
 3. Download the backup file
 
+**External destination payload (multi-destination):**
+Send `external_destinations` in `PUT /api/backup/schedule` as a list of objects:
+- `name` (string)
+- `provider` (currently `webdav`)
+- `enabled` (boolean)
+- `external_url` (HTTPS required)
+- `external_api_key` (supports `username:app-password`)
+- `external_path` (destination folder path)
+
+When multiple destinations are configured, manual and scheduled backups upload to all enabled targets and return per-destination success/error details.
+
+Destination order is significant: the first enabled destination is treated as primary for legacy compatibility fields (`external_url`, `external_path`) while all enabled destinations are used for backup uploads.
+
+**Admin full-state export/import:**
+1. POST `/api/backup/system/export` to download a portable archive containing a PostgreSQL logical dump plus `volumes/attachments` and `volumes/uploads`
+2. POST `/api/backup/system/import` with the `.tar.gz` archive to restore the entire deployment elsewhere
+3. API responses include stable `message_key` values for frontend localization
+
 ### Restore from Backup
 
 **Using the restore script:**
 \`\`\`bash
-./restore.sh ./volumes/backups/gearcargo_backup_20240115_120000.tar.gz
+./restore.sh ./volumes/backups/system/daily/gearcargo_daily_20240115_120000.tar.gz
 \`\`\`
 
 **Using the web interface:**
@@ -573,6 +654,15 @@ Configure automatic backups in Settings > Backup:
 2. Click "Restore"
 3. Upload your backup file
 4. Choose merge or replace mode
+
+### Backup Regression Tests
+
+Run backend tests for `external_destinations` validation and API-key preservation behavior:
+
+```bash
+cd backend
+pytest tests/test_backup_external_destinations.py -q
+```
 
 ---
 
@@ -697,10 +787,13 @@ gearcargo/
 ├── docker-compose.yml         # Development config
 ├── docker-compose.prod.yml    # Production config
 ├── docker-compose.simple.yml  # Simple production
+├── docker-compose.deploy.yml  # Pre-built image deploy
+├── docker-compose.synology.yml # Synology NAS deploy
 ├── Dockerfile                 # Multi-stage build
 ├── setup.sh                   # Setup script
 ├── backup.sh                  # Backup script
-└── restore.sh                 # Restore script
+├── restore.sh                 # Restore script
+└── scripts/                   # Utility scripts
 \`\`\`
 
 ---
@@ -726,9 +819,13 @@ docker compose -f docker-compose.prod.yml logs -f backend
 # Pull latest image from GitHub Container Registry
 docker pull ghcr.io/aiulian25/gearcargo:latest
 
-# Or deploy directly using the deploy compose file
+# Deploy / Synology
 docker compose -f docker-compose.deploy.yml pull
 docker compose -f docker-compose.deploy.yml up -d --force-recreate
+
+# Synology NAS
+sudo docker compose -f docker-compose.synology.yml pull
+sudo docker compose -f docker-compose.synology.yml up -d --force-recreate
 \`\`\`
 
 ---

@@ -1,84 +1,103 @@
-# GearCargo - Simple Production Docker Compose (No AI)
+# GearCargo - Synology NAS Deployment
 # Version: 1.0
 #
-# Usage:
-#   1. Copy .env.simple to .env and configure all values
-#   2. Build:  docker compose -f docker-compose.simple.yml build
-#   3. Start:  docker compose -f docker-compose.simple.yml up -d
-#   4. Logs:   docker compose -f docker-compose.simple.yml logs -f
+# Ready-to-use for Synology DSM — no manual edits needed!
+# Differences from the standard deploy file:
+#   - user: reads PUID/PGID from .env (default 1026:100)
+#   - No deploy/resource limits (Synology kernels lack CPU CFS scheduler)
+#   - APP_PORT defaults to 5050 (DSM uses 5000/5001)
+#
+# Quick Start:
+#   1. Copy .env.synology to .env and configure all values
+#   2. Login to GitHub Container Registry:
+#      echo "YOUR_GITHUB_PAT" | sudo docker login ghcr.io -u YOUR_USERNAME --password-stdin
+#   3. Deploy:
+#      sudo docker compose up -d
+#   4. View logs:
+#      sudo docker compose logs -f backend
 
 services:
   # ============================================================
-  # BACKEND API + STATIC FILE SERVER
+  # BACKEND API (Pre-built from GitHub Container Registry)
   # ============================================================
   backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: gearcargo:latest
+    image: ghcr.io/aiulian25/gearcargo:latest
     container_name: gearcargo-backend
     ports:
-      - "${APP_PORT:-5000}:5000"
+      - "${APP_PORT:-5050}:5000"
     environment:
       - FLASK_ENV=production
       - DATABASE_URL=postgresql://gearcargo:${DB_PASSWORD}@db:5432/gearcargo
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - SECRET_KEY=${SECRET_KEY}
       - APP_URL=${APP_URL}
-      
-      # JWT
+
+      # Security - JWT
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - JWT_ACCESS_TOKEN_EXPIRES=${JWT_ACCESS_TOKEN_EXPIRES:-3600}
       - JWT_REFRESH_TOKEN_EXPIRES=${JWT_REFRESH_TOKEN_EXPIRES:-2592000}
-      
-      # CORS
+
+      # Security - CORS
       - CORS_ORIGINS=${CORS_ORIGINS}
       - CORS_SUPPORTS_CREDENTIALS=true
-      
-      # CSRF
+
+      # Security - CSRF Protection
       - WTF_CSRF_ENABLED=true
       - WTF_CSRF_SECRET_KEY=${WTF_CSRF_SECRET_KEY}
-      
-      # Rate Limiting
+
+      # Security - Rate Limiting
       - RATELIMIT_ENABLED=true
       - RATELIMIT_DEFAULT=${RATELIMIT_DEFAULT:-100 per hour}
       - RATELIMIT_STORAGE_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
-      
-      # Session (HTTPS)
-      - SESSION_COOKIE_SECURE=true
+
+      # Security - Session
+      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-false}
       - SESSION_COOKIE_HTTPONLY=true
-      - SESSION_COOKIE_SAMESITE=Strict
-      
-      # Encryption
+      - SESSION_COOKIE_SAMESITE=${SESSION_COOKIE_SAMESITE:-Lax}
+
+      # Encryption Key
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
-      
+
+      # Admin User (optional - for first deployment)
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+
       # Domain-based access control (SECURITY)
       - ADMIN_DOMAIN=${ADMIN_DOMAIN:-}
       - USER_DOMAIN=${USER_DOMAIN:-}
-      
-      # AI Disabled
-      - OLLAMA_ENABLED=false
-      
+
+      # Ollama AI (optional)
+      - OLLAMA_ENABLED=${OLLAMA_ENABLED:-false}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2}
+      - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-30}
+
       # Theme
       - DEFAULT_THEME=${DEFAULT_THEME:-dark}
-      
+
       # Upload limit (MB)
       - MAX_UPLOAD_SIZE_MB=${MAX_UPLOAD_SIZE_MB:-200}
-      
-      # Email
-      - MAIL_ENABLED=${MAIL_ENABLED:-true}
-      - MAIL_SERVER=${MAIL_SERVER}
+
+      # Email (for password reset, notifications)
+      - MAIL_ENABLED=${MAIL_ENABLED:-false}
+      - MAIL_SERVER=${MAIL_SERVER:-}
       - MAIL_PORT=${MAIL_PORT:-587}
       - MAIL_USE_TLS=${MAIL_USE_TLS:-true}
-      - MAIL_USERNAME=${MAIL_USERNAME}
-      - MAIL_PASSWORD=${MAIL_PASSWORD}
-      - MAIL_DEFAULT_SENDER=${MAIL_DEFAULT_SENDER}
-      
+      - MAIL_USERNAME=${MAIL_USERNAME:-}
+      - MAIL_PASSWORD=${MAIL_PASSWORD:-}
+      - MAIL_DEFAULT_SENDER=${MAIL_DEFAULT_SENDER:-}
+
       # Push Notifications
-      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
-      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
-      - VAPID_SUBJECT=${VAPID_SUBJECT}
-    user: "${PUID:-1000}:${PGID:-1000}"
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
+      - VAPID_SUBJECT=${VAPID_SUBJECT:-}
+    volumes:
+      - ./volumes/attachments:/app/volumes/attachments
+      - ./volumes/backups:/app/volumes/backups
+      - ./volumes/uploads:/app/uploads
+      - ./volumes/logs:/app/volumes/logs
+    user: "${PUID:-1026}:${PGID:-100}"
     read_only: true
     tmpfs:
       - /tmp
@@ -87,11 +106,6 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    volumes:
-      - ./volumes/attachments:/app/volumes/attachments
-      - ./volumes/backups:/app/volumes/backups
-      - ./volumes/uploads:/app/uploads
-      - ./volumes/logs:/app/volumes/logs
     depends_on:
       db:
         condition: service_healthy
@@ -104,19 +118,13 @@ services:
       timeout: 10s
       start_period: 60s
       retries: 3
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 1G
-        reservations:
-          cpus: '0.5'
-          memory: 256M
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - gearcargo-net
 
@@ -152,14 +160,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 128M
     logging:
       driver: "json-file"
       options:
@@ -200,14 +200,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-        reservations:
-          cpus: '0.1'
-          memory: 64M
     logging:
       driver: "json-file"
       options:

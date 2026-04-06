@@ -69,6 +69,9 @@ services:
       # Theme
       - DEFAULT_THEME=${DEFAULT_THEME:-dark}
       
+      # Upload limit (MB)
+      - MAX_UPLOAD_SIZE_MB=${MAX_UPLOAD_SIZE_MB:-200}
+      
       # Email (Required for password reset, notifications)
       - MAIL_ENABLED=${MAIL_ENABLED:-true}
       - MAIL_SERVER=${MAIL_SERVER}

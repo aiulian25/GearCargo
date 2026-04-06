@@ -13,6 +13,21 @@ from app.routes.auth import token_required
 fuel_bp = Blueprint('fuel', __name__)
 
 
+def _recalculate_vehicle_current_mileage(user_id, vehicle_id):
+    """Set current mileage to the max recorded odometer for this vehicle."""
+    vehicle = Vehicle.query.filter_by(id=vehicle_id, user_id=user_id).first()
+    if not vehicle:
+        return
+
+    max_odometer = db.session.query(func.max(Entry.odometer)).filter(
+        Entry.user_id == user_id,
+        Entry.vehicle_id == vehicle_id,
+        Entry.odometer.isnot(None)
+    ).scalar()
+
+    vehicle.current_mileage = max_odometer or 0
+
+
 @fuel_bp.route('', methods=['GET'])
 @token_required
 def get_fuel_entries(current_user):
@@ -178,6 +193,8 @@ def update_fuel_entry(current_user, entry_id):
     
     if 'notes' in data:
         entry.notes = data['notes']
+
+    _recalculate_vehicle_current_mileage(current_user.id, entry.vehicle_id)
     
     db.session.commit()
     
@@ -199,7 +216,10 @@ def delete_fuel_entry(current_user, entry_id):
     if not entry:
         return jsonify({'error': 'Entry not found'}), 404
     
+    vehicle_id = entry.vehicle_id
     db.session.delete(entry)
+    db.session.flush()
+    _recalculate_vehicle_current_mileage(current_user.id, vehicle_id)
     db.session.commit()
     
     return jsonify({'message': 'Fuel entry deleted'})

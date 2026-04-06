@@ -3,12 +3,13 @@ GearCargo - Calendar Sync Service
 Supports: Google Calendar, Nextcloud, Baikal, Radicale, Generic CalDAV
 """
 
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta
 from flask import current_app
 from typing import Optional, Dict, List, Any, Tuple
 import logging
+from urllib.parse import urlparse
+import ipaddress
 import caldav
-from caldav.elements import dav, cdav
 from icalendar import Calendar, Event, Alarm
 from cryptography.fernet import Fernet
 import base64
@@ -120,10 +121,11 @@ CALENDAR_PROVIDERS = {
 # ============================================================
 
 def get_encryption_key() -> bytes:
-    """Get or generate encryption key for calendar credentials."""
-    secret_key = current_app.config.get('SECRET_KEY', 'default-secret-key')
-    # Derive a 32-byte key from SECRET_KEY
-    return base64.urlsafe_b64encode(hashlib.sha256(secret_key.encode()).digest())
+    """Derive a symmetric key for credential encryption."""
+    key_seed = current_app.config.get('ENCRYPTION_KEY') or current_app.config.get('SECRET_KEY')
+    if not key_seed or key_seed in ('', 'dev-secret-key-change-in-production'):
+        raise RuntimeError('ENCRYPTION_KEY or SECRET_KEY must be set for credential encryption')
+    return base64.urlsafe_b64encode(hashlib.sha256(str(key_seed).encode()).digest())
 
 
 def encrypt_password(password: str) -> str:
@@ -146,6 +148,145 @@ def decrypt_password(encrypted: str) -> str:
         return ''
 
 
+def _is_allowed_caldav_url(url: str) -> bool:
+    """Allow HTTPS in production and localhost HTTP for local development only.
+    Blocks internal/private IP ranges to prevent SSRF."""
+    if not url:
+        return False
+
+    parsed = urlparse(url)
+    if parsed.scheme not in ('http', 'https'):
+        return False
+
+    host = (parsed.hostname or '').lower()
+
+    # Block private/internal IP ranges (SSRF prevention)
+    try:
+        addr = ipaddress.ip_address(host)
+        if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
+            # Allow localhost for development only via HTTP
+            if addr.is_loopback and parsed.scheme == 'http':
+                return True
+            if parsed.scheme == 'https':
+                return False  # Block https to private IPs
+            return False
+    except ValueError:
+        pass  # Not an IP literal — hostname, allow resolution
+
+    if parsed.scheme == 'https':
+        return True
+
+    # HTTP only allowed for localhost development
+    return host in {'localhost', '127.0.0.1', '::1'}
+
+
+def get_user_calendar_sources(user, include_secrets: bool = False) -> List[Dict[str, Any]]:
+    """Return normalized calendar sources for the user with legacy fallback."""
+    preferences = user.preferences or {}
+    raw_sources = preferences.get('calendar_sources')
+    sources: List[Dict[str, Any]] = []
+
+    if isinstance(raw_sources, list):
+        for source in raw_sources:
+            if not isinstance(source, dict):
+                continue
+            normalized = {
+                'id': str(source.get('id') or uuid.uuid4()),
+                'name': str(source.get('name') or source.get('provider') or 'caldav').strip()[:120],
+                'provider': str(source.get('provider') or 'caldav').strip().lower(),
+                'url': str(source.get('url') or '').strip(),
+                'username': str(source.get('username') or '').strip(),
+                'calendar_id': str(source.get('calendar_id') or '').strip(),
+                'enabled': bool(source.get('enabled', True)),
+                'has_password': bool(source.get('password')),
+            }
+            if include_secrets and source.get('password'):
+                normalized['password'] = source.get('password')
+            sources.append(normalized)
+
+    # Backward compatibility with legacy single-source columns.
+    if not sources and user.calendar_provider and user.calendar_url and user.calendar_username:
+        legacy_source = {
+            'id': 'legacy_primary',
+            'name': user.calendar_provider.capitalize(),
+            'provider': user.calendar_provider,
+            'url': user.calendar_url,
+            'username': user.calendar_username,
+            'calendar_id': user.calendar_id or '',
+            'enabled': bool(user.calendar_enabled),
+            'has_password': bool(user.calendar_password),
+        }
+        if include_secrets and user.calendar_password:
+            legacy_source['password'] = user.calendar_password
+        sources.append(legacy_source)
+
+    return sources
+
+
+def set_user_calendar_sources(user, sources: List[Dict[str, Any]]) -> None:
+    """Persist calendar sources and keep legacy fields synchronized."""
+    preferences = dict(user.preferences or {})
+    preferences['calendar_sources'] = sources
+    user.preferences = preferences
+
+    primary = next((source for source in sources if source.get('enabled')), None) or (sources[0] if sources else None)
+    if primary:
+        user.calendar_enabled = bool(primary.get('enabled', True))
+        user.calendar_provider = primary.get('provider')
+        user.calendar_url = primary.get('url')
+        user.calendar_username = primary.get('username')
+        user.calendar_password = primary.get('password', '')
+        user.calendar_id = primary.get('calendar_id')
+    else:
+        user.calendar_enabled = False
+        user.calendar_provider = None
+        user.calendar_url = None
+        user.calendar_username = None
+        user.calendar_password = None
+        user.calendar_id = None
+
+
+def validate_calendar_source(source: Dict[str, Any]) -> Optional[str]:
+    """Validate a single calendar source payload. Returns an error key."""
+    provider = str(source.get('provider') or '').strip().lower()
+    url = str(source.get('url') or '').strip()
+    username = str(source.get('username') or '').strip()
+    source_id = str(source.get('id') or '').strip()
+
+    if not source_id:
+        return 'calendar.source.invalid_id'
+    if provider not in CALENDAR_PROVIDERS:
+        return 'calendar.source.invalid_provider'
+    if not url or len(url) > 500:
+        return 'calendar.source.invalid_url'
+    if not _is_allowed_caldav_url(url):
+        return 'calendar.source.https_required'
+    if not username or len(username) > 255:
+        return 'calendar.source.invalid_username'
+
+    return None
+
+
+def build_source_for_storage(payload: Dict[str, Any], existing: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Build a secure source object for persistence."""
+    existing = existing or {}
+
+    incoming_password = str(payload.get('password') or '').strip()
+    encrypted_password = incoming_password and encrypt_password(incoming_password)
+
+    return {
+        'id': str(payload.get('id') or existing.get('id') or uuid.uuid4()),
+        'name': str(payload.get('name') or existing.get('name') or payload.get('provider') or 'caldav').strip()[:120],
+        'provider': str(payload.get('provider') or existing.get('provider') or 'caldav').strip().lower(),
+        'url': str(payload.get('url') or existing.get('url') or '').strip(),
+        'username': str(payload.get('username') or existing.get('username') or '').strip(),
+        'calendar_id': str(payload.get('calendar_id') or existing.get('calendar_id') or '').strip(),
+        'enabled': bool(payload.get('enabled', existing.get('enabled', True))),
+        # Keep current secret when password is omitted from update payload.
+        'password': encrypted_password or existing.get('password', ''),
+    }
+
+
 # ============================================================
 # CALENDAR SERVICE CLASS
 # ============================================================
@@ -153,9 +294,19 @@ def decrypt_password(encrypted: str) -> str:
 class CalendarService:
     """Service for syncing with CalDAV calendars."""
     
-    def __init__(self, user):
-        """Initialize with user's calendar settings."""
+    def __init__(self, user, source: Optional[Dict[str, Any]] = None):
+        """Initialize for a specific source; falls back to legacy fields."""
         self.user = user
+        self.source = source or {
+            'provider': user.calendar_provider,
+            'url': user.calendar_url,
+            'username': user.calendar_username,
+            'password': user.calendar_password,
+            'calendar_id': user.calendar_id,
+            'enabled': bool(user.calendar_enabled),
+            'name': user.calendar_provider or 'caldav',
+            'id': 'legacy_primary',
+        }
         self.client = None
         self.calendar = None
         self._connected = False
@@ -164,10 +315,10 @@ class CalendarService:
     def is_configured(self) -> bool:
         """Check if calendar is configured for this user."""
         return bool(
-            self.user.calendar_enabled and
-            self.user.calendar_provider and
-            self.user.calendar_url and
-            self.user.calendar_username
+            self.source.get('enabled', True) and
+            self.source.get('provider') and
+            self.source.get('url') and
+            self.source.get('username')
         )
     
     def connect(self) -> Tuple[bool, str]:
@@ -176,11 +327,11 @@ class CalendarService:
             return False, "Calendar not configured"
         
         try:
-            password = decrypt_password(self.user.calendar_password)
+            password = decrypt_password(self.source.get('password') or '')
             
             self.client = caldav.DAVClient(
-                url=self.user.calendar_url,
-                username=self.user.calendar_username,
+                url=self.source.get('url'),
+                username=self.source.get('username'),
                 password=password
             )
             
@@ -190,10 +341,13 @@ class CalendarService:
             # Get or create calendar
             calendars = principal.calendars()
             
-            if self.user.calendar_id:
+            requested_calendar_id = self.source.get('calendar_id')
+            if requested_calendar_id:
                 # Try to find specific calendar
                 for cal in calendars:
-                    if cal.id == self.user.calendar_id or cal.name == self.user.calendar_id:
+                    cal_id = str(cal.id) if hasattr(cal, 'id') else str(getattr(cal, 'url', ''))
+                    cal_name = str(cal.name) if hasattr(cal, 'name') else ''
+                    if requested_calendar_id in {cal_id, cal_name}:
                         self.calendar = cal
                         break
             
@@ -209,7 +363,8 @@ class CalendarService:
                     return False, "No calendars found and couldn't create one"
             
             self._connected = True
-            return True, f"Connected to calendar: {self.calendar.name if hasattr(self.calendar, 'name') else 'Default'}"
+            calendar_name = self.calendar.name if hasattr(self.calendar, 'name') else 'Default'
+            return True, f"Connected to calendar: {calendar_name}"
             
         except caldav.lib.error.AuthorizationError:
             return False, "Authentication failed. Check username and password."
@@ -361,9 +516,9 @@ def sync_entry_to_calendar(user, entry_type: str, entry: Any, action: str = 'cre
     """
     if not user.calendar_enabled:
         return True, "Calendar sync disabled"
-    
-    calendar_service = CalendarService(user)
-    if not calendar_service.is_configured:
+
+    sources = [source for source in get_user_calendar_sources(user, include_secrets=True) if source.get('enabled')]
+    if not sources:
         return True, "Calendar not configured"
     
     try:
@@ -381,22 +536,37 @@ def sync_entry_to_calendar(user, entry_type: str, entry: Any, action: str = 'cre
         if not event_data:
             return False, f"Unknown entry type: {entry_type}"
         
-        if action == 'delete':
-            return calendar_service.delete_event(uid)
-        
-        # Create or update event
-        success, result = calendar_service.create_event(
-            uid=uid,
-            title=event_data['title'],
-            start=event_data['start'],
-            end=event_data.get('end'),
-            description=event_data.get('description'),
-            location=event_data.get('location'),
-            all_day=event_data.get('all_day', True),
-            reminder_minutes=event_data.get('reminder_minutes', 1440)  # 24 hours default
-        )
-        
-        return success, result
+        failures = []
+        success_count = 0
+
+        for source in sources:
+            calendar_service = CalendarService(user, source)
+            if action == 'delete':
+                success, result = calendar_service.delete_event(uid)
+            else:
+                success, result = calendar_service.create_event(
+                    uid=uid,
+                    title=event_data['title'],
+                    start=event_data['start'],
+                    end=event_data.get('end'),
+                    description=event_data.get('description'),
+                    location=event_data.get('location'),
+                    all_day=event_data.get('all_day', True),
+                    reminder_minutes=event_data.get('reminder_minutes', 1440)
+                )
+
+            if success:
+                success_count += 1
+            else:
+                source_name = source.get('name') or source.get('provider') or source.get('id')
+                failures.append(f"{source_name}: {result}")
+
+        if success_count == 0 and failures:
+            return False, '; '.join(failures)
+        if failures:
+            return True, f"Synced to {success_count}/{len(sources)} sources. Failures: {'; '.join(failures)}"
+
+        return True, f"Synced to {success_count} source(s)"
         
     except Exception as e:
         logger.error(f"Calendar sync error: {e}")
@@ -536,9 +706,9 @@ def sync_all_entries_for_user(user) -> Dict[str, Any]:
     
     if not user.calendar_enabled:
         return results
-    
-    calendar_service = CalendarService(user)
-    if not calendar_service.is_configured:
+
+    configured_sources = [source for source in get_user_calendar_sources(user, include_secrets=True) if source.get('enabled')]
+    if not configured_sources:
         return results
     
     # Get all user's vehicles
@@ -601,7 +771,8 @@ def get_provider_info(provider: str) -> Optional[Dict]:
 def get_all_providers() -> List[Dict]:
     """Get list of all supported providers."""
     return [
-        {'id': key, **{k: v for k, v in val.items() if k != 'setup_guide'}}
+        {'id': key, 'setup_guide_key': f'settings.calendarSetupGuide.{key}',
+         **{k: v for k, v in val.items() if k != 'setup_guide'}}
         for key, val in CALENDAR_PROVIDERS.items()
     ]
 

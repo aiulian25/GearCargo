@@ -81,13 +81,72 @@ export default function BackupSettings() {
   const [importingLubelog, setImportingLubelog] = useState(false)
   const [lubelogDistanceUnit, setLubelogDistanceUnit] = useState('miles')
   const [testingConnection, setTestingConnection] = useState(false)
-  const [showApiKey, setShowApiKey] = useState(false)
+  const [visibleApiKeyDestinations, setVisibleApiKeyDestinations] = useState({})
   const [uploading, setUploading] = useState(false)
   const [externalFiles, setExternalFiles] = useState(null)
   const [browsingFiles, setBrowsingFiles] = useState(false)
   const [restoringExternal, setRestoringExternal] = useState(false)
   
   const [status, setStatus] = useState(null)
+  const createEmptyDestination = (index = 1) => ({
+    id: `destination_${Date.now()}_${index}`,
+    name: `${t('backup.destinationLabel') || 'Destination'} ${index}`,
+    provider: 'webdav',
+    enabled: true,
+    external_url: '',
+    external_api_key: '',
+    has_external_api_key: false,
+    external_path: '/GearCargo',
+  })
+
+  const normalizeDestinations = (incomingDestinations, fallbackSchedule = {}) => {
+    if (Array.isArray(incomingDestinations) && incomingDestinations.length > 0) {
+      return incomingDestinations.map((destination, index) => ({
+        id: destination.id || `destination_${index + 1}`,
+        name: destination.name || `${t('backup.destinationLabel') || 'Destination'} ${index + 1}`,
+        provider: destination.provider || 'webdav',
+        enabled: destination.enabled !== false,
+        external_url: destination.external_url || '',
+        external_api_key: destination.external_api_key || '',
+        has_external_api_key: Boolean(destination.has_external_api_key),
+        external_path: destination.external_path || '/GearCargo',
+      }))
+    }
+
+    if (fallbackSchedule.external_url) {
+      return [{
+        id: 'legacy_primary',
+        name: t('backup.primaryDestination') || 'Primary Destination',
+        provider: 'webdav',
+        enabled: Boolean(fallbackSchedule.external_enabled),
+        external_url: fallbackSchedule.external_url || '',
+        external_api_key: '',
+        has_external_api_key: Boolean(fallbackSchedule.has_external_api_key),
+        external_path: fallbackSchedule.external_path || '/GearCargo',
+      }]
+    }
+
+    return [createEmptyDestination(1)]
+  }
+
+  const syncLegacyExternalFields = (nextSchedule) => {
+    const destinations = Array.isArray(nextSchedule.external_destinations)
+      ? nextSchedule.external_destinations
+      : []
+
+    const firstEnabledDestination = destinations.find((destination) => destination.enabled)
+    const primaryDestination = firstEnabledDestination || destinations[0]
+
+    return {
+      ...nextSchedule,
+      external_enabled: destinations.some((destination) => destination.enabled),
+      external_url: primaryDestination?.external_url || '',
+      external_path: primaryDestination?.external_path || '/GearCargo',
+      has_external_api_key: Boolean(primaryDestination?.has_external_api_key || primaryDestination?.external_api_key),
+      external_destinations: destinations,
+    }
+  }
+
   const [schedule, setSchedule] = useState({
     enabled: false,
     frequency: 'weekly',
@@ -99,6 +158,18 @@ export default function BackupSettings() {
     external_url: '',
     external_api_key: '',
     external_path: '/GearCargo',
+    external_destinations: [
+      {
+        id: 'destination_1',
+        name: 'Destination 1',
+        provider: 'webdav',
+        enabled: false,
+        external_url: '',
+        external_api_key: '',
+        has_external_api_key: false,
+        external_path: '/GearCargo',
+      }
+    ],
     retention_days: 90,
     max_backups: 10,
     notify_on_success: false,
@@ -108,6 +179,7 @@ export default function BackupSettings() {
   const [showExternalSettings, setShowExternalSettings] = useState(false)
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false)
   const [showBackupList, setShowBackupList] = useState(false)
+  const [selectedExternalDestinationIndex, setSelectedExternalDestinationIndex] = useState(0)
   const [browsingFolders, setBrowsingFolders] = useState(false)
   const [externalFolders, setExternalFolders] = useState(null)
   const [browsePath, setBrowsePath] = useState('/')
@@ -133,8 +205,20 @@ export default function BackupSettings() {
       setStatus(response.data)
       
       if (response.data.schedule) {
-        setSchedule(prev => ({ ...prev, ...response.data.schedule }))
-        setShowExternalSettings(response.data.schedule.external_enabled)
+        const loadedSchedule = response.data.schedule
+        const normalizedDestinations = normalizeDestinations(
+          loadedSchedule.external_destinations,
+          loadedSchedule
+        )
+        setSchedule((prev) => syncLegacyExternalFields({
+          ...prev,
+          ...loadedSchedule,
+          external_destinations: normalizedDestinations,
+        }))
+        setShowExternalSettings(
+          Boolean(loadedSchedule.external_enabled) || normalizedDestinations.some((destination) => destination.enabled)
+        )
+        setSelectedExternalDestinationIndex(0)
       }
     } catch (error) {
       console.error('Failed to load backup status:', error)
@@ -147,20 +231,140 @@ export default function BackupSettings() {
   const handleScheduleChange = (field, value) => {
     setSchedule(prev => ({ ...prev, [field]: value }))
   }
+
+  const updateDestinationList = (updater) => {
+    setSchedule((prev) => {
+      const current = Array.isArray(prev.external_destinations) ? prev.external_destinations : []
+      const updated = updater(current)
+      return syncLegacyExternalFields({ ...prev, external_destinations: updated })
+    })
+  }
+
+  const updateExternalDestination = (index, field, value) => {
+    updateDestinationList((destinations) => destinations.map((destination, destinationIndex) => {
+      if (destinationIndex !== index) return destination
+      const updatedDestination = { ...destination, [field]: value }
+      if (field === 'external_api_key') {
+        updatedDestination.has_external_api_key = Boolean(value)
+      }
+      return updatedDestination
+    }))
+  }
+
+  const addExternalDestination = () => {
+    updateDestinationList((destinations) => {
+      const next = [...destinations, createEmptyDestination(destinations.length + 1)]
+      return next
+    })
+    setSelectedExternalDestinationIndex((prev) => prev + 1)
+  }
+
+  const removeExternalDestination = (index) => {
+    updateDestinationList((destinations) => {
+      if (destinations.length <= 1) {
+        return [createEmptyDestination(1)]
+      }
+      return destinations.filter((_, destinationIndex) => destinationIndex !== index)
+    })
+    setSelectedExternalDestinationIndex((prev) => Math.max(0, prev - (index <= prev ? 1 : 0)))
+  }
+
+  const toggleDestinationApiKeyVisibility = (destinationId) => {
+    setVisibleApiKeyDestinations((prev) => ({
+      ...prev,
+      [destinationId]: !prev[destinationId],
+    }))
+  }
+
+  const isDestinationApiKeyVisible = (destinationId) => Boolean(visibleApiKeyDestinations[destinationId])
+
+  const moveExternalDestination = (index, direction) => {
+    updateDestinationList((destinations) => {
+      const targetIndex = index + direction
+      if (targetIndex < 0 || targetIndex >= destinations.length) {
+        return destinations
+      }
+
+      const next = [...destinations]
+      const [moved] = next.splice(index, 1)
+      next.splice(targetIndex, 0, moved)
+      return next
+    })
+
+    setSelectedExternalDestinationIndex((prev) => {
+      if (prev === index) return index + direction
+      if (prev === index + direction) return index
+      return prev
+    })
+  }
+
+  const getActiveDestination = () => {
+    const destinations = Array.isArray(schedule.external_destinations) ? schedule.external_destinations : []
+    if (!destinations.length) return null
+    const safeIndex = Math.min(selectedExternalDestinationIndex, destinations.length - 1)
+    return destinations[safeIndex]
+  }
   
   const saveSchedule = async () => {
     try {
       setSaving(true)
+
+      const destinations = (schedule.external_destinations || []).map((destination, index) => ({
+        id: destination.id || `destination_${index + 1}`,
+        name: destination.name || `${t('backup.destinationLabel') || 'Destination'} ${index + 1}`,
+        provider: destination.provider || 'webdav',
+        enabled: destination.enabled !== false,
+        external_url: (destination.external_url || '').trim(),
+        external_api_key: (destination.external_api_key || '').trim(),
+        external_path: destination.external_path || '/GearCargo',
+        has_external_api_key: Boolean(destination.has_external_api_key),
+      }))
       
-      // Validate external URL if enabled
-      if (schedule.external_enabled && schedule.external_url) {
-        if (!schedule.external_url.startsWith('https://')) {
-          toast.error(t('backup.httpsRequired') || 'External URL must use HTTPS')
+      if (schedule.external_enabled) {
+        const enabledDestinations = destinations.filter((destination) => destination.enabled)
+        if (!enabledDestinations.length) {
+          toast.error(t('backup.enableAtLeastOneDestination') || 'Enable at least one destination')
           return
         }
+
+        for (const destination of enabledDestinations) {
+          if (!destination.external_url) {
+            toast.error(t('backup.enterDestinationUrl') || 'Please enter a destination URL')
+            return
+          }
+          if (!destination.external_url.startsWith('https://')) {
+            toast.error(t('backup.httpsRequired') || 'External URL must use HTTPS')
+            return
+          }
+          if (!destination.external_api_key && !destination.has_external_api_key) {
+            toast.error(t('backup.enterDestinationKey') || 'Please enter credentials for each destination')
+            return
+          }
+        }
+      }
+
+      const enabledDestinations = destinations.filter((destination) => destination.enabled)
+      const primaryDestination = enabledDestinations[0] || destinations[0]
+
+      const schedulePayload = {
+        ...schedule,
+        external_enabled: schedule.external_enabled,
+        external_url: primaryDestination?.external_url || '',
+        external_api_key: primaryDestination?.external_api_key || '',
+        external_path: primaryDestination?.external_path || '/GearCargo',
+        external_destinations: destinations.map((destination) => ({
+          id: destination.id,
+          name: destination.name,
+          provider: destination.provider,
+          enabled: destination.enabled,
+          external_url: destination.external_url,
+          external_api_key: destination.external_api_key,
+          external_path: destination.external_path,
+          has_external_api_key: destination.has_external_api_key,
+        })),
       }
       
-      await backupApi.updateSchedule(schedule)
+      await backupApi.updateSchedule(schedulePayload)
       toast.success(t('backup.scheduleSaved') || 'Backup schedule saved')
       loadBackupStatus()
     } catch (error) {
@@ -387,14 +591,17 @@ export default function BackupSettings() {
   }
 
   const browseExternalFiles = async () => {
-    if (!schedule.external_url || (!schedule.external_api_key && !schedule.has_external_api_key)) {
+    const activeDestination = getActiveDestination()
+    if (!activeDestination?.external_url || (!activeDestination.external_api_key && !activeDestination.has_external_api_key)) {
       toast.error(t('backup.enterUrlAndKey') || 'Enter server URL and credentials first')
       return
     }
     try {
       setBrowsingFiles(true)
       const response = await backupApi.browseExternalFiles(
-        schedule.external_url, schedule.external_api_key || null, schedule.external_path
+        activeDestination.external_url,
+        activeDestination.external_api_key || null,
+        activeDestination.external_path
       )
       setExternalFiles(response.data.files)
     } catch (error) {
@@ -406,13 +613,17 @@ export default function BackupSettings() {
   }
 
   const restoreFromExternal = async (filename) => {
+    const activeDestination = getActiveDestination()
     if (!window.confirm(t('backup.restoreExternalConfirm') || `Restore from external backup "${filename}"? This will merge data with your existing records.`)) {
       return
     }
     try {
       setRestoringExternal(true)
       const response = await backupApi.restoreFromExternal(
-        filename, schedule.external_url, schedule.external_api_key || null, schedule.external_path
+        filename,
+        activeDestination?.external_url,
+        activeDestination?.external_api_key || null,
+        activeDestination?.external_path
       )
       const imported = response.data.imported || {}
       const summary = []
@@ -436,19 +647,24 @@ export default function BackupSettings() {
   }
   
   const testExternalConnection = async () => {
-    if (!schedule.external_url) {
+    const activeDestination = getActiveDestination()
+    if (!activeDestination?.external_url) {
       toast.error(t('backup.enterUrl') || 'Please enter an external URL')
       return
     }
     
-    if (!schedule.external_url.startsWith('https://')) {
+    if (!activeDestination.external_url.startsWith('https://')) {
       toast.error(t('backup.httpsRequired') || 'External URL must use HTTPS')
       return
     }
     
     try {
       setTestingConnection(true)
-      const response = await backupApi.testExternalConnection(schedule.external_url, schedule.external_api_key, schedule.external_path)
+      const response = await backupApi.testExternalConnection(
+        activeDestination.external_url,
+        activeDestination.external_api_key,
+        activeDestination.external_path
+      )
       
       if (response.data.success) {
         toast.success(response.data.message || t('backup.connectionSuccess') || 'Connection successful')
@@ -464,13 +680,18 @@ export default function BackupSettings() {
   }
 
   const browseExternalFolders = async (path = '/') => {
-    if (!schedule.external_url || (!schedule.external_api_key && !schedule.has_external_api_key)) {
+    const activeDestination = getActiveDestination()
+    if (!activeDestination?.external_url || (!activeDestination.external_api_key && !activeDestination.has_external_api_key)) {
       toast.error(t('backup.enterUrlAndKey') || 'Enter server URL and credentials first')
       return
     }
     try {
       setBrowsingFolders(true)
-      const response = await backupApi.browseExternalFolders(schedule.external_url, schedule.external_api_key || null, path)
+      const response = await backupApi.browseExternalFolders(
+        activeDestination.external_url,
+        activeDestination.external_api_key || null,
+        path
+      )
       setExternalFolders(response.data.folders)
       setBrowsePath(path)
     } catch (error) {
@@ -483,9 +704,11 @@ export default function BackupSettings() {
 
   const selectExternalFolder = (folder) => {
     const newPath = browsePath === '/' ? `/${folder}` : `${browsePath}/${folder}`
-    handleScheduleChange('external_path', newPath)
+    updateExternalDestination(selectedExternalDestinationIndex, 'external_path', newPath)
     setExternalFolders(null)
   }
+
+  const activeDestination = getActiveDestination()
   
   if (loading) {
     return (
@@ -780,7 +1003,15 @@ export default function BackupSettings() {
                 <input
                   type="checkbox"
                   checked={schedule.external_enabled}
-                  onChange={(e) => handleScheduleChange('external_enabled', e.target.checked)}
+                  onChange={(e) => {
+                    const enabled = e.target.checked
+                    updateDestinationList((destinations) => {
+                      if (!destinations.length) {
+                        return [{ ...createEmptyDestination(1), enabled }]
+                      }
+                      return destinations.map((destination) => ({ ...destination, enabled }))
+                    })
+                  }}
                   className="sr-only peer"
                 />
                 <div className="w-10 h-6 bg-[var(--color-bg-secondary)] peer-focus:ring-2 peer-focus:ring-[var(--color-accent)] rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--color-accent)]" />
@@ -789,93 +1020,153 @@ export default function BackupSettings() {
             
             {schedule.external_enabled && (
               <>
-                <div>
-                  <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-2">
-                    {t('backup.serverUrl') || 'Server URL (HTTPS only)'}
-                  </label>
-                  <input
-                    type="url"
-                    value={schedule.external_url}
-                    onChange={(e) => handleScheduleChange('external_url', e.target.value)}
-                    placeholder="https://your-server.com/api/backup"
-                    className="w-full p-3 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-border)] placeholder-[var(--color-text-muted)]"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-2">
-                    {t('backup.apiKey') || 'API Key (optional)'}
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showApiKey ? 'text' : 'password'}
-                      value={schedule.external_api_key}
-                      onChange={(e) => handleScheduleChange('external_api_key', e.target.value)}
-                      placeholder={schedule.has_external_api_key && !schedule.external_api_key ? '••••••••••• (saved)' : 'username:app-password'}
-                      className="w-full p-3 pr-10 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-border)] placeholder-[var(--color-text-muted)]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowApiKey(!showApiKey)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
-                      title={showApiKey ? 'Hide' : 'Show'}
-                    >
-                      {showApiKey ? (
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
-                        </svg>
-                      ) : (
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                      )}
-                    </button>
-                  </div>
-                  <p className="text-2xs text-[var(--color-text-muted)] mt-1">
-                    {schedule.has_external_api_key && !schedule.external_api_key
-                      ? (t('backup.credentialsSaved') || 'Credentials are saved. Leave empty to keep existing, or enter new ones to update.')
-                      : (t('backup.apiKeyHint') || 'For Nextcloud: username:app-password')
-                    }
-                  </p>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-[var(--color-text-secondary)]">
+                    {t('backup.destinationCount') || 'Configured destinations'}: {schedule.external_destinations?.length || 0}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={addExternalDestination}
+                    className="px-3 py-1.5 rounded-lg bg-[var(--color-accent)]/10 text-[var(--color-accent)] text-xs font-medium hover:bg-[var(--color-accent)]/20 transition-colors"
+                  >
+                    + {t('backup.addDestination') || 'Add Destination'}
+                  </button>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-2">
-                    {t('backup.backupPath') || 'Backup Folder Path'}
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={schedule.external_path}
-                      onChange={(e) => handleScheduleChange('external_path', e.target.value)}
-                      placeholder="/GearCargo"
-                      className="flex-1 p-3 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-border)] placeholder-[var(--color-text-muted)]"
-                    />
-                    <button
-                      onClick={() => {
-                        // Start browsing at the parent of the current path
-                        const currentPath = schedule.external_path || '/GearCargo'
-                        const parent = currentPath.includes('/') && currentPath !== '/' 
-                          ? currentPath.split('/').slice(0, -1).join('/') || '/' 
-                          : '/'
-                        browseExternalFolders(parent)
-                      }}
-                      disabled={browsingFolders || (!schedule.external_api_key && !schedule.has_external_api_key)}
-                      className="px-3 py-2 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]/80 transition-colors disabled:opacity-50"
-                      title={t('backup.browseFolders') || 'Browse folders'}
-                    >
-                      {browsingFolders ? (
-                        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        Icons.folder
-                      )}
-                    </button>
-                  </div>
-                  <p className="text-2xs text-[var(--color-text-muted)] mt-1">
-                    {t('backup.backupPathHint') || 'Folder will be created automatically if it doesn\'t exist'}
-                  </p>
+                <div className="space-y-3">
+                  {(schedule.external_destinations || []).map((destination, index) => (
+                    <div key={destination.id || index} className="rounded-lg border border-[var(--color-border)] p-3 bg-[var(--color-bg-secondary)]/60 space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <input
+                          type="text"
+                          value={destination.name || ''}
+                          onChange={(e) => updateExternalDestination(index, 'name', e.target.value)}
+                          placeholder={`${t('backup.destinationLabel') || 'Destination'} ${index + 1}`}
+                          className="flex-1 p-2 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-border)]"
+                        />
+                        <label className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
+                          <input
+                            type="checkbox"
+                            checked={destination.enabled !== false}
+                            onChange={(e) => updateExternalDestination(index, 'enabled', e.target.checked)}
+                          />
+                          {t('backup.enabled') || 'Enabled'}
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => removeExternalDestination(index)}
+                          disabled={(schedule.external_destinations || []).length <= 1}
+                          className="px-2 py-1 text-xs rounded-lg text-red-500 hover:bg-red-500/10 disabled:opacity-40"
+                        >
+                          {t('backup.removeDestination') || 'Remove'}
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => moveExternalDestination(index, -1)}
+                          disabled={index === 0}
+                          className="px-2 py-1 text-xs rounded-lg text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] disabled:opacity-40"
+                        >
+                          {t('backup.moveDestinationUp') || 'Move Up'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveExternalDestination(index, 1)}
+                          disabled={index === (schedule.external_destinations || []).length - 1}
+                          className="px-2 py-1 text-xs rounded-lg text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] disabled:opacity-40"
+                        >
+                          {t('backup.moveDestinationDown') || 'Move Down'}
+                        </button>
+                      </div>
+
+                      <input
+                        type="url"
+                        value={destination.external_url || ''}
+                        onChange={(e) => updateExternalDestination(index, 'external_url', e.target.value)}
+                        placeholder="https://your-server.com/remote.php/dav/files/user"
+                        className="w-full p-3 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-border)] placeholder-[var(--color-text-muted)]"
+                      />
+
+                      <div className="relative">
+                        <input
+                          type={isDestinationApiKeyVisible(destination.id || `destination_${index}`) ? 'text' : 'password'}
+                          value={destination.external_api_key || ''}
+                          onChange={(e) => updateExternalDestination(index, 'external_api_key', e.target.value)}
+                          placeholder={destination.has_external_api_key && !destination.external_api_key ? '••••••••••• (saved)' : 'username:app-password'}
+                          className="w-full p-3 pr-10 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-border)] placeholder-[var(--color-text-muted)]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => toggleDestinationApiKeyVisibility(destination.id || `destination_${index}`)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+                          title={isDestinationApiKeyVisible(destination.id || `destination_${index}`)
+                            ? (t('backup.hideCredentials') || 'Hide credentials')
+                            : (t('backup.showCredentials') || 'Show credentials')}
+                        >
+                          {isDestinationApiKeyVisible(destination.id || `destination_${index}`)
+                            ? Icons.chevronUp
+                            : Icons.chevronDown}
+                        </button>
+                      </div>
+
+                      <input
+                        type="text"
+                        value={destination.external_path || '/GearCargo'}
+                        onChange={(e) => updateExternalDestination(index, 'external_path', e.target.value)}
+                        placeholder="/GearCargo"
+                        className="w-full p-3 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-border)] placeholder-[var(--color-text-muted)]"
+                      />
+                    </div>
+                  ))}
                 </div>
+
+                <p className="text-2xs text-[var(--color-text-muted)] mt-1">
+                  {t('backup.apiKeyHint') || 'For Nextcloud: username:app-password'}
+                </p>
+
+                {(schedule.external_destinations || []).length > 0 && (
+                  <div>
+                    <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-2">
+                      {t('backup.activeDestination') || 'Active Destination for Test/Browse'}
+                    </label>
+                    <select
+                      value={selectedExternalDestinationIndex}
+                      onChange={(e) => {
+                        setSelectedExternalDestinationIndex(parseInt(e.target.value, 10))
+                        setExternalFolders(null)
+                        setExternalFiles(null)
+                      }}
+                      className="w-full p-3 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-border)]"
+                    >
+                      {(schedule.external_destinations || []).map((destination, index) => (
+                        <option key={destination.id || index} value={index}>
+                          {destination.name || `${t('backup.destinationLabel') || 'Destination'} ${index + 1}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => {
+                    const currentPath = activeDestination?.external_path || '/GearCargo'
+                    const parent = currentPath.includes('/') && currentPath !== '/'
+                      ? currentPath.split('/').slice(0, -1).join('/') || '/'
+                      : '/'
+                    browseExternalFolders(parent)
+                  }}
+                  disabled={browsingFolders || (!activeDestination?.external_api_key && !activeDestination?.has_external_api_key)}
+                  className="w-full py-2 px-4 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]/80 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {browsingFolders ? (
+                    <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    Icons.folder
+                  )}
+                  <span>{t('backup.browseFolders') || 'Browse folders'}</span>
+                </button>
 
                 {/* Folder browser */}
                 {externalFolders !== null && (
@@ -904,6 +1195,18 @@ export default function BackupSettings() {
                         </button>
                       </div>
                     </div>
+                    {/* Select current folder button */}
+                    {browsePath !== '/' && (
+                      <button
+                        onClick={() => {
+                          updateExternalDestination(selectedExternalDestinationIndex, 'external_path', browsePath)
+                          setExternalFolders(null)
+                        }}
+                        className="w-full py-2 px-3 rounded-lg bg-[var(--color-accent)]/10 text-[var(--color-accent)] text-xs font-medium hover:bg-[var(--color-accent)]/20 transition-colors border border-[var(--color-accent)]/30"
+                      >
+                        ✓ {t('backup.useThisFolder') || 'Use This Folder'}
+                      </button>
+                    )}
                     {externalFolders.length === 0 ? (
                       <p className="text-2xs text-[var(--color-text-muted)] italic">
                         {t('backup.noFolders') || 'No subfolders found'}
@@ -937,7 +1240,7 @@ export default function BackupSettings() {
                 
                 <button
                   onClick={testExternalConnection}
-                  disabled={testingConnection}
+                  disabled={testingConnection || !activeDestination?.external_url}
                   className="w-full py-2 px-4 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]/80 transition-colors flex items-center justify-center gap-2"
                 >
                   {testingConnection ? (
@@ -961,7 +1264,7 @@ export default function BackupSettings() {
                     </div>
                     <button
                       onClick={browseExternalFiles}
-                      disabled={browsingFiles || (!schedule.external_api_key && !schedule.has_external_api_key)}
+                      disabled={browsingFiles || (!activeDestination?.external_api_key && !activeDestination?.has_external_api_key)}
                       className="px-3 py-2 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]/80 transition-colors disabled:opacity-50 flex items-center gap-2"
                     >
                       {browsingFiles ? (
@@ -977,7 +1280,7 @@ export default function BackupSettings() {
                     <div className="bg-[var(--color-bg-secondary)] rounded-lg p-3 space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-medium text-[var(--color-text-secondary)]">
-                          {schedule.external_path || '/GearCargo'} — {externalFiles.length} {t('backup.filesFound') || 'backup files'}
+                          {activeDestination?.external_path || '/GearCargo'} — {externalFiles.length} {t('backup.filesFound') || 'backup files'}
                         </span>
                         <button
                           onClick={() => setExternalFiles(null)}

@@ -15,6 +15,15 @@ from app.routes.auth import token_required
 vehicles_bp = Blueprint('vehicles', __name__)
 
 
+def _get_max_recorded_odometer(user_id, vehicle_id):
+    """Return highest odometer recorded for a user's vehicle entries."""
+    return db.session.query(func.max(Entry.odometer)).filter(
+        Entry.user_id == user_id,
+        Entry.vehicle_id == vehicle_id,
+        Entry.odometer.isnot(None)
+    ).scalar() or 0
+
+
 @vehicles_bp.route('', methods=['GET'])
 @token_required
 def get_vehicles(current_user):
@@ -684,14 +693,20 @@ def update_mileage(current_user, vehicle_id):
     if not new_mileage:
         return jsonify({'error': 'Mileage is required'}), 400
     
-    if new_mileage < vehicle.current_mileage:
-        return jsonify({'error': 'Mileage cannot decrease'}), 400
+    max_recorded_odometer = _get_max_recorded_odometer(current_user.id, vehicle.id)
+    if new_mileage < max_recorded_odometer:
+        return jsonify({
+            'error': f'Mileage cannot be lower than the highest recorded entry ({max_recorded_odometer})',
+            'message_key': 'vehicles.mileageBelowRecordedMax',
+            'min_allowed_mileage': max_recorded_odometer,
+        }), 400
     
     vehicle.current_mileage = new_mileage
     db.session.commit()
     
     return jsonify({
         'message': 'Mileage updated',
+        'message_key': 'vehicles.mileageUpdated',
         'current_mileage': vehicle.current_mileage
     })
 

@@ -89,6 +89,20 @@ def create_app(config_class=None):
         }
     })
     
+    # Validate critical secrets are not defaults in production
+    _insecure_defaults = {
+        'dev-secret-key-change-in-production',
+        'jwt-secret-change-in-production',
+        'csrf-secret-change-in-production',
+    }
+    if not app.config.get('DEBUG'):
+        for key in ('SECRET_KEY', 'JWT_SECRET_KEY', 'WTF_CSRF_SECRET_KEY'):
+            if app.config.get(key) in _insecure_defaults:
+                raise RuntimeError(
+                    f'{key} is using an insecure default value. '
+                    f'Set {key} environment variable to a random secret.'
+                )
+    
     # Rate limiting
     limiter = Limiter(
         key_func=get_remote_address,

@@ -233,7 +233,9 @@ export default function Settings() {
     calendar_id: '',
     configured: false,
     last_sync: null,
+    sources: [],
   })
+  const [selectedCalendarSourceId, setSelectedCalendarSourceId] = useState('')
   const [calendarProviders, setCalendarProviders] = useState([])
   const [calendarLoading, setCalendarLoading] = useState(false)
   const [calendarTesting, setCalendarTesting] = useState(false)
@@ -343,7 +345,20 @@ export default function Settings() {
           calendarApi.getSettings(),
           calendarApi.getProviders()
         ])
-        setCalendarSettings(prev => ({ ...prev, ...settingsRes.data }))
+        const incoming = settingsRes.data || {}
+        const sources = Array.isArray(incoming.sources) ? incoming.sources : []
+        const firstSource = sources[0] || null
+        setCalendarSettings(prev => ({
+          ...prev,
+          ...incoming,
+          provider: firstSource?.provider || incoming.provider || '',
+          url: firstSource?.url || incoming.url || '',
+          username: firstSource?.username || incoming.username || '',
+          calendar_id: firstSource?.calendar_id || incoming.calendar_id || '',
+          password: '',
+          sources,
+        }))
+        setSelectedCalendarSourceId(firstSource?.id || '')
         setCalendarProviders(providersRes.data.providers || [])
       } catch (error) {
         console.error('Failed to fetch calendar settings:', error)
@@ -511,31 +526,102 @@ export default function Settings() {
   }
   
   // Calendar sync handlers
-  const handleCalendarProviderChange = async (provider) => {
-    const providerInfo = calendarProviders.find(p => p.id === provider)
-    setCalendarSettings(prev => ({
-      ...prev,
-      provider: provider,
-      url: providerInfo?.default_url || ''
-    }))
-    // Show setup guide when provider changes
-    if (provider) {
-      setShowSetupGuide(true)
-    }
+  const createEmptyCalendarSource = (index = 1) => ({
+    id: `calendar_source_${Date.now()}_${index}`,
+    name: `${t('settings.calendarSource') || 'Calendar Source'} ${index}`,
+    provider: 'caldav',
+    url: '',
+    username: '',
+    password: '',
+    has_password: false,
+    calendar_id: '',
+    enabled: true,
+  })
+
+  const selectedCalendarSource = (calendarSettings.sources || []).find(source => source.id === selectedCalendarSourceId) || null
+
+  const updateCalendarSources = (updater) => {
+    setCalendarSettings(prev => {
+      const current = Array.isArray(prev.sources) ? prev.sources : []
+      const next = updater(current)
+      return { ...prev, sources: next }
+    })
   }
-  
+
+  const handleCalendarProviderChange = (provider) => {
+    const providerInfo = calendarProviders.find(p => p.id === provider)
+    updateCalendarSources((sources) => sources.map((source) => {
+      if (source.id !== selectedCalendarSourceId) return source
+      return {
+        ...source,
+        provider,
+        url: source.url || providerInfo?.default_url || '',
+      }
+    }))
+    if (provider) setShowSetupGuide(true)
+  }
+
   const handleCalendarSettingChange = (field, value) => {
-    setCalendarSettings(prev => ({ ...prev, [field]: value }))
+    updateCalendarSources((sources) => sources.map((source) => {
+      if (source.id !== selectedCalendarSourceId) return source
+      return { ...source, [field]: value }
+    }))
+  }
+
+  const addCalendarSource = () => {
+    updateCalendarSources((sources) => {
+      const next = [...sources, createEmptyCalendarSource(sources.length + 1)]
+      const added = next[next.length - 1]
+      setSelectedCalendarSourceId(added.id)
+      return next
+    })
+  }
+
+  const removeCalendarSource = (sourceId) => {
+    updateCalendarSources((sources) => {
+      if (sources.length <= 1) {
+        const fallback = createEmptyCalendarSource(1)
+        setSelectedCalendarSourceId(fallback.id)
+        return [fallback]
+      }
+      const next = sources.filter(source => source.id !== sourceId)
+      if (!next.find(source => source.id === selectedCalendarSourceId)) {
+        setSelectedCalendarSourceId(next[0]?.id || '')
+      }
+      return next
+    })
   }
   
   const handleSaveCalendarSettings = async () => {
     setCalendarLoading(true)
     try {
-      await calendarApi.updateSettings(calendarSettings)
-      toast.success(t('settings.calendarSettingsSaved') || 'Calendar settings saved')
+      const sources = (calendarSettings.sources || []).map((source, index) => ({
+        id: source.id || `calendar_source_${index + 1}`,
+        name: source.name || `${t('settings.calendarSource') || 'Calendar Source'} ${index + 1}`,
+        provider: source.provider || 'caldav',
+        url: (source.url || '').trim(),
+        username: (source.username || '').trim(),
+        password: (source.password || '').trim(),
+        calendar_id: source.calendar_id || '',
+        enabled: source.enabled !== false,
+      }))
+
+      const response = await calendarApi.updateSettings({
+        enabled: calendarSettings.enabled,
+        sources,
+      })
+
+      const savedSources = response.data?.sources || []
+      setCalendarSettings(prev => ({ ...prev, ...response.data, sources: savedSources, password: '' }))
+      if (savedSources.length && !savedSources.find(source => source.id === selectedCalendarSourceId)) {
+        setSelectedCalendarSourceId(savedSources[0].id)
+      }
+
+      toast.success(t(response.data?.message_key) || t('settings.calendarSettingsSaved') || 'Calendar settings saved')
     } catch (error) {
       console.error('Failed to save calendar settings:', error)
-      toast.error(error.response?.data?.error || t('settings.calendarSettingsFailed') || 'Failed to save calendar settings')
+      const messageKey = error.response?.data?.message_key
+      toast.error((messageKey ? t(messageKey) : null) || error.response?.data?.error || t('settings.calendarSettingsFailed') || 'Failed to save calendar settings')
     } finally {
       setCalendarLoading(false)
     }
@@ -543,30 +629,28 @@ export default function Settings() {
   
   const handleTestCalendarConnection = async () => {
     if (calendarTesting) return
+    if (!selectedCalendarSource) {
+      toast.error(t('settings.selectSourceFirst') || 'Select a calendar source first')
+      return
+    }
     
     setCalendarTesting(true)
     try {
-      // First save settings
-      await calendarApi.updateSettings(calendarSettings)
-      
-      // Then test connection
-      const response = await calendarApi.testConnection()
-      toast.success(response.data.message || t('settings.calendarConnectionSuccess') || 'Calendar connection successful!')
+      const response = await calendarApi.testConnection({ source: selectedCalendarSource })
+      toast.success((response.data?.message_key ? t(response.data.message_key) : null) || response.data.message || t('settings.calendarConnectionSuccess') || 'Calendar connection successful!')
       
       // Fetch available calendars
-      const calendarsResponse = await calendarApi.getCalendars()
+      const calendarsResponse = await calendarApi.getCalendars(selectedCalendarSource.id)
       setAvailableCalendars(calendarsResponse.data.calendars || [])
       
-      if (calendarsResponse.data.calendars?.length > 0 && !calendarSettings.calendar_id) {
+      if (calendarsResponse.data.calendars?.length > 0 && !selectedCalendarSource.calendar_id) {
         // Auto-select first calendar if none selected
-        setCalendarSettings(prev => ({
-          ...prev,
-          calendar_id: calendarsResponse.data.calendars[0].id
-        }))
+        handleCalendarSettingChange('calendar_id', calendarsResponse.data.calendars[0].id)
       }
     } catch (error) {
       console.error('Failed to connect to calendar:', error)
-      toast.error(error.response?.data?.error || t('settings.calendarConnectionFailed') || 'Failed to connect to calendar')
+      const messageKey = error.response?.data?.message_key
+      toast.error((messageKey ? t(messageKey) : null) || error.response?.data?.error || t('settings.calendarConnectionFailed') || 'Failed to connect to calendar')
     } finally {
       setCalendarTesting(false)
     }
@@ -1219,7 +1303,7 @@ export default function Settings() {
                 <input
                   type="checkbox"
                   checked={calendarSettings.enabled}
-                  onChange={(e) => handleCalendarSettingChange('enabled', e.target.checked)}
+                  onChange={(e) => setCalendarSettings(prev => ({ ...prev, enabled: e.target.checked }))}
                   className="sr-only peer"
                 />
                 <div className="w-10 h-6 bg-[var(--color-bg-tertiary)] peer-focus:ring-2 peer-focus:ring-[var(--color-accent)] rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--color-accent)]"></div>
@@ -1228,13 +1312,72 @@ export default function Settings() {
             
             {/* Calendar Configuration */}
             <div className="mt-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-[var(--color-text-muted)]">
+                  {t('settings.calendarSourcesConfigured') || 'Configured sources'}: {(calendarSettings.sources || []).length}
+                </span>
+                <button
+                  onClick={addCalendarSource}
+                  className="px-3 py-1.5 rounded-lg bg-[var(--color-accent)]/10 text-[var(--color-accent)] text-xs font-medium hover:bg-[var(--color-accent)]/20"
+                >
+                  + {t('settings.addCalendarSource') || 'Add Source'}
+                </button>
+              </div>
+
+              {(calendarSettings.sources || []).length > 0 && (
+                <div className="space-y-2">
+                  {(calendarSettings.sources || []).map((source) => (
+                    <div key={source.id} className={`rounded-lg border p-2 ${selectedCalendarSourceId === source.id ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/5' : 'border-[var(--color-border)]'}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <button
+                          onClick={() => setSelectedCalendarSourceId(source.id)}
+                          className="flex-1 text-left"
+                        >
+                          <div className="text-sm font-medium">{source.name || source.provider || 'Source'}</div>
+                          <div className="text-2xs text-[var(--color-text-muted)]">{source.url || t('settings.calendarUrlNotSet') || 'URL not set'}</div>
+                        </button>
+                        <label className="flex items-center gap-1 text-xs text-[var(--color-text-muted)]">
+                          <input
+                            type="checkbox"
+                            checked={source.enabled !== false}
+                            onChange={(e) => updateCalendarSources((sources) => sources.map(item => item.id === source.id ? { ...item, enabled: e.target.checked } : item))}
+                          />
+                          {t('settings.enabled') || 'Enabled'}
+                        </label>
+                        <button
+                          onClick={() => removeCalendarSource(source.id)}
+                          className="px-2 py-1 text-xs text-red-500 hover:bg-red-500/10 rounded"
+                          disabled={(calendarSettings.sources || []).length <= 1}
+                        >
+                          {t('settings.removeSource') || 'Remove'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {selectedCalendarSource && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      {t('settings.sourceName') || 'Source Name'}
+                    </label>
+                    <input
+                      type="text"
+                      value={selectedCalendarSource.name || ''}
+                      onChange={(e) => handleCalendarSettingChange('name', e.target.value)}
+                      className="w-full bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm"
+                    />
+                  </div>
+
               {/* Provider Selection */}
               <div>
                 <label className="block text-sm font-medium mb-2">
                   {t('settings.calendarProvider') || 'Calendar Provider'}
                 </label>
                 <select
-                  value={calendarSettings.provider || ''}
+                  value={selectedCalendarSource.provider || ''}
                   onChange={(e) => handleCalendarProviderChange(e.target.value)}
                   className="w-full bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm"
                 >
@@ -1246,7 +1389,7 @@ export default function Settings() {
               </div>
               
               {/* Setup Guide */}
-              {calendarSettings.provider && (
+              {selectedCalendarSource.provider && (
                 <div className="bg-[var(--color-bg-tertiary)] rounded-lg p-3">
                   <button
                     onClick={() => setShowSetupGuide(!showSetupGuide)}
@@ -1261,60 +1404,57 @@ export default function Settings() {
                     </span>
                   </button>
                   {showSetupGuide && (
-                    <div 
-                      className="mt-3 text-sm text-[var(--color-text-muted)] prose prose-sm dark:prose-invert max-w-none"
-                      dangerouslySetInnerHTML={{ 
-                        __html: calendarProviders.find(p => p.id === calendarSettings.provider)?.setup_guide || '' 
-                      }}
-                    />
+                    <p className="mt-3 text-sm text-[var(--color-text-muted)]">
+                      {t(calendarProviders.find(p => p.id === selectedCalendarSource.provider)?.setup_guide_key) || t('settings.calendarSetupGuideFallback') || 'Use your provider app-password and CalDAV URL.'}
+                    </p>
                   )}
                 </div>
               )}
               
               {/* CalDAV URL */}
-              {calendarSettings.provider && (
+              {selectedCalendarSource.provider && (
                 <div>
                   <label className="block text-sm font-medium mb-2">
                     {t('settings.calendarUrl') || 'CalDAV URL'}
                   </label>
                   <input
                     type="url"
-                    value={calendarSettings.url || ''}
+                    value={selectedCalendarSource.url || ''}
                     onChange={(e) => handleCalendarSettingChange('url', e.target.value)}
-                    placeholder={calendarProviders.find(p => p.id === calendarSettings.provider)?.default_url || 'https://...'}
+                    placeholder={calendarProviders.find(p => p.id === selectedCalendarSource.provider)?.default_url || 'https://...'}
                     className="w-full bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm"
                   />
                 </div>
               )}
               
               {/* Username */}
-              {calendarSettings.provider && (
+              {selectedCalendarSource.provider && (
                 <div>
                   <label className="block text-sm font-medium mb-2">
                     {t('settings.calendarUsername') || 'Username / Email'}
                   </label>
                   <input
                     type="text"
-                    value={calendarSettings.username || ''}
+                    value={selectedCalendarSource.username || ''}
                     onChange={(e) => handleCalendarSettingChange('username', e.target.value)}
-                    placeholder={calendarSettings.provider === 'google' ? 'your.email@gmail.com' : 'username'}
+                    placeholder={selectedCalendarSource.provider === 'google' ? 'your.email@gmail.com' : 'username'}
                     className="w-full bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm"
                   />
                 </div>
               )}
               
               {/* Password / App Password */}
-              {calendarSettings.provider && (
+              {selectedCalendarSource.provider && (
                 <div>
                   <label className="block text-sm font-medium mb-2">
-                    {calendarSettings.provider === 'google' 
+                    {selectedCalendarSource.provider === 'google' 
                       ? (t('settings.googleAppPassword') || 'App Password (16 characters)')
                       : (t('settings.calendarPassword') || 'Password / App Password')
                     }
                   </label>
                   <input
                     type="password"
-                    value={calendarSettings.password || ''}
+                    value={selectedCalendarSource.password || ''}
                     onChange={(e) => handleCalendarSettingChange('password', e.target.value)}
                     placeholder="••••••••••••••••"
                     className="w-full bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm"
@@ -1323,7 +1463,7 @@ export default function Settings() {
               )}
               
               {/* Test Connection & Get Calendars */}
-              {calendarSettings.provider && calendarSettings.url && calendarSettings.username && (
+              {selectedCalendarSource.provider && selectedCalendarSource.url && selectedCalendarSource.username && (
                 <button
                   onClick={handleTestCalendarConnection}
                   disabled={calendarTesting}
@@ -1353,7 +1493,7 @@ export default function Settings() {
                     {t('settings.selectCalendar') || 'Select Calendar'}
                   </label>
                   <select
-                    value={calendarSettings.calendar_id || ''}
+                    value={selectedCalendarSource.calendar_id || ''}
                     onChange={(e) => handleCalendarSettingChange('calendar_id', e.target.value)}
                     className="w-full bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm"
                   >
@@ -1365,7 +1505,7 @@ export default function Settings() {
               )}
               
               {/* Save Button */}
-              {calendarSettings.provider && (
+              {selectedCalendarSource.provider && (
                 <button
                   onClick={handleSaveCalendarSettings}
                   disabled={calendarLoading}
@@ -1376,7 +1516,7 @@ export default function Settings() {
               )}
               
               {/* Sync All Button */}
-              {calendarSettings.enabled && calendarSettings.calendar_id && (
+              {calendarSettings.enabled && selectedCalendarSource?.calendar_id && (
                 <div className="pt-4 border-t border-[var(--color-border)]">
                   <p className="text-2xs text-[var(--color-text-muted)] mb-2">
                     {t('settings.syncAllDesc') || 'Sync all existing services, reminders, insurance, and tax entries to your calendar'}
@@ -1402,6 +1542,8 @@ export default function Settings() {
                     )}
                   </button>
                 </div>
+              )}
+                </>
               )}
             </div>
           </div>

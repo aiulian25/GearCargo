@@ -498,7 +498,7 @@ server {
     ssl_certificate     /etc/letsencrypt/live/car.yourdomain.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/car.yourdomain.com/privkey.pem;
 
-    client_max_body_size 50M;
+    client_max_body_size 200m;
 
     location / {
         proxy_pass http://127.0.0.1:5000;
@@ -648,12 +648,19 @@ If domain-based access control is enabled and you get "Access denied for this do
 
 ### Synology DSM (Container Manager / SSH)
 
+GearCargo ships a **Synology-ready compose file** and **`.env` template** — no manual edits needed. The compose file already handles the two Synology-specific issues (UID mapping and missing CPU CFS scheduler).
+
+| File | Purpose |
+|------|---------|
+| `docker-compose.synology.yml` | Compose file — reads UID/GID from `.env`, no `deploy:` resource limits |
+| `.env.synology` | Pre-configured `.env` with `PUID=1026`, `APP_PORT=5050`, `SESSION_COOKIE_SECURE=false` |
+
 #### Quick Path — Container Manager UI
 
 1. **Create a project** in Container Manager → Project → Create
-2. Paste the contents of `docker-compose.deploy.yml` and your `.env` values
-3. **Remove all `deploy:` blocks** (CPU resource limits) — see below
-4. Update the compose `user:` field to match your UID (see step 3 in SSH path)
+2. Paste the contents of `docker-compose.synology.yml`
+3. Add environment variables from `.env.synology` (fill in all `CHANGE_ME` values)
+4. Deploy
 
 #### Full Path — SSH
 
@@ -664,19 +671,18 @@ If domain-based access control is enabled and you get "Access denied for this do
    > If you hit "Too many authentication failures", force password auth:
    > `ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -p 401 youruser@synology-ip`
 
-2. **Docker requires `sudo`** on Synology DSM. The admin user is not in the `docker` group by default. Prefix every docker command with `sudo`, and ensure the PATH includes `/usr/local/bin`:
+2. **Docker requires `sudo`** on Synology DSM. Ensure the PATH includes `/usr/local/bin`:
    ```bash
    export PATH=/usr/local/bin:$PATH
    sudo docker --version
    sudo docker compose version
    ```
 
-3. **Find your UID:**
+3. **Find your UID** (update `.env` if it differs from the default `1026:100`):
    ```bash
    id
    # Typical output: uid=1026(youruser) gid=100(users)
    ```
-   Common Synology UIDs: first admin user = `1026`, GID = `100`.
 
 4. **Create the project directory and volumes:**
    ```bash
@@ -684,47 +690,32 @@ If domain-based access control is enabled and you get "Access denied for this do
    sudo chown -R 1026:100 /volume1/docker/gearcargo/volumes
    ```
 
-5. **Get the compose file.** `curl` should be available; if not, download it on your PC and upload via DSM File Station (SCP is often unavailable on Synology — see note below):
+5. **Download the Synology compose file and `.env` template:**
    ```bash
    cd /volume1/docker/gearcargo
-   sudo curl -fsSL https://raw.githubusercontent.com/aiulian25/gearcargo/main/docker-compose.deploy.yml -o docker-compose.yml
+   sudo curl -fsSL https://raw.githubusercontent.com/aiulian25/gearcargo/main/docker-compose.synology.yml -o docker-compose.yml
+   sudo curl -fsSL https://raw.githubusercontent.com/aiulian25/gearcargo/main/.env.synology -o .env
    ```
+   > If `curl` is unavailable, download both files on your PC and upload via DSM File Station.
 
-6. **Edit the compose file** — two mandatory changes for Synology:
-
-   **a) Update the `user:` directive** to your UID:
+6. **Edit `.env`** — fill in all `CHANGE_ME` values. See [Section 4](#4-configure-environment-variables) for details on generating secrets. Update `APP_URL` and `CORS_ORIGINS` with your Synology's IP:
    ```bash
-   sudo sed -i 's/user: "1000:1000"/user: "1026:100"/g' docker-compose.yml
+   sudo nano .env
    ```
 
-   **b) Remove all `deploy:` resource limit blocks** — Synology's DSM kernel does not support CPU CFS scheduler, and `docker compose up` will fail with *"NanoCPUs can not be set"*:
-   ```bash
-   # Remove deploy sections (they span multiple lines under each service)
-   sudo sed -i '/^[[:space:]]*deploy:/,/^[[:space:]]*[a-z]/{ /^[[:space:]]*deploy:/d; /^[[:space:]]*resources:/d; /^[[:space:]]*limits:/d; /^[[:space:]]*cpus:/d; /^[[:space:]]*memory:/d; }' docker-compose.yml
-   ```
-   Or simply open the file and delete every `deploy:` → `resources:` → `limits:` block.
-
-7. **Create the `.env` file** — follow [Section 4](#4-configure-environment-variables). Set:
-   ```
-   PUID=1026
-   PGID=100
-   APP_PORT=5050        # or any free port (DSM may use 5000/5001)
-   APP_URL=http://your-synology-ip:5050
-   ```
-
-8. **Login to GHCR** (or see [Section 5](#5-login-to-github-container-registry)):
+7. **Login to GHCR** (or see [Section 5](#5-login-to-github-container-registry)):
    ```bash
    echo "YOUR_GITHUB_TOKEN" | sudo docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
    ```
 
-9. **Start:**
+8. **Start:**
    ```bash
    cd /volume1/docker/gearcargo
    sudo docker compose pull
    sudo docker compose up -d
    ```
 
-10. **Verify** (wait ~60 seconds for health checks):
+9. **Verify** (wait ~60 seconds for health checks):
     ```bash
     sudo docker compose ps
     curl http://localhost:5050/health
@@ -735,9 +726,8 @@ If domain-based access control is enabled and you get "Access denied for this do
 | Issue | Detail |
 |-------|--------|
 | **`sudo` required** | Docker commands need `sudo` on DSM. The admin user is not in the docker group. |
-| **`NanoCPUs can not be set`** | Synology's kernel lacks CPU CFS scheduler support. Remove all `deploy:` resource limit blocks from compose. |
 | **SCP / SFTP unavailable** | DSM's SSH subsystem often doesn't support SCP. Use **DSM File Station** to upload files, or pipe via SSH: `cat file.yml \| ssh synology "sudo tee /path/file.yml > /dev/null"` |
-| **Port 5000/5001 in use** | DSM uses ports 5000 (HTTP) and 5001 (HTTPS). Use a different `APP_PORT` like `5050`. |
+| **PORT 5000/5001 in use** | DSM uses ports 5000 (HTTP) and 5001 (HTTPS). The Synology compose defaults to `5050`. |
 | **PATH doesn't include docker** | Run `export PATH=/usr/local/bin:$PATH` before docker commands, or add it to your shell profile. |
 | **Volume paths** | Use `/volume1/docker/gearcargo/...` (or `/volume2/...` depending on your storage pool). |
 

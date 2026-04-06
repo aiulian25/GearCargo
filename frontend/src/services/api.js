@@ -486,7 +486,10 @@ export const calendarApi = {
   getSettings: () => api.get('/calendar/settings'),
   updateSettings: (data) => api.post('/calendar/settings', data),
   testConnection: (data = {}) => api.post('/calendar/test', data),
-  getCalendars: () => api.get('/calendar/calendars'),
+  getCalendars: (sourceId = null) => {
+    const params = sourceId ? `?source_id=${encodeURIComponent(sourceId)}` : ''
+    return api.get(`/calendar/calendars${params}`)
+  },
   syncAllEntries: () => api.post('/calendar/sync'),
   syncEntry: (type, id, action = 'create') => api.post('/calendar/sync/entry', { type, id, action }),
 }

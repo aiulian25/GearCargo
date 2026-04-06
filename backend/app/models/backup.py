@@ -2,6 +2,7 @@
 GearCargo - Backup Model
 """
 
+import json
 from datetime import datetime
 from app import db
 
@@ -141,6 +142,96 @@ class BackupSchedule(db.Model):
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def _cloud_metadata(self):
+        """Return cloud_credentials parsed as JSON metadata when possible."""
+        if not self.cloud_credentials:
+            return {}
+        try:
+            parsed = json.loads(self.cloud_credentials)
+        except (TypeError, ValueError):
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+
+    def _set_cloud_metadata(self, metadata):
+        """Persist cloud metadata payload into cloud_credentials."""
+        self.cloud_credentials = json.dumps(metadata)
+
+    def get_external_destinations(self):
+        """Return normalized list of configured external backup destinations."""
+        metadata = self._cloud_metadata()
+        raw_destinations = metadata.get('backup_destinations')
+        destinations = []
+
+        if isinstance(raw_destinations, list):
+            for index, destination in enumerate(raw_destinations):
+                if not isinstance(destination, dict):
+                    continue
+                url = (destination.get('external_url') or destination.get('url') or '').strip()
+                if not url:
+                    continue
+                destinations.append({
+                    'id': destination.get('id') or f'destination_{index + 1}',
+                    'name': (destination.get('name') or destination.get('label') or f'Destination {index + 1}').strip(),
+                    'provider': (destination.get('provider') or 'webdav').strip(),
+                    'enabled': bool(destination.get('enabled', True)),
+                    'external_url': url,
+                    'external_api_key': destination.get('external_api_key') or destination.get('api_key') or '',
+                    'external_path': destination.get('external_path') or destination.get('path') or '/GearCargo',
+                })
+
+        # Backwards compatibility: include legacy single target if present.
+        if self.external_url:
+            legacy_url = self.external_url.strip()
+            legacy_exists = any(d.get('external_url') == legacy_url for d in destinations)
+            if not legacy_exists:
+                destinations.insert(0, {
+                    'id': 'legacy_primary',
+                    'name': 'Primary Destination',
+                    'provider': 'webdav',
+                    'enabled': bool(self.external_enabled),
+                    'external_url': legacy_url,
+                    'external_api_key': self.external_api_key or '',
+                    'external_path': self.external_path or '/GearCargo',
+                })
+
+        return destinations
+
+    def set_external_destinations(self, destinations):
+        """Persist external backup destinations and mirror the first one into legacy fields."""
+        cleaned = []
+        if isinstance(destinations, list):
+            for index, destination in enumerate(destinations):
+                if not isinstance(destination, dict):
+                    continue
+                url = (destination.get('external_url') or destination.get('url') or '').strip()
+                if not url:
+                    continue
+                cleaned.append({
+                    'id': destination.get('id') or f'destination_{index + 1}',
+                    'name': (destination.get('name') or destination.get('label') or f'Destination {index + 1}').strip(),
+                    'provider': (destination.get('provider') or 'webdav').strip(),
+                    'enabled': bool(destination.get('enabled', True)),
+                    'external_url': url,
+                    'external_api_key': destination.get('external_api_key') or destination.get('api_key') or '',
+                    'external_path': destination.get('external_path') or destination.get('path') or '/GearCargo',
+                })
+
+        metadata = self._cloud_metadata()
+        metadata['backup_destinations'] = cleaned
+        self._set_cloud_metadata(metadata)
+
+        primary = next((destination for destination in cleaned if destination.get('enabled')), cleaned[0] if cleaned else None)
+        if primary:
+            self.external_enabled = True
+            self.external_url = primary.get('external_url')
+            self.external_api_key = primary.get('external_api_key') or None
+            self.external_path = primary.get('external_path') or '/GearCargo'
+        else:
+            self.external_enabled = False
+            self.external_url = None
+            self.external_api_key = None
+            self.external_path = None
     
     def calculate_next_run(self):
         """Calculate the next run date based on frequency."""
@@ -202,6 +293,7 @@ class BackupSchedule(db.Model):
     
     def to_dict(self):
         """Convert to dictionary."""
+        destinations = self.get_external_destinations()
         return {
             'id': self.id,
             'enabled': self.enabled,
@@ -215,6 +307,19 @@ class BackupSchedule(db.Model):
             'external_url': self.external_url,
             'external_path': self.external_path,
             'has_external_api_key': bool(self.external_api_key),
+            'external_destinations': [
+                {
+                    'id': d.get('id'),
+                    'name': d.get('name'),
+                    'provider': d.get('provider'),
+                    'enabled': d.get('enabled', True),
+                    'external_url': d.get('external_url'),
+                    'external_path': d.get('external_path'),
+                    'has_external_api_key': bool(d.get('external_api_key')),
+                }
+                for d in destinations
+            ],
+            'external_destination_count': len(destinations),
             # Don't expose external_api_key
             'cloud_enabled': self.cloud_enabled,
             'cloud_provider': self.cloud_provider,

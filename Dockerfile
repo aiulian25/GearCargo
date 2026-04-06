@@ -38,6 +38,7 @@ WORKDIR /app
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
+    postgresql-client \
     tesseract-ocr \
     tesseract-ocr-eng \
     curl \

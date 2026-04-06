@@ -468,7 +468,8 @@ def generate_feed_token(current_user):
         {
             'user_id': current_user.id,
             'type': 'calendar_feed',
-            'created': datetime.utcnow().isoformat()
+            'created': datetime.utcnow().isoformat(),
+            'exp': datetime.utcnow() + timedelta(days=90)
         },
         current_app.config['JWT_SECRET_KEY'],
         algorithm='HS256'
@@ -529,7 +530,7 @@ def sync_all_reminders(current_user):
 @token_required
 def get_calendar_providers(current_user):
     """Get list of supported calendar providers."""
-    from app.services.calendar_service import get_all_providers, CALENDAR_PROVIDERS
+    from app.services.calendar_service import CALENDAR_PROVIDERS
     
     providers = []
     for provider_id, provider_info in CALENDAR_PROVIDERS.items():
@@ -538,7 +539,8 @@ def get_calendar_providers(current_user):
             'name': provider_info['name'],
             'requires_oauth': provider_info.get('requires_oauth', False),
             'help_url': provider_info.get('help_url', ''),
-            'setup_guide': provider_info.get('setup_guide', '')
+            'default_url': provider_info.get('caldav_url', ''),
+            'setup_guide_key': f'settings.calendarSetupGuide.{provider_id}'
         })
     
     return jsonify({'providers': providers})
@@ -548,14 +550,20 @@ def get_calendar_providers(current_user):
 @token_required
 def get_calendar_settings(current_user):
     """Get user's calendar sync settings."""
+    from app.services.calendar_service import get_user_calendar_sources
+
+    sources = get_user_calendar_sources(current_user)
+    primary = next((s for s in sources if s.get('enabled')), None) or (sources[0] if sources else None)
+
     return jsonify({
         'enabled': current_user.calendar_enabled or False,
-        'provider': current_user.calendar_provider,
-        'url': current_user.calendar_url,
-        'username': current_user.calendar_username,
-        'calendar_id': current_user.calendar_id,
-        'configured': bool(current_user.calendar_provider and current_user.calendar_url and current_user.calendar_username),
-        'last_sync': current_user.calendar_last_sync.isoformat() if current_user.calendar_last_sync else None
+        'provider': primary.get('provider') if primary else current_user.calendar_provider,
+        'url': primary.get('url') if primary else current_user.calendar_url,
+        'username': primary.get('username') if primary else current_user.calendar_username,
+        'calendar_id': primary.get('calendar_id') if primary else current_user.calendar_id,
+        'configured': bool(primary and primary.get('provider') and primary.get('url') and primary.get('username')),
+        'sources': sources,
+        'last_sync': current_user.calendar_last_sync.isoformat() if current_user.calendar_last_sync else None,
     })
 
 
@@ -563,59 +571,102 @@ def get_calendar_settings(current_user):
 @token_required
 def update_calendar_settings(current_user):
     """Update user's calendar sync settings."""
-    from app.services.calendar_service import encrypt_password, build_caldav_url
+    from app.services.calendar_service import (
+        build_caldav_url,
+        build_source_for_storage,
+        get_user_calendar_sources,
+        set_user_calendar_sources,
+        validate_calendar_source,
+    )
     
     # Use silent=True to handle missing Content-Type header gracefully
     data = request.get_json(silent=True) or {}
     
-    # Update provider
-    if 'provider' in data:
-        current_user.calendar_provider = data['provider']
-    
-    # Build URL based on provider if server is provided
-    if 'server' in data and data['server']:
-        server = data['server'].strip()
-        if current_user.calendar_provider and current_user.calendar_provider != 'caldav':
-            # Build URL for specific provider
-            username = data.get('username', current_user.calendar_username) or ''
-            email = data.get('email', current_user.email) or ''
-            current_user.calendar_url = build_caldav_url(
-                current_user.calendar_provider,
-                server,
-                username,
-                email
+    existing_sources = get_user_calendar_sources(current_user, include_secrets=True)
+    existing_by_id = {source.get('id'): source for source in existing_sources}
+
+    payload_sources = data.get('sources')
+    if payload_sources is None:
+        # Legacy payload compatibility: map single source fields into a list.
+        provider = data.get('provider', current_user.calendar_provider)
+        username = data.get('username', current_user.calendar_username)
+        server = (data.get('server') or '').strip()
+        url = data.get('url', current_user.calendar_url)
+        if server:
+            url = build_caldav_url(provider, server, username or '', data.get('email', current_user.email) or '')
+
+        payload_sources = [{
+            'id': (existing_sources[0]['id'] if existing_sources else 'source_primary'),
+            'name': data.get('name') or provider or 'caldav',
+            'provider': provider,
+            'url': url,
+            'username': username,
+            'password': data.get('password', ''),
+            'calendar_id': data.get('calendar_id', current_user.calendar_id),
+            'enabled': data.get('enabled', current_user.calendar_enabled),
+        }]
+
+    if not isinstance(payload_sources, list):
+        return jsonify({'error': 'Invalid calendar sources', 'message_key': 'calendar.sources.invalid_format'}), 400
+
+    if len(payload_sources) > 10:
+        return jsonify({'error': 'Too many calendar sources', 'message_key': 'calendar.sources.limit_exceeded'}), 400
+
+    new_sources = []
+    seen_ids = set()
+
+    for raw_source in payload_sources:
+        if not isinstance(raw_source, dict):
+            return jsonify({'error': 'Invalid calendar source item', 'message_key': 'calendar.source.invalid_format'}), 400
+
+        source_id = str(raw_source.get('id') or '').strip()
+        existing_source = existing_by_id.get(source_id)
+
+        source_payload = dict(raw_source)
+        source_payload['id'] = source_id or (existing_source.get('id') if existing_source else None)
+
+        if source_payload.get('server') and source_payload.get('provider') and source_payload.get('provider') != 'caldav':
+            source_payload['url'] = build_caldav_url(
+                source_payload.get('provider'),
+                str(source_payload.get('server')).strip(),
+                source_payload.get('username') or '',
+                data.get('email', current_user.email) or ''
             )
-        else:
-            current_user.calendar_url = server
-    elif 'url' in data:
-        current_user.calendar_url = data['url']
-    
-    # Update username
-    if 'username' in data:
-        current_user.calendar_username = data['username']
-    
-    # Update password (encrypt it)
-    if 'password' in data and data['password']:
-        current_user.calendar_password = encrypt_password(data['password'])
-    
-    # Update calendar ID
-    if 'calendar_id' in data:
-        current_user.calendar_id = data['calendar_id']
-    
-    # Update enabled status
+
+        source_to_store = build_source_for_storage(source_payload, existing_source)
+
+        if source_to_store['id'] in seen_ids:
+            return jsonify({'error': 'Duplicate calendar source id', 'message_key': 'calendar.source.duplicate_id'}), 400
+        seen_ids.add(source_to_store['id'])
+
+        validation_error = validate_calendar_source(source_to_store)
+        if validation_error:
+            return jsonify({'error': 'Invalid calendar source', 'message_key': validation_error, 'source_id': source_to_store['id']}), 400
+
+        if source_to_store.get('enabled') and not source_to_store.get('password'):
+            return jsonify({'error': 'Missing password for enabled source', 'message_key': 'calendar.source.password_required', 'source_id': source_to_store['id']}), 400
+
+        new_sources.append(source_to_store)
+
+    set_user_calendar_sources(current_user, new_sources)
     if 'enabled' in data:
-        current_user.calendar_enabled = data['enabled']
+        current_user.calendar_enabled = bool(data.get('enabled'))
     
     db.session.commit()
     
+    safe_sources = get_user_calendar_sources(current_user)
+    primary = next((s for s in safe_sources if s.get('enabled')), None) or (safe_sources[0] if safe_sources else None)
+
     return jsonify({
+        'message_key': 'calendar.settings.updated',
         'message': 'Calendar settings updated',
         'enabled': current_user.calendar_enabled,
-        'provider': current_user.calendar_provider,
-        'url': current_user.calendar_url,
-        'username': current_user.calendar_username,
-        'calendar_id': current_user.calendar_id,
-        'configured': bool(current_user.calendar_provider and current_user.calendar_url and current_user.calendar_username)
+        'provider': primary.get('provider') if primary else None,
+        'url': primary.get('url') if primary else None,
+        'username': primary.get('username') if primary else None,
+        'calendar_id': primary.get('calendar_id') if primary else None,
+        'configured': bool(primary and primary.get('provider') and primary.get('url') and primary.get('username')),
+        'sources': safe_sources,
     })
 
 
@@ -623,87 +674,84 @@ def update_calendar_settings(current_user):
 @token_required
 def test_calendar_connection(current_user):
     """Test calendar connection with current settings."""
-    from app.services.calendar_service import CalendarService
+    from app.services.calendar_service import (
+        CalendarService,
+        build_source_for_storage,
+        get_user_calendar_sources,
+        validate_calendar_source,
+    )
     
     # Check if temporary credentials provided in request
     # Use silent=True to handle missing Content-Type header gracefully
     data = request.get_json(silent=True) or {}
     
-    if data.get('url') or data.get('server'):
-        # Test with provided credentials (before saving)
-        from app.services.calendar_service import encrypt_password, build_caldav_url
-        
-        provider = data.get('provider', current_user.calendar_provider)
-        server = data.get('server', data.get('url', ''))
-        username = data.get('username', current_user.calendar_username)
-        password = data.get('password', '')
-        
-        # Build URL if needed
-        if provider and provider != 'caldav' and server:
-            url = build_caldav_url(provider, server, username, current_user.email)
-        else:
-            url = server
-        
-        # Temporarily set credentials for testing
-        original_url = current_user.calendar_url
-        original_username = current_user.calendar_username
-        original_password = current_user.calendar_password
-        original_provider = current_user.calendar_provider
-        
-        try:
-            current_user.calendar_url = url
-            current_user.calendar_username = username
-            current_user.calendar_password = encrypt_password(password) if password else original_password
-            current_user.calendar_provider = provider
-            
-            service = CalendarService(current_user)
-            success, message = service.connect()
-            
-            calendars = []
-            if success:
-                calendars = service.get_calendars()
-            
-            return jsonify({
-                'success': success,
-                'message': message,
-                'calendars': calendars
-            })
-        finally:
-            # Restore original values (don't save test values)
-            current_user.calendar_url = original_url
-            current_user.calendar_username = original_username
-            current_user.calendar_password = original_password
-            current_user.calendar_provider = original_provider
-    else:
-        # Test with saved credentials
-        service = CalendarService(current_user)
-        success, message = service.connect()
-        
-        calendars = []
-        if success:
-            calendars = service.get_calendars()
-        
-        return jsonify({
-            'success': success,
-            'message': message,
-            'calendars': calendars
-        })
+    source = None
+    existing_sources = get_user_calendar_sources(current_user, include_secrets=True)
+
+    if data.get('source_id'):
+        source = next((item for item in existing_sources if item.get('id') == data.get('source_id')), None)
+        if not source:
+            return jsonify({'error': 'Source not found', 'message_key': 'calendar.source.not_found'}), 404
+
+    if data.get('source'):
+        raw_source = data.get('source')
+        if not isinstance(raw_source, dict):
+            return jsonify({'error': 'Invalid source', 'message_key': 'calendar.source.invalid_format'}), 400
+        source = build_source_for_storage(raw_source, source)
+
+    if not source:
+        source = next((item for item in existing_sources if item.get('enabled')), None) or (existing_sources[0] if existing_sources else None)
+
+    if not source:
+        return jsonify({'success': False, 'message_key': 'calendar.source.not_configured', 'message': 'Calendar source is not configured', 'calendars': []}), 400
+
+    validation_error = validate_calendar_source(source)
+    if validation_error:
+        return jsonify({'success': False, 'message_key': validation_error, 'message': 'Invalid source configuration', 'calendars': []}), 400
+
+    if not source.get('password'):
+        return jsonify({'success': False, 'message_key': 'calendar.source.password_required', 'message': 'Missing password for calendar source', 'calendars': []}), 400
+
+    service = CalendarService(current_user, source)
+    success, message = service.connect()
+
+    calendars = []
+    if success:
+        calendars = service.get_calendars()
+
+    return jsonify({
+        'success': success,
+        'message_key': 'calendar.connection.success' if success else 'calendar.connection.failed',
+        'message': message,
+        'calendars': calendars,
+        'source_id': source.get('id'),
+    })
 
 
 @calendar_bp.route('/calendars', methods=['GET'])
 @token_required
 def get_available_calendars(current_user):
     """Get list of available calendars from the connected account."""
-    from app.services.calendar_service import CalendarService
-    
-    service = CalendarService(current_user)
+    from app.services.calendar_service import CalendarService, get_user_calendar_sources
+
+    source_id = request.args.get('source_id')
+    sources = get_user_calendar_sources(current_user, include_secrets=True)
+    if source_id:
+        source = next((item for item in sources if item.get('id') == source_id), None)
+    else:
+        source = next((item for item in sources if item.get('enabled')), None) or (sources[0] if sources else None)
+
+    if not source:
+        return jsonify({'error': 'Source not found', 'message_key': 'calendar.source.not_found', 'calendars': []}), 404
+
+    service = CalendarService(current_user, source)
     success, message = service.connect()
     
     if not success:
-        return jsonify({'error': message, 'calendars': []}), 400
+        return jsonify({'error': message, 'message_key': 'calendar.connection.failed', 'calendars': []}), 400
     
     calendars = service.get_calendars()
-    return jsonify({'calendars': calendars})
+    return jsonify({'calendars': calendars, 'source_id': source.get('id')})
 
 
 @calendar_bp.route('/sync', methods=['POST'])
@@ -713,7 +761,7 @@ def sync_all_entries(current_user):
     from app.services.calendar_service import sync_all_entries_for_user
     
     if not current_user.calendar_enabled:
-        return jsonify({'error': 'Calendar sync is disabled'}), 400
+        return jsonify({'error': 'Calendar sync is disabled', 'message_key': 'calendar.sync.disabled'}), 400
     
     results = sync_all_entries_for_user(current_user)
     
@@ -722,6 +770,7 @@ def sync_all_entries(current_user):
     db.session.commit()
     
     return jsonify({
+        'message_key': 'calendar.sync.summary',
         'message': f'Synced {results["synced"]} entries, {results["failed"]} failed',
         'synced': results['synced'],
         'failed': results['failed'],
@@ -736,16 +785,16 @@ def sync_single_entry(current_user):
     from app.services.calendar_service import sync_entry_to_calendar
     from app.models import ServiceEntry, RepairEntry, InsurancePolicy, TaxEntry
     
-    data = request.get_json()
+    data = request.get_json(silent=True)
     if not data:
-        return jsonify({'error': 'No data provided'}), 400
+        return jsonify({'error': 'No data provided', 'message_key': 'calendar.sync.invalid_payload'}), 400
     
     entry_type = data.get('type')
     entry_id = data.get('id')
     action = data.get('action', 'create')
     
     if not entry_type or not entry_id:
-        return jsonify({'error': 'Missing type or id'}), 400
+        return jsonify({'error': 'Missing type or id', 'message_key': 'calendar.sync.missing_type_or_id'}), 400
     
     # Get the entry based on type
     entry = None
@@ -764,12 +813,13 @@ def sync_single_entry(current_user):
         entry = TaxEntry.query.filter_by(id=entry_id, user_id=current_user.id).first()
     
     if not entry:
-        return jsonify({'error': 'Entry not found'}), 404
+        return jsonify({'error': 'Entry not found', 'message_key': 'calendar.sync.entry_not_found'}), 404
     
     success, message = sync_entry_to_calendar(current_user, entry_type, entry, action)
     
     return jsonify({
         'success': success,
-        'message': message
+        'message': message,
+        'message_key': 'calendar.sync.entry_success' if success else 'calendar.sync.entry_failed'
     })
 
