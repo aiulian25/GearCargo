@@ -914,11 +914,15 @@ def _backup_display_label(filename, created_dt):
     """Build a human-readable label for a backup file."""
     # Strip extension
     name = filename.rsplit('.', 1)[0]
-    # New format: AppName_User_YYYYMMDD_HHMMSS
-    # Old format: backup_YYYYMMDD_HHMMSS
+    # Formats:
+    #   AppName_User_YYYYMMDD_HHMMSS          (new)
+    #   backup_AppName_User_YYYYMMDD_HHMMSS   (mangled upload)
+    #   backup_YYYYMMDD_HHMMSS                (old auto-backup)
     parts = name.split('_')
+    # Remove leading 'backup' if followed by more meaningful parts
+    if parts[0] == 'backup' and len(parts) > 3:
+        parts = parts[1:]
     if len(parts) >= 4 and parts[-1].isdigit() and parts[-2].isdigit():
-        # New naming: everything before the last two parts is app+user
         prefix_parts = parts[:-2]
         app_user = ' '.join(prefix_parts)
     elif name.startswith('backup'):
@@ -2576,10 +2580,8 @@ def upload_backup(current_user):
         user_folder = os.path.join(backup_folder, str(current_user.id))
         os.makedirs(user_folder, exist_ok=True)
 
-        # Use original filename or generate one
-        safe_name = file.filename.replace('..', '').replace('/', '').replace('\\', '')
-        if not safe_name.startswith('backup_'):
-            safe_name = f'backup_{safe_name}'
+        # Sanitise the original filename — keep it as-is (no forced prefix)
+        safe_name = re.sub(r'[^A-Za-z0-9._-]', '_', file.filename)
         filepath = os.path.join(user_folder, safe_name)
 
         # Don't overwrite existing
