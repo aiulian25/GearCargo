@@ -1606,6 +1606,17 @@ def import_backup_data(user, backup_data, merge_mode='merge'):
         if not new_vehicle_id:
             continue
         
+        # Deduplication: check by title + vehicle + type
+        existing = Reminder.query.filter_by(
+            user_id=user.id,
+            vehicle_id=new_vehicle_id,
+            title=reminder_data.get('title'),
+            reminder_type=reminder_data.get('reminder_type', 'custom'),
+        ).first()
+        if existing:
+            imported['skipped_duplicates'] += 1
+            continue
+        
         reminder = Reminder(
             user_id=user.id,
             vehicle_id=new_vehicle_id,
@@ -1629,6 +1640,18 @@ def import_backup_data(user, backup_data, merge_mode='merge'):
             vehicle_id = vehicles[0].id
         
         if vehicle_id:
+            # Deduplication: check by provider + start_date + vehicle
+            start_date = datetime.fromisoformat(policy_data['start_date']).date() if policy_data.get('start_date') else None
+            existing = InsurancePolicy.query.filter_by(
+                user_id=user.id,
+                vehicle_id=vehicle_id,
+                provider=policy_data.get('provider'),
+                start_date=start_date,
+            ).first()
+            if existing:
+                imported['skipped_duplicates'] += 1
+                continue
+            
             policy = InsurancePolicy(
                 user_id=user.id,
                 vehicle_id=vehicle_id,
@@ -1639,7 +1662,7 @@ def import_backup_data(user, backup_data, merge_mode='merge'):
                 payment_frequency=policy_data.get('payment_frequency'),
                 coverage_amount=policy_data.get('coverage_amount'),
                 deductible=policy_data.get('deductible'),
-                start_date=datetime.fromisoformat(policy_data['start_date']).date() if policy_data.get('start_date') else None,
+                start_date=start_date,
                 end_date=datetime.fromisoformat(policy_data['end_date']).date() if policy_data.get('end_date') else None,
                 agent_name=policy_data.get('agent_name'),
                 agent_phone=policy_data.get('agent_phone'),
@@ -1656,6 +1679,15 @@ def import_backup_data(user, backup_data, merge_mode='merge'):
     # Import todos
     for todo_data in backup_data.get('todos', []):
         try:
+            # Deduplication: check by title
+            existing = Todo.query.filter_by(
+                user_id=user.id,
+                title=todo_data.get('title'),
+            ).first()
+            if existing:
+                imported['skipped_duplicates'] += 1
+                continue
+            
             todo = Todo(
                 user_id=user.id,
                 title=todo_data.get('title'),
