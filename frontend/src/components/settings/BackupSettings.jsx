@@ -1036,15 +1036,15 @@ export default function BackupSettings() {
                 <div className="space-y-3">
                   {(schedule.external_destinations || []).map((destination, index) => (
                     <div key={destination.id || index} className="rounded-lg border border-[var(--color-border)] p-3 bg-[var(--color-bg-secondary)]/60 space-y-3">
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center flex-wrap gap-2">
                         <input
                           type="text"
                           value={destination.name || ''}
                           onChange={(e) => updateExternalDestination(index, 'name', e.target.value)}
                           placeholder={`${t('backup.destinationLabel') || 'Destination'} ${index + 1}`}
-                          className="flex-1 p-2 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-border)]"
+                          className="flex-1 min-w-0 p-2 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-border)]"
                         />
-                        <label className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
+                        <label className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)] flex-shrink-0">
                           <input
                             type="checkbox"
                             checked={destination.enabled !== false}
@@ -1056,7 +1056,7 @@ export default function BackupSettings() {
                           type="button"
                           onClick={() => removeExternalDestination(index)}
                           disabled={(schedule.external_destinations || []).length <= 1}
-                          className="px-2 py-1 text-xs rounded-lg text-red-500 hover:bg-red-500/10 disabled:opacity-40"
+                          className="px-2 py-1 text-xs rounded-lg text-red-500 hover:bg-red-500/10 disabled:opacity-40 flex-shrink-0"
                         >
                           {t('backup.removeDestination') || 'Remove'}
                         </button>

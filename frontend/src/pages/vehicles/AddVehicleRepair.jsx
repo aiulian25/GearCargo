@@ -39,12 +39,12 @@ export default function AddVehicleRepair() {
   const [isLoading, setIsLoading] = useState(true)
   const [receiptFile, setReceiptFile] = useState(null)
   const [existingAttachments, setExistingAttachments] = useState([])
+  const [selectedRepairTypes, setSelectedRepairTypes] = useState([])
   
   const { register, handleSubmit, formState: { errors }, setValue, control, reset } = useForm({
     defaultValues: {
       date: new Date().toISOString().split('T')[0],
       mileage: '',
-      repair_type: '',
       description: '',
       parts_cost: '',
       labor_cost: '',
@@ -81,7 +81,6 @@ export default function AddVehicleRepair() {
           reset({
             date: entry.date ? entry.date.split('T')[0] : new Date().toISOString().split('T')[0],
             mileage: entry.odometer || '',
-            repair_type: entry.repair_type || '',
             description: entry.description || '',
             parts_cost: entry.parts_cost || '',
             labor_cost: entry.labor_cost || '',
@@ -89,6 +88,13 @@ export default function AddVehicleRepair() {
             shop_name: entry.garage_name || entry.provider || '',
             notes: entry.notes || '',
           })
+          
+          // Restore multi-select repair types
+          if (entry.repair_types && entry.repair_types.length > 0) {
+            setSelectedRepairTypes(entry.repair_types)
+          } else if (entry.repair_type) {
+            setSelectedRepairTypes([entry.repair_type])
+          }
           
           // Store existing attachments
           if (entry.attachments && entry.attachments.length > 0) {
@@ -111,7 +117,7 @@ export default function AddVehicleRepair() {
     setError('')
     
     // Additional frontend validation
-    if (!data.repair_type) {
+    if (selectedRepairTypes.length === 0) {
       setError(t('addRepair.repairTypeRequired') || 'Repair type is required')
       setIsSubmitting(false)
       return
@@ -121,6 +127,8 @@ export default function AddVehicleRepair() {
       const payload = {
         ...data,
         vehicle_id: parseInt(vehicleId),
+        repair_types: selectedRepairTypes,
+        repair_type: selectedRepairTypes[0],
         mileage: data.mileage ? parseInt(data.mileage) : null,
         parts_cost: data.parts_cost ? parseFloat(data.parts_cost) : null,
         labor_cost: data.labor_cost ? parseFloat(data.labor_cost) : null,
@@ -176,6 +184,16 @@ export default function AddVehicleRepair() {
     { value: 'interior', label: t('repairTypes.interior') || 'Interior' },
     { value: 'ac_heating', label: t('repairTypes.acHeating') || 'A/C & Heating' },
     { value: 'tires_wheels', label: t('repairTypes.tiresWheels') || 'Tires & Wheels' },
+    { value: 'clutch', label: t('repairTypes.clutch') || 'Clutch' },
+    { value: 'drivetrain', label: t('repairTypes.drivetrain') || 'Drivetrain/Axle' },
+    { value: 'windshield', label: t('repairTypes.windshield') || 'Windshield/Glass' },
+    { value: 'lights', label: t('repairTypes.lights') || 'Lights/Indicators' },
+    { value: 'oil_change', label: t('repairTypes.oilChange') || 'Oil Change' },
+    { value: 'filters', label: t('repairTypes.filters') || 'Filters' },
+    { value: 'battery', label: t('repairTypes.battery') || 'Battery' },
+    { value: 'turbo', label: t('repairTypes.turbo') || 'Turbo/Supercharger' },
+    { value: 'timing_belt', label: t('repairTypes.timingBelt') || 'Timing Belt/Chain' },
+    { value: 'differential', label: t('repairTypes.differential') || 'Differential' },
     { value: 'other', label: t('repairTypes.other') || 'Other' },
   ]
   
@@ -262,17 +280,41 @@ export default function AddVehicleRepair() {
             <label className="block text-xs text-[var(--color-text-muted)] mb-1">
               {t('addRepair.repairType') || 'Repair Type'} *
             </label>
-            <select
-              {...register('repair_type', { required: t('addRepair.repairTypeRequired') || 'Repair type is required' })}
-              className="input"
-            >
-              <option value="">{t('addRepair.selectType') || 'Select type...'}</option>
-              {repairTypes.map(type => (
-                <option key={type.value} value={type.value}>{type.label}</option>
-              ))}
-            </select>
-            {errors.repair_type && (
-              <p className="text-xs text-red-500 mt-1">{errors.repair_type.message}</p>
+            <p className="text-xs text-[var(--color-text-secondary)] mb-2">
+              {t('addRepair.multiSelectHint') || 'Tap to select one or more repair types'}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {repairTypes.map(type => {
+                const isSelected = selectedRepairTypes.includes(type.value)
+                return (
+                  <button
+                    key={type.value}
+                    type="button"
+                    onClick={() => {
+                      setSelectedRepairTypes(prev =>
+                        prev.includes(type.value)
+                          ? prev.filter(v => v !== type.value)
+                          : [...prev, type.value]
+                      )
+                    }}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
+                      isSelected
+                        ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)]'
+                        : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]'
+                    }`}
+                  >
+                    {isSelected && (
+                      <svg className="inline-block w-3.5 h-3.5 mr-1 -mt-0.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                    )}
+                    {type.label}
+                  </button>
+                )
+              })}
+            </div>
+            {selectedRepairTypes.length === 0 && error && (
+              <p className="text-xs text-red-500 mt-1">{t('addRepair.repairTypeRequired') || 'Repair type is required'}</p>
             )}
           </div>
           

@@ -69,7 +69,10 @@ BASE_TEMPLATE = """
             </p>
             <p style="margin-top: 10px; font-size: 11px;">
                 You received this email because you have email notifications enabled.<br>
-                To unsubscribe, visit your settings page.
+                {% if unsubscribe_url %}
+                <a href="{{ unsubscribe_url }}" style="color: #ef4444;">One-click Unsubscribe</a> |
+                {% endif %}
+                <a href="{{ app_url }}/settings">Manage Notifications</a>
             </p>
         </div>
     </div>
@@ -249,7 +252,8 @@ class EmailService:
         to: str,
         subject: str,
         content_html: str,
-        reply_to: str = None
+        reply_to: str = None,
+        unsubscribe_url: str = None
     ) -> bool:
         """Send an email with the base template."""
         if not EmailService.is_enabled():
@@ -257,7 +261,7 @@ class EmailService:
             return False
         
         try:
-            app_url = current_app.config.get('APP_URL', 'https://car.ascunse.uk')
+            app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
             logo_url = f"{app_url}/icons/logo.png"
             
             # Wrap content in base template
@@ -266,7 +270,8 @@ class EmailService:
                 content=content_html,
                 year=datetime.now().year,
                 app_url=app_url,
-                logo_url=logo_url
+                logo_url=logo_url,
+                unsubscribe_url=unsubscribe_url or ''
             )
             
             msg = Message(
@@ -276,13 +281,67 @@ class EmailService:
                 reply_to=reply_to
             )
             
+            # RFC 8058 one-click unsubscribe header
+            if unsubscribe_url:
+                msg.extra_headers = {
+                    'List-Unsubscribe': f'<{unsubscribe_url}>',
+                    'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+                }
+            
             mail.send(msg)
             logger.info(f"Email sent to {to}: {subject}")
+            
+            # Log email delivery to NotificationLog
+            EmailService._log_email_delivery(to, subject, status='sent')
+            
             return True
             
         except Exception as e:
             logger.error(f"Failed to send email to {to}: {e}")
+            EmailService._log_email_delivery(to, subject, status='failed', error=str(e))
             return False
+    
+    @staticmethod
+    def _log_email_delivery(to_email, subject, status='sent', error=None):
+        """Log email delivery to NotificationLog for tracking."""
+        try:
+            from app.models import User, NotificationLog
+            user = User.query.filter_by(email=to_email).first()
+            if not user:
+                # Check by notification_email_hash
+                from app.utils.encryption import hash_email
+                email_h = hash_email(to_email)
+                user = User.query.filter_by(notification_email_hash=email_h).first()
+            
+            if user:
+                log_entry = NotificationLog(
+                    user_id=user.id,
+                    notification_type='email',
+                    title=subject,
+                    body=f'Email to {to_email}',
+                    channel='email',
+                    status=status,
+                    error_message=error,
+                    sent_at=datetime.utcnow() if status == 'sent' else None,
+                )
+                db.session.add(log_entry)
+                
+                # Bounce tracking: increment on failure, reset on success
+                if status == 'failed' and user.notification_email_hash:
+                    from app.utils.encryption import hash_email
+                    if hash_email(to_email) == user.notification_email_hash:
+                        user.notification_email_bounce_count = (user.notification_email_bounce_count or 0) + 1
+                        if user.notification_email_bounce_count >= 5:
+                            user.notification_email_verified = False
+                            logger.warning(f"Auto-disabled notification email for user {user.id} after 5 bounces")
+                elif status == 'sent' and user.notification_email_hash:
+                    from app.utils.encryption import hash_email
+                    if hash_email(to_email) == user.notification_email_hash:
+                        user.notification_email_bounce_count = 0
+                
+                db.session.commit()
+        except Exception as log_err:
+            logger.error(f"Failed to log email delivery: {log_err}")
     
     @staticmethod
     def send_alert_notification(
@@ -291,12 +350,13 @@ class EmailService:
         alert_type: str = "reminder"
     ) -> bool:
         """Send alert/reminder notification email."""
-        if not user.notification_email and not user.email:
+        to_email = user.get_effective_notification_email()
+        if not to_email:
             return False
         
-        to_email = user.notification_email or user.email
-        app_url = current_app.config.get('APP_URL', 'https://car.ascunse.uk')
+        app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
         logo_url = f"{app_url}/icons/logo.png"
+        unsubscribe_url = f"{app_url}/api/auth/unsubscribe?token={user.unsubscribe_token}" if user.unsubscribe_token else None
         
         # Determine title and intro based on alert type
         titles = {
@@ -330,18 +390,20 @@ class EmailService:
         return EmailService.send_email(
             to=to_email,
             subject=titles.get(alert_type, "Alert"),
-            content_html=content_html
+            content_html=content_html,
+            unsubscribe_url=unsubscribe_url
         )
     
     @staticmethod
     def send_weekly_report(user, summary: Dict, upcoming_alerts: List[Dict]) -> bool:
         """Send weekly summary report."""
-        if not user.notification_email and not user.email:
+        to_email = user.get_effective_notification_email()
+        if not to_email:
             return False
         
-        to_email = user.notification_email or user.email
-        app_url = current_app.config.get('APP_URL', 'https://car.ascunse.uk')
+        app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
         logo_url = f"{app_url}/icons/logo.png"
+        unsubscribe_url = f"{app_url}/api/auth/unsubscribe?token={user.unsubscribe_token}" if user.unsubscribe_token else None
         
         # Calculate period
         today = date.today()
@@ -361,7 +423,8 @@ class EmailService:
         return EmailService.send_email(
             to=to_email,
             subject=f"Weekly Report ({period})",
-            content_html=content_html
+            content_html=content_html,
+            unsubscribe_url=unsubscribe_url
         )
     
     @staticmethod
@@ -374,12 +437,13 @@ class EmailService:
         insights: List[str]
     ) -> bool:
         """Send monthly summary report."""
-        if not user.notification_email and not user.email:
+        to_email = user.get_effective_notification_email()
+        if not to_email:
             return False
         
-        to_email = user.notification_email or user.email
-        app_url = current_app.config.get('APP_URL', 'https://car.ascunse.uk')
+        app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
         logo_url = f"{app_url}/icons/logo.png"
+        unsubscribe_url = f"{app_url}/api/auth/unsubscribe?token={user.unsubscribe_token}" if user.unsubscribe_token else None
         
         month_names = [
             "", "January", "February", "March", "April", "May", "June",
@@ -402,17 +466,18 @@ class EmailService:
         return EmailService.send_email(
             to=to_email,
             subject=f"Monthly Report - {month_name} {year}",
-            content_html=content_html
+            content_html=content_html,
+            unsubscribe_url=unsubscribe_url
         )
     
     @staticmethod
     def send_test_email(user) -> bool:
         """Send a test email to verify settings."""
-        if not user.notification_email and not user.email:
+        to_email = user.get_effective_notification_email()
+        if not to_email:
             return False
         
-        to_email = user.notification_email or user.email
-        app_url = current_app.config.get('APP_URL', 'https://car.ascunse.uk')
+        app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
         logo_url = f"{app_url}/icons/logo.png"
         
         content_html = """
@@ -778,7 +843,7 @@ class EmailVerificationService:
             return False
         
         try:
-            app_url = current_app.config.get('APP_URL', 'https://car.ascunse.uk')
+            app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
             logo_url = f"{app_url}/icons/logo.png"
             verify_link = f"{app_url}/verify-email?token={token}"
             
@@ -861,7 +926,7 @@ class PasswordResetEmailService:
             return False
         
         try:
-            app_url = current_app.config.get('APP_URL', 'https://car.ascunse.uk')
+            app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
             logo_url = f"{app_url}/icons/logo.png"
             reset_link = f"{app_url}/reset-password?token={token}"
             
@@ -962,7 +1027,7 @@ def send_new_login_alert(user, device_info: dict) -> bool:
         return False
     
     try:
-        app_url = current_app.config.get('APP_URL', 'https://car.ascunse.uk')
+        app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
         logo_url = f"{app_url}/icons/logo.png"
         
         # Parse user agent for friendlier display
@@ -1134,7 +1199,7 @@ def send_suspicious_location_alert(user, location_info: dict, known_locations: l
         return False
     
     try:
-        app_url = current_app.config.get('APP_URL', 'https://car.ascunse.uk')
+        app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
         logo_url = f"{app_url}/icons/logo.png"
         
         # Format known locations for display

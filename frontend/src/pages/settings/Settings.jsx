@@ -213,6 +213,16 @@ export default function Settings() {
   const [emailSettingsLoading, setEmailSettingsLoading] = useState(false)
   const [sendingTestEmail, setSendingTestEmail] = useState(false)
   
+  // GDPR Notification Email
+  const [notifEmail, setNotifEmail] = useState('')
+  const [notifEmailVerified, setNotifEmailVerified] = useState(false)
+  const [hasNotifEmail, setHasNotifEmail] = useState(false)
+  const [notifEmailConsent, setNotifEmailConsent] = useState(false)
+  const [notifEmailSaving, setNotifEmailSaving] = useState(false)
+  const [notifEmailResending, setNotifEmailResending] = useState(false)
+  const [consentHistory, setConsentHistory] = useState([])
+  const [showConsentHistory, setShowConsentHistory] = useState(false)
+  
   const [backupStatus, setBackupStatus] = useState(null)
   const [showAdminSection, setShowAdminSection] = useState(false)
   const [adminTab, setAdminTab] = useState('users')  // 'users', 'logs', 'maintenance', or 'security'
@@ -330,8 +340,36 @@ export default function Settings() {
       try {
         const response = await authApi.getEmailSettings()
         setEmailSettings(response.data)
+        // GDPR notification email fields
+        if (response.data.notification_email) {
+          setNotifEmail(response.data.notification_email)
+        }
+        setNotifEmailVerified(!!response.data.notification_email_verified)
+        setHasNotifEmail(!!response.data.has_notification_email)
       } catch (error) {
         console.error('Failed to fetch email settings:', error)
+      }
+      
+      // Auto-verify from URL param AFTER settings loaded (double opt-in step 2)
+      const params = new URLSearchParams(window.location.search)
+      const verifyToken = params.get('verify_notification')
+      if (verifyToken) {
+        try {
+          const res = await authApi.verifyNotificationEmail(verifyToken)
+          toast.success(t('settings.notifEmailVerified') || 'Notification email verified!')
+          setNotifEmailVerified(true)
+          setHasNotifEmail(true)
+          if (res.data?.notification_email) {
+            setNotifEmail(res.data.notification_email)
+          }
+        } catch (err) {
+          toast.error(err.response?.data?.error || t('settings.notifEmailVerifyFailed') || 'Verification failed')
+        } finally {
+          // Clean URL regardless of success/failure
+          const url = new URL(window.location)
+          url.searchParams.delete('verify_notification')
+          window.history.replaceState({}, '', url)
+        }
       }
     }
     fetchEmailSettings()
@@ -523,6 +561,63 @@ export default function Settings() {
     } finally {
       setSendingTestEmail(false)
     }
+  }
+  
+  // GDPR Notification Email handlers
+  const handleSetNotificationEmail = async () => {
+    if (!notifEmail || !notifEmailConsent) return
+    setNotifEmailSaving(true)
+    try {
+      await authApi.setNotificationEmail({
+        email: notifEmail,
+        consent: true,
+        consent_text: 'I consent to receiving email notifications at this address. My email will be encrypted and I can withdraw consent at any time.',
+      })
+      toast.success(t('settings.notifEmailSet') || 'Verification email sent! Check your inbox.')
+      setHasNotifEmail(true)
+      setNotifEmailVerified(false)
+    } catch (error) {
+      toast.error(error.response?.data?.error || t('settings.notifEmailSetFailed') || 'Failed to set notification email')
+    } finally {
+      setNotifEmailSaving(false)
+    }
+  }
+  
+  const handleRemoveNotificationEmail = async () => {
+    try {
+      await authApi.removeNotificationEmail()
+      toast.success(t('settings.notifEmailRemoved') || 'Notification email removed')
+      setNotifEmail('')
+      setHasNotifEmail(false)
+      setNotifEmailVerified(false)
+      setNotifEmailConsent(false)
+    } catch (error) {
+      toast.error(error.response?.data?.error || t('settings.notifEmailRemoveFailed') || 'Failed to remove notification email')
+    }
+  }
+  
+  const handleResendVerification = async () => {
+    setNotifEmailResending(true)
+    try {
+      await authApi.resendNotificationVerification()
+      toast.success(t('settings.notifEmailResent') || 'Verification email resent!')
+    } catch (error) {
+      toast.error(error.response?.data?.error || t('settings.notifEmailResendFailed') || 'Failed to resend verification')
+    } finally {
+      setNotifEmailResending(false)
+    }
+  }
+  
+  const handleLoadConsentHistory = async () => {
+    if (!showConsentHistory) {
+      try {
+        const res = await authApi.getConsentHistory()
+        setConsentHistory(res.data.history || [])
+      } catch (error) {
+        console.error('Failed to load consent history:', error)
+      }
+    }
+    setShowConsentHistory(!showConsentHistory)
   }
   
   // Calendar sync handlers
@@ -1161,6 +1256,118 @@ export default function Settings() {
             {/* Expanded settings when enabled */}
             {emailSettings.notifications_enabled && emailSettings.email_enabled_on_server && (
               <div className="mt-4 space-y-2">
+                {/* Custom Notification Email - GDPR */}
+                <div className="bg-[var(--color-bg-tertiary)] rounded-lg p-3 mb-4">
+                  <p className="text-2xs text-[var(--color-text-muted)] font-medium uppercase tracking-wide mb-2">
+                    {t('settings.notifEmailTitle') || 'Custom Notification Email'}
+                  </p>
+                  <p className="text-2xs text-[var(--color-text-muted)] mb-3">
+                    {t('settings.notifEmailDesc') || 'Set a separate email address to receive notifications. Your email is encrypted and stored securely.'}
+                  </p>
+                  
+                  {hasNotifEmail && notifEmailVerified ? (
+                    /* Verified state */
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-green-500/10 text-green-600">
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                          {t('settings.notifEmailStatusVerified') || 'Verified'}
+                        </span>
+                        <span className="text-sm text-[var(--color-text)]">{notifEmail}</span>
+                      </div>
+                      <button
+                        onClick={handleRemoveNotificationEmail}
+                        className="text-xs text-red-500 hover:underline"
+                      >
+                        {t('settings.notifEmailRemove') || 'Remove & Revoke Consent'}
+                      </button>
+                    </div>
+                  ) : hasNotifEmail && !notifEmailVerified ? (
+                    /* Pending verification state */
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-yellow-500/10 text-yellow-600">
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd"/></svg>
+                          {t('settings.notifEmailStatusPending') || 'Pending Verification'}
+                        </span>
+                      </div>
+                      <p className="text-2xs text-[var(--color-text-muted)]">
+                        {t('settings.notifEmailCheckInbox') || 'Check your inbox and click the verification link.'}
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleResendVerification}
+                          disabled={notifEmailResending}
+                          className="text-xs text-[var(--color-accent)] hover:underline disabled:opacity-50"
+                        >
+                          {notifEmailResending ? '...' : (t('settings.notifEmailResend') || 'Resend Verification')}
+                        </button>
+                        <button
+                          onClick={handleRemoveNotificationEmail}
+                          className="text-xs text-red-500 hover:underline"
+                        >
+                          {t('settings.notifEmailRemove') || 'Remove & Revoke Consent'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Not set state - input form */
+                    <div className="space-y-2">
+                      <input
+                        type="email"
+                        value={notifEmail}
+                        onChange={(e) => setNotifEmail(e.target.value)}
+                        placeholder={t('settings.notifEmailPlaceholder') || 'your-alerts@example.com'}
+                        className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+                      />
+                      <label className="flex items-start gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={notifEmailConsent}
+                          onChange={(e) => setNotifEmailConsent(e.target.checked)}
+                          className="w-4 h-4 mt-0.5 rounded border-[var(--color-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+                        />
+                        <span className="text-2xs text-[var(--color-text-muted)]">
+                          {t('settings.notifEmailConsent') || 'I consent to receiving email notifications at this address. My email will be encrypted and I can withdraw consent at any time.'}
+                        </span>
+                      </label>
+                      <button
+                        onClick={handleSetNotificationEmail}
+                        disabled={!notifEmail || !notifEmailConsent || notifEmailSaving}
+                        className="px-3 py-1.5 rounded-lg bg-[var(--color-accent)] text-white text-xs font-medium disabled:opacity-50"
+                      >
+                        {notifEmailSaving ? '...' : (t('settings.notifEmailSave') || 'Set & Verify Email')}
+                      </button>
+                    </div>
+                  )}
+                  
+                  {/* Consent History */}
+                  <button
+                    onClick={handleLoadConsentHistory}
+                    className="mt-2 text-2xs text-[var(--color-text-muted)] hover:underline"
+                  >
+                    {showConsentHistory
+                      ? (t('settings.notifEmailHideHistory') || 'Hide consent history')
+                      : (t('settings.notifEmailShowHistory') || 'View consent history')
+                    }
+                  </button>
+                  {showConsentHistory && consentHistory.length > 0 && (
+                    <div className="mt-2 space-y-1 max-h-32 overflow-y-auto">
+                      {consentHistory.map((entry, i) => (
+                        <div key={i} className="text-2xs text-[var(--color-text-muted)] flex justify-between">
+                          <span className="capitalize">{entry.action}</span>
+                          <span>{new Date(entry.created_at).toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {showConsentHistory && consentHistory.length === 0 && (
+                    <p className="mt-2 text-2xs text-[var(--color-text-muted)]">
+                      {t('settings.notifEmailNoHistory') || 'No consent history yet.'}
+                    </p>
+                  )}
+                </div>
+                
                 {/* Alert Types */}
                 <p className="text-2xs text-[var(--color-text-muted)] font-medium uppercase tracking-wide mb-2">
                   {t('settings.alertTypes') || 'Alert Types'}

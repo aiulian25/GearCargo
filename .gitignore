@@ -137,15 +137,7 @@ frontend/dist/
 Thumbs.db
 
 # Docker volumes (data should not be committed)
-volumes/db/
-volumes/redis/
-volumes/ollama/
-volumes/attachments/*
-!volumes/attachments/.gitkeep
-volumes/backups/*
-!volumes/backups/.gitkeep
-volumes/uploads/*
-!volumes/uploads/.gitkeep
+volumes/
 
 # Logs
 *.log

@@ -115,6 +115,7 @@ export const vehicleApi = {
   unarchive: (id) => api.post(`/vehicles/${id}/unarchive`),
   getStats: (id) => api.get(`/vehicles/${id}/stats`),
   getHealth: (id) => api.get(`/vehicles/${id}/health`),
+  getManual: (id) => api.get(`/vehicles/${id}/manual`),
   getTimeline: (id, page = 1) => api.get(`/vehicles/${id}/timeline?page=${page}`),
   reorder: (order) => api.post('/vehicles/reorder', { order }),
   updateMileage: (id, mileage) => api.post(`/vehicles/${id}/mileage`, { mileage }),
@@ -239,6 +240,13 @@ export const authApi = {
   // Email notifications
   getEmailSettings: () => api.get('/auth/email/settings'),
   sendTestEmail: () => api.post('/auth/email/test', {}),
+  
+  // GDPR Notification Email
+  setNotificationEmail: (data) => api.post('/auth/notification-email', data),
+  verifyNotificationEmail: (token) => api.post('/auth/notification-email/verify', { token }),
+  removeNotificationEmail: () => api.delete('/auth/notification-email'),
+  resendNotificationVerification: () => api.post('/auth/notification-email/resend', {}),
+  getConsentHistory: () => api.get('/auth/consent-history'),
   
   // Security Questions
   getAvailableSecurityQuestions: () => api.get('/auth/security-questions/available'),

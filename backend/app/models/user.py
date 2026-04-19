@@ -70,7 +70,15 @@ class User(UserMixin, db.Model):
     
     # Email Notifications
     notifications_enabled = db.Column(db.Boolean, default=True)  # Master switch
-    notification_email = db.Column(db.String(120))  # Optional separate email
+    notification_email = db.Column(db.Text)  # Encrypted (Fernet) custom notification email
+    notification_email_hash = db.Column(db.String(64), index=True)  # SHA-256 for lookups
+    notification_email_verified = db.Column(db.Boolean, default=False)
+    notification_email_token = db.Column(db.String(255))  # Verification token
+    notification_email_token_exp = db.Column(db.DateTime)  # Token expiry
+    notification_email_consented_at = db.Column(db.DateTime)  # GDPR consent timestamp
+    notification_email_consent_ip = db.Column(db.String(45))  # IP at consent time
+    notification_email_bounce_count = db.Column(db.Integer, default=0)  # Auto-disable after N bounces
+    unsubscribe_token = db.Column(db.String(64), unique=True, index=True)  # For one-click unsubscribe
     email_insurance_alerts = db.Column(db.Boolean, default=True)
     email_tax_alerts = db.Column(db.Boolean, default=True)
     email_service_alerts = db.Column(db.Boolean, default=True)
@@ -227,6 +235,46 @@ class User(UserMixin, db.Model):
             return f"{self.first_name} {self.last_name}"
         return self.username
 
+    def get_decrypted_notification_email(self):
+        """Decrypt the notification email field. Returns empty string if not set."""
+        if not self.notification_email:
+            return ''
+        try:
+            from app.utils.encryption import decrypt_field
+            return decrypt_field(self.notification_email)
+        except Exception:
+            return ''
+
+    def get_effective_notification_email(self):
+        """Return the verified notification email, or fall back to account email."""
+        if self.notification_email and self.notification_email_verified:
+            decrypted = self.get_decrypted_notification_email()
+            if decrypted:
+                return decrypted
+        return self.email
+
+    def set_notification_email_encrypted(self, plaintext_email):
+        """Encrypt and store a notification email + its hash."""
+        from app.utils.encryption import encrypt_field, hash_email
+        if plaintext_email:
+            self.notification_email = encrypt_field(plaintext_email.strip().lower())
+            self.notification_email_hash = hash_email(plaintext_email)
+        else:
+            self.notification_email = None
+            self.notification_email_hash = None
+
+    def generate_unsubscribe_token(self):
+        """Generate a unique unsubscribe token if not already set."""
+        if not self.unsubscribe_token:
+            self.unsubscribe_token = secrets.token_urlsafe(48)
+        return self.unsubscribe_token
+
+    def generate_notification_email_token(self, expires_hours=72):
+        """Generate a verification token for the notification email."""
+        self.notification_email_token = secrets.token_urlsafe(32)
+        self.notification_email_token_exp = datetime.utcnow() + timedelta(hours=expires_hours)
+        return self.notification_email_token
+
     def _signed_avatar_url(self):
         """Return a signed URL for the user avatar."""
         if not self.avatar:
@@ -259,6 +307,7 @@ class User(UserMixin, db.Model):
             'location_auto_detect': self.location_auto_detect if self.location_auto_detect is not None else True,
             # Account info
             'is_admin': self.is_admin,
+            'is_active': self.is_active if self.is_active is not None else True,
             'must_change_password': self.must_change_password,
             'two_factor_enabled': self.two_factor_enabled,
             'email_verified': self.email_verified,
@@ -277,7 +326,8 @@ class User(UserMixin, db.Model):
             data['preferences'] = self.preferences
             # Email notification settings
             data['notifications_enabled'] = self.notifications_enabled if self.notifications_enabled is not None else True
-            data['notification_email'] = self.notification_email
+            data['notification_email'] = self.get_decrypted_notification_email()
+            data['notification_email_verified'] = self.notification_email_verified or False
             data['email_insurance_alerts'] = self.email_insurance_alerts if self.email_insurance_alerts is not None else True
             data['email_tax_alerts'] = self.email_tax_alerts if self.email_tax_alerts is not None else True
             data['email_service_alerts'] = self.email_service_alerts if self.email_service_alerts is not None else True

@@ -2,15 +2,18 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { repairApi, vehicleApi } from '../../services/api'
+import { useTranslation } from '../../contexts/LanguageContext'
 
 export default function AddRepair() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const preselectedVehicle = searchParams.get('vehicle')
+  const { t } = useTranslation()
   
   const [vehicles, setVehicles] = useState([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [selectedRepairTypes, setSelectedRepairTypes] = useState([])
   
   const { register, handleSubmit, setValue, formState: { errors } } = useForm({
     defaultValues: {
@@ -18,7 +21,6 @@ export default function AddRepair() {
       date: new Date().toISOString().split('T')[0],
       mileage: '',
       description: '',
-      category: '',
       shop_name: '',
       labor_cost: '',
       parts_cost: '',
@@ -50,10 +52,18 @@ export default function AddRepair() {
     setIsSubmitting(true)
     setError('')
     
+    if (selectedRepairTypes.length === 0) {
+      setError(t('addRepair.repairTypeRequired') || 'Repair type is required')
+      setIsSubmitting(false)
+      return
+    }
+    
     try {
       await repairApi.create({
         ...data,
         vehicle_id: parseInt(data.vehicle_id),
+        repair_types: selectedRepairTypes,
+        repair_type: selectedRepairTypes[0],
         mileage: data.mileage ? parseInt(data.mileage) : null,
         labor_cost: data.labor_cost ? parseFloat(data.labor_cost) : 0,
         parts_cost: data.parts_cost ? parseFloat(data.parts_cost) : 0,
@@ -71,19 +81,30 @@ export default function AddRepair() {
   }
   
   const repairCategories = [
-    { value: 'engine', label: 'Engine' },
-    { value: 'transmission', label: 'Transmission' },
-    { value: 'brakes', label: 'Brakes' },
-    { value: 'suspension', label: 'Suspension' },
-    { value: 'electrical', label: 'Electrical' },
-    { value: 'exhaust', label: 'Exhaust' },
-    { value: 'cooling', label: 'Cooling System' },
-    { value: 'ac_heating', label: 'A/C & Heating' },
-    { value: 'steering', label: 'Steering' },
-    { value: 'body', label: 'Body/Exterior' },
-    { value: 'interior', label: 'Interior' },
-    { value: 'tires_wheels', label: 'Tires & Wheels' },
-    { value: 'other', label: 'Other' },
+    { value: 'engine', label: t('repairTypes.engine') || 'Engine' },
+    { value: 'transmission', label: t('repairTypes.transmission') || 'Transmission' },
+    { value: 'brakes', label: t('repairTypes.brakes') || 'Brakes' },
+    { value: 'suspension', label: t('repairTypes.suspension') || 'Suspension' },
+    { value: 'electrical', label: t('repairTypes.electrical') || 'Electrical' },
+    { value: 'exhaust', label: t('repairTypes.exhaust') || 'Exhaust' },
+    { value: 'cooling', label: t('repairTypes.cooling') || 'Cooling System' },
+    { value: 'fuel_system', label: t('repairTypes.fuelSystem') || 'Fuel System' },
+    { value: 'ac_heating', label: t('repairTypes.acHeating') || 'A/C & Heating' },
+    { value: 'steering', label: t('repairTypes.steering') || 'Steering' },
+    { value: 'body', label: t('repairTypes.body') || 'Body/Exterior' },
+    { value: 'interior', label: t('repairTypes.interior') || 'Interior' },
+    { value: 'tires_wheels', label: t('repairTypes.tiresWheels') || 'Tires & Wheels' },
+    { value: 'clutch', label: t('repairTypes.clutch') || 'Clutch' },
+    { value: 'drivetrain', label: t('repairTypes.drivetrain') || 'Drivetrain/Axle' },
+    { value: 'windshield', label: t('repairTypes.windshield') || 'Windshield/Glass' },
+    { value: 'lights', label: t('repairTypes.lights') || 'Lights/Indicators' },
+    { value: 'oil_change', label: t('repairTypes.oilChange') || 'Oil Change' },
+    { value: 'filters', label: t('repairTypes.filters') || 'Filters' },
+    { value: 'battery', label: t('repairTypes.battery') || 'Battery' },
+    { value: 'turbo', label: t('repairTypes.turbo') || 'Turbo/Supercharger' },
+    { value: 'timing_belt', label: t('repairTypes.timingBelt') || 'Timing Belt/Chain' },
+    { value: 'differential', label: t('repairTypes.differential') || 'Differential' },
+    { value: 'other', label: t('repairTypes.other') || 'Other' },
   ]
   
   return (
@@ -162,18 +183,50 @@ export default function AddRepair() {
         
         {/* Repair Details */}
         <div className="card space-y-4">
-          <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">Repair Details</h3>
+          <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
+            {t('addRepair.title') || 'Repair Details'}
+          </h3>
           
           <div>
             <label className="block text-xs text-[var(--color-text-muted)] mb-1">
-              Category
+              {t('addRepair.repairType') || 'Category'} *
             </label>
-            <select {...register('category')} className="input">
-              <option value="">Select category</option>
-              {repairCategories.map(cat => (
-                <option key={cat.value} value={cat.value}>{cat.label}</option>
-              ))}
-            </select>
+            <p className="text-xs text-[var(--color-text-secondary)] mb-2">
+              {t('addRepair.multiSelectHint') || 'Tap to select one or more repair types'}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {repairCategories.map(cat => {
+                const isSelected = selectedRepairTypes.includes(cat.value)
+                return (
+                  <button
+                    key={cat.value}
+                    type="button"
+                    onClick={() => {
+                      setSelectedRepairTypes(prev =>
+                        prev.includes(cat.value)
+                          ? prev.filter(v => v !== cat.value)
+                          : [...prev, cat.value]
+                      )
+                    }}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
+                      isSelected
+                        ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)]'
+                        : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]'
+                    }`}
+                  >
+                    {isSelected && (
+                      <svg className="inline-block w-3.5 h-3.5 mr-1 -mt-0.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                    )}
+                    {cat.label}
+                  </button>
+                )
+              })}
+            </div>
+            {selectedRepairTypes.length === 0 && error && (
+              <p className="text-xs text-red-500 mt-1">{t('addRepair.repairTypeRequired') || 'Repair type is required'}</p>
+            )}
           </div>
           
           <div>

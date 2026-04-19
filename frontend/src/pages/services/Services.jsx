@@ -116,7 +116,9 @@ export default function Services() {
               
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">
-                  {entry.service_type_label || entry.service_type || entry.description}
+                  {entry.service_types?.length > 0
+                    ? entry.service_types.map(st => entry[`${st}_label`] || st.replace(/_/g, ' ')).join(', ')
+                    : entry.service_type_label || entry.service_type || entry.description}
                 </p>
                 <p className="text-2xs text-[var(--color-text-muted)]">
                   {entry.date} • {entry.mileage?.toLocaleString() || '-'} {vehicles.find(v => v.id === entry.vehicle_id)?.distance_unit || 'km'}

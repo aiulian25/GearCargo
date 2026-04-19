@@ -528,7 +528,7 @@ def sync_entry_to_calendar(user, entry_type: str, entry: Any, action: str = 'cre
             vehicle_name = f"{entry.vehicle.make} {entry.vehicle.model}" if entry.vehicle.make else entry.vehicle.nickname or "Vehicle"
         
         # Generate UID for tracking
-        uid = f"gearcargo-{entry_type}-{entry.id}@car.ascunse.uk"
+        uid = f"gearcargo-{entry_type}-{entry.id}@gearcargo.local"
         
         # Build event details based on entry type
         event_data = get_event_data_for_entry(entry_type, entry, vehicle_name)

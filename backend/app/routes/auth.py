@@ -1401,7 +1401,8 @@ def update_profile(current_user):
     preference_fields = [
         'language', 'timezone', 'theme', 'currency',
         'distance_unit', 'volume_unit', 'date_format',
-        'country_preference', 'notification_email',
+        'country_preference',
+        # notification_email removed — must use POST /notification-email (GDPR: encryption, consent, double opt-in)
         # Location settings
         'location_lat', 'location_lon', 'location_name', 'location_auto_detect'
     ]
@@ -1889,6 +1890,12 @@ def verify_email():
         return jsonify({'error': 'Invalid or expired verification token'}), 401
     
     user.mark_email_verified()
+
+    # Cross-sync: if notification email matches account email, verify notification email too
+    if user.notification_email and user.notification_email_hash:
+        from app.utils.encryption import hash_email
+        if hash_email(user.email) == user.notification_email_hash:
+            user.notification_email_verified = True
     
     # Log the verification
     ActivityLog.log(
@@ -1953,7 +1960,6 @@ def get_email_settings(current_user):
     return jsonify({
         'email_enabled_on_server': current_app.config.get('MAIL_ENABLED', False),
         'notifications_enabled': current_user.notifications_enabled if current_user.notifications_enabled is not None else True,
-        'notification_email': current_user.notification_email or current_user.email,
         'email_insurance_alerts': current_user.email_insurance_alerts if current_user.email_insurance_alerts is not None else True,
         'email_tax_alerts': current_user.email_tax_alerts if current_user.email_tax_alerts is not None else True,
         'email_service_alerts': current_user.email_service_alerts if current_user.email_service_alerts is not None else True,
@@ -1961,13 +1967,373 @@ def get_email_settings(current_user):
         'email_smart_alerts': current_user.email_smart_alerts if current_user.email_smart_alerts is not None else True,
         'weekly_report_enabled': current_user.weekly_report_enabled if current_user.weekly_report_enabled is not None else False,
         'monthly_report_enabled': current_user.monthly_report_enabled if current_user.monthly_report_enabled is not None else True,
-        'alert_days_before': current_user.alert_days_before or 14
+        'alert_days_before': current_user.alert_days_before or 14,
+        # GDPR notification email fields
+        'notification_email': current_user.get_decrypted_notification_email(),
+        'notification_email_verified': current_user.notification_email_verified or False,
+        'has_notification_email': bool(current_user.notification_email),
     })
 
 
 # ============================================================
-# Avatar Management Endpoints
+# GDPR Notification Email Endpoints
 # ============================================================
+
+NOTIFICATION_EMAIL_CONSENT_TEXT_V1 = (
+    "I consent to receiving vehicle alerts, reports, and notifications "
+    "from GearCargo at this email address. I understand I can withdraw "
+    "consent at any time via the app settings or the unsubscribe link "
+    "in any email."
+)
+
+@auth_bp.route('/notification-email', methods=['POST'])
+@token_required
+def set_notification_email(current_user):
+    """Set or update the notification email with GDPR consent.
+    Requires explicit consent. Sends verification email (double opt-in)."""
+    import re as _re
+    from app.utils.encryption import hash_email
+    from app.models.email_consent_log import EmailConsentLog
+
+    if not current_app.config.get('MAIL_ENABLED'):
+        return jsonify({'error': 'Email service is not enabled on this server'}), 503
+
+    data = request.get_json() or {}
+    email_addr = (data.get('email') or '').strip().lower()
+    consent = data.get('consent', False)
+
+    # Validate consent
+    if not consent:
+        return jsonify({'error': 'Explicit consent is required to add a notification email'}), 400
+
+    # Validate email format
+    if not email_addr or not _re.match(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$', email_addr):
+        return jsonify({'error': 'Invalid email address'}), 400
+
+    # Rate limiting: max 3 verification sends per hour (check consent log)
+    from datetime import datetime, timedelta
+    one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+    recent_grants = EmailConsentLog.query.filter(
+        EmailConsentLog.user_id == current_user.id,
+        EmailConsentLog.action == 'grant',
+        EmailConsentLog.created_at >= one_hour_ago
+    ).count()
+    if recent_grants >= 3:
+        return jsonify({'error': 'Too many verification requests. Try again later.'}), 429
+
+    # Get request context for GDPR record
+    ip_address = request.headers.get('X-Real-IP') or request.headers.get('X-Forwarded-For', '').split(',')[0].strip() or request.remote_addr
+    user_agent = request.headers.get('User-Agent', '')[:500]
+
+    # Encrypt and store
+    current_user.set_notification_email_encrypted(email_addr)
+    current_user.notification_email_verified = False
+    current_user.notification_email_bounce_count = 0
+
+    # Generate verification token
+    token = current_user.generate_notification_email_token(expires_hours=72)
+
+    # Record consent timestamp + IP
+    current_user.notification_email_consented_at = datetime.utcnow()
+    current_user.notification_email_consent_ip = ip_address
+
+    # Generate unsubscribe token if needed
+    current_user.generate_unsubscribe_token()
+
+    # Immutable consent ledger entry
+    EmailConsentLog.record(
+        user_id=current_user.id,
+        action='grant',
+        email_hash=hash_email(email_addr),
+        ip_address=ip_address,
+        user_agent=user_agent,
+        consent_text_version='1.0'
+    )
+
+    db.session.commit()
+
+    # Send verification email
+    from app.services.email_service import EmailService
+    app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
+    verify_url = f"{app_url}/settings?verify_notification={token}"
+
+    verify_html = f"""
+    <div class="header">
+        <img src="{app_url}/icons/logo.png" alt="GearCargo" class="header-logo">
+        <h1>✉️ Verify Notification Email</h1>
+        <p class="header-subtitle">Confirm your email address</p>
+    </div>
+    <div class="content">
+        <p>Hi {current_user.display_name},</p>
+        <p>You requested to receive GearCargo notifications at this email address.</p>
+        <p style="color: #94a3b8; font-size: 13px;">
+            By clicking the button below, you confirm that:<br>
+            <em>"{NOTIFICATION_EMAIL_CONSENT_TEXT_V1}"</em>
+        </p>
+        <a href="{verify_url}" class="btn">Verify Email Address</a>
+        <p style="margin-top: 20px; color: #64748b; font-size: 12px;">
+            This link expires in 72 hours. If you did not request this, ignore this email.
+        </p>
+    </div>
+    """
+    EmailService.send_email(
+        to=email_addr,
+        subject='Verify Your Notification Email',
+        content_html=verify_html
+    )
+
+    # Activity log
+    ActivityLog.log(
+        event_type='notification_email_set',
+        event_category='auth',
+        user_id=current_user.id,
+        description=f'Notification email set (verification pending)',
+        ip_address=ip_address,
+        success=True,
+        extra_data={'email_hash': hash_email(email_addr)}
+    )
+
+    return jsonify({
+        'message': 'Verification email sent. Check your inbox.',
+        'notification_email': email_addr,
+        'notification_email_verified': False,
+    })
+
+
+@auth_bp.route('/notification-email/verify', methods=['POST'])
+@token_required
+def verify_notification_email(current_user):
+    """Verify notification email with token (double opt-in step 2)."""
+    from app.utils.encryption import hash_email
+    from app.models.email_consent_log import EmailConsentLog
+
+    data = request.get_json() or {}
+    token = data.get('token', '').strip()
+
+    if not token:
+        return jsonify({'error': 'Verification token is required'}), 400
+
+    # Validate token
+    if current_user.notification_email_token != token:
+        return jsonify({'error': 'Invalid verification token'}), 401
+
+    if not current_user.notification_email_token_exp or \
+       current_user.notification_email_token_exp < datetime.utcnow():
+        return jsonify({'error': 'Verification token has expired. Please request a new one.'}), 401
+
+    # Mark as verified
+    current_user.notification_email_verified = True
+    current_user.notification_email_token = None
+    current_user.notification_email_token_exp = None
+
+    # Cross-sync: if notification email matches account email, verify account email too
+    decrypted_notif = current_user.get_decrypted_notification_email()
+    if decrypted_notif and decrypted_notif.lower() == current_user.email.lower():
+        current_user.email_verified = True
+
+    # Record consent context
+    ip_address = request.headers.get('X-Real-IP') or request.headers.get('X-Forwarded-For', '').split(',')[0].strip() or request.remote_addr
+    user_agent = request.headers.get('User-Agent', '')[:500]
+    email_hash = current_user.notification_email_hash or ''
+
+    # Immutable consent ledger — verification record
+    EmailConsentLog.record(
+        user_id=current_user.id,
+        action='verify',
+        email_hash=email_hash,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        consent_text_version='1.0'
+    )
+
+    db.session.commit()
+
+    # Activity log
+    ActivityLog.log(
+        event_type='notification_email_verified',
+        event_category='auth',
+        user_id=current_user.id,
+        description='Notification email verified (double opt-in complete)',
+        ip_address=ip_address,
+        success=True
+    )
+
+    return jsonify({
+        'message': 'Notification email verified successfully',
+        'notification_email': current_user.get_decrypted_notification_email(),
+        'notification_email_verified': True,
+    })
+
+
+@auth_bp.route('/notification-email', methods=['DELETE'])
+@token_required
+def remove_notification_email(current_user):
+    """Remove the notification email and revoke consent."""
+    from app.utils.encryption import hash_email
+    from app.models.email_consent_log import EmailConsentLog
+
+    email_hash = current_user.notification_email_hash or ''
+    ip_address = request.headers.get('X-Real-IP') or request.headers.get('X-Forwarded-For', '').split(',')[0].strip() or request.remote_addr
+    user_agent = request.headers.get('User-Agent', '')[:500]
+
+    # Clear all notification email data
+    current_user.notification_email = None
+    current_user.notification_email_hash = None
+    current_user.notification_email_verified = False
+    current_user.notification_email_token = None
+    current_user.notification_email_token_exp = None
+    current_user.notification_email_consented_at = None
+    current_user.notification_email_consent_ip = None
+    current_user.notification_email_bounce_count = 0
+
+    # Immutable consent ledger — revocation
+    if email_hash:
+        EmailConsentLog.record(
+            user_id=current_user.id,
+            action='revoke',
+            email_hash=email_hash,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            consent_text_version='1.0'
+        )
+
+    db.session.commit()
+
+    ActivityLog.log(
+        event_type='notification_email_removed',
+        event_category='auth',
+        user_id=current_user.id,
+        description='Notification email removed, consent revoked',
+        ip_address=ip_address,
+        success=True
+    )
+
+    return jsonify({'message': 'Notification email removed', 'notification_email': '', 'notification_email_verified': False})
+
+
+@auth_bp.route('/notification-email/resend', methods=['POST'])
+@token_required
+def resend_notification_verification(current_user):
+    """Resend verification email for pending notification email."""
+    from app.utils.encryption import hash_email
+    from app.models.email_consent_log import EmailConsentLog
+
+    if not current_app.config.get('MAIL_ENABLED'):
+        return jsonify({'error': 'Email service is not enabled'}), 503
+
+    if not current_user.notification_email:
+        return jsonify({'error': 'No notification email set'}), 400
+
+    if current_user.notification_email_verified:
+        return jsonify({'message': 'Already verified'}), 200
+
+    # Rate limit: max 3/hour
+    one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+    recent = EmailConsentLog.query.filter(
+        EmailConsentLog.user_id == current_user.id,
+        EmailConsentLog.action.in_(['grant', 'verify']),
+        EmailConsentLog.created_at >= one_hour_ago
+    ).count()
+    if recent >= 3:
+        return jsonify({'error': 'Too many requests. Try again later.'}), 429
+
+    # Regenerate token
+    token = current_user.generate_notification_email_token(expires_hours=72)
+    db.session.commit()
+
+    email_addr = current_user.get_decrypted_notification_email()
+    if not email_addr:
+        return jsonify({'error': 'Could not decrypt notification email'}), 500
+
+    from app.services.email_service import EmailService
+    app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
+    verify_url = f"{app_url}/settings?verify_notification={token}"
+
+    verify_html = f"""
+    <div class="header">
+        <img src="{app_url}/icons/logo.png" alt="GearCargo" class="header-logo">
+        <h1>✉️ Verify Notification Email</h1>
+        <p class="header-subtitle">Confirm your email address</p>
+    </div>
+    <div class="content">
+        <p>Hi {current_user.display_name},</p>
+        <p>Please verify this email address to receive GearCargo notifications.</p>
+        <a href="{verify_url}" class="btn">Verify Email Address</a>
+        <p style="margin-top: 20px; color: #64748b; font-size: 12px;">
+            This link expires in 72 hours.
+        </p>
+    </div>
+    """
+    EmailService.send_email(to=email_addr, subject='Verify Your Notification Email', content_html=verify_html)
+
+    return jsonify({'message': 'Verification email resent'})
+
+
+@auth_bp.route('/unsubscribe', methods=['GET'])
+def unsubscribe_email():
+    """One-click unsubscribe via signed token. Public endpoint (no auth)."""
+    from app.models.email_consent_log import EmailConsentLog
+
+    token = request.args.get('token', '').strip()
+    if not token:
+        return '<html><body style="background:#0f172a;color:#e2e8f0;font-family:sans-serif;text-align:center;padding:60px"><h1>Missing Token</h1><p>Invalid unsubscribe link.</p></body></html>', 400
+
+    user = User.query.filter_by(unsubscribe_token=token).first()
+    if not user:
+        return '<html><body style="background:#0f172a;color:#e2e8f0;font-family:sans-serif;text-align:center;padding:60px"><h1>Invalid Link</h1><p>This unsubscribe link is no longer valid.</p></body></html>', 404
+
+    ip_address = request.headers.get('X-Real-IP') or request.headers.get('X-Forwarded-For', '').split(',')[0].strip() or request.remote_addr
+    user_agent = request.headers.get('User-Agent', '')[:500]
+    email_hash = user.notification_email_hash or ''
+
+    # Disable notifications
+    user.notifications_enabled = False
+    user.notification_email_verified = False
+
+    # Consent ledger
+    EmailConsentLog.record(
+        user_id=user.id,
+        action='unsubscribe',
+        email_hash=email_hash,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        consent_text_version='1.0'
+    )
+
+    db.session.commit()
+
+    ActivityLog.log(
+        event_type='email_unsubscribed',
+        event_category='auth',
+        user_id=user.id,
+        description='User unsubscribed via email link',
+        ip_address=ip_address,
+        success=True
+    )
+
+    app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
+    return f'''<html><body style="background:#0f172a;color:#e2e8f0;font-family:sans-serif;text-align:center;padding:60px">
+    <h1 style="color:#3b82f6">Unsubscribed</h1>
+    <p>You have been successfully unsubscribed from GearCargo email notifications.</p>
+    <p style="color:#94a3b8;margin-top:20px">You can re-enable notifications at any time in your
+    <a href="{app_url}/settings" style="color:#3b82f6">app settings</a>.</p>
+    </body></html>''', 200
+
+
+@auth_bp.route('/consent-history', methods=['GET'])
+@token_required
+def get_consent_history(current_user):
+    """Return the user's own consent history (GDPR transparency)."""
+    from app.models.email_consent_log import EmailConsentLog
+
+    logs = EmailConsentLog.query.filter_by(user_id=current_user.id)\
+        .order_by(EmailConsentLog.created_at.desc())\
+        .limit(50)\
+        .all()
+
+    return jsonify({
+        'consent_history': [log.to_dict() for log in logs]
+    })
 
 @auth_bp.route('/avatar', methods=['POST'])
 @token_required

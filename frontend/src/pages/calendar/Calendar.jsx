@@ -467,7 +467,12 @@ export default function Calendar() {
                   return (
                     <div
                       key={entry.id}
-                      className={`p-3 rounded-xl border ${config.color} transition-transform active:scale-[0.98]`}
+                      onClick={() => {
+                        if (entry.vehicle_id) {
+                          navigate(`/vehicles/${entry.vehicle_id}/expenses?tab=${entry.type}`)
+                        }
+                      }}
+                      className={`p-3 rounded-xl border ${config.color} transition-transform active:scale-[0.98] ${entry.vehicle_id ? 'cursor-pointer hover:brightness-110' : ''}`}
                     >
                       <div className="flex items-start gap-3">
                         <div className="mt-0.5">

@@ -39,12 +39,12 @@ export default function AddVehicleService() {
   const [isLoading, setIsLoading] = useState(true)
   const [receiptFile, setReceiptFile] = useState(null)
   const [existingAttachments, setExistingAttachments] = useState([])
+  const [selectedServiceTypes, setSelectedServiceTypes] = useState([])
   
   const { register, handleSubmit, formState: { errors }, control, setValue, reset } = useForm({
     defaultValues: {
       date: new Date().toISOString().split('T')[0],
       mileage: '',
-      service_type: '',
       description: '',
       parts_cost: '',
       labor_cost: '',
@@ -83,7 +83,6 @@ export default function AddVehicleService() {
           reset({
             date: entry.date ? entry.date.split('T')[0] : new Date().toISOString().split('T')[0],
             mileage: entry.odometer || '',
-            service_type: entry.service_type || '',
             description: entry.description || '',
             parts_cost: entry.parts_cost || '',
             labor_cost: entry.labor_cost || '',
@@ -92,6 +91,13 @@ export default function AddVehicleService() {
             notes: entry.notes || '',
             next_due_date: entry.next_due_date ? entry.next_due_date.split('T')[0] : '',
           })
+          
+          // Restore multi-select service types
+          if (entry.service_types && entry.service_types.length > 0) {
+            setSelectedServiceTypes(entry.service_types)
+          } else if (entry.service_type) {
+            setSelectedServiceTypes([entry.service_type])
+          }
           
           // Store existing attachments
           if (entry.attachments && entry.attachments.length > 0) {
@@ -113,10 +119,19 @@ export default function AddVehicleService() {
     setIsSubmitting(true)
     setError('')
     
+    // Validate multi-select service types
+    if (selectedServiceTypes.length === 0) {
+      setError(t('addService.typeRequired') || 'Service type is required')
+      setIsSubmitting(false)
+      return
+    }
+    
     try {
       const payload = {
         ...data,
         vehicle_id: parseInt(vehicleId),
+        service_types: selectedServiceTypes,
+        service_type: selectedServiceTypes[0],
         mileage: data.mileage ? parseInt(data.mileage) : null,
         parts_cost: data.parts_cost ? parseFloat(data.parts_cost) : null,
         labor_cost: data.labor_cost ? parseFloat(data.labor_cost) : null,
@@ -158,11 +173,13 @@ export default function AddVehicleService() {
     { value: 'tire_rotation', label: t('serviceTypes.tireRotation') || 'Tire Rotation' },
     { value: 'brake_service', label: t('serviceTypes.brakeService') || 'Brake Service' },
     { value: 'air_filter', label: t('serviceTypes.airFilter') || 'Air Filter' },
+    { value: 'cabin_filter', label: t('serviceTypes.cabinFilter') || 'Cabin Filter' },
     { value: 'transmission', label: t('serviceTypes.transmission') || 'Transmission Service' },
     { value: 'coolant', label: t('serviceTypes.coolant') || 'Coolant Flush' },
     { value: 'spark_plugs', label: t('serviceTypes.sparkPlugs') || 'Spark Plugs' },
     { value: 'timing_belt', label: t('serviceTypes.timingBelt') || 'Timing Belt' },
     { value: 'inspection', label: t('serviceTypes.inspection') || 'Inspection' },
+    { value: 'full_service', label: t('serviceTypes.fullService') || 'Full Service' },
     { value: 'other', label: t('serviceTypes.other') || 'Other' },
   ]
   
@@ -249,17 +266,41 @@ export default function AddVehicleService() {
             <label className="block text-xs text-[var(--color-text-muted)] mb-1">
               {t('addService.serviceType') || 'Service Type'} *
             </label>
-            <select 
-              {...register('service_type', { required: t('addService.typeRequired') || 'Service type is required' })}
-              className="input"
-            >
-              <option value="">{t('addService.selectType') || 'Select service type'}</option>
-              {serviceTypes.map(type => (
-                <option key={type.value} value={type.value}>{type.label}</option>
-              ))}
-            </select>
-            {errors.service_type && (
-              <p className="text-xs text-red-500 mt-1">{errors.service_type.message}</p>
+            <p className="text-xs text-[var(--color-text-secondary)] mb-2">
+              {t('addService.multiSelectHint') || 'Tap to select one or more service types'}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {serviceTypes.map(type => {
+                const isSelected = selectedServiceTypes.includes(type.value)
+                return (
+                  <button
+                    key={type.value}
+                    type="button"
+                    onClick={() => {
+                      setSelectedServiceTypes(prev =>
+                        prev.includes(type.value)
+                          ? prev.filter(v => v !== type.value)
+                          : [...prev, type.value]
+                      )
+                    }}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
+                      isSelected
+                        ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)]'
+                        : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]'
+                    }`}
+                  >
+                    {isSelected && (
+                      <svg className="inline-block w-3.5 h-3.5 mr-1 -mt-0.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                    )}
+                    {type.label}
+                  </button>
+                )
+              })}
+            </div>
+            {selectedServiceTypes.length === 0 && error && (
+              <p className="text-xs text-red-500 mt-1">{t('addService.typeRequired') || 'Service type is required'}</p>
             )}
           </div>
           

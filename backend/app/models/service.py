@@ -14,7 +14,8 @@ class ServiceEntry(Entry):
     id = db.Column(db.Integer, db.ForeignKey('entries.id'), primary_key=True)
     
     # Service specific
-    service_type = db.Column(db.String(50))  # oil_change, brake_service, etc.
+    service_type = db.Column(db.String(50))  # Legacy single type (first selected type)
+    service_types = db.Column(db.JSON)  # Multi-select: list of service type values
     provider = db.Column(db.String(100))
     garage_name = db.Column(db.String(100))
     garage_address = db.Column(db.String(255))
@@ -47,6 +48,7 @@ class ServiceEntry(Entry):
         data = super().to_dict()
         data.update({
             'service_type': self.service_type,
+            'service_types': self.service_types or ([self.service_type] if self.service_type else []),
             'provider': self.provider,
             'garage_name': self.garage_name,
             'garage_address': self.garage_address,

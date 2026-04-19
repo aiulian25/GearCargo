@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { vehicleApi, fuelApi, serviceApi, repairApi, taxApi, reminderApi, attachmentApi, insuranceApi } from '../../services/api'
 import api from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
@@ -236,15 +236,19 @@ const TabButton = ({ active, icon, label, count, onClick, tabId }) => (
   </button>
 )
 
+const VALID_TABS = ['fuel', 'service', 'tax', 'parking', 'repair', 'insurance', 'todo', 'reminder']
+
 export default function VehicleExpenses() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { t } = useTranslation()
   const { formatCurrency } = useCurrency()
   
   const [vehicle, setVehicle] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('fuel')
+  const initialTab = searchParams.get('tab')
+  const [activeTab, setActiveTab] = useState(VALID_TABS.includes(initialTab) ? initialTab : 'fuel')
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   
   // Attachment viewer state
@@ -647,7 +651,7 @@ export default function VehicleExpenses() {
               {serviceEntries.map(entry => (
                 <tr key={entry.id} className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)]">
                   <td className="py-3 px-4">{formatDate(entry.date)}</td>
-                  <td className="py-3 px-4">{entry.service_type || entry.title || '-'}</td>
+                  <td className="py-3 px-4">{(entry.service_types?.length > 0 ? entry.service_types.map(st => st.replace(/_/g, ' ')).join(', ') : entry.service_type || entry.title || '-')}</td>
                   <td className="py-3 px-4">{entry.odometer?.toLocaleString()} {vehicle?.distance_unit || 'km'}</td>
                   <td className="py-3 px-4">{formatCurrency(entry.parts_cost || 0)}</td>
                   <td className="py-3 px-4">{formatCurrency(entry.labor_cost || 0)}</td>

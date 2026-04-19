@@ -53,8 +53,29 @@ def create_repair_entry(current_user):
     if not vehicle:
         return jsonify({'error': 'Vehicle not found'}), 404
     
-    if not data.get('repair_type'):
+    if not data.get('repair_type') and not data.get('repair_types'):
         return jsonify({'error': 'Repair type is required'}), 400
+    
+    # Support multi-select repair_types (array) and legacy repair_type (string)
+    repair_types_list = data.get('repair_types') or []
+    if not isinstance(repair_types_list, list):
+        repair_types_list = [repair_types_list]
+    if not repair_types_list and data.get('repair_type'):
+        repair_types_list = [data['repair_type']]
+    
+    # Validate repair types - only allow known values
+    VALID_REPAIR_TYPES = {
+        'engine', 'transmission', 'brakes', 'suspension', 'electrical',
+        'exhaust', 'cooling', 'fuel_system', 'steering', 'body',
+        'interior', 'ac_heating', 'tires_wheels', 'clutch', 'drivetrain',
+        'windshield', 'lights', 'oil_change', 'filters', 'battery',
+        'turbo', 'timing_belt', 'differential', 'other'
+    }
+    repair_types_list = [rt for rt in repair_types_list if rt in VALID_REPAIR_TYPES]
+    if not repair_types_list:
+        return jsonify({'error': 'At least one valid repair type is required'}), 400
+    
+    primary_type = repair_types_list[0]
     
     # Parse date - support both 'date' and 'entry_date' field names
     entry_date = datetime.utcnow().date()
@@ -69,9 +90,10 @@ def create_repair_entry(current_user):
         date=entry_date,
         odometer=data.get('mileage') or data.get('odometer'),
         amount=data.get('total_cost') or data.get('cost') or data.get('amount', 0),
-        title=data.get('repair_type'),
+        title=', '.join(repair_types_list),
         description=data.get('description'),
-        repair_type=data['repair_type'],
+        repair_type=primary_type,
+        repair_types=repair_types_list,
         diagnosis=data.get('diagnosis'),
         symptoms=data.get('symptoms'),
         provider=data.get('shop_name') or data.get('provider_name') or data.get('provider'),
@@ -126,14 +148,26 @@ def update_repair_entry(current_user, entry_id):
     
     data = request.get_json()
     
-    allowed = ['entry_date', 'mileage', 'cost', 'repair_type', 'description',
+    allowed = ['entry_date', 'mileage', 'cost', 'repair_type', 'repair_types', 'description',
                'diagnosis', 'parts_replaced', 'labor_cost', 'parts_cost',
                'provider_name', 'provider_location', 'provider_phone',
                'severity', 'is_recurring', 'warranty_covered',
                'insurance_covered', 'insurance_claim_number', 'notes']
     
+    # Handle multi-select repair_types
+    if 'repair_types' in data:
+        types_list = data['repair_types']
+        if isinstance(types_list, list) and len(types_list) > 0:
+            entry.repair_types = types_list
+            entry.repair_type = types_list[0]
+            entry.title = ', '.join(types_list)
+    elif 'repair_type' in data and data['repair_type']:
+        entry.repair_type = data['repair_type']
+        entry.repair_types = [data['repair_type']]
+        entry.title = data['repair_type']
+    
     for field in allowed:
-        if field in data:
+        if field in data and field not in ('repair_type', 'repair_types'):
             if field == 'entry_date' and data[field]:
                 setattr(entry, field, datetime.fromisoformat(data[field]))
             else:
@@ -194,11 +228,12 @@ def get_repair_stats(current_user):
     # By type
     by_type = {}
     for entry in entries:
-        rtype = entry.repair_type or 'other'
-        if rtype not in by_type:
-            by_type[rtype] = {'count': 0, 'cost': 0}
-        by_type[rtype]['count'] += 1
-        by_type[rtype]['cost'] += float(entry.cost or 0)
+        types = entry.repair_types or ([entry.repair_type] if entry.repair_type else ['other'])
+        for rtype in types:
+            if rtype not in by_type:
+                by_type[rtype] = {'count': 0, 'cost': 0}
+            by_type[rtype]['count'] += 1
+            by_type[rtype]['cost'] += float(entry.cost or 0)
     
     return jsonify({
         'total_cost': float(total_cost),

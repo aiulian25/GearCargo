@@ -53,8 +53,25 @@ def create_service_entry(current_user):
     if not vehicle:
         return jsonify({'error': 'Vehicle not found'}), 404
     
-    if not data.get('service_type'):
-        return jsonify({'error': 'Service type is required'}), 400
+    # Handle multi-select service_types (array) with legacy service_type (string) fallback
+    VALID_SERVICE_TYPES = {
+        'oil_change', 'tire_rotation', 'brake_service', 'air_filter', 'cabin_filter',
+        'spark_plugs', 'transmission', 'coolant', 'timing_belt', 'inspection',
+        'full_service', 'other',
+    }
+    
+    service_types_list = data.get('service_types') or []
+    if not isinstance(service_types_list, list):
+        service_types_list = [service_types_list]
+    
+    # Fallback to legacy single service_type
+    if not service_types_list and data.get('service_type'):
+        service_types_list = [data['service_type']]
+    
+    # Validate: filter to known types, require at least one
+    service_types_list = [t for t in service_types_list if t in VALID_SERVICE_TYPES]
+    if not service_types_list:
+        return jsonify({'error': 'At least one valid service type is required'}), 400
     
     # Parse date - support both 'date' and 'entry_date' field names
     entry_date = datetime.utcnow().date()
@@ -90,9 +107,10 @@ def create_service_entry(current_user):
         date=entry_date,
         odometer=data.get('mileage') or data.get('odometer'),
         amount=amount,
-        title=data.get('service_type'),
+        title=', '.join(service_types_list),
         description=data.get('description'),
-        service_type=data['service_type'],
+        service_type=service_types_list[0],
+        service_types=service_types_list,
         provider=data.get('shop_name') or data.get('provider_name') or data.get('provider'),
         garage_name=data.get('shop_name') or data.get('garage_name') or data.get('provider_name'),
         garage_address=data.get('provider_location') or data.get('garage_address'),
@@ -155,7 +173,26 @@ def update_service_entry(current_user, entry_id):
     
     data = request.get_json()
     
-    allowed = ['entry_date', 'mileage', 'cost', 'service_type', 'description',
+    # Handle multi-select service_types update
+    VALID_SERVICE_TYPES = {
+        'oil_change', 'tire_rotation', 'brake_service', 'air_filter', 'cabin_filter',
+        'spark_plugs', 'transmission', 'coolant', 'timing_belt', 'inspection',
+        'full_service', 'other',
+    }
+    
+    if 'service_types' in data or 'service_type' in data:
+        service_types_list = data.get('service_types') or []
+        if not isinstance(service_types_list, list):
+            service_types_list = [service_types_list]
+        if not service_types_list and data.get('service_type'):
+            service_types_list = [data['service_type']]
+        service_types_list = [t for t in service_types_list if t in VALID_SERVICE_TYPES]
+        if service_types_list:
+            entry.service_types = service_types_list
+            entry.service_type = service_types_list[0]
+            entry.title = ', '.join(service_types_list)
+    
+    allowed = ['entry_date', 'mileage', 'cost', 'description',
                'provider_name', 'provider_location', 'provider_phone',
                'parts_replaced', 'labor_cost', 'parts_cost',
                'next_service_mileage', 'next_service_date', 'warranty_until', 'notes']

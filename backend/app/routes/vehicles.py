@@ -1153,6 +1153,52 @@ def get_vehicle_health(current_user, vehicle_id):
     }
     
     component_status = {}
+    
+    # Map repair types to component health keys
+    REPAIR_TYPE_TO_COMPONENTS = {
+        'engine': ['oil_change', 'spark_plugs'],
+        'brakes': ['brake_pads', 'brake_fluid'],
+        'cooling': ['coolant'],
+        'tires_wheels': ['tires'],
+        'electrical': ['battery'],
+        'transmission': ['transmission_fluid'],
+        'ac_heating': ['cabin_filter'],
+        'oil_change': ['oil_change'],
+        'filters': ['air_filter', 'cabin_filter'],
+        'battery': ['battery'],
+        'timing_belt': ['timing_belt'],
+        'clutch': ['transmission_fluid'],
+        'drivetrain': ['transmission_fluid'],
+        'turbo': [],
+        'differential': [],
+        'windshield': [],
+        'lights': [],
+        'exhaust': [],
+        'suspension': [],
+        'steering': [],
+        'fuel_system': [],
+        'body': [],
+        'interior': [],
+        'other': [],
+    }
+    
+    # Map service types to component health keys (for direct matching)
+    SERVICE_TYPE_TO_COMPONENTS = {
+        'oil_change': ['oil_change'],
+        'tire_rotation': ['tires'],
+        'brake_service': ['brake_pads', 'brake_fluid'],
+        'air_filter': ['air_filter'],
+        'cabin_filter': ['cabin_filter'],
+        'spark_plugs': ['spark_plugs'],
+        'transmission': ['transmission_fluid'],
+        'coolant': ['coolant'],
+        'timing_belt': ['timing_belt'],
+        'inspection': [],
+        'full_service': ['oil_change', 'air_filter', 'cabin_filter', 'brake_pads', 'brake_fluid',
+                         'transmission_fluid', 'coolant', 'spark_plugs', 'tires', 'battery'],
+        'other': [],
+    }
+    
     for component, interval in MAINTENANCE_INTERVALS.items():
         keywords = SERVICE_KEYWORDS.get(component, [])
         
@@ -1160,12 +1206,45 @@ def get_vehicle_health(current_user, vehicle_id):
         last_service_date = None
         last_service_mileage = None
         for s in service_entries:
-            title_lower = (s.title or '').lower()
-            notes_lower = (s.notes or '').lower()
-            if any(kw in title_lower or kw in notes_lower for kw in keywords):
-                last_service_date = s.date
-                last_service_mileage = s.odometer
-                break
+            # Direct match via service_types / service_type field
+            s_types = s.service_types or ([s.service_type] if s.service_type else [])
+            matched = False
+            for stype in s_types:
+                if component in SERVICE_TYPE_TO_COMPONENTS.get(stype, []):
+                    matched = True
+                    break
+            
+            # Keyword match on title/notes (fallback for legacy entries)
+            if not matched:
+                title_lower = (s.title or '').lower()
+                notes_lower = (s.notes or '').lower()
+                if any(kw in title_lower or kw in notes_lower for kw in keywords):
+                    matched = True
+            
+            if matched:
+                if last_service_date is None or (s.date and s.date > last_service_date):
+                    last_service_date = s.date
+                    last_service_mileage = s.odometer
+        
+        # Also check repair entries for matching repair types
+        for r in repair_entries:
+            r_types = r.repair_types or ([r.repair_type] if r.repair_type else [])
+            for rtype in r_types:
+                if component in REPAIR_TYPE_TO_COMPONENTS.get(rtype, []):
+                    # Use this repair as evidence the component was serviced
+                    if last_service_date is None or (r.date and r.date > last_service_date):
+                        last_service_date = r.date
+                        last_service_mileage = r.odometer
+                    break
+            # Also check repair description/notes for service keywords
+            r_title = (r.title or '').lower()
+            r_desc = (r.description or '').lower()
+            r_notes = (r.notes or '').lower()
+            combined = f'{r_title} {r_desc} {r_notes}'
+            if any(kw in combined for kw in keywords):
+                if last_service_date is None or (r.date and r.date > last_service_date):
+                    last_service_date = r.date
+                    last_service_mileage = r.odometer
         
         # Calculate wear percentage
         wear_pct = 0
@@ -1360,4 +1439,48 @@ def get_vehicle_health(current_user, vehicle_id):
             'warranty_tips': warranty_tips,
         },
         'recommended_actions': recommended_actions[:10],  # Top 10
+    })
+
+
+@vehicles_bp.route('/<int:vehicle_id>/manual', methods=['GET'])
+@token_required
+def get_vehicle_manual(current_user, vehicle_id):
+    """
+    Resolve the owner's manual URL for a specific vehicle.
+
+    Reads make/model/year from the vehicle's DB record and the user's
+    language preference. Nothing is hardcoded — every lookup is fully dynamic.
+    """
+    vehicle = Vehicle.query.filter_by(
+        id=vehicle_id,
+        user_id=current_user.id,
+    ).first()
+
+    if not vehicle:
+        return jsonify({'error': 'Vehicle not found'}), 404
+
+    if not vehicle.make or not vehicle.model or not vehicle.year:
+        return jsonify({
+            'error': 'Vehicle make, model, and year are required for manual lookup',
+            'manual_url': None,
+            'source': None,
+            'fallback_search': None,
+        }), 400
+
+    lang = getattr(current_user, 'language', None) or 'en'
+
+    from app.services.manual_service import get_manual_url
+    result = get_manual_url(
+        make=vehicle.make,
+        model=vehicle.model,
+        year=vehicle.year,
+        lang=lang,
+    )
+
+    return jsonify({
+        **result,
+        'make': vehicle.make,
+        'model': vehicle.model,
+        'year': vehicle.year,
+        'language': lang,
     })

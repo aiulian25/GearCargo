@@ -13,13 +13,13 @@ export default function AddService() {
   const [vehicles, setVehicles] = useState([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [selectedServiceTypes, setSelectedServiceTypes] = useState([])
   
   const { register, handleSubmit, setValue, formState: { errors } } = useForm({
     defaultValues: {
       vehicle_id: preselectedVehicle || '',
       date: new Date().toISOString().split('T')[0],
       mileage: '',
-      service_type: '',
       description: '',
       shop_name: '',
       labor_cost: '',
@@ -51,10 +51,19 @@ export default function AddService() {
     setIsSubmitting(true)
     setError('')
     
+    // Validate multi-select service types
+    if (selectedServiceTypes.length === 0) {
+      setError(t('addService.typeRequired') || 'Service type is required')
+      setIsSubmitting(false)
+      return
+    }
+    
     try {
       await serviceApi.create({
         ...data,
         vehicle_id: parseInt(data.vehicle_id),
+        service_types: selectedServiceTypes,
+        service_type: selectedServiceTypes[0],
         mileage: data.mileage ? parseInt(data.mileage) : null,
         labor_cost: data.labor_cost ? parseFloat(data.labor_cost) : 0,
         parts_cost: data.parts_cost ? parseFloat(data.parts_cost) : 0,
@@ -167,17 +176,41 @@ export default function AddService() {
             <label className="block text-xs text-[var(--color-text-muted)] mb-1">
               {t('addService.serviceType') || 'Service Type'} *
             </label>
-            <select 
-              {...register('service_type', { required: t('addService.typeRequired') || 'Service type is required' })}
-              className="input"
-            >
-              <option value="">{t('addService.selectType') || 'Select type'}</option>
-              {serviceTypes.map(type => (
-                <option key={type.value} value={type.value}>{type.label}</option>
-              ))}
-            </select>
-            {errors.service_type && (
-              <p className="text-xs text-red-500 mt-1">{errors.service_type.message}</p>
+            <p className="text-xs text-[var(--color-text-secondary)] mb-2">
+              {t('addService.multiSelectHint') || 'Tap to select one or more service types'}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {serviceTypes.map(type => {
+                const isSelected = selectedServiceTypes.includes(type.value)
+                return (
+                  <button
+                    key={type.value}
+                    type="button"
+                    onClick={() => {
+                      setSelectedServiceTypes(prev =>
+                        prev.includes(type.value)
+                          ? prev.filter(v => v !== type.value)
+                          : [...prev, type.value]
+                      )
+                    }}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
+                      isSelected
+                        ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)]'
+                        : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]'
+                    }`}
+                  >
+                    {isSelected && (
+                      <svg className="inline-block w-3.5 h-3.5 mr-1 -mt-0.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                    )}
+                    {type.label}
+                  </button>
+                )
+              })}
+            </div>
+            {selectedServiceTypes.length === 0 && error && (
+              <p className="text-xs text-red-500 mt-1">{t('addService.typeRequired') || 'Service type is required'}</p>
             )}
           </div>
           

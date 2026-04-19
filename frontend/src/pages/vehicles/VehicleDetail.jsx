@@ -141,6 +141,11 @@ const Icons = {
       <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>
     </svg>
   ),
+  bookOpen: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+    </svg>
+  ),
 }
 
 export default function VehicleDetail() {
@@ -159,6 +164,11 @@ export default function VehicleDetail() {
   const [newMileage, setNewMileage] = useState('')
   const [mileageError, setMileageError] = useState('')
   const [isSavingMileage, setIsSavingMileage] = useState(false)
+  
+  // Manual lookup state
+  const [manualLoading, setManualLoading] = useState(false)
+  const [manualResult, setManualResult] = useState(null)
+  const [showManualModal, setShowManualModal] = useState(false)
   
   useEffect(() => {
     const fetchData = async () => {
@@ -244,6 +254,25 @@ export default function VehicleDetail() {
   // Check if vehicle is archived (read-only mode)
   const isArchived = vehicle?.archived === true
   
+  const handleFindManual = async () => {
+    setManualLoading(true)
+    setManualResult(null)
+    setShowManualModal(true)
+    try {
+      const res = await vehicleApi.getManual(id)
+      setManualResult(res.data)
+    } catch (error) {
+      setManualResult({
+        manual_url: null,
+        source: null,
+        fallback_search: `https://www.google.com/search?q=${encodeURIComponent((vehicle?.make || '') + ' ' + (vehicle?.model || '') + ' ' + (vehicle?.year || '') + ' owner manual PDF')}`,
+        error: true,
+      })
+    } finally {
+      setManualLoading(false)
+    }
+  }
+
   const formatCurrency = (amount) => {
     if (!amount && amount !== 0) return `${currency.symbol}0`
     return `${currency.symbol}${Number(amount).toFixed(2)}`
@@ -560,6 +589,16 @@ export default function VehicleDetail() {
                 {btn.label}
               </Link>
             ))}
+            <button
+              onClick={handleFindManual}
+              disabled={manualLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[var(--color-bg-tertiary)] hover:bg-[var(--color-bg-secondary)] rounded-lg transition-colors"
+            >
+              <span className="text-[var(--color-text-secondary)]">{Icons.bookOpen}</span>
+              {manualLoading
+                ? (t('vehicleManual.loading') || 'Looking for manual...')
+                : (t('vehicleDetail.vehicleManual') || 'Owner\'s Manual')}
+            </button>
           </div>
           
           {/* Add Buttons - Hide for archived vehicles */}
@@ -634,6 +673,96 @@ export default function VehicleDetail() {
       </div>
       
       {/* Mileage Update Modal */}
+      {showManualModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div 
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowManualModal(false)}
+          />
+          <div className="relative bg-[var(--color-bg-secondary)] rounded-2xl shadow-xl w-full max-w-sm p-6 animate-scale-in">
+            <h3 className="text-lg font-semibold mb-1 flex items-center gap-2">
+              <span className="text-[var(--color-accent)]">{Icons.bookOpen}</span>
+              {t('vehicleManual.title') || "Owner's Manual"}
+            </h3>
+            {vehicle && (
+              <p className="text-xs text-[var(--color-text-muted)] mb-4">
+                {vehicle.make} {vehicle.model} {vehicle.year}
+              </p>
+            )}
+
+            {manualLoading && (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-2 border-[var(--color-accent)] border-t-transparent" />
+                <span className="ml-3 text-sm text-[var(--color-text-secondary)]">
+                  {t('vehicleManual.loading') || 'Looking for manual...'}
+                </span>
+              </div>
+            )}
+
+            {!manualLoading && manualResult && manualResult.manual_url && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                    manualResult.source === 'oem' 
+                      ? 'bg-green-500/10 text-green-500' 
+                      : 'bg-blue-500/10 text-blue-500'
+                  }`}>
+                    {manualResult.source === 'oem' 
+                      ? (t('vehicleManual.sourceOem') || 'Official source')
+                      : (t('vehicleManual.sourceAggregator') || 'Third-party source')}
+                  </span>
+                </div>
+                <a
+                  href={manualResult.manual_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-primary w-full flex items-center justify-center gap-2"
+                >
+                  {t('vehicleManual.viewManual') || 'View Manual'}
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+                  </svg>
+                </a>
+                <p className="text-[10px] text-[var(--color-text-muted)] text-center">
+                  {t('vehicleManual.openInNewTab') || 'Opens in a new tab'}
+                </p>
+              </div>
+            )}
+
+            {!manualLoading && manualResult && !manualResult.manual_url && (
+              <div className="space-y-3">
+                <p className="text-sm text-[var(--color-text-secondary)]">
+                  {t('vehicleManual.notFound') || 'Manual not found for this vehicle.'}
+                </p>
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  {t('vehicleManual.notFoundHint') || "Try the manufacturer's website"}
+                </p>
+                {manualResult.fallback_search && (
+                  <a
+                    href={manualResult.fallback_search}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-secondary w-full flex items-center justify-center gap-2"
+                  >
+                    {t('vehicleManual.searchOnline') || 'Search online'}
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+                    </svg>
+                  </a>
+                )}
+              </div>
+            )}
+
+            <button
+              onClick={() => setShowManualModal(false)}
+              className="btn btn-secondary w-full mt-4"
+            >
+              {t('common.close') || 'Close'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {showMileageModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           {/* Backdrop */}

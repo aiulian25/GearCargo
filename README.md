@@ -40,6 +40,7 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 ### 🔧 Service & Repair Logs
 - Scheduled service tracking (oil changes, filters, etc.)
 - Repair history with warranty tracking
+- **Warranty date tracking** — record warranty expiry dates for services and repairs
 - Parts and labor cost breakdown
 - Service provider/shop information
 - Mileage-based service intervals
@@ -69,7 +70,13 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 - Calendar integration (CalDAV - Google, Nextcloud, Baikal, Radicale)
 - Multi-language reminder translations
 
-### 📊 Analytics & Reports
+### � Calendar & Navigation
+- Interactive calendar with all vehicle events
+- **Clickable calendar entries** — click any day entry to navigate directly to expense details
+- Color-coded entries by type (fuel, service, repair, insurance, tax, parking)
+- CalDAV sync support (Google, Nextcloud, Baikal, Radicale)
+
+### �📊 Analytics & Reports
 - Cost breakdown by category (fuel, service, repairs, insurance, tax)
 - Monthly/yearly expense reports
 - PDF report generation with charts
@@ -113,6 +120,15 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 - **Startup Secret Validation** - Refuses to start in production with default/insecure secrets
 - **Calendar Feed Token Expiry** - 90-day expiration on CalDAV feed tokens
 - **Read-only Root Filesystem** - Container runs with read-only rootfs
+- **GDPR Notification Email** - Separate notification email with full GDPR compliance:
+  - AES-256 field-level encryption (Fernet) for PII at rest
+  - SHA-256 hashing for duplicate lookups without decryption
+  - Double opt-in verification with expiring tokens
+  - Explicit consent capture with IP and timestamp
+  - Immutable consent audit ledger (append-only log)
+  - RFC 8058 one-click unsubscribe (no auth required)
+  - Automatic bounce tracking — disables email after 5 failures
+  - Rate limiting on verification emails (3/hour)
 
 ### 💾 Data Management
 - Automatic scheduled backups

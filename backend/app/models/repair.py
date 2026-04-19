@@ -14,7 +14,8 @@ class RepairEntry(Entry):
     id = db.Column(db.Integer, db.ForeignKey('entries.id'), primary_key=True)
     
     # Repair specific
-    repair_type = db.Column(db.String(50))
+    repair_type = db.Column(db.String(50))  # Legacy single type (first selected type)
+    repair_types = db.Column(db.JSON)  # Multi-select: list of repair type values
     diagnosis = db.Column(db.Text)
     symptoms = db.Column(db.Text)
     root_cause = db.Column(db.Text)
@@ -46,6 +47,7 @@ class RepairEntry(Entry):
         data = super().to_dict()
         data.update({
             'repair_type': self.repair_type,
+            'repair_types': self.repair_types or ([self.repair_type] if self.repair_type else []),
             'diagnosis': self.diagnosis,
             'symptoms': self.symptoms,
             'provider': self.provider,

@@ -55,6 +55,16 @@ export default function Repairs() {
       body: 'directions_car',
       interior: 'event_seat',
       tires_wheels: 'tire_repair',
+      clutch: 'swap_vert',
+      drivetrain: 'settings_input_component',
+      windshield: 'crop_landscape',
+      lights: 'lightbulb',
+      oil_change: 'water_drop',
+      filters: 'filter_alt',
+      battery: 'battery_full',
+      turbo: 'speed',
+      timing_belt: 'rotate_right',
+      differential: 'compare_arrows',
     }
     return icons[category] || 'handyman'
   }
@@ -116,7 +126,7 @@ export default function Repairs() {
             >
               <div className="w-10 h-10 rounded-lg bg-red-500/10 flex items-center justify-center flex-shrink-0">
                 <span className="material-icons-outlined icon-sm text-red-500">
-                  {getCategoryIcon(entry.category)}
+                  {getCategoryIcon(entry.repair_type || entry.category)}
                 </span>
               </div>
               
