@@ -9,7 +9,7 @@ import AppLayout from './layouts/AppLayout'
 import AuthLayout from './layouts/AuthLayout'
 
 // PWA Components
-import { InstallPrompt, UpdatePrompt } from './components/PWA'
+import { InstallPrompt, UpdatePrompt, PullToRefresh } from './components/PWA'
 
 // Auth Pages
 import Login from './pages/auth/Login'
@@ -109,6 +109,7 @@ function App() {
       {/* PWA Components */}
       <InstallPrompt />
       <UpdatePrompt />
+      <PullToRefresh />
       
       <Toaster
         position="top-center"

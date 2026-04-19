@@ -32,12 +32,31 @@ export default function UpdatePrompt() {
     updateServiceWorker,
   } = useRegisterSW({
     onRegistered(r) {
-      console.log('SW Registered:', r)
+      if (r) {
+        // Check for updates every 60 minutes
+        setInterval(() => {
+          r.update()
+        }, 60 * 60 * 1000)
+      }
     },
     onRegisterError(error) {
-      console.log('SW registration error', error)
+      console.error('SW registration error', error)
     },
+    immediate: true,
   })
+
+  // Also check for updates when app regains focus (e.g. user switches back to app)
+  useEffect(() => {
+    let lastCheck = Date.now()
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && Date.now() - lastCheck > 5 * 60 * 1000) {
+        lastCheck = Date.now()
+        navigator.serviceWorker?.getRegistration().then(r => r?.update())
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [])
 
   useEffect(() => {
     if (needRefresh) {

@@ -1,4 +1,5 @@
 export { default as InstallPrompt } from './InstallPrompt'
 export { default as UpdatePrompt } from './UpdatePrompt'
+export { default as PullToRefresh } from './PullToRefresh'
 export { SyncIndicator } from './SyncIndicator'
 export { SyncConflictModal } from './SyncConflictModal'
