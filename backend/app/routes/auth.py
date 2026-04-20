@@ -608,6 +608,11 @@ def token_required(f):
             
             if not validate_session(current_user.id, token_jti):
                 return jsonify({'error': 'Session expired. You may have logged in from another device.', 'code': 'SESSION_EXPIRED'}), 401
+            
+            # Enforce domain policy on every request
+            domain_policy_error = _enforce_login_domain_policy(current_user)
+            if domain_policy_error:
+                return domain_policy_error
                 
         except jwt.ExpiredSignatureError:
             return jsonify({'error': 'Token has expired'}), 401
@@ -676,6 +681,11 @@ def token_required_query_param(f):
             
             if not validate_session(current_user.id, token_jti):
                 return jsonify({'error': 'Session expired. You may have logged in from another device.', 'code': 'SESSION_EXPIRED'}), 401
+            
+            # Enforce domain policy on every request
+            domain_policy_error = _enforce_login_domain_policy(current_user)
+            if domain_policy_error:
+                return domain_policy_error
                 
         except jwt.ExpiredSignatureError:
             return jsonify({'error': 'Token has expired'}), 401
@@ -694,6 +704,13 @@ def admin_required(f):
     def decorated(current_user, *args, **kwargs):
         if not current_user.is_admin:
             return jsonify({'error': 'Admin access required'}), 403
+        
+        # Additional domain check: admin routes should only be accessible on admin domain
+        # This is redundant with token_required but adds defense in depth
+        admin_domain = _config_domain('ADMIN_DOMAIN')
+        if admin_domain and not _is_request_on_domain('ADMIN_DOMAIN'):
+            return jsonify({'error': 'Admin routes are only accessible from the admin domain'}), 403
+        
         return f(current_user, *args, **kwargs)
     return decorated
 
@@ -2054,12 +2071,17 @@ def set_notification_email(current_user):
 
     # Send verification email
     from app.services.email_service import EmailService
-    app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
-    verify_url = f"{app_url}/settings?verify_notification={token}"
+    # Use USER_DOMAIN for user-facing email links
+    user_domain = current_app.config.get('USER_DOMAIN', '').strip()
+    if not user_domain:
+        user_domain = current_app.config.get('APP_URL', 'http://localhost:5000')
+    if not user_domain.startswith('http'):
+        user_domain = f"https://{user_domain}"
+    verify_url = f"{user_domain}/settings?verify_notification={token}"
 
     verify_html = f"""
     <div class="header">
-        <img src="{app_url}/icons/logo.png" alt="GearCargo" class="header-logo">
+        <img src="{user_domain}/icons/logo.png" alt="GearCargo" class="header-logo">
         <h1>✉️ Verify Notification Email</h1>
         <p class="header-subtitle">Confirm your email address</p>
     </div>
@@ -2246,12 +2268,17 @@ def resend_notification_verification(current_user):
         return jsonify({'error': 'Could not decrypt notification email'}), 500
 
     from app.services.email_service import EmailService
-    app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
-    verify_url = f"{app_url}/settings?verify_notification={token}"
+    # Use USER_DOMAIN for user-facing email links
+    user_domain = current_app.config.get('USER_DOMAIN', '').strip()
+    if not user_domain:
+        user_domain = current_app.config.get('APP_URL', 'http://localhost:5000')
+    if not user_domain.startswith('http'):
+        user_domain = f"https://{user_domain}"
+    verify_url = f"{user_domain}/settings?verify_notification={token}"
 
     verify_html = f"""
     <div class="header">
-        <img src="{app_url}/icons/logo.png" alt="GearCargo" class="header-logo">
+        <img src="{user_domain}/icons/logo.png" alt="GearCargo" class="header-logo">
         <h1>✉️ Verify Notification Email</h1>
         <p class="header-subtitle">Confirm your email address</p>
     </div>
@@ -2311,12 +2338,17 @@ def unsubscribe_email():
         success=True
     )
 
-    app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
+    # Use USER_DOMAIN for user-facing links
+    user_domain = current_app.config.get('USER_DOMAIN', '').strip()
+    if not user_domain:
+        user_domain = current_app.config.get('APP_URL', 'http://localhost:5000')
+    if not user_domain.startswith('http'):
+        user_domain = f"https://{user_domain}"
     return f'''<html><body style="background:#0f172a;color:#e2e8f0;font-family:sans-serif;text-align:center;padding:60px">
     <h1 style="color:#3b82f6">Unsubscribed</h1>
     <p>You have been successfully unsubscribed from GearCargo email notifications.</p>
     <p style="color:#94a3b8;margin-top:20px">You can re-enable notifications at any time in your
-    <a href="{app_url}/settings" style="color:#3b82f6">app settings</a>.</p>
+    <a href="{user_domain}/settings" style="color:#3b82f6">app settings</a>.</p>
     </body></html>''', 200
 
 

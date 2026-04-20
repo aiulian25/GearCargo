@@ -843,9 +843,17 @@ class EmailVerificationService:
             return False
         
         try:
-            app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
-            logo_url = f"{app_url}/icons/logo.png"
-            verify_link = f"{app_url}/verify-email?token={token}"
+            # Use USER_DOMAIN for email verification (users verify on user domain)
+            user_domain = current_app.config.get('USER_DOMAIN', '').strip()
+            if not user_domain:
+                # Fallback to APP_URL if USER_DOMAIN not configured
+                user_domain = current_app.config.get('APP_URL', 'http://localhost:5000')
+            # Ensure it has protocol
+            if not user_domain.startswith('http'):
+                user_domain = f"https://{user_domain}"
+            
+            logo_url = f"{user_domain}/icons/logo.png"
+            verify_link = f"{user_domain}/verify-email?token={token}"
             
             content_html = render_template_string(
                 EMAIL_VERIFICATION_TEMPLATE,

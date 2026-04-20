@@ -64,9 +64,23 @@ def create_parking_entry(current_user):
     start_datetime = None
     end_datetime = None
     if data.get('start_time'):
-        start_datetime = datetime.fromisoformat(data['start_time'].replace('Z', '+00:00'))
+        # Handle both ISO datetime strings and simple time strings (HH:MM)
+        time_str = data['start_time']
+        if 'T' in time_str or len(time_str) > 5:  # ISO datetime format
+            start_datetime = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
+        else:  # Simple time format (HH:MM)
+            from datetime import time as time_class
+            hour, minute = map(int, time_str.split(':'))
+            start_datetime = datetime.combine(entry_date, time_class(hour, minute))
     if data.get('end_time'):
-        end_datetime = datetime.fromisoformat(data['end_time'].replace('Z', '+00:00'))
+        # Handle both ISO datetime strings and simple time strings (HH:MM)
+        time_str = data['end_time']
+        if 'T' in time_str or len(time_str) > 5:  # ISO datetime format
+            end_datetime = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
+        else:  # Simple time format (HH:MM)
+            from datetime import time as time_class
+            hour, minute = map(int, time_str.split(':'))
+            end_datetime = datetime.combine(entry_date, time_class(hour, minute))
     
     # Parse permit expiry
     permit_expires = None
