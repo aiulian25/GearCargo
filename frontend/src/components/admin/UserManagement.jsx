@@ -492,7 +492,10 @@ export default function UserManagement() {
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">{t('admin.addUser') || 'Add User'}</h3>
               <button
-                onClick={() => setShowAddModal(false)}
+                onClick={() => {
+                  setShowAddModal(false)
+                  setAddForm({ email: '', username: '', display_name: '', password: '', is_admin: false, is_active: true, vehicle_limit: 10 })
+                }}
                 className="p-2 rounded-lg hover:bg-[var(--color-bg-tertiary)]"
               >
                 {Icons.close}
@@ -509,6 +512,7 @@ export default function UserManagement() {
                 value={addForm.email}
                 onChange={(e) => setAddForm(f => ({ ...f, email: e.target.value }))}
                 placeholder="user@example.com"
+                autoComplete="off"
                 className="w-full px-4 py-3 rounded-xl bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-accent)]"
                 required
               />
@@ -524,6 +528,7 @@ export default function UserManagement() {
                 value={addForm.username}
                 onChange={(e) => setAddForm(f => ({ ...f, username: e.target.value }))}
                 placeholder={t('admin.optionalUsername') || 'Optional username'}
+                autoComplete="off"
                 className="w-full px-4 py-3 rounded-xl bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-accent)]"
               />
             </div>
@@ -538,6 +543,7 @@ export default function UserManagement() {
                 value={addForm.display_name}
                 onChange={(e) => setAddForm(f => ({ ...f, display_name: e.target.value }))}
                 placeholder={t('admin.optionalDisplayName') || 'Optional display name'}
+                autoComplete="off"
                 className="w-full px-4 py-3 rounded-xl bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-accent)]"
               />
             </div>
@@ -552,6 +558,7 @@ export default function UserManagement() {
                 value={addForm.password}
                 onChange={(e) => setAddForm(f => ({ ...f, password: e.target.value }))}
                 placeholder="••••••••"
+                autoComplete="new-password"
                 className="w-full px-4 py-3 rounded-xl bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-accent)]"
                 required
               />
@@ -644,7 +651,10 @@ export default function UserManagement() {
             {/* Actions */}
             <div className="flex gap-3">
               <button
-                onClick={() => setShowAddModal(false)}
+                onClick={() => {
+                  setShowAddModal(false)
+                  setAddForm({ email: '', username: '', display_name: '', password: '', is_admin: false, is_active: true, vehicle_limit: 10 })
+                }}
                 className="flex-1 py-3 rounded-xl bg-[var(--color-bg-tertiary)] font-medium"
               >
                 {t('common.cancel') || 'Cancel'}

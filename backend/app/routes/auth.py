@@ -75,7 +75,11 @@ def _request_host():
 
 def _config_domain(key):
     """Read and normalize configured domain from app config."""
-    return _normalize_host(current_app.config.get(key, ''))
+    value = current_app.config.get(key, '').strip()
+    # Ignore comments and treat them as empty
+    if not value or value.startswith('#'):
+        return ''
+    return _normalize_host(value)
 
 
 def _is_host_match(request_host, configured_host):
