@@ -354,9 +354,14 @@ class EmailService:
         if not to_email:
             return False
         
-        app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
-        logo_url = f"{app_url}/icons/logo.png"
-        unsubscribe_url = f"{app_url}/api/auth/unsubscribe?token={user.unsubscribe_token}" if user.unsubscribe_token else None
+        # Use USER_DOMAIN for user-facing email links
+        user_domain = current_app.config.get('USER_DOMAIN', '').strip()
+        if not user_domain:
+            user_domain = current_app.config.get('APP_URL', 'http://localhost:5000')
+        if not user_domain.startswith('http'):
+            user_domain = f"https://{user_domain}"
+        logo_url = f"{user_domain}/icons/logo.png"
+        unsubscribe_url = f"{user_domain}/api/auth/unsubscribe?token={user.unsubscribe_token}" if user.unsubscribe_token else None
         
         # Determine title and intro based on alert type
         titles = {
@@ -383,7 +388,7 @@ class EmailService:
             user_name=user.display_name or user.username,
             intro_text=intros.get(alert_type, "You have alerts that need attention:"),
             alerts=alerts,
-            app_url=app_url,
+            app_url=user_domain,
             logo_url=logo_url
         )
         
@@ -401,9 +406,14 @@ class EmailService:
         if not to_email:
             return False
         
-        app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
-        logo_url = f"{app_url}/icons/logo.png"
-        unsubscribe_url = f"{app_url}/api/auth/unsubscribe?token={user.unsubscribe_token}" if user.unsubscribe_token else None
+        # Use USER_DOMAIN for user-facing email links
+        user_domain = current_app.config.get('USER_DOMAIN', '').strip()
+        if not user_domain:
+            user_domain = current_app.config.get('APP_URL', 'http://localhost:5000')
+        if not user_domain.startswith('http'):
+            user_domain = f"https://{user_domain}"
+        logo_url = f"{user_domain}/icons/logo.png"
+        unsubscribe_url = f"{user_domain}/api/auth/unsubscribe?token={user.unsubscribe_token}" if user.unsubscribe_token else None
         
         # Calculate period
         today = date.today()
@@ -416,7 +426,7 @@ class EmailService:
             period=period,
             summary=summary,
             upcoming_alerts=upcoming_alerts,
-            app_url=app_url,
+            app_url=user_domain,
             logo_url=logo_url
         )
         
@@ -441,9 +451,14 @@ class EmailService:
         if not to_email:
             return False
         
-        app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
-        logo_url = f"{app_url}/icons/logo.png"
-        unsubscribe_url = f"{app_url}/api/auth/unsubscribe?token={user.unsubscribe_token}" if user.unsubscribe_token else None
+        # Use USER_DOMAIN for user-facing email links
+        user_domain = current_app.config.get('USER_DOMAIN', '').strip()
+        if not user_domain:
+            user_domain = current_app.config.get('APP_URL', 'http://localhost:5000')
+        if not user_domain.startswith('http'):
+            user_domain = f"https://{user_domain}"
+        logo_url = f"{user_domain}/icons/logo.png"
+        unsubscribe_url = f"{user_domain}/api/auth/unsubscribe?token={user.unsubscribe_token}" if user.unsubscribe_token else None
         
         month_names = [
             "", "January", "February", "March", "April", "May", "June",
@@ -459,7 +474,7 @@ class EmailService:
             summary=summary,
             vehicles=vehicles,
             insights=insights,
-            app_url=app_url,
+            app_url=user_domain,
             logo_url=logo_url
         )
         
@@ -477,8 +492,13 @@ class EmailService:
         if not to_email:
             return False
         
-        app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
-        logo_url = f"{app_url}/icons/logo.png"
+        # Use USER_DOMAIN for user-facing email links
+        user_domain = current_app.config.get('USER_DOMAIN', '').strip()
+        if not user_domain:
+            user_domain = current_app.config.get('APP_URL', 'http://localhost:5000')
+        if not user_domain.startswith('http'):
+            user_domain = f"https://{user_domain}"
+        logo_url = f"{user_domain}/icons/logo.png"
         
         content_html = """
         <div class="header">
@@ -507,7 +527,7 @@ class EmailService:
         content = render_template_string(
             content_html,
             user_name=user.display_name or user.username,
-            app_url=app_url,
+            app_url=user_domain,
             logo_url=logo_url
         )
         
@@ -934,9 +954,14 @@ class PasswordResetEmailService:
             return False
         
         try:
-            app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
-            logo_url = f"{app_url}/icons/logo.png"
-            reset_link = f"{app_url}/reset-password?token={token}"
+            # Use USER_DOMAIN for user-facing email links
+            user_domain = current_app.config.get('USER_DOMAIN', '').strip()
+            if not user_domain:
+                user_domain = current_app.config.get('APP_URL', 'http://localhost:5000')
+            if not user_domain.startswith('http'):
+                user_domain = f"https://{user_domain}"
+            logo_url = f"{user_domain}/icons/logo.png"
+            reset_link = f"{user_domain}/reset-password?token={token}"
             
             content_html = render_template_string(
                 PASSWORD_RESET_TEMPLATE,
@@ -1035,8 +1060,13 @@ def send_new_login_alert(user, device_info: dict) -> bool:
         return False
     
     try:
-        app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
-        logo_url = f"{app_url}/icons/logo.png"
+        # Use USER_DOMAIN for user-facing email links
+        user_domain = current_app.config.get('USER_DOMAIN', '').strip()
+        if not user_domain:
+            user_domain = current_app.config.get('APP_URL', 'http://localhost:5000')
+        if not user_domain.startswith('http'):
+            user_domain = f"https://{user_domain}"
+        logo_url = f"{user_domain}/icons/logo.png"
         
         # Parse user agent for friendlier display
         user_agent = device_info.get('user_agent', 'Unknown device')
@@ -1125,8 +1155,8 @@ def send_new_login_alert(user, device_info: dict) -> bool:
             location=location,
             isp=isp if isp and isp != 'Private Network' else None,
             logo_url=logo_url,
-            change_password_url=f"{app_url}/settings/security",
-            settings_url=f"{app_url}/settings/security"
+            change_password_url=f"{user_domain}/settings/security",
+            settings_url=f"{user_domain}/settings/security"
         )
         
         return EmailService.send_email(
@@ -1207,8 +1237,13 @@ def send_suspicious_location_alert(user, location_info: dict, known_locations: l
         return False
     
     try:
-        app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
-        logo_url = f"{app_url}/icons/logo.png"
+        # Use USER_DOMAIN for user-facing email links
+        user_domain = current_app.config.get('USER_DOMAIN', '').strip()
+        if not user_domain:
+            user_domain = current_app.config.get('APP_URL', 'http://localhost:5000')
+        if not user_domain.startswith('http'):
+            user_domain = f"https://{user_domain}"
+        logo_url = f"{user_domain}/icons/logo.png"
         
         # Format known locations for display
         known_locations_display = ', '.join(known_locations) if known_locations else 'None recorded'
@@ -1224,8 +1259,8 @@ def send_suspicious_location_alert(user, location_info: dict, known_locations: l
             login_time=datetime.now().strftime('%B %d, %Y at %I:%M %p UTC'),
             known_locations=known_locations_display,
             logo_url=logo_url,
-            change_password_url=f"{app_url}/settings/security",
-            sessions_url=f"{app_url}/settings/security"
+            change_password_url=f"{user_domain}/settings/security",
+            sessions_url=f"{user_domain}/settings/security"
         )
         
         return EmailService.send_email(
