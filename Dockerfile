@@ -34,7 +34,7 @@ ENV PYTHONPATH=/app
 
 WORKDIR /app
 
-# Install system dependencies and apply security patches
+# Install system dependencies, apply security patches, and remove unneeded packages
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
@@ -42,8 +42,8 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     tesseract-ocr \
     tesseract-ocr-eng \
     curl \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    gosu \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
 COPY backend/requirements.txt .
@@ -56,9 +56,8 @@ COPY backend/ .
 # Copy built frontend from stage 1
 COPY --from=frontend-builder /frontend/dist /app/static
 
-# Create non-root user and install gosu for privilege dropping
-RUN apt-get update && apt-get install -y --no-install-recommends gosu && rm -rf /var/lib/apt/lists/* && \
-    useradd -m -u 1000 gearcargo && \
+# Create non-root user
+RUN useradd -m -u 1000 gearcargo && \
     mkdir -p /app/volumes/attachments /app/volumes/backups /app/uploads && \
     chown -R gearcargo:gearcargo /app && \
     chmod +x /app/docker-entrypoint.sh
