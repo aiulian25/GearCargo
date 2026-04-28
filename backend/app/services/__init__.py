@@ -681,10 +681,9 @@ def process_recurring_tax_entries(app):
             else:
                 step = relativedelta(months=1)
             base = entry.date or today
-            next_d = base + step
-            while next_d <= today:
-                next_d = next_d + step
-            entry.next_due_date = next_d
+            # Set to the FIRST occurrence after the entry date — process_recurring_tax_entries
+            # will then backfill all missed periods and advance next_due_date to the future.
+            entry.next_due_date = base + step
         if null_due:
             db.session.commit()
 
