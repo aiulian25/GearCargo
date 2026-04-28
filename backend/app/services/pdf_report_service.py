@@ -138,7 +138,7 @@ def get_vehicle_entries(vehicle, start_date, end_date, currency='EUR'):
     
     for entry in fuel_entries:
         entries['fuel'].append({
-            'date': entry.date.strftime('%Y-%m-%d'),
+            'date': entry.date.strftime('%d/%m/%Y'),
             'description': f"{entry.liters:.2f}L @ {entry.price_per_liter:.2f} {currency}/L",
             'odometer': f"{entry.odometer:,} km" if entry.odometer else '-',
             'amount': float(entry.total_price) if entry.total_price else 0
@@ -154,7 +154,7 @@ def get_vehicle_entries(vehicle, start_date, end_date, currency='EUR'):
     
     for entry in service_entries:
         entries['service'].append({
-            'date': entry.date.strftime('%Y-%m-%d'),
+            'date': entry.date.strftime('%d/%m/%Y'),
             'description': entry.service_type or 'Service',
             'odometer': f"{entry.odometer:,} km" if entry.odometer else '-',
             'amount': float(entry.amount) if entry.amount else 0
@@ -170,7 +170,7 @@ def get_vehicle_entries(vehicle, start_date, end_date, currency='EUR'):
     
     for entry in repair_entries:
         entries['repair'].append({
-            'date': entry.date.strftime('%Y-%m-%d'),
+            'date': entry.date.strftime('%d/%m/%Y'),
             'description': entry.description or 'Repair',
             'odometer': f"{entry.odometer:,} km" if entry.odometer else '-',
             'amount': float(entry.amount) if entry.amount else 0
@@ -186,7 +186,7 @@ def get_vehicle_entries(vehicle, start_date, end_date, currency='EUR'):
     
     for entry in tax_entries:
         entries['tax'].append({
-            'date': entry.date.strftime('%Y-%m-%d') if entry.date else '-',
+            'date': entry.date.strftime('%d/%m/%Y') if entry.date else '-',
             'description': entry.tax_type or 'Road Tax',
             'odometer': '-',
             'amount': float(entry.amount) if entry.amount else 0
@@ -202,7 +202,7 @@ def get_vehicle_entries(vehicle, start_date, end_date, currency='EUR'):
     
     for entry in parking_entries:
         entries['parking'].append({
-            'date': entry.date.strftime('%Y-%m-%d'),
+            'date': entry.date.strftime('%d/%m/%Y'),
             'description': entry.location or 'Parking',
             'odometer': '-',
             'amount': float(entry.amount) if entry.amount else 0
@@ -218,7 +218,7 @@ def get_vehicle_entries(vehicle, start_date, end_date, currency='EUR'):
     
     for entry in insurance_entries:
         entries['insurance'].append({
-            'date': entry.start_date.strftime('%Y-%m-%d'),
+            'date': entry.start_date.strftime('%d/%m/%Y'),
             'description': f"{entry.provider or 'Insurance'} - {entry.policy_type or 'Policy'}",
             'odometer': '-',
             'amount': float(entry.premium) if entry.premium else 0
@@ -398,7 +398,7 @@ def generate_pdf_report(user, vehicles, period, year=None, month=None, language=
     ))
     
     # Report info box
-    generated_date = datetime.now().strftime('%B %d, %Y at %H:%M')
+    generated_date = datetime.now().strftime('%d %B %Y at %H:%M')
     
     # Build vehicle names list
     if isinstance(vehicles, list) and len(vehicles) > 0:

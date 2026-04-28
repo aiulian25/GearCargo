@@ -418,7 +418,7 @@ class EmailService:
         # Calculate period
         today = date.today()
         week_ago = today - timedelta(days=7)
-        period = f"{week_ago.strftime('%b %d')} - {today.strftime('%b %d, %Y')}"
+        period = f"{week_ago.strftime('%d %b')} - {today.strftime('%d %b %Y')}"
         
         content_html = render_template_string(
             WEEKLY_REPORT_TEMPLATE,
@@ -563,11 +563,11 @@ def get_insurance_alerts(user_id: int, days_ahead: int = 30) -> List[Dict]:
         
         alerts.append({
             'title': f"Insurance Expiring: {policy.provider}",
-            'subtitle': f"Expires on {policy.end_date.strftime('%B %d, %Y')}",
+            'subtitle': f"Expires on {policy.end_date.strftime('%d %B %Y')}",
             'details': f"{days_left} days remaining • Policy: {policy.policy_number or 'N/A'}",
             'vehicle': policy.vehicle.name if policy.vehicle else None,
             'severity': severity,
-            'due_date': policy.end_date.strftime('%b %d, %Y')
+            'due_date': policy.end_date.strftime('%d %b %Y')
         })
     
     return alerts
@@ -595,11 +595,11 @@ def get_tax_alerts(user_id: int, days_ahead: int = 30) -> List[Dict]:
         
         alerts.append({
             'title': "Road Tax Due",
-            'subtitle': f"Expires on {tax.valid_until.strftime('%B %d, %Y')}",
+            'subtitle': f"Expires on {tax.valid_until.strftime('%d %B %Y')}",
             'details': f"{days_left} days remaining",
             'vehicle': tax.vehicle.name if tax.vehicle else None,
             'severity': severity,
-            'due_date': tax.valid_until.strftime('%b %d, %Y')
+            'due_date': tax.valid_until.strftime('%d %b %Y')
         })
     
     return alerts
