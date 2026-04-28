@@ -95,6 +95,14 @@ def init_scheduler(app):
     scheduler.start()
     app.logger.info('Scheduler initialized')
 
+    # Run recurring tax self-heal immediately on startup so any deployment
+    # with recurring entries missing next_due_date is fixed without waiting
+    # for the 6 AM cron to fire.
+    try:
+        process_recurring_tax_entries(app)
+    except Exception as e:
+        app.logger.warning(f'Startup recurring tax run failed: {e}')
+
 
 def check_due_reminders(app):
     """Check for due reminders and send notifications."""
