@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { vehicleApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
+import { formatDate } from '../../utils/dateFormat'
 
 // SVG Icons
 const Icons = {
@@ -714,7 +715,7 @@ export default function VehicleHealth() {
                   {t('vehicleHealth.lastService') || 'Last Service'}
                 </span>
                 <span className="text-sm font-medium">
-                  {new Date(health.maintenance.last_service_date).toLocaleDateString()}
+                  {formatDate(health.maintenance.last_service_date)}
                   {health.maintenance.days_since_service > 0 && (
                     <span className="text-[var(--color-text-secondary)] ml-1">
                       ({health.maintenance.days_since_service}d ago)

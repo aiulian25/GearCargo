@@ -3,7 +3,7 @@ GearCargo - Fuel Entry Routes
 """
 
 from datetime import datetime, date
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from sqlalchemy import func
 
 from app import db
@@ -125,7 +125,15 @@ def create_fuel_entry(current_user):
     
     db.session.add(entry)
     db.session.commit()
-    
+
+    # Auto-sync to calendar if enabled
+    if current_user.calendar_enabled:
+        try:
+            from app.services.calendar_service import sync_entry_to_calendar
+            sync_entry_to_calendar(current_user, 'fuel', entry, 'create')
+        except Exception as e:
+            current_app.logger.warning(f"Calendar sync failed for fuel: {e}")
+
     return jsonify({
         'message': 'Fuel entry created',
         'entry': entry.to_dict()

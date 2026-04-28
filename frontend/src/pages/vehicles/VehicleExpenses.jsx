@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { vehicleApi, fuelApi, serviceApi, repairApi, taxApi, reminderApi, attachmentApi, insuranceApi } from '../../services/api'
 import api from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
+import { formatDate } from '../../utils/dateFormat'
 import AttachmentViewer from '../../components/ui/AttachmentViewer'
 
 // Icons
@@ -76,6 +77,11 @@ const Icons = {
   shield: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+    </svg>
+  ),
+  cancelRecurring: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
     </svg>
   ),
 }
@@ -325,37 +331,79 @@ export default function VehicleExpenses() {
     }
   }
 
-  // Calculate totals by category
+  // Calculate totals by category filtered to selectedYear
   const categoryTotals = useMemo(() => {
-    const fuelTotal = fuelEntries.reduce((sum, e) => sum + (parseFloat(e.total_price) || 0), 0)
-    const serviceTotal = serviceEntries.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0)
-    const taxTotal = taxEntries.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0)
-    const parkingTotal = parkingEntries.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0)
-    const repairTotal = repairEntries.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0)
-    
-    // Calculate insurance total based on payment frequency (annualized cost)
-    const insuranceTotal = insuranceEntries.reduce((sum, policy) => {
+    const inYear = (dateStr) => dateStr && new Date(dateStr).getFullYear() === selectedYear
+
+    const fuelTotal = fuelEntries
+      .filter(e => inYear(e.date))
+      .reduce((sum, e) => sum + (parseFloat(e.total_price) || 0), 0)
+    const serviceTotal = serviceEntries
+      .filter(e => inYear(e.date))
+      .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0)
+    const taxTotal = taxEntries
+      .filter(e => inYear(e.date))
+      .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0)
+    const parkingTotal = parkingEntries
+      .filter(e => inYear(e.date))
+      .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0)
+    const repairTotal = repairEntries
+      .filter(e => inYear(e.date))
+      .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0)
+
+    // Insurance: count actual payments made in selectedYear (mirrors monthlyData logic)
+    const today = new Date()
+    const currentYear = today.getFullYear()
+    let insuranceTotal = 0
+    insuranceEntries.forEach(policy => {
       const premium = parseFloat(policy.premium) || 0
+      const startDate = policy.start_date ? new Date(policy.start_date) : null
+      const endDate = policy.end_date ? new Date(policy.end_date) : null
       const frequency = policy.payment_frequency || 'annual'
-      
-      // Calculate yearly cost based on payment frequency
-      switch (frequency) {
-        case 'monthly':
-          return sum + (premium * 12)
-        case 'quarterly':
-          return sum + (premium * 4)
-        case 'semi-annual':
-        case 'semi_annual':
-          return sum + (premium * 2)
-        case 'annual':
-        case 'yearly':
-        default:
-          return sum + premium
+      if (!startDate) return
+
+      if (frequency === 'annual' || frequency === 'yearly') {
+        if (startDate.getFullYear() === selectedYear) insuranceTotal += premium
+      } else if (frequency === 'monthly') {
+        const paymentDay = startDate.getDate()
+        const yearStart = new Date(selectedYear, 0, 1)
+        const yearEnd = endDate
+          ? new Date(Math.min(endDate.getTime(), new Date(selectedYear, 11, 31).getTime()))
+          : new Date(selectedYear, 11, 31)
+        const periodStart = new Date(Math.max(startDate.getTime(), yearStart.getTime()))
+        let periodEnd = yearEnd
+        if (selectedYear === currentYear) {
+          const paidThroughMonth = today.getDate() >= paymentDay ? today.getMonth() : today.getMonth() - 1
+          const cappedDate = new Date(selectedYear, paidThroughMonth, 28)
+          if (cappedDate < periodEnd) periodEnd = cappedDate
+        }
+        if (startDate.getFullYear() <= selectedYear && (!endDate || endDate.getFullYear() >= selectedYear) && periodStart <= periodEnd) {
+          const months = periodEnd.getMonth() - periodStart.getMonth() + 1
+          insuranceTotal += premium * Math.max(0, months)
+        }
+      } else if (frequency === 'quarterly') {
+        const startMonth = startDate.getMonth()
+        for (let q = 0; q < 4; q++) {
+          const paymentMonth = (startMonth + q * 3) % 12
+          const paymentYear = startDate.getFullYear() + Math.floor((startMonth + q * 3) / 12)
+          if (paymentYear === selectedYear && (!endDate || new Date(paymentYear, paymentMonth, 1) <= endDate)) {
+            insuranceTotal += premium
+          }
+        }
+      } else if (frequency === 'semi-annual' || frequency === 'semi_annual') {
+        const startMonth = startDate.getMonth()
+        for (let s = 0; s < 2; s++) {
+          const paymentMonth = (startMonth + s * 6) % 12
+          const paymentYear = startDate.getFullYear() + Math.floor((startMonth + s * 6) / 12)
+          if (paymentYear === selectedYear && (!endDate || new Date(paymentYear, paymentMonth, 1) <= endDate)) {
+            insuranceTotal += premium
+          }
+        }
       }
-    }, 0)
-    
+    })
+
     return { fuelTotal, serviceTotal, taxTotal, parkingTotal, repairTotal, insuranceTotal }
-  }, [fuelEntries, serviceEntries, taxEntries, parkingEntries, repairEntries, insuranceEntries])
+  }, [fuelEntries, serviceEntries, taxEntries, parkingEntries, repairEntries, insuranceEntries, selectedYear])
 
   // Donut chart data
   const donutData = [
@@ -408,12 +456,24 @@ export default function VehicleExpenses() {
           months[monthIndex].breakdown['insurance'] = (months[monthIndex].breakdown['insurance'] || 0) + premium
         }
       } else if (frequency === 'monthly') {
-        // Monthly: distribute across each month within the policy period
-        const start = new Date(Math.max(startDate, new Date(selectedYear, 0, 1)))
-        const end = endDate ? new Date(Math.min(endDate, new Date(selectedYear, 11, 31))) : new Date(selectedYear, 11, 31)
-        
-        if (start <= end && startDate.getFullYear() <= selectedYear && (!endDate || endDate.getFullYear() >= selectedYear)) {
-          for (let m = start.getMonth(); m <= end.getMonth(); m++) {
+        // Monthly: add premium only on the payment day each month (same day-of-month as start date)
+        const today = new Date()
+        const currentYear = today.getFullYear()
+        const paymentDay = startDate.getDate()
+        const yearStart = new Date(selectedYear, 0, 1)
+        const yearEnd = endDate
+          ? new Date(Math.min(endDate.getTime(), new Date(selectedYear, 11, 31).getTime()))
+          : new Date(selectedYear, 11, 31)
+        const periodStart = new Date(Math.max(startDate.getTime(), yearStart.getTime()))
+        let periodEnd = yearEnd
+        // For current year, only count months where the payment day has already passed
+        if (selectedYear === currentYear) {
+          const paidThroughMonth = today.getDate() >= paymentDay ? today.getMonth() : today.getMonth() - 1
+          const cappedDate = new Date(selectedYear, paidThroughMonth, 28)
+          if (cappedDate < periodEnd) periodEnd = cappedDate
+        }
+        if (periodStart <= periodEnd && startDate.getFullYear() <= selectedYear && (!endDate || endDate.getFullYear() >= selectedYear)) {
+          for (let m = periodStart.getMonth(); m <= periodEnd.getMonth(); m++) {
             months[m].total += premium
             months[m].breakdown['insurance'] = (months[m].breakdown['insurance'] || 0) + premium
           }
@@ -471,9 +531,24 @@ export default function VehicleExpenses() {
     return Array.from(yearSet).sort((a, b) => b - a)
   }, [fuelEntries, serviceEntries, taxEntries, parkingEntries, repairEntries, insuranceEntries])
 
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '-'
-    return new Date(dateStr).toLocaleDateString()
+  // formatDate imported from utils/dateFormat
+
+  const handleCancelRecurring = async (type, entryId) => {
+    const msg = type === 'insurance'
+      ? 'Cancel this insurance policy? This will stop future recurring costs and set the end date to today.'
+      : 'Cancel recurring road tax? Future auto-generated entries will be stopped.'
+    if (!confirm(msg)) return
+    try {
+      if (type === 'insurance') {
+        const res = await insuranceApi.cancel(entryId)
+        setInsuranceEntries(prev => prev.map(e => e.id === entryId ? res.data.policy : e))
+      } else if (type === 'tax') {
+        const res = await taxApi.cancel(entryId)
+        setTaxEntries(prev => prev.map(e => e.id === entryId ? res.data.entry : e))
+      }
+    } catch (error) {
+      console.error('Failed to cancel recurring:', error)
+    }
   }
 
   const handleDelete = async (type, entryId) => {
@@ -728,6 +803,15 @@ export default function VehicleExpenses() {
                       >
                         {Icons.edit}
                       </button>
+                      {entry.recurring && (
+                        <button
+                          onClick={() => handleCancelRecurring('tax', entry.id)}
+                          className="text-orange-500 hover:text-orange-400 p-1"
+                          title="Cancel recurring tax (stop future auto-generated entries)"
+                        >
+                          {Icons.cancelRecurring}
+                        </button>
+                      )}
                       <button 
                         onClick={() => handleDelete('tax', entry.id)}
                         className="text-red-500 hover:text-red-400 p-1"
@@ -898,6 +982,15 @@ export default function VehicleExpenses() {
                       >
                         {Icons.edit}
                       </button>
+                      {entry.status === 'active' && (
+                        <button
+                          onClick={() => handleCancelRecurring('insurance', entry.id)}
+                          className="text-orange-500 hover:text-orange-400 p-1"
+                          title="Cancel insurance (stop recurring costs)"
+                        >
+                          {Icons.cancelRecurring}
+                        </button>
+                      )}
                       <button 
                         onClick={() => handleDelete('insurance', entry.id)}
                         className="text-red-500 hover:text-red-400 p-1"

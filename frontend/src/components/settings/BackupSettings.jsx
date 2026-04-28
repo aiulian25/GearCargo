@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from '../../contexts/LanguageContext'
 import { backupApi } from '../../services/api'
 import toast from 'react-hot-toast'
+import { formatDate, formatDateTime } from '../../utils/dateFormat'
 
 // SVG Icons
 const Icons = {
@@ -737,7 +738,7 @@ export default function BackupSettings() {
           <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
             {Icons.check}
             <span className="text-sm font-medium">
-              {t('backup.lastBackup') || 'Last backup'}: {new Date(status.last_backup).toLocaleString()}
+              {t('backup.lastBackup') || 'Last backup'}: {formatDateTime(status.last_backup)}
             </span>
           </div>
           {status.last_backup_details && (
@@ -1300,7 +1301,7 @@ export default function BackupSettings() {
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm text-[var(--color-text-primary)] truncate">{file.name}</p>
                                 <p className="text-2xs text-[var(--color-text-muted)]">
-                                  {file.size_human}{file.last_modified ? ` • ${new Date(file.last_modified).toLocaleDateString()}` : ''}
+                                  {file.size_human}{file.last_modified ? ` • ${formatDate(file.last_modified)}` : ''}
                                 </p>
                               </div>
                               <button
@@ -1430,7 +1431,7 @@ export default function BackupSettings() {
                   >
                     <div>
                       <p className="text-sm font-medium">
-                        {backup.label || new Date(backup.created_at).toLocaleString()}
+                        {backup.label || formatDateTime(backup.created_at)}
                       </p>
                       <p className="text-2xs text-[var(--color-text-muted)]">
                         {backup.size_human}

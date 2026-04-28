@@ -347,6 +347,7 @@ export const taxApi = {
   create: (data) => api.post('/taxes', data),
   update: (id, data) => api.put(`/taxes/${id}`, data),
   delete: (id) => api.delete(`/taxes/${id}`),
+  cancel: (id) => api.post(`/taxes/${id}/cancel`),
 }
 
 export const insuranceApi = {
@@ -359,6 +360,7 @@ export const insuranceApi = {
   create: (data) => api.post('/insurance', data),
   update: (id, data) => api.put(`/insurance/${id}`, data),
   delete: (id) => api.delete(`/insurance/${id}`),
+  cancel: (id) => api.post(`/insurance/${id}/cancel`),
   getActive: () => api.get('/insurance/active'),
   getExpiring: (days = 30) => api.get(`/insurance/expiring?days=${days}`),
 }

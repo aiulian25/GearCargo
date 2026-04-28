@@ -690,7 +690,75 @@ def get_event_data_for_entry(entry_type: str, entry: Any, vehicle_name: str) -> 
             'all_day': True,
             'reminder_minutes': 10080  # 7 days before
         }
-    
+
+    elif entry_type == 'fuel':
+        liters = getattr(entry, 'liters', None)
+        total_price = getattr(entry, 'total_price', None) or getattr(entry, 'amount', None)
+        fuel_type = getattr(entry, 'fuel_type', None)
+        station = getattr(entry, 'station', None)
+
+        parts = []
+        if liters:
+            parts.append(f"{float(liters):.1f}L")
+        if total_price:
+            parts.append(f"{float(total_price):.2f}")
+        title = f"⛽ Fuel: {vehicle_name}" + (f" ({', '.join(parts)})" if parts else "")
+
+        event_date = getattr(entry, 'date', None)
+        if not event_date:
+            return None
+
+        description = f"Vehicle: {vehicle_name}\n"
+        if fuel_type:
+            description += f"Fuel Type: {fuel_type}\n"
+        if liters:
+            description += f"Volume: {float(liters):.2f} L\n"
+        if total_price:
+            description += f"Total Cost: {float(total_price):.2f}\n"
+        if station:
+            description += f"Station: {station}\n"
+        if hasattr(entry, 'notes') and entry.notes:
+            description += f"Notes: {entry.notes}\n"
+
+        return {
+            'title': title,
+            'start': event_date if isinstance(event_date, datetime) else datetime.combine(event_date, datetime.min.time()),
+            'description': description,
+            'all_day': True,
+            'reminder_minutes': 0,
+        }
+
+    elif entry_type == 'parking':
+        amount = getattr(entry, 'amount', None)
+        location = getattr(entry, 'location', None) or getattr(entry, 'title', None)
+
+        title = f"🅿️ Parking: {vehicle_name}"
+        if location:
+            title += f" @ {location}"
+
+        event_date = getattr(entry, 'date', None)
+        if not event_date:
+            return None
+
+        description = f"Vehicle: {vehicle_name}\n"
+        if location:
+            description += f"Location: {location}\n"
+        if amount:
+            description += f"Cost: {float(amount):.2f}\n"
+        parking_type = getattr(entry, 'parking_type', None)
+        if parking_type:
+            description += f"Type: {parking_type}\n"
+        if hasattr(entry, 'notes') and entry.notes:
+            description += f"Notes: {entry.notes}\n"
+
+        return {
+            'title': title,
+            'start': event_date if isinstance(event_date, datetime) else datetime.combine(event_date, datetime.min.time()),
+            'description': description,
+            'all_day': True,
+            'reminder_minutes': 0,
+        }
+
     return None
 
 

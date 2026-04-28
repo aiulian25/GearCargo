@@ -412,7 +412,7 @@ export default function Calendar() {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">
-                    {new Date(selectedDate + 'T00:00:00').toLocaleDateString(undefined, { 
+                    {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-GB', { 
                       weekday: 'long', 
                       year: 'numeric', 
                       month: 'long', 

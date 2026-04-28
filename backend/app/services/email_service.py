@@ -606,13 +606,14 @@ def get_tax_alerts(user_id: int, days_ahead: int = 30) -> List[Dict]:
 
 
 def get_service_alerts(user_id: int, days_ahead: int = 30) -> List[Dict]:
-    """Get services due within days_ahead based on reminders and predictions."""
+    """Get service/maintenance reminders due within days_ahead."""
     from app.models import Reminder, Vehicle
-    
+
     cutoff = date.today() + timedelta(days=days_ahead)
     alerts = []
-    
-    # Get service-related reminders
+
+    SERVICE_TYPES = ['service', 'maintenance', 'oil_change', 'inspection', 'mot']
+
     reminders = Reminder.query.join(Vehicle).filter(
         Reminder.user_id == user_id,
         Vehicle.is_active == True,
@@ -620,14 +621,14 @@ def get_service_alerts(user_id: int, days_ahead: int = 30) -> List[Dict]:
         Reminder.dismissed == False,
         Reminder.due_date.isnot(None),
         Reminder.due_date <= cutoff,
-        Reminder.category.in_(['service', 'maintenance', 'oil_change', 'inspection'])
+        Reminder.reminder_type.in_(SERVICE_TYPES)
     ).all()
-    
+
     for reminder in reminders:
         days_left = (reminder.due_date - date.today()).days
         is_overdue = days_left < 0
         severity = "urgent" if is_overdue or days_left <= 7 else "warning" if days_left <= 14 else "info"
-        
+
         alerts.append({
             'title': reminder.title,
             'subtitle': f"{'OVERDUE - was due' if is_overdue else 'Due on'} {reminder.due_date.strftime('%B %d, %Y')}",
@@ -636,7 +637,41 @@ def get_service_alerts(user_id: int, days_ahead: int = 30) -> List[Dict]:
             'severity': severity,
             'due_date': reminder.due_date.strftime('%b %d, %Y')
         })
-    
+
+    return alerts
+
+
+def get_reminder_alerts(user_id: int, days_ahead: int = 30) -> List[Dict]:
+    """Get all due/upcoming reminders (any type) with notify_email=True."""
+    from app.models import Reminder, Vehicle
+
+    cutoff = date.today() + timedelta(days=days_ahead)
+    alerts = []
+
+    reminders = Reminder.query.join(Vehicle).filter(
+        Reminder.user_id == user_id,
+        Vehicle.is_active == True,
+        Reminder.completed == False,
+        Reminder.dismissed == False,
+        Reminder.notify_email == True,
+        Reminder.due_date.isnot(None),
+        Reminder.due_date <= cutoff,
+    ).all()
+
+    for reminder in reminders:
+        days_left = (reminder.due_date - date.today()).days
+        is_overdue = days_left < 0
+        severity = "urgent" if is_overdue or days_left <= 7 else "warning" if days_left <= 14 else "info"
+
+        alerts.append({
+            'title': reminder.title,
+            'subtitle': f"{'OVERDUE - was due' if is_overdue else 'Due on'} {reminder.due_date.strftime('%B %d, %Y')}",
+            'details': reminder.description,
+            'vehicle': reminder.vehicle.name if reminder.vehicle else None,
+            'severity': severity,
+            'due_date': reminder.due_date.strftime('%b %d, %Y')
+        })
+
     return alerts
 
 
@@ -645,7 +680,8 @@ def get_all_alerts_for_user(user_id: int, days_ahead: int = 30) -> Dict[str, Lis
     return {
         'insurance': get_insurance_alerts(user_id, days_ahead),
         'tax': get_tax_alerts(user_id, days_ahead),
-        'service': get_service_alerts(user_id, days_ahead)
+        'service': get_service_alerts(user_id, days_ahead),
+        'reminder': get_reminder_alerts(user_id, days_ahead),
     }
 
 

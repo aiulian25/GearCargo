@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { vehicleApi, externalApi, insuranceApi } from '../services/api'
 import { useCurrency, useTranslation } from '../contexts/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
+import { formatDate, formatDateShort } from '../utils/dateFormat'
 import WeatherAlerts, { WeatherAlertsModal } from '../components/weather/WeatherAlerts'
 
 // Weather Icon Component - Clean SVG icons with unique IDs
@@ -380,7 +381,7 @@ function FuelPricesWidget({ fuelPrices, currency, t, onRefresh, isRefreshing }) 
     if (!dateStr) return ''
     try {
       const date = new Date(dateStr)
-      return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+      return formatDateShort(date)
     } catch {
       return dateStr
     }
@@ -1165,7 +1166,7 @@ export default function Dashboard() {
                       {vehicleInsurance[vehicle.id]?.expiring ? (
                         <div 
                           className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/90 backdrop-blur-sm text-white text-xs font-medium shadow-lg"
-                          title={`${t('dashboard.insuranceExpiring') || 'Insurance expiring'}: ${new Date(vehicleInsurance[vehicle.id].expiring.end_date).toLocaleDateString()}`}
+                          title={`${t('dashboard.insuranceExpiring') || 'Insurance expiring'}: ${formatDate(vehicleInsurance[vehicle.id].expiring.end_date)}`}
                         >
                           <span className="material-icons-outlined text-sm">warning</span>
                           <span className="hidden sm:inline">{t('dashboard.expiringSoon') || 'Expiring'}</span>

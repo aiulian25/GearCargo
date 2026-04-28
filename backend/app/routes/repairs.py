@@ -3,7 +3,7 @@ GearCargo - Repair Entry Routes
 """
 
 from datetime import datetime
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 
 from app import db
 from app.models import Vehicle, RepairEntry
@@ -112,7 +112,15 @@ def create_repair_entry(current_user):
     
     db.session.add(entry)
     db.session.commit()
-    
+
+    # Auto-sync to calendar if enabled
+    if current_user.calendar_enabled:
+        try:
+            from app.services.calendar_service import sync_entry_to_calendar
+            sync_entry_to_calendar(current_user, 'repair', entry, 'create')
+        except Exception as e:
+            current_app.logger.warning(f"Calendar sync failed for repair: {e}")
+
     return jsonify({
         'message': 'Repair entry created',
         'entry': entry.to_dict()

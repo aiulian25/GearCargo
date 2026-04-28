@@ -74,18 +74,24 @@ def create_tax_entry(current_user):
     next_due_date = None
     if data.get('next_due_date'):
         next_due_date = datetime.fromisoformat(data['next_due_date'].replace('Z', '+00:00')).date()
-    elif data.get('recurring') and due_date:
-        # Auto-calculate next due date based on recurrence type
+    elif data.get('recurring'):
+        # Auto-calculate next due date — use due_date if set, otherwise entry_date
         from dateutil.relativedelta import relativedelta
-        recurrence_type = data.get('recurrence_type', 'annual')
+        base = due_date or entry_date
+        recurrence_type = data.get('recurrence_type', 'monthly')
         if recurrence_type == 'monthly':
-            next_due_date = due_date + relativedelta(months=1)
+            step = relativedelta(months=1)
         elif recurrence_type == 'quarterly':
-            next_due_date = due_date + relativedelta(months=3)
+            step = relativedelta(months=3)
         elif recurrence_type == 'semi_annual':
-            next_due_date = due_date + relativedelta(months=6)
+            step = relativedelta(months=6)
         else:  # annual
-            next_due_date = due_date + relativedelta(years=1)
+            step = relativedelta(years=1)
+        next_due_date = base + step
+        # If already in the past, advance until it's in the future
+        from datetime import date as date_cls
+        while next_due_date <= date_cls.today():
+            next_due_date = next_due_date + step
     
     # Validate insurance_policy_id if provided
     insurance_policy_id = None
@@ -200,6 +206,31 @@ def update_tax_entry(current_user, entry_id):
     
     return jsonify({
         'message': 'Tax entry updated',
+        'entry': entry.to_dict()
+    })
+
+
+@taxes_bp.route('/<int:entry_id>/cancel', methods=['POST'])
+@token_required
+def cancel_tax_entry(current_user, entry_id):
+    """Cancel a recurring tax entry, stopping future auto-generated payments."""
+    entry = TaxEntry.query.join(Vehicle).filter(
+        TaxEntry.id == entry_id,
+        Vehicle.user_id == current_user.id
+    ).first()
+
+    if not entry:
+        return jsonify({'error': 'Entry not found'}), 404
+
+    if not entry.recurring:
+        return jsonify({'error': 'Entry is not recurring'}), 400
+
+    entry.recurring = False
+    entry.next_due_date = None
+    db.session.commit()
+
+    return jsonify({
+        'message': 'Recurring tax cancelled',
         'entry': entry.to_dict()
     })
 

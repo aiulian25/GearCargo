@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { vehicleApi, fuelApi, serviceApi, repairApi, taxApi, reminderApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
+import { formatDate } from '../../utils/dateFormat'
 
 // SVG Icons
 const Icons = {
@@ -322,8 +323,8 @@ export default function VehicleDetail() {
     },
     { 
       id: 'totalFuelCost',
-      label: t('vehicleDetail.totalFuelCost') || 'Total Fuel Cost',
-      value: formatCurrency(stats?.fuel_costs || 0),
+      label: t('vehicleDetail.totalFuelCost') || 'YTD Fuel Cost',
+      value: formatCurrency(stats?.ytd_fuel_costs || 0),
       icon: Icons.fuel,
       color: 'text-amber-500',
       bgColor: 'bg-amber-500/10'
@@ -346,7 +347,7 @@ export default function VehicleDetail() {
     },
     { 
       id: 'taxExpenses',
-      label: t('vehicleDetail.taxExpenses') || 'Tax Expenses',
+      label: t('vehicleDetail.taxExpenses') || 'YTD Tax',
       value: formatCurrency(stats?.tax_costs || 0),
       icon: Icons.receipt,
       color: 'text-rose-500',
@@ -354,7 +355,7 @@ export default function VehicleDetail() {
     },
     { 
       id: 'insuranceExpenses',
-      label: t('vehicleDetail.insuranceExpenses') || 'Insurance',
+      label: t('vehicleDetail.insuranceExpenses') || 'YTD Insurance',
       value: formatCurrency(stats?.insurance_costs || 0),
       icon: Icons.shield,
       color: 'text-emerald-500',
@@ -374,7 +375,7 @@ export default function VehicleDetail() {
       value: stats?.next_service 
         ? (stats.next_service_days !== null && stats.next_service_days !== undefined
             ? `${stats.next_service_days} ${t('common.days') || 'days'}`
-            : stats.next_service)
+            : formatDate(stats.next_service))
         : '-',
       subValue: stats?.next_service_title || null,
       icon: Icons.clock,
@@ -643,7 +644,7 @@ export default function VehicleDetail() {
                     return (
                       <tr key={i} className="border-b border-[var(--color-border)] last:border-0">
                         <td className="py-3 pr-4 text-xs text-[var(--color-text-secondary)]">
-                          {entry.date}
+                          {formatDate(entry.date)}
                         </td>
                         <td className="py-3 pr-4">
                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium ${typeStyle.bgColor} ${typeStyle.color}`}>

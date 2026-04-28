@@ -68,11 +68,39 @@ def archive_vehicle(current_user, vehicle_id):
     
     if vehicle.archived:
         return jsonify({'error': 'Vehicle is already archived'}), 400
-    
+
     vehicle.archived = True
     vehicle.archived_at = datetime.utcnow()
+
+    # Cancel all active insurance policies for this vehicle
+    try:
+        from app.models import InsurancePolicy
+        active_policies = InsurancePolicy.query.filter(
+            InsurancePolicy.vehicle_id == vehicle_id,
+            InsurancePolicy.status == 'active'
+        ).all()
+        for policy in active_policies:
+            policy.status = 'cancelled'
+            policy.end_date = datetime.utcnow().date()
+            policy.auto_renew = False
+    except Exception as e:
+        current_app.logger.warning(f'Failed to cancel insurance policies on archive: {e}')
+
+    # Cancel all recurring tax entries for this vehicle
+    try:
+        from app.models import TaxEntry
+        recurring_taxes = TaxEntry.query.filter(
+            TaxEntry.vehicle_id == vehicle_id,
+            TaxEntry.recurring == True
+        ).all()
+        for tax in recurring_taxes:
+            tax.recurring = False
+            tax.next_due_date = None
+    except Exception as e:
+        current_app.logger.warning(f'Failed to cancel recurring taxes on archive: {e}')
+
     db.session.commit()
-    
+
     return jsonify({
         'message': 'Vehicle archived successfully',
         'vehicle': vehicle.to_dict()
@@ -334,21 +362,20 @@ def get_vehicle_stats(current_user, vehicle_id):
     try:
         from app.models.tax import TaxEntry
         tax_entries = TaxEntry.query.filter_by(vehicle_id=vehicle_id).all()
-        tax_costs = sum(float(e.amount or 0) for e in tax_entries)
+        tax_costs = sum(float(e.amount or 0) for e in tax_entries)  # all-time for total_costs
+        ytd_tax_costs = sum(float(e.amount or 0) for e in tax_entries if e.date and e.date.year == current_year)
     except:
         tax_costs = 0
+        ytd_tax_costs = 0
     
     # Get insurance policies
     try:
         from app.models.insurance import InsurancePolicy
         insurance_policies = InsurancePolicy.query.filter_by(vehicle_id=vehicle_id).all()
-        # Show per-payment premium cost (what user actually pays each time)
-        insurance_costs = 0
-        insurance_annual_cost = 0  # Keep annual for reference
+        insurance_annual_cost = 0
         for policy in insurance_policies:
             premium = float(policy.premium or 0)
             frequency = policy.payment_frequency or 'annual'
-            insurance_costs += premium  # Per-payment amount
             # Calculate annual for total costs
             if frequency == 'monthly':
                 insurance_annual_cost += premium * 12
@@ -360,11 +387,11 @@ def get_vehicle_stats(current_user, vehicle_id):
                 insurance_annual_cost += premium
     except:
         insurance_policies = []
-        insurance_costs = 0
         insurance_annual_cost = 0
     
     # Calculate totals (use past_service_entries to exclude future scheduled services)
     total_fuel_cost = sum(float(e.total_price or 0) for e in fuel_entries)
+    ytd_fuel_cost = sum(float(e.total_price or 0) for e in fuel_entries if e.date and e.date.year == current_year)
     total_service_cost = sum(float(e.amount or 0) for e in past_service_entries)
     total_repair_cost = sum(float(e.amount or 0) for e in repair_entries)
     total_costs = total_fuel_cost + total_service_cost + total_repair_cost + parking_costs + tax_costs + insurance_annual_cost
@@ -420,9 +447,11 @@ def get_vehicle_stats(current_user, vehicle_id):
         frequency = policy.payment_frequency or 'annual'
         
         if frequency == 'monthly':
-            # Monthly: add premium every month the policy is active
-            monthly_insurance_cost += premium
-            costs_this_month += premium
+            # Monthly: only count if today's date >= the payment day-of-month
+            payment_day = policy.start_date.day
+            if today.day >= payment_day:
+                monthly_insurance_cost += premium
+                costs_this_month += premium
         elif frequency == 'quarterly':
             # Quarterly: add premium every 3 months from start date
             start_month = policy.start_date.month
@@ -464,27 +493,26 @@ def get_vehicle_stats(current_user, vehicle_id):
         pass
     
     # Add tax YTD
-    try:
-        for e in tax_entries:
-            if e.date and e.date.year == current_year:
-                ytd_spent += float(e.amount or 0)
-    except:
-        pass
+    ytd_spent += ytd_tax_costs
     
     # Add insurance YTD costs based on payment frequency
+    ytd_insurance_costs = 0
     for policy in insurance_policies:
         if policy.start_date:
             premium = float(policy.premium or 0)
             frequency = policy.payment_frequency or 'annual'
             # Calculate how many payments have been made this year
             if frequency == 'monthly':
-                # Count months from January or policy start to current month
+                # Count months from January or policy start up to the last paid month
+                # Only count current month if the payment day has already occurred
+                payment_day = policy.start_date.day
+                paid_through_month = current_month if today.day >= payment_day else current_month - 1
                 start_month = max(1, policy.start_date.month) if policy.start_date.year == current_year else 1
-                end_month = current_month
+                end_month = paid_through_month
                 if policy.end_date and policy.end_date.year == current_year:
                     end_month = min(end_month, policy.end_date.month)
                 if policy.start_date.year <= current_year and (not policy.end_date or policy.end_date.year >= current_year):
-                    ytd_spent += premium * max(0, end_month - start_month + 1)
+                    ytd_insurance_costs += premium * max(0, end_month - start_month + 1)
             elif frequency == 'quarterly':
                 # Count quarterly payments in current year
                 if policy.start_date.year <= current_year:
@@ -495,7 +523,7 @@ def get_vehicle_stats(current_user, vehicle_id):
                         if payment_month <= 12 and payment_month <= current_month:
                             if not policy.end_date or policy.end_date >= today:
                                 payments += 1
-                    ytd_spent += premium * payments
+                    ytd_insurance_costs += premium * payments
             elif frequency in ('semi-annual', 'semi_annual'):
                 if policy.start_date.year <= current_year:
                     start_month = policy.start_date.month
@@ -505,10 +533,11 @@ def get_vehicle_stats(current_user, vehicle_id):
                         if payment_month <= 12 and payment_month <= current_month:
                             if not policy.end_date or policy.end_date >= today:
                                 payments += 1
-                    ytd_spent += premium * payments
+                    ytd_insurance_costs += premium * payments
             elif frequency in ('annual', 'yearly', 'one_time'):
                 if policy.start_date.year == current_year and policy.start_date.month <= current_month:
-                    ytd_spent += premium
+                    ytd_insurance_costs += premium
+    ytd_spent += ytd_insurance_costs
     
     # Average fuel consumption (L/100km)
     avg_consumption = None
@@ -516,6 +545,25 @@ def get_vehicle_stats(current_user, vehicle_id):
         efficiencies = [e.fuel_efficiency for e in fuel_entries if e.fuel_efficiency]
         if efficiencies:
             avg_consumption = sum(efficiencies) / len(efficiencies)
+        if avg_consumption is None:
+            # Fallback: compute from stored trip_distance + liters
+            valid_trips = [(float(e.liters), e.trip_distance) for e in fuel_entries
+                           if e.liters and e.trip_distance and e.trip_distance > 0]
+            if valid_trips:
+                avg_consumption = sum(l / d * 100 for l, d in valid_trips) / len(valid_trips)
+        if avg_consumption is None:
+            # Fallback: compute from consecutive odometer readings
+            sorted_fuel = sorted(
+                [e for e in fuel_entries if e.odometer and e.liters],
+                key=lambda e: e.odometer
+            )
+            calc = []
+            for i in range(1, len(sorted_fuel)):
+                dist = sorted_fuel[i].odometer - sorted_fuel[i - 1].odometer
+                if dist > 0:
+                    calc.append(float(sorted_fuel[i].liters) / dist * 100)
+            if calc:
+                avg_consumption = sum(calc) / len(calc)
     
     # Next service due - check both reminders AND future service entries
     next_service = None
@@ -583,11 +631,12 @@ def get_vehicle_stats(current_user, vehicle_id):
         'costs_this_month': float(costs_this_month),
         'monthly_insurance_cost': float(monthly_insurance_cost),  # Insurance cost for this month only
         'fuel_costs': float(total_fuel_cost),
+        'ytd_fuel_costs': float(ytd_fuel_cost),
         'service_costs': float(total_service_cost),
         'repair_costs': float(total_repair_cost),
         'parking_costs': float(parking_costs),
-        'tax_costs': float(tax_costs),
-        'insurance_costs': float(insurance_costs),  # Per-payment premium amount
+        'tax_costs': float(ytd_tax_costs),  # YTD tax expenses
+        'insurance_costs': float(ytd_insurance_costs),  # YTD insurance paid
         'insurance_annual_cost': float(insurance_annual_cost),  # Annualized insurance cost
         'service_count': len(past_service_entries),
         'repair_count': len(repair_entries),

@@ -150,6 +150,32 @@ def update_policy(current_user, policy_id):
     })
 
 
+@insurance_bp.route('/<int:policy_id>/cancel', methods=['POST'])
+@token_required
+def cancel_policy(current_user, policy_id):
+    """Cancel an insurance policy, stopping future recurring costs."""
+    policy = InsurancePolicy.query.filter_by(
+        id=policy_id,
+        user_id=current_user.id
+    ).first()
+
+    if not policy:
+        return jsonify({'error': 'Policy not found'}), 404
+
+    if policy.status == 'cancelled':
+        return jsonify({'error': 'Policy is already cancelled'}), 400
+
+    policy.status = 'cancelled'
+    policy.end_date = date.today()
+    policy.auto_renew = False
+    db.session.commit()
+
+    return jsonify({
+        'message': 'Insurance policy cancelled',
+        'policy': policy.to_dict()
+    })
+
+
 @insurance_bp.route('/<int:policy_id>', methods=['DELETE'])
 @token_required
 def delete_policy(current_user, policy_id):

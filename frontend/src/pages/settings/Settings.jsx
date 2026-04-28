@@ -8,6 +8,7 @@ import { usePushNotifications } from '../../hooks/usePushNotifications'
 import UserManagement from '../../components/admin/UserManagement'
 import SystemLogs from '../../components/admin/SystemLogs'
 import MaintenanceCleanup from '../../components/admin/MaintenanceCleanup'
+import { formatDate, formatDateTime } from '../../utils/dateFormat'
 import SecurityBlocking from '../../components/admin/SecurityBlocking'
 import TwoFactorSetup from '../../components/settings/TwoFactorSetup'
 import SecurityQuestionsSetup from '../../components/settings/SecurityQuestionsSetup'
@@ -996,7 +997,7 @@ export default function Settings() {
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{attachment.filename}</p>
                           <p className="text-2xs text-red-600 dark:text-red-400">
-                            {t('settings.expiredOn') || 'Expired on'} {new Date(attachment.expires_at).toLocaleDateString()}
+                            {t('settings.expiredOn') || 'Expired on'} {formatDate(attachment.expires_at)}
                           </p>
                         </div>
                         <span className="text-[var(--color-text-muted)]">
@@ -1356,7 +1357,7 @@ export default function Settings() {
                       {consentHistory.map((entry, i) => (
                         <div key={i} className="text-2xs text-[var(--color-text-muted)] flex justify-between">
                           <span className="capitalize">{entry.action}</span>
-                          <span>{new Date(entry.created_at).toLocaleString()}</span>
+                          <span>{formatDateTime(entry.created_at)}</span>
                         </div>
                       ))}
                     </div>
@@ -2164,7 +2165,7 @@ export default function Settings() {
                       </p>
                       {vehicle.archived_at && (
                         <p className="text-2xs text-[var(--color-text-muted)]">
-                          {t('archive.archivedOn') || 'Archived'}: {new Date(vehicle.archived_at).toLocaleDateString()}
+                          {t('archive.archivedOn') || 'Archived'}: {formatDate(vehicle.archived_at)}
                         </p>
                       )}
                     </div>

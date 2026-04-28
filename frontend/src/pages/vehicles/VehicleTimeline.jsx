@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { vehicleApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
+import { formatDateShort, formatMonthYear } from '../../utils/dateFormat'
 
 // SVG Icons
 const Icons = {
@@ -191,15 +192,7 @@ export default function VehicleTimeline() {
     return `${currency.symbol}${Number(amount).toFixed(2)}`
   }
   
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '-'
-    const date = new Date(dateStr)
-    return date.toLocaleDateString(undefined, { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric' 
-    })
-  }
+  const formatDate = (dateStr) => formatDateShort(dateStr)
   
   const getEntryStyle = (type) => {
     return entryTypes[type] || { 
@@ -223,7 +216,7 @@ export default function VehicleTimeline() {
     entries.forEach(entry => {
       const date = new Date(entry.date)
       const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-      const label = date.toLocaleDateString(undefined, { year: 'numeric', month: 'long' })
+      const label = formatMonthYear(date)
       if (!groups[key]) {
         groups[key] = { label, entries: [] }
       }

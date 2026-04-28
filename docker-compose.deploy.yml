@@ -96,6 +96,9 @@ services:
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
       - VAPID_SUBJECT=${VAPID_SUBJECT:-}
+      
+      # Worker count — capped to prevent OOM kills on many-core hosts
+      - GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}
     volumes:
       - ./volumes/attachments:/app/volumes/attachments
       - ./volumes/backups:/app/volumes/backups

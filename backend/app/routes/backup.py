@@ -883,24 +883,52 @@ def get_backup_status(current_user):
     # Count available backups
     backup_folder = get_backup_folder()
     user_folder = os.path.join(backup_folder, str(current_user.id))
-    available_backups = []
-    
+    raw_backups = []
+
     if os.path.exists(user_folder):
         for f in sorted(os.listdir(user_folder), reverse=True):
             if f.endswith('.zip'):
                 filepath = os.path.join(user_folder, f)
                 stat = os.stat(filepath)
                 created = datetime.fromtimestamp(stat.st_mtime)
-                # Build display label from filename parts
-                label = _backup_display_label(f, created)
-                available_backups.append({
+                raw_backups.append({
                     'filename': f,
+                    'filepath': filepath,
                     'size': stat.st_size,
-                    'size_human': format_file_size(stat.st_size),
-                    'created_at': created.isoformat(),
-                    'label': label,
+                    'mtime': stat.st_mtime,
+                    'created': created,
                 })
-    
+
+    # Deduplicate: if multiple files share the same size AND were created within
+    # the same minute (race-condition duplicates from multi-worker gunicorn),
+    # keep only the oldest one (first written) and auto-delete the rest.
+    seen = {}  # key -> kept entry
+    duplicates_to_delete = []
+    for entry in sorted(raw_backups, key=lambda x: x['mtime']):
+        minute_key = (entry['size'], entry['created'].strftime('%Y%m%d%H%M'))
+        if minute_key not in seen:
+            seen[minute_key] = entry
+        else:
+            duplicates_to_delete.append(entry)
+
+    for dup in duplicates_to_delete:
+        try:
+            os.remove(dup['filepath'])
+            current_app.logger.info(f"Removed duplicate backup: {dup['filename']}")
+        except Exception as e:
+            current_app.logger.warning(f"Could not remove duplicate backup {dup['filename']}: {e}")
+
+    available_backups = []
+    for entry in sorted(seen.values(), key=lambda x: x['mtime'], reverse=True):
+        label = _backup_display_label(entry['filename'], entry['created'])
+        available_backups.append({
+            'filename': entry['filename'],
+            'size': entry['size'],
+            'size_human': format_file_size(entry['size']),
+            'created_at': entry['created'].isoformat(),
+            'label': label,
+        })
+
     return jsonify({
         'schedule': schedule.to_dict() if schedule else None,
         'last_backup': last_backup.created_at.isoformat() if last_backup else None,

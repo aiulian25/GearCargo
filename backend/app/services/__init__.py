@@ -82,7 +82,16 @@ def init_scheduler(app):
         hour=10,
         args=[app]
     )
-    
+
+    # Recurring tax entry generation — daily at 6 AM
+    scheduler.add_job(
+        id='process_recurring_taxes',
+        func=process_recurring_tax_entries,
+        trigger='cron',
+        hour=6,
+        args=[app]
+    )
+
     scheduler.start()
     app.logger.info('Scheduler initialized')
 
@@ -122,13 +131,13 @@ def check_due_reminders(app):
                 if should_notify and reminder.notify_push:
                     # Send push notification
                     from app.routes.push import send_push_to_user
-                    
+
                     title = f"Reminder: {reminder.title}"
                     body = reminder.description or "This reminder is due"
-                    
+
                     if reminder.vehicle:
                         body = f"{body} - {reminder.vehicle.name}"
-                    
+
                     send_push_to_user(
                         user.id,
                         title,
@@ -141,7 +150,28 @@ def check_due_reminders(app):
                         },
                         tag=f'reminder-{reminder.id}'
                     )
-                    
+
+                if should_notify and getattr(reminder, 'notify_email', True) and user.notifications_enabled:
+                    # Send email notification for this individual reminder
+                    try:
+                        if app.config.get('MAIL_ENABLED'):
+                            from app.services.email_service import EmailService
+                            days_left = (reminder.due_date - today).days
+                            is_overdue = days_left < 0
+                            severity = 'urgent' if is_overdue or days_left <= 7 else 'warning'
+                            alert = {
+                                'title': reminder.title,
+                                'subtitle': f"{'OVERDUE - was due' if is_overdue else 'Due on'} {reminder.due_date.strftime('%B %d, %Y')}",
+                                'details': reminder.description,
+                                'vehicle': reminder.vehicle.name if reminder.vehicle else None,
+                                'severity': severity,
+                                'due_date': reminder.due_date.strftime('%b %d, %Y'),
+                            }
+                            EmailService.send_alert_notification(user, [alert], 'reminder')
+                    except Exception as email_exc:
+                        app.logger.warning(f'Reminder email notification failed for reminder {reminder.id}: {email_exc}')
+
+                if should_notify:
                     reminder.last_notified_at = datetime.utcnow()
         
         db.session.commit()
@@ -214,11 +244,14 @@ def process_scheduled_backups(app):
         now = datetime.utcnow()
         current_hour = now.hour
         
-        # Get schedules that should run this hour
+        # Get schedules that should run this hour — lock each row so only ONE
+        # worker processes it (prevents duplicate backups with multi-worker gunicorn).
+        # with_for_update(skip_locked=True) skips rows already being processed by
+        # another worker, ensuring exactly-once execution per schedule.
         schedules = BackupSchedule.query.filter(
             BackupSchedule.enabled == True,
             BackupSchedule.hour == current_hour
-        ).all()
+        ).with_for_update(skip_locked=True).all()
         
         for schedule in schedules:
             should_run = False
@@ -335,51 +368,63 @@ def process_scheduled_backups(app):
 
 
 def cleanup_user_backups(user_id, max_backups, retention_days, user_folder, db):
-    """Clean up old backups for a user."""
+    """Clean up old backups for a user.
+
+    Retention rules (applied in order):
+    1. Always keep the N most recent backups (max_backups).
+    2. Of the remaining older backups, also delete any that exceed retention_days.
+    The two limits are AND'd for older files — a file must be BOTH beyond the
+    count limit AND older than retention_days to be deleted by age alone.
+    This prevents the age rule from deleting files that are still within the
+    max_backups count.
+    """
     import os
     from app.models import Backup
-    
+
+    keep = int(max_backups or 10)
+    days = int(retention_days or 90)
+
     if not os.path.exists(user_folder):
         return
-    
-    # Get all backup files
+
+    # Collect all backup zips in the user folder regardless of prefix
     files = []
     for f in os.listdir(user_folder):
-        if f.startswith('backup_') and f.endswith('.zip'):
+        if f.endswith('.zip'):
             filepath = os.path.join(user_folder, f)
-            mtime = os.path.getmtime(filepath)
-            files.append((filepath, mtime))
-    
-    # Sort by modification time (newest first)
-    files.sort(key=lambda x: x[1], reverse=True)
-    
-    cutoff_time = datetime.utcnow() - timedelta(days=retention_days or 90)
-    cutoff_timestamp = cutoff_time.timestamp()
-    
-    for i, (filepath, mtime) in enumerate(files):
-        should_delete = False
-        
-        if i >= (max_backups or 10):
-            should_delete = True
-        
-        if mtime < cutoff_timestamp:
-            should_delete = True
-        
-        if should_delete:
             try:
-                os.remove(filepath)
-            except:
+                mtime = os.path.getmtime(filepath)
+                files.append((filepath, mtime))
+            except OSError:
                 pass
-    
-    # Clean up old database records
-    old_backups = Backup.query.filter(
+
+    # Sort newest first so index 0 = most recent
+    files.sort(key=lambda x: x[1], reverse=True)
+
+    cutoff_timestamp = (datetime.utcnow() - timedelta(days=days)).timestamp()
+
+    for i, (filepath, mtime) in enumerate(files):
+        if i < keep:
+            # Always keep the N most recent — do not delete regardless of age
+            continue
+
+        # Beyond the keep limit: delete (age check is a secondary soft guard,
+        # but we delete anything past the count limit unconditionally so the
+        # user's chosen backup count is strictly honoured)
+        try:
+            os.remove(filepath)
+        except OSError:
+            pass
+
+    # Clean up DB records: delete records beyond the keep count (by created_at desc)
+    all_records = Backup.query.filter(
         Backup.user_id == user_id,
-        Backup.created_at < cutoff_time,
         Backup.cloud_file_id.is_(None)
-    ).all()
-    
-    for backup in old_backups:
-        db.session.delete(backup)
+    ).order_by(Backup.created_at.desc()).all()
+
+    for i, record in enumerate(all_records):
+        if i >= keep:
+            db.session.delete(record)
 
 
 def send_backup_notification(user, backup, status, app, error_message=None):
@@ -437,51 +482,51 @@ def send_daily_email_alerts(app):
         
         from app.models import User
         from app.services.email_service import (
-            EmailService, get_insurance_alerts, get_tax_alerts, 
-            get_service_alerts
+            EmailService, get_insurance_alerts, get_tax_alerts,
+            get_service_alerts, get_reminder_alerts
         )
-        
+
         # Get all users with email notifications enabled
         users = User.query.filter(
             User.is_active == True,
             User.notifications_enabled == True
         ).all()
-        
+
         sent_count = 0
-        
+
         for user in users:
             try:
-                alerts_to_send = []
                 days_before = user.alert_days_before or 14
-                
-                # Gather alerts based on user preferences
-                if user.email_insurance_alerts:
-                    alerts_to_send.extend(get_insurance_alerts(user.id, days_before))
-                
-                if user.email_tax_alerts:
-                    alerts_to_send.extend(get_tax_alerts(user.id, days_before))
-                
-                if user.email_service_alerts or user.email_reminder_alerts:
-                    alerts_to_send.extend(get_service_alerts(user.id, days_before))
-                
-                # Only send if there are urgent or warning alerts
-                urgent_alerts = [a for a in alerts_to_send if a['severity'] in ['urgent', 'warning']]
-                
+
+                # Collect alerts per category based on user preferences
+                insurance_alerts = get_insurance_alerts(user.id, days_before) if user.email_insurance_alerts else []
+                tax_alerts = get_tax_alerts(user.id, days_before) if user.email_tax_alerts else []
+                service_alerts = get_service_alerts(user.id, days_before) if user.email_service_alerts else []
+                reminder_alerts = get_reminder_alerts(user.id, days_before) if user.email_reminder_alerts else []
+
+                # Merge all, deduplicate by title+vehicle, keep worst severity
+                all_alerts = insurance_alerts + tax_alerts + service_alerts + reminder_alerts
+                urgent_alerts = [a for a in all_alerts if a['severity'] in ('urgent', 'warning')]
+
                 if urgent_alerts:
-                    # Determine primary alert type
-                    if any('Insurance' in a['title'] for a in urgent_alerts):
+                    # Determine primary alert type for email subject/styling
+                    has_insurance = any(a in urgent_alerts for a in insurance_alerts)
+                    has_tax = any(a in urgent_alerts for a in tax_alerts)
+                    if has_insurance:
                         alert_type = 'insurance'
-                    elif any('Tax' in a['title'] for a in urgent_alerts):
+                    elif has_tax:
                         alert_type = 'tax'
+                    elif any(a in urgent_alerts for a in service_alerts):
+                        alert_type = 'service'
                     else:
                         alert_type = 'reminder'
-                    
+
                     if EmailService.send_alert_notification(user, urgent_alerts, alert_type):
                         sent_count += 1
-                        
+
             except Exception as e:
                 app.logger.error(f'Failed to send daily alerts to user {user.id}: {e}')
-        
+
         app.logger.info(f'Daily alerts: sent to {sent_count} users')
 
 
@@ -592,3 +637,118 @@ def refresh_fuel_prices(app):
             app.logger.info(f'Fuel price refresh: {updated} countries updated, {failed} failed')
         except Exception as e:
             app.logger.error(f'Fuel price refresh job failed: {e}')
+
+
+def process_recurring_tax_entries(app):
+    """Auto-create new tax entries for recurring taxes whose next_due_date has passed.
+
+    Runs daily at 6 AM. For each recurring TaxEntry where next_due_date <= today,
+    creates a new entry for that payment date and advances next_due_date.
+    Handles backfill (e.g. missed months) by iterating until next_due_date > today.
+    """
+    with app.app_context():
+        from app import db
+        from app.models import TaxEntry
+        from dateutil.relativedelta import relativedelta
+
+        today = date.today()
+        created_count = 0
+
+        # Heal entries that are recurring but have next_due_date=NULL (set after creation)
+        from app.models.entry import Entry as BaseEntry
+        null_due = TaxEntry.query.filter(
+            TaxEntry.recurring == True,
+            TaxEntry.next_due_date.is_(None),
+        ).all()
+        for entry in null_due:
+            recurrence = entry.recurrence_type or 'monthly'
+            if recurrence == 'monthly':
+                step = relativedelta(months=1)
+            elif recurrence == 'quarterly':
+                step = relativedelta(months=3)
+            elif recurrence == 'semi_annual':
+                step = relativedelta(months=6)
+            elif recurrence == 'annual':
+                step = relativedelta(years=1)
+            else:
+                step = relativedelta(months=1)
+            base = entry.date or today
+            next_d = base + step
+            while next_d <= today:
+                next_d = next_d + step
+            entry.next_due_date = next_d
+        if null_due:
+            db.session.commit()
+
+        # Find all recurring entries that are overdue for their next occurrence
+        due_entries = TaxEntry.query.filter(
+            TaxEntry.recurring == True,
+            TaxEntry.next_due_date.isnot(None),
+            TaxEntry.next_due_date <= today,
+        ).all()
+
+        for entry in due_entries:
+            try:
+                next_date = entry.next_due_date
+                recurrence = entry.recurrence_type or 'monthly'
+
+                # Determine relativedelta step
+                if recurrence == 'monthly':
+                    step = relativedelta(months=1)
+                elif recurrence == 'quarterly':
+                    step = relativedelta(months=3)
+                elif recurrence == 'semi_annual':
+                    step = relativedelta(months=6)
+                elif recurrence == 'annual':
+                    step = relativedelta(years=1)
+                else:
+                    step = relativedelta(months=1)
+
+                # Iterate: create an entry for each missed period up to today
+                while next_date <= today:
+                    # Avoid duplicate: check if an entry already exists on this date
+                    exists = TaxEntry.query.filter(
+                        TaxEntry.vehicle_id == entry.vehicle_id,
+                        TaxEntry.tax_type == entry.tax_type,
+                        TaxEntry.date == next_date,
+                        TaxEntry.id != entry.id,
+                    ).first()
+
+                    if not exists:
+                        next_occurrence = next_date + step
+                        new_entry = TaxEntry(
+                            user_id=entry.user_id,
+                            vehicle_id=entry.vehicle_id,
+                            date=next_date,
+                            amount=entry.amount,
+                            title=entry.title,
+                            description=entry.description,
+                            tax_type=entry.tax_type,
+                            tax_year=next_date.year,
+                            tax_period=entry.tax_period,
+                            status='paid',
+                            due_date=next_date,
+                            paid_date=next_date,
+                            reference_number=entry.reference_number,
+                            notes=entry.notes,
+                            recurring=True,
+                            recurrence_type=recurrence,
+                            next_due_date=next_occurrence,
+                            reminder_days=entry.reminder_days,
+                            insurance_policy_id=entry.insurance_policy_id,
+                        )
+                        db.session.add(new_entry)
+                        created_count += 1
+
+                    next_date = next_date + step
+
+                # Update the original entry's next_due_date to the next future date
+                entry.next_due_date = next_date
+
+            except Exception as e:
+                app.logger.error(f'Failed to process recurring tax entry {entry.id}: {e}')
+
+        if created_count:
+            db.session.commit()
+
+        app.logger.info(f'Recurring tax processing: created {created_count} new entries')

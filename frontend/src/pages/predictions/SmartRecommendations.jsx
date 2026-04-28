@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { vehicleApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import SeasonalChecklists from '../../components/recommendations/SeasonalChecklists'
+import { formatDate } from '../../utils/dateFormat'
 
 // SVG Icons
 const Icons = {
@@ -135,7 +136,7 @@ export default function SmartRecommendations() {
           vehicleName: vehicle.name,
           type: 'insurance_expiry',
           title: t('smartRecommendations.insuranceExpiry') || 'Insurance Expiry',
-          description: expiryDate.toLocaleDateString(),
+          description: formatDate(expiryDate),
           daysUntil,
           priority: daysUntil <= 14 ? 'high' : daysUntil <= 30 ? 'medium' : 'low',
           icon: Icons.shield,
@@ -157,7 +158,7 @@ export default function SmartRecommendations() {
           vehicleName: vehicle.name,
           type: 'tax_due',
           title: t('smartRecommendations.taxDue') || 'Tax Due',
-          description: dueDate.toLocaleDateString(),
+          description: formatDate(dueDate),
           daysUntil,
           priority: daysUntil <= 14 ? 'high' : daysUntil <= 30 ? 'medium' : 'low',
           icon: Icons.clock,

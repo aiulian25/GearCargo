@@ -87,6 +87,9 @@ services:
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
       - VAPID_SUBJECT=${VAPID_SUBJECT:-mailto:admin@gearcargo.local}
+      
+      # Worker count — capped to prevent OOM kills on many-core hosts
+      - GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}
     user: "${PUID:-1000}:${PGID:-1000}"
     read_only: true
     tmpfs:

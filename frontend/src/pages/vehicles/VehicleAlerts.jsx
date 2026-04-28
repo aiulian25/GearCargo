@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { vehicleApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
+import { formatDate } from '../../utils/dateFormat'
 
 // SVG Icons
 const Icons = {
@@ -194,7 +195,7 @@ export default function VehicleAlerts() {
           id: 'insurance',
           type: 'insurance_expiry',
           title: t('alerts.insuranceExpiry') || 'Insurance Expiry',
-          description: expiryDate.toLocaleDateString(),
+          description: formatDate(expiryDate),
           daysUntil,
           priority: daysUntil <= 14 ? 'high' : daysUntil <= 30 ? 'medium' : 'low',
           date: vehicle.insurance_expiry,
@@ -212,7 +213,7 @@ export default function VehicleAlerts() {
           id: 'tax',
           type: 'tax_due',
           title: t('alerts.taxDue') || 'Tax Due',
-          description: dueDate.toLocaleDateString(),
+          description: formatDate(dueDate),
           daysUntil,
           priority: daysUntil <= 14 ? 'high' : daysUntil <= 30 ? 'medium' : 'low',
           date: vehicle.tax_due_date,
@@ -249,7 +250,7 @@ export default function VehicleAlerts() {
           id: 'inspection',
           type: 'inspection',
           title: t('alerts.inspection') || 'Vehicle Inspection',
-          description: nextInspection.toLocaleDateString(),
+          description: formatDate(nextInspection),
           daysUntil,
           priority: daysUntil <= 14 ? 'high' : daysUntil <= 30 ? 'medium' : 'low',
         })

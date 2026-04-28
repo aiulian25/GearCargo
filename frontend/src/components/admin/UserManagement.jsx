@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { adminApi } from '../../services/api'
 import { useTranslation } from '../../contexts/LanguageContext'
+import { formatDateShort } from '../../utils/dateFormat'
 
 // Icons
 const Icons = {
@@ -193,14 +194,7 @@ export default function UserManagement() {
     }
   }
   
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '-'
-    return new Date(dateStr).toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    })
-  }
+  const formatDate = (dateStr) => formatDateShort(dateStr)
   
   return (
     <div className="space-y-4">

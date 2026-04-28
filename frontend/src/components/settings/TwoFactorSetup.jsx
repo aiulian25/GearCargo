@@ -8,6 +8,7 @@ import { jsPDF } from 'jspdf'
 import api from '../../services/api'
 import { useTranslation } from '../../contexts/LanguageContext'
 import { useAuth } from '../../contexts/AuthContext'
+import { formatDate, formatDateTime } from '../../utils/dateFormat'
 
 // Icons
 const Icons = {
@@ -243,7 +244,7 @@ export default function TwoFactorSetup({ isOpen, onClose, onSuccess, isEnabled =
     doc.setTextColor(102, 102, 102)
     const userEmail = localStorage.getItem('userEmail') || 'user@example.com'
     doc.text(`${t('common.email') || 'Email'}: ${userEmail}`, 20, 60)
-    doc.text(`${t('twoFactor.generatedOn') || 'Generated'}: ${new Date().toLocaleDateString()}`, 20, 68)
+    doc.text(`${t('twoFactor.generatedOn') || 'Generated'}: ${formatDate(new Date())}`, 20, 68)
     
     // Warning box
     doc.setFillColor(255, 243, 205) // Light yellow background
@@ -315,7 +316,7 @@ export default function TwoFactorSetup({ isOpen, onClose, onSuccess, isEnabled =
     doc.setTextColor(153, 153, 153)
     doc.setFontSize(8)
     doc.text('GearCargo - Vehicle Management App', 20, 280)
-    doc.text(`${t('twoFactor.documentGenerated') || 'Document generated'}: ${new Date().toLocaleString()}`, 20, 286)
+    doc.text(`${t('twoFactor.documentGenerated') || 'Document generated'}: ${formatDateTime(new Date())}`, 20, 286)
     
     // Save PDF
     const username = localStorage.getItem('username') || 'user'
