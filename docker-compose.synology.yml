@@ -121,7 +121,8 @@ services:
       # ProxyFix peels exactly this many hops from X-Forwarded-For to set request.remote_addr.
       #   0 — direct-bind (no proxy); 1 — one proxy (nginx/Traefik/Cloudflare); 2 — CDN + proxy.
       # Clients cannot spoof their IP by prepending entries to the left of XFF.
-      - TRUSTED_PROXY_COUNT=${TRUSTED_PROXY_COUNT:-1}    secrets:
+      - TRUSTED_PROXY_COUNT=${TRUSTED_PROXY_COUNT:-1}
+    secrets:
       - vapid_private_key
     volumes:
       # ── write paths ──────────────────────────────────────────────────────────
