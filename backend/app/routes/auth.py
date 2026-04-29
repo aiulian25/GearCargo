@@ -1223,6 +1223,7 @@ def login():
         device_blocked, blocked_device_record = BlockedDevice.is_blocked(user_agent, ip_address)
     except Exception as e:
         current_app.logger.error(f'Database error checking blocked device: {e}')
+        db.session.rollback()
         device_blocked = False
         blocked_device_record = None
     if device_blocked:
