@@ -307,7 +307,7 @@ def create_app(config_class=None):
         },
         x_content_type_options=True,
         x_xss_protection=True,
-        x_frame_options='DENY',  # I05: legacy browser clickjacking protection
+        frame_options='DENY',  # I05: legacy browser clickjacking protection
     )
 
     # Register blueprints
