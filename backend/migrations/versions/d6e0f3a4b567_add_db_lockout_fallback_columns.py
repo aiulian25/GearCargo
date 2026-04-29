@@ -21,16 +21,12 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column('users', sa.Column(
-        'failed_login_attempts',
-        sa.Integer(),
-        nullable=False,
-        server_default='0'
+    conn = op.get_bind()
+    conn.execute(sa.text(
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER NOT NULL DEFAULT 0"
     ))
-    op.add_column('users', sa.Column(
-        'locked_until',
-        sa.DateTime(),
-        nullable=True
+    conn.execute(sa.text(
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP"
     ))
 
 
