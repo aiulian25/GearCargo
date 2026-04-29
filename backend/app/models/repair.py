@@ -42,9 +42,9 @@ class RepairEntry(Entry):
         'polymorphic_identity': 'repair'
     }
     
-    def to_dict(self):
+    def to_dict(self, **kwargs):
         """Convert to dictionary."""
-        data = super().to_dict()
+        data = super().to_dict(**kwargs)
         data.update({
             'repair_type': self.repair_type,
             'repair_types': self.repair_types or ([self.repair_type] if self.repair_type else []),

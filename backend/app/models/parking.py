@@ -39,9 +39,9 @@ class ParkingEntry(Entry):
         'polymorphic_identity': 'parking'
     }
     
-    def to_dict(self):
+    def to_dict(self, **kwargs):
         """Convert to dictionary."""
-        data = super().to_dict()
+        data = super().to_dict(**kwargs)
         data.update({
             'parking_type': self.parking_type,
             'location': self.location,

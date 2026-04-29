@@ -42,9 +42,9 @@ class FuelEntry(Entry):
                 self.trip_distance = distance
                 self.fuel_efficiency = float(self.liters) / distance * 100
     
-    def to_dict(self):
+    def to_dict(self, **kwargs):
         """Convert to dictionary."""
-        data = super().to_dict()
+        data = super().to_dict(**kwargs)
         data.update({
             'liters': float(self.liters) if self.liters else None,
             'price_per_liter': float(self.price_per_liter) if self.price_per_liter else None,

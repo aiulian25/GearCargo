@@ -43,9 +43,9 @@ class ServiceEntry(Entry):
         'polymorphic_identity': 'service'
     }
     
-    def to_dict(self):
+    def to_dict(self, **kwargs):
         """Convert to dictionary."""
-        data = super().to_dict()
+        data = super().to_dict(**kwargs)
         data.update({
             'service_type': self.service_type,
             'service_types': self.service_types or ([self.service_type] if self.service_type else []),

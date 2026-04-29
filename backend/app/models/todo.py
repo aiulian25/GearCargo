@@ -63,7 +63,7 @@ class Todo(db.Model):
             return delta.days
         return None
     
-    def to_dict(self):
+    def to_dict(self, **kwargs):
         """Convert to dictionary."""
         return {
             'id': self.id,

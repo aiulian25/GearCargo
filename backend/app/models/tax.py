@@ -44,9 +44,9 @@ class TaxEntry(Entry):
     # Relationship to insurance policy
     insurance_policy = db.relationship('InsurancePolicy', foreign_keys=[insurance_policy_id], lazy='joined')
     
-    def to_dict(self):
+    def to_dict(self, **kwargs):
         """Convert to dictionary."""
-        data = super().to_dict()
+        data = super().to_dict(**kwargs)
         data.update({
             'tax_type': self.tax_type,
             'tax_year': self.tax_year,
