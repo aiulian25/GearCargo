@@ -11,19 +11,21 @@ import tarfile
 import zipfile
 import shutil
 import hashlib
+import ipaddress
 import tempfile
 import subprocess
 import uuid
 import re
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
+from urllib.parse import urlparse
 from flask import Blueprint, request, jsonify, current_app, send_file
 from sqlalchemy.engine.url import make_url
 from sqlalchemy import func
 
 from app import db
-from app.models import (User, Vehicle, Entry, FuelEntry, ServiceEntry, RepairEntry,
+from app.models import (Vehicle, Entry, FuelEntry, ServiceEntry, RepairEntry,
                        TaxEntry, ParkingEntry, Reminder, InsurancePolicy,
                        Attachment, Backup, BackupSchedule, Todo)
 from app.routes.auth import token_required, admin_required
@@ -33,6 +35,20 @@ backup_bp = Blueprint('backup', __name__)
 
 SYSTEM_BACKUP_VERSION = '3.0'
 SYSTEM_BACKUP_PREFIX = 'gearcargo_system_backup'
+
+
+def _safe_mime_from_meta(filename: str) -> str:
+    """Return a safe MIME type for an attachment filename sourced from backup metadata.
+
+    S13 fix: the file_type field in backup ZIP metadata is completely untrusted
+    (an attacker can craft a ZIP with file_type='text/html').  Re-derive the MIME
+    type from the filename extension using the canonical allowlist in attachments.py
+    instead.  Uses a lazy import to avoid a circular import at module load time.
+    """
+    # Lazy import — app.routes.attachments imports app.routes.auth which imports
+    # app, so a top-level cross-route import would create a circular dependency.
+    from app.routes.attachments import safe_attachment_mime
+    return safe_attachment_mime(filename or '')
 
 
 class BackupDestinationConfig:
@@ -78,6 +94,51 @@ def localized_message(message_key, default_message, **payload):
     }
     response.update(payload)
     return response
+
+
+# ── Backup export field filtering ─────────────────────────────────────────────
+# These fields are server-internal and must NOT appear in user backup files:
+#   - They reveal the DB schema / internal identifiers
+#   - They are runtime-computed values that cannot be portably stored
+#   - They contain server-specific URLs or processing-state flags
+#   - import_backup_data() never reads any of them, so stripping them has
+#     zero impact on restore fidelity (external, internal, or uploaded backup).
+_BACKUP_STRIP_FIELDS: frozenset = frozenset({
+    # Internal DB FK — always reassigned to the restoring user on import
+    'user_id',
+    # Server-side timestamps — not portable between deployments
+    'created_at', 'updated_at',
+    # Runtime booleans — recomputed on each API call
+    'is_overdue', 'days_until_due', 'days_until_expiry',
+    'is_active', 'is_expiring_soon',
+    # Relationship-resolved display values — not needed to reconstruct records
+    'vehicle_name', 'vehicle_distance_unit', 'full_name',
+    # Nested embedded objects — imported via their own top-level lists
+    'insurance_policy',   # embedded inside TaxEntry — not read by importer
+    # Server-specific URLs — will change between deployments
+    'url', 'download_url', 'view_url',
+    'photo', 'photo_url',             # vehicle photo reconstructed from ZIP
+    # CalDAV sync state — specific to this server
+    'calendar_sync', 'sync_conflict',
+    # Computed MIME / processing flags — re-derived from file content on restore
+    'is_image', 'is_pdf', 'ocr_processed', 'file_size_human',
+    # Redundant field aliases — import reads the canonical name instead
+    # NOTE: 'cost' (alias of amount) is intentionally NOT stripped here because
+    # the importer uses `entry_data.get('amount') or entry_data.get('cost')` —
+    # when amount is 0 (falsy), it falls back to cost. Stripping cost would
+    # restore 0-cost entries with amount=None instead of 0.
+    'type',   # SQLAlchemy polymorphic discriminator — not read by importer
+})
+
+
+def _for_backup(d: dict) -> dict:
+    """Return a copy of *d* with all internal/computed server fields removed.
+
+    Applied to every model dict before writing it into a backup archive.
+    The result still contains every field that ``import_backup_data`` reads,
+    so restore is fully lossless across external, internal, and uploaded backups.
+    """
+    return {k: v for k, v in d.items() if k not in _BACKUP_STRIP_FIELDS}
 
 
 def get_schedule_external_destinations(schedule):
@@ -251,7 +312,7 @@ def _cleanup_system_backups(frequency, keep_last=3):
 
 def create_system_backup_archive(admin_user, frequency='manual'):
     """Create a full-state backup archive containing DB dump and media."""
-    timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+    timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
     filename = f'{SYSTEM_BACKUP_PREFIX}_{frequency}_{timestamp}.tar.gz'
     system_folder = get_system_backup_folder()
     os.makedirs(system_folder, exist_ok=True)
@@ -262,7 +323,7 @@ def create_system_backup_archive(admin_user, frequency='manual'):
         'version': SYSTEM_BACKUP_VERSION,
         'backup_type': 'system_full',
         'frequency': frequency,
-        'created_at': datetime.utcnow().isoformat(),
+        'created_at': datetime.now(timezone.utc).isoformat(),
         'created_by': {
             'user_id': admin_user.id,
             'email': admin_user.email,
@@ -299,6 +360,34 @@ def _validated_archive_name(name):
     if normalized.startswith('../') or normalized == '..' or normalized.startswith('/'):
         raise ValueError('Backup archive contains an invalid path')
     return normalized
+
+
+def _safe_zip_filename(raw_filename, target_dir):
+    """Return a safe bare filename for a ZIP member, confined to *target_dir*.
+
+    Calling os.path.basename() strips every path component, defeating all
+    Zip Slip variants including '..', '../../etc/shadow', '/etc/passwd',
+    and mixed-separator tricks.  A secondary realpath() check is a
+    defence-in-depth guard in case the OS resolves the joined path outside
+    target_dir for any reason (e.g. a symlink already present on disk).
+
+    Raises ValueError on traversal attempts or invalid filenames so the
+    caller can skip the member and log a warning instead of aborting the
+    whole restore.
+    """
+    safe_name = os.path.basename(raw_filename)
+    if not safe_name or '\x00' in safe_name:
+        raise ValueError(
+            f'Backup archive contains an invalid filename: {raw_filename!r}'
+        )
+    # Confirm the resolved path stays inside target_dir (symlink-safe)
+    real_root = os.path.realpath(target_dir)
+    resolved = os.path.realpath(os.path.join(target_dir, safe_name))
+    if not resolved.startswith(real_root + os.sep) and resolved != real_root:
+        raise ValueError(
+            f'Backup archive contains a traversal path: {raw_filename!r}'
+        )
+    return safe_name
 
 
 def _extract_member_to_directory(archive, member, archive_prefix, target_root):
@@ -402,10 +491,17 @@ def restore_system_backup_archive(archive_path):
 
 
 def gather_user_data(user, include_attachments=True):
-    """Gather all user data for backup."""
+    """Gather all user data for backup.
+
+    Every model dict is filtered through ``_for_backup()`` before being added
+    to the export, removing server-internal fields (user_id, created_at, server
+    URLs, computed flags…) that would expose the DB schema if the backup file
+    were leaked. All fields that ``import_backup_data`` actually reads are
+    preserved, so restore remains fully lossless.
+    """
     export_data = {
         'version': '2.0',
-        'exported_at': datetime.utcnow().isoformat(),
+        'exported_at': datetime.now(timezone.utc).isoformat(),
         'user': {
             'email': user.email,
             'name': user.display_name,
@@ -422,55 +518,68 @@ def gather_user_data(user, include_attachments=True):
         'todos': [],
         'attachments': [],
     }
-    
+
     # Get all vehicles
     vehicles = Vehicle.query.filter_by(user_id=user.id).all()
-    
+
     for vehicle in vehicles:
-        vehicle_data = vehicle.to_dict()
-        
-        # Add entries for this vehicle
+        vehicle_data = _for_backup(vehicle.to_dict())
+
+        # include_attachments=False avoids embedding attachment metadata inside
+        # every entry row — attachments are collected in the top-level list below.
         vehicle_data['fuel_entries'] = [
-            e.to_dict() for e in FuelEntry.query.filter_by(vehicle_id=vehicle.id).all()
+            _for_backup(e.to_dict(include_attachments=False))
+            for e in FuelEntry.query.filter_by(vehicle_id=vehicle.id).all()
         ]
         vehicle_data['service_entries'] = [
-            e.to_dict() for e in ServiceEntry.query.filter_by(vehicle_id=vehicle.id).all()
+            _for_backup(e.to_dict(include_attachments=False))
+            for e in ServiceEntry.query.filter_by(vehicle_id=vehicle.id).all()
         ]
         vehicle_data['repair_entries'] = [
-            e.to_dict() for e in RepairEntry.query.filter_by(vehicle_id=vehicle.id).all()
+            _for_backup(e.to_dict(include_attachments=False))
+            for e in RepairEntry.query.filter_by(vehicle_id=vehicle.id).all()
         ]
         vehicle_data['tax_entries'] = [
-            e.to_dict() for e in TaxEntry.query.filter_by(vehicle_id=vehicle.id).all()
+            _for_backup(e.to_dict(include_attachments=False))
+            for e in TaxEntry.query.filter_by(vehicle_id=vehicle.id).all()
         ]
         vehicle_data['parking_entries'] = [
-            e.to_dict() for e in ParkingEntry.query.filter_by(vehicle_id=vehicle.id).all()
+            _for_backup(e.to_dict())
+            for e in ParkingEntry.query.filter_by(vehicle_id=vehicle.id).all()
         ]
-        
+
         export_data['vehicles'].append(vehicle_data)
-    
+
     # Get reminders
     export_data['reminders'] = [
-        r.to_dict() for r in Reminder.query.filter_by(user_id=user.id).all()
+        _for_backup(r.to_dict())
+        for r in Reminder.query.filter_by(user_id=user.id).all()
     ]
-    
-    # Get insurance policies
-    export_data['insurance_policies'] = [
-        p.to_dict() for p in InsurancePolicy.query.filter_by(user_id=user.id).all()
-    ]
-    
+
+    # Get insurance policies.
+    # Strip the nested 'attachments' array (embedded for frontend convenience)
+    # — it is not used by the importer and its content is already in the
+    # top-level attachments list if include_attachments is True.
+    export_data['insurance_policies'] = []
+    for p in InsurancePolicy.query.filter_by(user_id=user.id).all():
+        policy_dict = _for_backup(p.to_dict())
+        policy_dict.pop('attachments', None)   # drop frontend-only nested list
+        export_data['insurance_policies'].append(policy_dict)
+
     # Get todos
     try:
         export_data['todos'] = [
-            t.to_dict() for t in Todo.query.filter_by(user_id=user.id).all()
+            _for_backup(t.to_dict())
+            for t in Todo.query.filter_by(user_id=user.id).all()
         ]
-    except:
+    except Exception:
         export_data['todos'] = []
-    
+
     # Get attachments metadata (files added to zip separately)
     if include_attachments:
         attachments = Attachment.query.filter_by(user_id=user.id).all()
-        export_data['attachments'] = [a.to_dict() for a in attachments]
-    
+        export_data['attachments'] = [_for_backup(a.to_dict()) for a in attachments]
+
     return export_data
 
 
@@ -489,7 +598,7 @@ def create_backup_zip(user, include_attachments=True):
         # Add manifest
         manifest = {
             'version': '2.0',
-            'created_at': datetime.utcnow().isoformat(),
+            'created_at': datetime.now(timezone.utc).isoformat(),
             'app_name': current_app.config.get('APP_NAME', 'GearCargo'),
             'user_email': user.email,
             'user_name': user.display_name or user.username or '',
@@ -500,7 +609,6 @@ def create_backup_zip(user, include_attachments=True):
         
         # Add attachments if requested
         if include_attachments:
-            attachment_folder = get_attachment_folder()
             attachments = Attachment.query.filter_by(user_id=user.id).all()
             
             # Track physical files already added to avoid duplicating content
@@ -551,7 +659,7 @@ def save_backup_to_disk(user, zip_buffer, include_attachments=True):
     # Sanitise for filename safety
     safe_app = re.sub(r'[^\w\-]', '_', app_name)
     safe_user = re.sub(r'[^\w\-]', '_', user.display_name or user.username or user.email.split('@')[0])
-    timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+    timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
     filename = f'{safe_app}_{safe_user}_{timestamp}.zip'
     filepath = os.path.join(user_folder, filename)
     
@@ -563,6 +671,48 @@ def save_backup_to_disk(user, zip_buffer, include_attachments=True):
     file_size = os.path.getsize(filepath)
     
     return filename, filepath, file_size
+
+
+def _is_allowed_webdav_url(url: str) -> bool:
+    """Validate a WebDAV destination URL against SSRF risks (S09).
+
+    Rules:
+    - Scheme must be 'https' — no plain-HTTP WebDAV.
+    - IP address literals in private / loopback / link-local / reserved /
+      multicast ranges are blocked entirely.  This defeats direct SSRF via
+      cloud metadata endpoints (169.254.169.254, 100.100.100.200, fd00::ec2:…)
+      and RFC-1918 internal services.
+    - Hostname-based URLs whose DNS resolves to an internal IP at request time
+      (DNS rebinding) are not blocked here; the server's egress firewall is the
+      defence-in-depth for that vector.
+
+    Returns True only if the URL is safe to make an outbound HTTPS request to.
+    """
+    if not url:
+        return False
+
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+
+    if parsed.scheme != 'https':
+        return False
+
+    host = (parsed.hostname or '').lower()
+    if not host:
+        return False
+
+    # Block IP address literals in any internal or reserved range
+    try:
+        addr = ipaddress.ip_address(host)
+        if (addr.is_private or addr.is_loopback or addr.is_link_local
+                or addr.is_reserved or addr.is_multicast or addr.is_unspecified):
+            return False
+    except ValueError:
+        pass  # Not an IP literal — hostname, allow resolution
+
+    return True
 
 
 def _webdav_base_url(server_url):
@@ -680,7 +830,6 @@ def _chunked_webdav_upload(backup_data, schedule, filename, auth):
     # 3. Assemble — MOVE .file to final destination
     dest_url = _webdav_upload_url(schedule, filename)
     # Destination header needs the path portion only (absolute URI path)
-    from urllib.parse import urlparse
     dest_parsed = urlparse(dest_url)
     dest_path = dest_parsed.path
 
@@ -712,12 +861,12 @@ def send_to_external_server(backup_data, schedule, filename=None):
     if not schedule.external_enabled or not schedule.external_url:
         return None, "External backup not configured"
 
-    # Validate URL is HTTPS for security
-    if not schedule.external_url.startswith('https://'):
-        return None, "External URL must use HTTPS for security"
+    # S09: Validate URL is HTTPS and not targeting a private/internal IP range
+    if not _is_allowed_webdav_url(schedule.external_url):
+        return None, "External URL must be a public HTTPS address"
 
     if not filename:
-        filename = f'gearcargo_backup_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.zip'
+        filename = f'gearcargo_backup_{datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")}.zip'
 
     CHUNK_THRESHOLD = 50 * 1024 * 1024  # 50 MB
 
@@ -773,7 +922,7 @@ def send_to_external_server(backup_data, schedule, filename=None):
             return None, "Target folder does not exist and could not be created."
         elif response.status_code == 413:
             # Cloudflare or server rejected the size — fall back to chunked
-            current_app.logger.warning(f'Got 413 on direct PUT, falling back to chunked upload')
+            current_app.logger.warning('Got 413 on direct PUT, falling back to chunked upload')
             return _chunked_webdav_upload(backup_data, schedule, filename, auth)
         elif response.status_code == 423:
             return None, "File is locked on the server. Try again in a few minutes or unlock it in Nextcloud."
@@ -781,11 +930,15 @@ def send_to_external_server(backup_data, schedule, filename=None):
             return None, f"Server returned {response.status_code}: {response.text[:200]}"
 
     except requests.exceptions.SSLError as e:
-        return None, f"SSL certificate error: {str(e)}"
+        # S12: Log full SSL error server-side; return opaque message to client.
+        current_app.logger.warning(f'WebDAV SSL error to {schedule.external_url!r}: {e}')
+        return None, 'SSL certificate error. Check the server URL or disable strict SSL verification.'
     except requests.exceptions.Timeout:
-        return None, "Connection to external server timed out"
+        return None, 'Connection to external server timed out'
     except requests.exceptions.RequestException as e:
-        return None, f"Failed to connect to external server: {str(e)}"
+        # S12: Log full network error server-side; return opaque message to client.
+        current_app.logger.warning(f'WebDAV connection error to {schedule.external_url!r}: {e}')
+        return None, 'Failed to connect to external server. Check the URL and credentials.'
 
 
 def send_to_all_external_destinations(backup_data, schedule, filename=None):
@@ -832,7 +985,7 @@ def cleanup_old_backups(user_id, max_backups=10, retention_days=90):
     files.sort(key=lambda x: x[1], reverse=True)
     
     deleted = 0
-    cutoff_time = datetime.utcnow() - timedelta(days=retention_days)
+    cutoff_time = datetime.now(timezone.utc) - timedelta(days=retention_days)
     cutoff_timestamp = cutoff_time.timestamp()
     
     for i, (filepath, mtime) in enumerate(files):
@@ -985,7 +1138,7 @@ def export_data(current_user):
         backup_type='export',
         format=format_type,
         status='in_progress',
-        started_at=datetime.utcnow(),
+        started_at=datetime.now(timezone.utc),
     )
     db.session.add(backup)
     db.session.commit()
@@ -996,7 +1149,7 @@ def export_data(current_user):
             export_data = gather_user_data(current_user, include_attachments=False)
             
             backup.status = 'completed'
-            backup.completed_at = datetime.utcnow()
+            backup.completed_at = datetime.now(timezone.utc)
             backup.vehicles_count = len(export_data['vehicles'])
             backup.entries_count = sum(
                 len(v.get('fuel_entries', [])) +
@@ -1021,7 +1174,7 @@ def export_data(current_user):
                 buffer,
                 mimetype='application/json',
                 as_attachment=True,
-                download_name=f'gearcargo_export_{datetime.utcnow().strftime("%Y%m%d")}.json'
+                download_name=f'gearcargo_export_{datetime.now(timezone.utc).strftime("%Y%m%d")}.json'
             )
         
         else:
@@ -1032,7 +1185,7 @@ def export_data(current_user):
             attachments_count = len(export_data.get('attachments', []))
             
             backup.status = 'completed'
-            backup.completed_at = datetime.utcnow()
+            backup.completed_at = datetime.now(timezone.utc)
             backup.vehicles_count = len(export_data['vehicles'])
             backup.entries_count = sum(
                 len(v.get('fuel_entries', [])) +
@@ -1066,15 +1219,17 @@ def export_data(current_user):
                 zip_buffer,
                 mimetype='application/zip',
                 as_attachment=True,
-                download_name=f'gearcargo_backup_{datetime.utcnow().strftime("%Y%m%d")}.zip'
+                download_name=f'gearcargo_backup_{datetime.now(timezone.utc).strftime("%Y%m%d")}.zip'
             )
     
     except Exception as e:
         backup.status = 'failed'
-        backup.error_message = str(e)
-        backup.completed_at = datetime.utcnow()
+        # S12: Store a generic sentinel in the DB field — never expose raw exception
+        # text in API responses. Full details go to the server log only.
+        backup.error_message = 'Backup failed — see server log for details'
+        backup.completed_at = datetime.now(timezone.utc)
         db.session.commit()
-        current_app.logger.error(f'Backup export failed: {e}')
+        current_app.logger.error(f'Backup export failed: {e}', exc_info=True)
         return jsonify({'error': 'Backup failed. Please try again later.'}), 500
 
 
@@ -1160,12 +1315,14 @@ def import_lubelog(current_user):
     except ValueError as e:
         security_audit.data_import(current_user.id, current_user.email, 'lubelog', success=False)
         current_app.logger.error(f'LubeLogger import validation error: {e}')
-        return jsonify({'error': str(e)}), 400
+        # S12: ValueError from lubelog_import is always a safe user-facing validation
+        # message (e.g. "No vehicles found"). Still log it but pass through as-is.
+        return jsonify({'error': 'LubeLogger import validation failed. Check that the file is a valid LubeLogger backup ZIP.'}), 400
     except Exception as e:
         db.session.rollback()
         security_audit.data_import(current_user.id, current_user.email, 'lubelog', success=False)
         current_app.logger.error(f'LubeLogger import failed: {e}', exc_info=True)
-        return jsonify({'error': f'LubeLogger import failed: {type(e).__name__}: {e}'}), 500
+        return jsonify({'error': 'LubeLogger import failed. Please try again later.'}), 500
 
 
 def restore_from_json(user, file, merge_mode='merge'):
@@ -1269,11 +1426,22 @@ def restore_from_zip(user, file, merge_mode='merge'):
                 if len(parts) >= 3:
                     # Extract attachment_id and filename from path
                     old_id = parts[1]
-                    filename = parts[2]
-                    
-                    if not filename:  # Skip directory entries
+                    raw_filename = parts[2]
+
+                    if not raw_filename:  # Skip directory entries
                         continue
-                    
+
+                    # Zip Slip protection: strip path components and verify
+                    # the resolved path is confined to the attachment folder.
+                    try:
+                        filename = _safe_zip_filename(raw_filename, user_attachment_folder)
+                    except ValueError as exc:
+                        current_app.logger.warning(
+                            '[Security] Zip Slip attempt blocked during restore '
+                            'for user_id=%s: %s', user.id, exc
+                        )
+                        continue
+
                     # Build target path
                     new_filepath = os.path.join(user_attachment_folder, filename)
                     
@@ -1313,7 +1481,12 @@ def restore_from_zip(user, file, merge_mode='merge'):
                         filename=filename,
                         original_filename=att_meta.get('original_filename', filename),
                         filepath=new_filepath,
-                        file_type=att_meta.get('file_type'),
+                        # S13: Never trust the file_type from ZIP metadata —
+                        # a crafted archive could store 'text/html' / 'image/svg+xml'
+                        # and cause XSS when the file is later served inline.
+                        # Re-derive from the original filename extension using the
+                        # canonical allowlist in attachments.py.
+                        file_type=_safe_mime_from_meta(att_meta.get('original_filename') or filename),
                         file_size=len(content),
                         description=att_meta.get('description'),
                         category=att_meta.get('category'),
@@ -1458,7 +1631,7 @@ def import_backup_data(user, backup_data, merge_mode='merge'):
             old_entry_id = entry_data.get('id')
             # Parse date - handle both 'date' and 'entry_date' field names for compatibility
             date_str = entry_data.get('date') or entry_data.get('entry_date')
-            entry_date = datetime.fromisoformat(date_str).date() if date_str else datetime.utcnow().date()
+            entry_date = datetime.fromisoformat(date_str).date() if date_str else datetime.now(timezone.utc).date()
             amount = entry_data.get('amount') or entry_data.get('total_price') or entry_data.get('total_cost')
             
             # Deduplication: skip if identical entry exists
@@ -1492,7 +1665,7 @@ def import_backup_data(user, backup_data, merge_mode='merge'):
         for entry_data in vehicle_data.get('service_entries', []):
             old_entry_id = entry_data.get('id')
             date_str = entry_data.get('date') or entry_data.get('entry_date')
-            entry_date = datetime.fromisoformat(date_str).date() if date_str else datetime.utcnow().date()
+            entry_date = datetime.fromisoformat(date_str).date() if date_str else datetime.now(timezone.utc).date()
             amount = entry_data.get('amount') or entry_data.get('cost')
             
             existing = _entry_exists(ServiceEntry, user.id, vehicle.id, entry_date, amount)
@@ -1523,7 +1696,7 @@ def import_backup_data(user, backup_data, merge_mode='merge'):
         for entry_data in vehicle_data.get('repair_entries', []):
             old_entry_id = entry_data.get('id')
             date_str = entry_data.get('date') or entry_data.get('entry_date')
-            entry_date = datetime.fromisoformat(date_str).date() if date_str else datetime.utcnow().date()
+            entry_date = datetime.fromisoformat(date_str).date() if date_str else datetime.now(timezone.utc).date()
             amount = entry_data.get('amount') or entry_data.get('cost')
             
             existing = _entry_exists(RepairEntry, user.id, vehicle.id, entry_date, amount)
@@ -1554,7 +1727,7 @@ def import_backup_data(user, backup_data, merge_mode='merge'):
         for entry_data in vehicle_data.get('tax_entries', []):
             old_entry_id = entry_data.get('id')
             date_str = entry_data.get('date') or entry_data.get('entry_date')
-            entry_date = datetime.fromisoformat(date_str).date() if date_str else datetime.utcnow().date()
+            entry_date = datetime.fromisoformat(date_str).date() if date_str else datetime.now(timezone.utc).date()
             amount = entry_data.get('amount') or entry_data.get('cost')
             
             existing = _entry_exists(TaxEntry, user.id, vehicle.id, entry_date, amount)
@@ -1604,7 +1777,7 @@ def import_backup_data(user, backup_data, merge_mode='merge'):
         for entry_data in vehicle_data.get('parking_entries', []):
             old_entry_id = entry_data.get('id')
             date_str = entry_data.get('date') or entry_data.get('entry_date')
-            entry_date = datetime.fromisoformat(date_str).date() if date_str else datetime.utcnow().date()
+            entry_date = datetime.fromisoformat(date_str).date() if date_str else datetime.now(timezone.utc).date()
             amount = entry_data.get('amount') or entry_data.get('cost')
             
             existing = _entry_exists(ParkingEntry, user.id, vehicle.id, entry_date, amount)
@@ -1668,8 +1841,8 @@ def import_backup_data(user, backup_data, merge_mode='merge'):
         old_vehicle_id = policy_data.get('vehicle_id')
         if old_vehicle_id and old_vehicle_id in vehicle_id_map:
             vehicle_id = vehicle_id_map[old_vehicle_id]
-        elif vehicles:
-            vehicle_id = vehicles[0].id
+        elif vehicle_id_map:
+            vehicle_id = next(iter(vehicle_id_map.values()))
         
         if vehicle_id:
             # Deduplication: check by provider + start_date + vehicle
@@ -1907,10 +2080,10 @@ def update_backup_schedule(current_user):
         if not isinstance(hour, int) or hour < 0 or hour > 23:
             return jsonify({'error': 'hour must be 0-23'}), 400
     
-    # Validate external URL is HTTPS
+    # S09: Validate external URL is HTTPS and not targeting a private/internal IP
     if data.get('external_enabled') and data.get('external_url'):
-        if not data['external_url'].startswith('https://'):
-            return jsonify({'error': 'External URL must use HTTPS for security'}), 400
+        if not _is_allowed_webdav_url(data['external_url']):
+            return jsonify({'error': 'External URL must be a public HTTPS address'}), 400
 
     destinations_payload = data.get('external_destinations')
     if destinations_payload is not None:
@@ -1949,8 +2122,8 @@ def update_backup_schedule(current_user):
             url = (destination.get('external_url') or destination.get('url') or '').strip()
             if not url:
                 return jsonify({'error': f'Destination at index {index} is missing external_url'}), 400
-            if not url.startswith('https://'):
-                return jsonify({'error': f'Destination at index {index} must use HTTPS'}), 400
+            if not _is_allowed_webdav_url(url):  # S09: blocks private IPs
+                return jsonify({'error': f'Destination at index {index} URL must be a public HTTPS address'}), 400
 
             api_key = str(destination.get('external_api_key') or destination.get('api_key') or '').strip()
             existing_destination = existing_by_id.get(destination_id) or existing_by_url.get(url)
@@ -2018,7 +2191,7 @@ def run_backup_now(current_user):
         backup_type='manual',
         format='zip',
         status='in_progress',
-        started_at=datetime.utcnow(),
+        started_at=datetime.now(timezone.utc),
     )
     db.session.add(backup)
     db.session.commit()
@@ -2063,7 +2236,7 @@ def run_backup_now(current_user):
                     backup.error_message = f"Backup saved locally, but external upload failed: {external_error}"
         
         backup.status = 'completed'
-        backup.completed_at = datetime.utcnow()
+        backup.completed_at = datetime.now(timezone.utc)
         
         # Cleanup old backups
         schedule = BackupSchedule.query.filter_by(user_id=current_user.id).first()
@@ -2091,14 +2264,15 @@ def run_backup_now(current_user):
     
     except Exception as e:
         backup.status = 'failed'
-        backup.error_message = str(e)
-        backup.completed_at = datetime.utcnow()
+        # S12: Never store raw exception text in the DB — it is returned via to_dict().
+        backup.error_message = 'Backup failed — see server log for details'
+        backup.completed_at = datetime.now(timezone.utc)
         try:
             db.session.commit()
         except Exception:
             db.session.rollback()
         current_app.logger.error(f'Manual backup failed: {e}', exc_info=True)
-        return jsonify({'error': f'Backup failed: {type(e).__name__}: {e}'}), 500
+        return jsonify({'error': 'Backup failed. Please try again later.'}), 500
 
 
 @backup_bp.route('/send-external', methods=['POST'])
@@ -2157,7 +2331,7 @@ def send_latest_to_external(current_user):
         })
     except Exception as e:
         current_app.logger.error(f'Send to external failed: {e}', exc_info=True)
-        return jsonify({'error': f'Failed: {str(e)}'}), 500
+        return jsonify({'error': 'Failed to send backup to external destination. Please try again later.'}), 500
 
 
 @backup_bp.route('/external/test', methods=['POST'])
@@ -2171,7 +2345,6 @@ def test_external_connection(current_user):
 
     url = data['url']
     api_key = data.get('api_key', '')
-    path = data.get('path', '/GearCargo')
 
     # Fall back to stored credentials if not provided
     if not api_key:
@@ -2179,9 +2352,9 @@ def test_external_connection(current_user):
         if schedule and schedule.external_api_key:
             api_key = schedule.external_api_key
 
-    # Validate HTTPS
-    if not url.startswith('https://'):
-        return jsonify({'error': 'URL must use HTTPS for security'}), 400
+    # S09: Validate HTTPS and not targeting private/internal IP range
+    if not _is_allowed_webdav_url(url):
+        return jsonify({'error': 'URL must be a public HTTPS address'}), 400
 
     # Build auth tuple
     if ':' in api_key:
@@ -2252,8 +2425,8 @@ def browse_external_folders(current_user):
     if not api_key:
         return jsonify({'error': 'API Key is required'}), 400
 
-    if not url.startswith('https://'):
-        return jsonify({'error': 'URL must use HTTPS'}), 400
+    if not _is_allowed_webdav_url(url):  # S09
+        return jsonify({'error': 'URL must be a public HTTPS address'}), 400
 
     # Build auth
     if ':' in api_key:
@@ -2314,8 +2487,8 @@ def browse_external_folders(current_user):
         return jsonify({'folders': sorted(folders), 'current_path': path})
 
     except requests.exceptions.RequestException as e:
-        current_app.logger.warning(f'WebDAV browse failed: {e}')
-        return jsonify({'error': f'Failed to browse: {str(e)}'}), 400
+        current_app.logger.warning(f'WebDAV browse (folders) failed: {e}')
+        return jsonify({'error': 'Failed to browse external server. Check the URL, path, and credentials.'}), 400
 
 
 @backup_bp.route('/external/files', methods=['POST'])
@@ -2340,8 +2513,8 @@ def browse_external_files(current_user):
     if not api_key:
         return jsonify({'error': 'API Key is required'}), 400
 
-    if not url.startswith('https://'):
-        return jsonify({'error': 'URL must use HTTPS'}), 400
+    if not _is_allowed_webdav_url(url):  # S09
+        return jsonify({'error': 'URL must be a public HTTPS address'}), 400
 
     # Build auth
     if ':' in api_key:
@@ -2398,8 +2571,8 @@ def browse_external_files(current_user):
         return jsonify({'files': files, 'path': path})
 
     except requests.exceptions.RequestException as e:
-        current_app.logger.warning(f'WebDAV file browse failed: {e}')
-        return jsonify({'error': f'Failed to browse: {str(e)}'}), 400
+        current_app.logger.warning(f'WebDAV browse (files) failed: {e}')
+        return jsonify({'error': 'Failed to browse external server. Check the URL, path, and credentials.'}), 400
 
 
 @backup_bp.route('/external/restore', methods=['POST'])
@@ -2428,8 +2601,8 @@ def restore_from_external(current_user):
     if not url or not api_key:
         return jsonify({'error': 'External backup credentials not configured'}), 400
 
-    if not url.startswith('https://'):
-        return jsonify({'error': 'URL must use HTTPS'}), 400
+    if not _is_allowed_webdav_url(url):  # S09
+        return jsonify({'error': 'URL must be a public HTTPS address'}), 400
 
     # Build auth
     if ':' in api_key:
@@ -2525,7 +2698,19 @@ def restore_from_external(current_user):
                     parts = name.split('/')
                     if len(parts) >= 3 and parts[2]:
                         old_id = parts[1]
-                        att_filename = parts[2]
+                        # Zip Slip protection: strip path components and verify
+                        # the resolved path is confined to the attachment folder.
+                        try:
+                            att_filename = _safe_zip_filename(
+                                parts[2], user_attachment_folder
+                            )
+                        except ValueError as exc:
+                            current_app.logger.warning(
+                                '[Security] Zip Slip attempt blocked during '
+                                'external restore for user_id=%s: %s',
+                                current_user.id, exc
+                            )
+                            continue
                         content = zf.read(name)
                         new_filepath = os.path.join(user_attachment_folder, att_filename)
                         with open(new_filepath, 'wb') as f:
@@ -2540,7 +2725,12 @@ def restore_from_external(current_user):
                             filename=att_filename,
                             original_filename=att_meta.get('original_filename', att_filename),
                             filepath=new_filepath,
-                            file_type=att_meta.get('file_type'),
+                            # S13: Never trust the file_type from ZIP metadata —
+                            # a crafted archive could store 'text/html' / 'image/svg+xml'
+                            # and cause XSS when the file is later served inline.
+                            # Re-derive from the original filename extension using the
+                            # canonical allowlist in attachments.py.
+                            file_type=_safe_mime_from_meta(att_meta.get('original_filename') or att_filename),
                             file_size=len(content),
                             description=att_meta.get('description'),
                             category=att_meta.get('category'),
@@ -2568,16 +2758,16 @@ def restore_from_external(current_user):
         })
 
     except requests.exceptions.Timeout:
-        return jsonify({'error': 'Download timed out'}), 504
+        return jsonify({'error': 'Download timed out. The external server did not respond in time.'}), 504
     except requests.exceptions.RequestException as e:
         current_app.logger.error(f'External restore download failed: {e}')
-        return jsonify({'error': f'Failed to download: {str(e)}'}), 400
+        return jsonify({'error': 'Failed to download backup from external server. Check the connection settings.'}), 400
     except zipfile.BadZipFile:
-        return jsonify({'error': 'Downloaded file is not a valid ZIP'}), 400
+        return jsonify({'error': 'Downloaded file is not a valid ZIP backup.'}), 400
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f'External restore failed: {e}', exc_info=True)
-        return jsonify({'error': f'Restore failed: {str(e)}'}), 500
+        return jsonify({'error': 'Restore failed. Please try again later.'}), 500
 
 
 @backup_bp.route('/upload', methods=['POST'])
@@ -2615,7 +2805,7 @@ def upload_backup(current_user):
         # Don't overwrite existing
         if os.path.exists(filepath):
             base, ext = os.path.splitext(safe_name)
-            safe_name = f'{base}_{datetime.utcnow().strftime("%H%M%S")}{ext}'
+            safe_name = f'{base}_{datetime.now(timezone.utc).strftime("%H%M%S")}{ext}'
             filepath = os.path.join(user_folder, safe_name)
 
         with open(filepath, 'wb') as f:

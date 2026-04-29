@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { vehicleApi } from '../../services/api'
-import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
+import { useTranslation } from '../../contexts/LanguageContext'
 import SeasonalChecklists from '../../components/recommendations/SeasonalChecklists'
 import { formatDate } from '../../utils/dateFormat'
 
@@ -54,8 +54,6 @@ const Icons = {
 
 export default function SmartRecommendations() {
   const { t } = useTranslation()
-  const { formatCurrency } = useCurrency()
-  const [vehicles, setVehicles] = useState([])
   const [recommendations, setRecommendations] = useState([])
   const [isLoading, setIsLoading] = useState(true)
 
@@ -65,7 +63,6 @@ export default function SmartRecommendations() {
         // Fetch all vehicles
         const vehiclesRes = await vehicleApi.getAll()
         const vehiclesList = vehiclesRes.data.vehicles || []
-        setVehicles(vehiclesList)
 
         // Fetch stats for each vehicle to get predictions
         const allRecommendations = []

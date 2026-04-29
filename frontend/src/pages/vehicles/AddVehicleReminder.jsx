@@ -74,9 +74,7 @@ export default function AddVehicleReminder() {
             notes: entry.notes || '',
           })
           
-          // Store existing attachments
           if (entry.attachments && entry.attachments.length > 0) {
-            setExistingAttachments(entry.attachments)
           }
         }
       } catch (error) {

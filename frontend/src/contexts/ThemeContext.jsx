@@ -46,9 +46,8 @@ export function ThemeProvider({ children }) {
       console.warn('Failed to save theme to IndexedDB:', error)
     }
     
-    // Sync to backend if authenticated
-    const token = localStorage.getItem('access_token')
-    if (token) {
+    // Sync to backend if authenticated (S05 — check non-secret flag, not token)
+    if (localStorage.getItem('auth_session')) {
       try {
         await api.put('/auth/me', { theme: newTheme })
       } catch (error) {

@@ -3,7 +3,7 @@ GearCargo - Vehicles Routes
 """
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, current_app
 from sqlalchemy import func
 
@@ -70,7 +70,7 @@ def archive_vehicle(current_user, vehicle_id):
         return jsonify({'error': 'Vehicle is already archived'}), 400
 
     vehicle.archived = True
-    vehicle.archived_at = datetime.utcnow()
+    vehicle.archived_at = datetime.now(timezone.utc)
 
     # Cancel all active insurance policies for this vehicle
     try:
@@ -81,7 +81,7 @@ def archive_vehicle(current_user, vehicle_id):
         ).all()
         for policy in active_policies:
             policy.status = 'cancelled'
-            policy.end_date = datetime.utcnow().date()
+            policy.end_date = datetime.now(timezone.utc).date()
             policy.auto_renew = False
     except Exception as e:
         current_app.logger.warning(f'Failed to cancel insurance policies on archive: {e}')
@@ -334,236 +334,348 @@ def get_vehicle_stats(current_user, vehicle_id):
     if not vehicle:
         return jsonify({'error': 'Vehicle not found'}), 404
     
-    from datetime import datetime, timedelta
-    from sqlalchemy import extract
-    
+    from datetime import datetime
+    from sqlalchemy import func, extract
+
     # Current date info
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     today = now.date()  # Convert to date for comparison with entry dates
     current_year = now.year
     current_month = now.month
-    
-    # Get all entries
-    fuel_entries = FuelEntry.query.filter_by(vehicle_id=vehicle_id).all()
-    service_entries = ServiceEntry.query.filter_by(vehicle_id=vehicle_id).all()
-    repair_entries = RepairEntry.query.filter_by(vehicle_id=vehicle_id).all()
-    
-    # Filter to only past/today service entries (exclude future scheduled services)
-    past_service_entries = [e for e in service_entries if e.date and e.date <= today]
-    
-    # Get parking and tax entries if they exist
+
+    # ------------------------------------------------------------------
+    # FUEL — DB-level aggregates; zero rows fetched into Python memory
+    # ------------------------------------------------------------------
+    total_fuel_cost = float(
+        db.session.query(func.coalesce(func.sum(FuelEntry.total_price), 0))
+        .filter(FuelEntry.vehicle_id == vehicle_id)
+        .scalar()
+    )
+    ytd_fuel_cost = float(
+        db.session.query(func.coalesce(func.sum(FuelEntry.total_price), 0))
+        .filter(
+            FuelEntry.vehicle_id == vehicle_id,
+            extract('year', FuelEntry.date) == current_year,
+        )
+        .scalar()
+    )
+    fuel_month_cost = float(
+        db.session.query(func.coalesce(func.sum(FuelEntry.total_price), 0))
+        .filter(
+            FuelEntry.vehicle_id == vehicle_id,
+            extract('year', FuelEntry.date) == current_year,
+            extract('month', FuelEntry.date) == current_month,
+        )
+        .scalar()
+    )
+    fuel_count = int(
+        db.session.query(func.count(FuelEntry.id))
+        .filter(FuelEntry.vehicle_id == vehicle_id)
+        .scalar() or 0
+    )
+
+    # ------------------------------------------------------------------
+    # SERVICE — aggregate for totals/counts; past-only (date <= today)
+    # ------------------------------------------------------------------
+    total_service_cost = float(
+        db.session.query(func.coalesce(func.sum(ServiceEntry.amount), 0))
+        .filter(ServiceEntry.vehicle_id == vehicle_id, ServiceEntry.date <= today)
+        .scalar()
+    )
+    service_count = int(
+        db.session.query(func.count(ServiceEntry.id))
+        .filter(ServiceEntry.vehicle_id == vehicle_id, ServiceEntry.date <= today)
+        .scalar() or 0
+    )
+    service_month_cost = float(
+        db.session.query(func.coalesce(func.sum(ServiceEntry.amount), 0))
+        .filter(
+            ServiceEntry.vehicle_id == vehicle_id,
+            ServiceEntry.date <= today,
+            extract('year', ServiceEntry.date) == current_year,
+            extract('month', ServiceEntry.date) == current_month,
+        )
+        .scalar()
+    )
+    service_ytd_cost = float(
+        db.session.query(func.coalesce(func.sum(ServiceEntry.amount), 0))
+        .filter(
+            ServiceEntry.vehicle_id == vehicle_id,
+            ServiceEntry.date <= today,
+            extract('year', ServiceEntry.date) == current_year,
+        )
+        .scalar()
+    )
+
+    # ------------------------------------------------------------------
+    # REPAIR — DB-level aggregates
+    # ------------------------------------------------------------------
+    total_repair_cost = float(
+        db.session.query(func.coalesce(func.sum(RepairEntry.amount), 0))
+        .filter(RepairEntry.vehicle_id == vehicle_id)
+        .scalar()
+    )
+    repair_count = int(
+        db.session.query(func.count(RepairEntry.id))
+        .filter(RepairEntry.vehicle_id == vehicle_id)
+        .scalar() or 0
+    )
+    repair_month_cost = float(
+        db.session.query(func.coalesce(func.sum(RepairEntry.amount), 0))
+        .filter(
+            RepairEntry.vehicle_id == vehicle_id,
+            extract('year', RepairEntry.date) == current_year,
+            extract('month', RepairEntry.date) == current_month,
+        )
+        .scalar()
+    )
+    repair_ytd_cost = float(
+        db.session.query(func.coalesce(func.sum(RepairEntry.amount), 0))
+        .filter(
+            RepairEntry.vehicle_id == vehicle_id,
+            extract('year', RepairEntry.date) == current_year,
+        )
+        .scalar()
+    )
+
+    # ------------------------------------------------------------------
+    # PARKING — DB-level aggregates (model may not exist on all installs)
+    # ------------------------------------------------------------------
+    parking_costs = 0.0
+    parking_month_cost = 0.0
+    parking_ytd_cost = 0.0
     try:
         from app.models.parking import ParkingEntry
-        parking_entries = ParkingEntry.query.filter_by(vehicle_id=vehicle_id).all()
-        parking_costs = sum(float(e.amount or 0) for e in parking_entries)
-    except:
-        parking_costs = 0
-    
+        parking_costs = float(
+            db.session.query(func.coalesce(func.sum(ParkingEntry.amount), 0))
+            .filter(ParkingEntry.vehicle_id == vehicle_id)
+            .scalar()
+        )
+        parking_month_cost = float(
+            db.session.query(func.coalesce(func.sum(ParkingEntry.amount), 0))
+            .filter(
+                ParkingEntry.vehicle_id == vehicle_id,
+                extract('year', ParkingEntry.date) == current_year,
+                extract('month', ParkingEntry.date) == current_month,
+            )
+            .scalar()
+        )
+        parking_ytd_cost = float(
+            db.session.query(func.coalesce(func.sum(ParkingEntry.amount), 0))
+            .filter(
+                ParkingEntry.vehicle_id == vehicle_id,
+                extract('year', ParkingEntry.date) == current_year,
+            )
+            .scalar()
+        )
+    except Exception:
+        pass
+
+    # ------------------------------------------------------------------
+    # TAX — DB-level aggregates
+    # ------------------------------------------------------------------
+    tax_costs = 0.0
+    ytd_tax_costs = 0.0
+    tax_month_cost = 0.0
     try:
         from app.models.tax import TaxEntry
-        tax_entries = TaxEntry.query.filter_by(vehicle_id=vehicle_id).all()
-        tax_costs = sum(float(e.amount or 0) for e in tax_entries)  # all-time for total_costs
-        ytd_tax_costs = sum(float(e.amount or 0) for e in tax_entries if e.date and e.date.year == current_year)
-    except:
-        tax_costs = 0
-        ytd_tax_costs = 0
-    
-    # Get insurance policies
+        tax_costs = float(
+            db.session.query(func.coalesce(func.sum(TaxEntry.amount), 0))
+            .filter(TaxEntry.vehicle_id == vehicle_id)
+            .scalar()
+        )
+        ytd_tax_costs = float(
+            db.session.query(func.coalesce(func.sum(TaxEntry.amount), 0))
+            .filter(
+                TaxEntry.vehicle_id == vehicle_id,
+                extract('year', TaxEntry.date) == current_year,
+            )
+            .scalar()
+        )
+        tax_month_cost = float(
+            db.session.query(func.coalesce(func.sum(TaxEntry.amount), 0))
+            .filter(
+                TaxEntry.vehicle_id == vehicle_id,
+                extract('year', TaxEntry.date) == current_year,
+                extract('month', TaxEntry.date) == current_month,
+            )
+            .scalar()
+        )
+    except Exception:
+        pass
+
+    # ------------------------------------------------------------------
+    # INSURANCE — bounded .all() (always < ~20 policies per vehicle).
+    # Complex frequency-based logic cannot be expressed in simple SQL.
+    # ------------------------------------------------------------------
+    insurance_policies = []
+    insurance_annual_cost = 0.0
     try:
         from app.models.insurance import InsurancePolicy
         insurance_policies = InsurancePolicy.query.filter_by(vehicle_id=vehicle_id).all()
-        insurance_annual_cost = 0
         for policy in insurance_policies:
             premium = float(policy.premium or 0)
             frequency = policy.payment_frequency or 'annual'
-            # Calculate annual for total costs
             if frequency == 'monthly':
                 insurance_annual_cost += premium * 12
             elif frequency == 'quarterly':
                 insurance_annual_cost += premium * 4
             elif frequency in ('semi-annual', 'semi_annual'):
                 insurance_annual_cost += premium * 2
-            else:  # annual/yearly
+            else:  # annual/yearly/one_time
                 insurance_annual_cost += premium
-    except:
-        insurance_policies = []
-        insurance_annual_cost = 0
-    
-    # Calculate totals (use past_service_entries to exclude future scheduled services)
-    total_fuel_cost = sum(float(e.total_price or 0) for e in fuel_entries)
-    ytd_fuel_cost = sum(float(e.total_price or 0) for e in fuel_entries if e.date and e.date.year == current_year)
-    total_service_cost = sum(float(e.amount or 0) for e in past_service_entries)
-    total_repair_cost = sum(float(e.amount or 0) for e in repair_entries)
-    total_costs = total_fuel_cost + total_service_cost + total_repair_cost + parking_costs + tax_costs + insurance_annual_cost
-    
-    # Calculate this month's costs (use past_service_entries)
-    costs_this_month = 0
-    monthly_insurance_cost = 0  # Track insurance separately for this month
-    
-    for e in fuel_entries:
-        if e.date and e.date.year == current_year and e.date.month == current_month:
-            costs_this_month += float(e.total_price or 0)
-    for e in past_service_entries:
-        if e.date and e.date.year == current_year and e.date.month == current_month:
-            costs_this_month += float(e.amount or 0)
-    for e in repair_entries:
-        if e.date and e.date.year == current_year and e.date.month == current_month:
-            costs_this_month += float(e.amount or 0)
-    
-    # Add parking costs for this month
-    try:
-        for e in parking_entries:
-            if e.date and e.date.year == current_year and e.date.month == current_month:
-                costs_this_month += float(e.amount or 0)
-    except:
+    except Exception:
         pass
-    
-    # Add tax costs for this month
-    try:
-        for e in tax_entries:
-            if e.date and e.date.year == current_year and e.date.month == current_month:
-                costs_this_month += float(e.amount or 0)
-    except:
-        pass
-    
-    # Add insurance costs for this month based on payment frequency
-    # Only include if the policy is active in the current month
-    current_date = today
+
+    # ------------------------------------------------------------------
+    # DERIVED TOTALS (no iteration needed — all from DB scalars above)
+    # ------------------------------------------------------------------
+    total_costs = (
+        total_fuel_cost + total_service_cost + total_repair_cost
+        + parking_costs + tax_costs + insurance_annual_cost
+    )
+
+    # --- This month's costs ---
+    monthly_insurance_cost = 0.0
+    costs_this_month = (
+        fuel_month_cost + service_month_cost + repair_month_cost
+        + parking_month_cost + tax_month_cost
+    )
     for policy in insurance_policies:
         if not policy.start_date:
             continue
-        
-        # Check if policy is active (started and not ended)
-        policy_started = (policy.start_date.year < current_year or 
-                         (policy.start_date.year == current_year and policy.start_date.month <= current_month))
-        policy_ended = (policy.end_date and 
-                       (policy.end_date.year < current_year or 
-                        (policy.end_date.year == current_year and policy.end_date.month < current_month)))
-        
+        policy_started = (
+            policy.start_date.year < current_year
+            or (policy.start_date.year == current_year and policy.start_date.month <= current_month)
+        )
+        policy_ended = policy.end_date and (
+            policy.end_date.year < current_year
+            or (policy.end_date.year == current_year and policy.end_date.month < current_month)
+        )
         if not policy_started or policy_ended:
             continue
-        
         premium = float(policy.premium or 0)
         frequency = policy.payment_frequency or 'annual'
-        
         if frequency == 'monthly':
-            # Monthly: only count if today's date >= the payment day-of-month
             payment_day = policy.start_date.day
             if today.day >= payment_day:
                 monthly_insurance_cost += premium
                 costs_this_month += premium
         elif frequency == 'quarterly':
-            # Quarterly: add premium every 3 months from start date
             start_month = policy.start_date.month
             months_diff = (current_year - policy.start_date.year) * 12 + (current_month - start_month)
             if months_diff >= 0 and months_diff % 3 == 0:
                 monthly_insurance_cost += premium
                 costs_this_month += premium
         elif frequency in ('semi-annual', 'semi_annual'):
-            # Semi-annual: add premium every 6 months from start date
             start_month = policy.start_date.month
             months_diff = (current_year - policy.start_date.year) * 12 + (current_month - start_month)
             if months_diff >= 0 and months_diff % 6 == 0:
                 monthly_insurance_cost += premium
                 costs_this_month += premium
         elif frequency in ('annual', 'yearly', 'one_time'):
-            # Annual/one-time: add premium only in the start month
             if policy.start_date.year == current_year and policy.start_date.month == current_month:
                 monthly_insurance_cost += premium
                 costs_this_month += premium
-    
-    # YTD costs (Year To Date) - use past_service_entries
-    ytd_spent = 0
-    for e in fuel_entries:
-        if e.date and e.date.year == current_year:
-            ytd_spent += float(e.total_price or 0)
-    for e in past_service_entries:
-        if e.date and e.date.year == current_year:
-            ytd_spent += float(e.amount or 0)
-    for e in repair_entries:
-        if e.date and e.date.year == current_year:
-            ytd_spent += float(e.amount or 0)
-    
-    # Add parking YTD
-    try:
-        for e in parking_entries:
-            if e.date and e.date.year == current_year:
-                ytd_spent += float(e.amount or 0)
-    except:
-        pass
-    
-    # Add tax YTD
-    ytd_spent += ytd_tax_costs
-    
-    # Add insurance YTD costs based on payment frequency
-    ytd_insurance_costs = 0
+
+    # --- YTD costs ---
+    ytd_insurance_costs = 0.0
     for policy in insurance_policies:
-        if policy.start_date:
-            premium = float(policy.premium or 0)
-            frequency = policy.payment_frequency or 'annual'
-            # Calculate how many payments have been made this year
-            if frequency == 'monthly':
-                # Count months from January or policy start up to the last paid month
-                # Only count current month if the payment day has already occurred
-                payment_day = policy.start_date.day
-                paid_through_month = current_month if today.day >= payment_day else current_month - 1
-                start_month = max(1, policy.start_date.month) if policy.start_date.year == current_year else 1
-                end_month = paid_through_month
-                if policy.end_date and policy.end_date.year == current_year:
-                    end_month = min(end_month, policy.end_date.month)
-                if policy.start_date.year <= current_year and (not policy.end_date or policy.end_date.year >= current_year):
-                    ytd_insurance_costs += premium * max(0, end_month - start_month + 1)
-            elif frequency == 'quarterly':
-                # Count quarterly payments in current year
-                if policy.start_date.year <= current_year:
-                    start_month = policy.start_date.month
-                    payments = 0
-                    for q in range(4):
-                        payment_month = start_month + q * 3
-                        if payment_month <= 12 and payment_month <= current_month:
-                            if not policy.end_date or policy.end_date >= today:
-                                payments += 1
-                    ytd_insurance_costs += premium * payments
-            elif frequency in ('semi-annual', 'semi_annual'):
-                if policy.start_date.year <= current_year:
-                    start_month = policy.start_date.month
-                    payments = 0
-                    for s in range(2):
-                        payment_month = start_month + s * 6
-                        if payment_month <= 12 and payment_month <= current_month:
-                            if not policy.end_date or policy.end_date >= today:
-                                payments += 1
-                    ytd_insurance_costs += premium * payments
-            elif frequency in ('annual', 'yearly', 'one_time'):
-                if policy.start_date.year == current_year and policy.start_date.month <= current_month:
-                    ytd_insurance_costs += premium
-    ytd_spent += ytd_insurance_costs
-    
-    # Average fuel consumption (L/100km)
+        if not policy.start_date:
+            continue
+        premium = float(policy.premium or 0)
+        frequency = policy.payment_frequency or 'annual'
+        if frequency == 'monthly':
+            payment_day = policy.start_date.day
+            paid_through_month = current_month if today.day >= payment_day else current_month - 1
+            start_month = max(1, policy.start_date.month) if policy.start_date.year == current_year else 1
+            end_month = paid_through_month
+            if policy.end_date and policy.end_date.year == current_year:
+                end_month = min(end_month, policy.end_date.month)
+            if policy.start_date.year <= current_year and (not policy.end_date or policy.end_date.year >= current_year):
+                ytd_insurance_costs += premium * max(0, end_month - start_month + 1)
+        elif frequency == 'quarterly':
+            if policy.start_date.year <= current_year:
+                start_month = policy.start_date.month
+                payments = sum(
+                    1 for q in range(4)
+                    if (start_month + q * 3) <= 12
+                    and (start_month + q * 3) <= current_month
+                    and (not policy.end_date or policy.end_date >= today)
+                )
+                ytd_insurance_costs += premium * payments
+        elif frequency in ('semi-annual', 'semi_annual'):
+            if policy.start_date.year <= current_year:
+                start_month = policy.start_date.month
+                payments = sum(
+                    1 for s in range(2)
+                    if (start_month + s * 6) <= 12
+                    and (start_month + s * 6) <= current_month
+                    and (not policy.end_date or policy.end_date >= today)
+                )
+                ytd_insurance_costs += premium * payments
+        elif frequency in ('annual', 'yearly', 'one_time'):
+            if policy.start_date.year == current_year and policy.start_date.month <= current_month:
+                ytd_insurance_costs += premium
+
+    ytd_spent = (
+        ytd_fuel_cost + service_ytd_cost + repair_ytd_cost
+        + parking_ytd_cost + ytd_tax_costs + ytd_insurance_costs
+    )
+
+    # ------------------------------------------------------------------
+    # AVERAGE FUEL CONSUMPTION (L/100km)
+    # Attempt 1: DB AVG of stored efficiency values (no rows fetched).
+    # Fallback to capped queries only if the stored column is empty.
+    # ------------------------------------------------------------------
     avg_consumption = None
-    if fuel_entries:
-        efficiencies = [e.fuel_efficiency for e in fuel_entries if e.fuel_efficiency]
-        if efficiencies:
-            avg_consumption = sum(efficiencies) / len(efficiencies)
-        if avg_consumption is None:
-            # Fallback: compute from stored trip_distance + liters
-            valid_trips = [(float(e.liters), e.trip_distance) for e in fuel_entries
-                           if e.liters and e.trip_distance and e.trip_distance > 0]
-            if valid_trips:
-                avg_consumption = sum(l / d * 100 for l, d in valid_trips) / len(valid_trips)
-        if avg_consumption is None:
-            # Fallback: compute from consecutive odometer readings
-            sorted_fuel = sorted(
-                [e for e in fuel_entries if e.odometer and e.liters],
-                key=lambda e: e.odometer
+    _avg_eff = (
+        db.session.query(func.avg(FuelEntry.fuel_efficiency))
+        .filter(
+            FuelEntry.vehicle_id == vehicle_id,
+            FuelEntry.fuel_efficiency.isnot(None),
+        )
+        .scalar()
+    )
+    if _avg_eff is not None:
+        avg_consumption = float(_avg_eff)
+
+    if avg_consumption is None:
+        # Fallback: trip_distance + liters (capped at 500 rows)
+        valid_trips = (
+            db.session.query(FuelEntry.liters, FuelEntry.trip_distance)
+            .filter(
+                FuelEntry.vehicle_id == vehicle_id,
+                FuelEntry.liters.isnot(None),
+                FuelEntry.trip_distance.isnot(None),
+                FuelEntry.trip_distance > 0,
             )
-            calc = []
-            for i in range(1, len(sorted_fuel)):
-                dist = sorted_fuel[i].odometer - sorted_fuel[i - 1].odometer
-                if dist > 0:
-                    calc.append(float(sorted_fuel[i].liters) / dist * 100)
-            if calc:
-                avg_consumption = sum(calc) / len(calc)
+            .limit(500)
+            .all()
+        )
+        if valid_trips:
+            avg_consumption = sum(float(l) / float(d) * 100 for l, d in valid_trips) / len(valid_trips)
+
+    if avg_consumption is None:
+        # Fallback: consecutive odometer readings (capped at 500 rows)
+        sorted_fuel = (
+            db.session.query(FuelEntry.liters, FuelEntry.odometer)
+            .filter(
+                FuelEntry.vehicle_id == vehicle_id,
+                FuelEntry.odometer.isnot(None),
+                FuelEntry.liters.isnot(None),
+            )
+            .order_by(FuelEntry.odometer.asc())
+            .limit(500)
+            .all()
+        )
+        calc = []
+        for i in range(1, len(sorted_fuel)):
+            dist = float(sorted_fuel[i].odometer) - float(sorted_fuel[i - 1].odometer)
+            if dist > 0:
+                calc.append(float(sorted_fuel[i].liters) / dist * 100)
+        if calc:
+            avg_consumption = sum(calc) / len(calc)
     
     # Next service due - check both reminders AND future service entries
     next_service = None
@@ -585,7 +697,7 @@ def get_vehicle_stats(current_user, vehicle_id):
             next_service = upcoming_reminder.due_date.strftime('%Y-%m-%d')
             next_service_title = upcoming_reminder.title
             next_service_days = (upcoming_reminder.due_date - now).days
-    except Exception as e:
+    except Exception:
         pass
     
     # Also check for future service entries (scheduled services with date in the future)
@@ -602,12 +714,11 @@ def get_vehicle_stats(current_user, vehicle_id):
                 next_service = service_date.strftime('%Y-%m-%d')
                 next_service_title = future_service.title or future_service.service_type or 'Scheduled Service'
                 next_service_days = (service_date - now).days
-    except Exception as e:
+    except Exception:
         pass
     
     # Also check for service entries with next_due_date set (past services with next service scheduled)
     try:
-        from sqlalchemy import or_
         service_with_next_due = ServiceEntry.query.filter(
             ServiceEntry.vehicle_id == vehicle_id,
             ServiceEntry.next_due_date.isnot(None),
@@ -621,7 +732,7 @@ def get_vehicle_stats(current_user, vehicle_id):
                 next_service = due_date.strftime('%Y-%m-%d')
                 next_service_title = f"Next {service_with_next_due.title or service_with_next_due.service_type or 'Service'}"
                 next_service_days = (due_date - now).days
-    except Exception as e:
+    except Exception:
         pass
     
     return jsonify({
@@ -638,9 +749,9 @@ def get_vehicle_stats(current_user, vehicle_id):
         'tax_costs': float(ytd_tax_costs),  # YTD tax expenses
         'insurance_costs': float(ytd_insurance_costs),  # YTD insurance paid
         'insurance_annual_cost': float(insurance_annual_cost),  # Annualized insurance cost
-        'service_count': len(past_service_entries),
-        'repair_count': len(repair_entries),
-        'fuel_count': len(fuel_entries),
+        'service_count': service_count,
+        'repair_count': repair_count,
+        'fuel_count': fuel_count,
         'insurance_count': len(insurance_policies),
         'avg_consumption': float(avg_consumption) if avg_consumption else None,
         'next_service': next_service,
@@ -652,80 +763,139 @@ def get_vehicle_stats(current_user, vehicle_id):
 @vehicles_bp.route('/<int:vehicle_id>/timeline', methods=['GET'])
 @token_required
 def get_vehicle_timeline(current_user, vehicle_id):
-    """Get timeline of all entries for a vehicle."""
+    """Get paginated timeline of all entries for a vehicle.
+
+    Query params:
+      page      – 1-based page number (default 1)
+      per_page  – items per page, 10–200 (default 50)
+      type      – entry type filter: all | fuel | service | repair | tax |
+                  parking | reminder | todo | insurance (default all)
+    """
     vehicle = Vehicle.query.filter_by(
         id=vehicle_id,
         user_id=current_user.id
     ).first()
-    
+
     if not vehicle:
         return jsonify({'error': 'Vehicle not found'}), 404
-    
-    # Pagination
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 20, type=int)
-    
-    # Get all entries sorted by date
-    entries = Entry.query.filter_by(
-        vehicle_id=vehicle_id
-    ).order_by(Entry.date.desc()).all()
-    
-    # Convert entries to dicts
-    timeline_entries = [e.to_dict() for e in entries]
-    
-    # Also get insurance policies and add them to timeline
-    try:
-        from app.models.insurance import InsurancePolicy
-        insurance_policies = InsurancePolicy.query.filter_by(vehicle_id=vehicle_id).all()
-        for policy in insurance_policies:
-            # Show per-payment premium amount, not annualized cost
-            premium = float(policy.premium or 0)
-            frequency = policy.payment_frequency or 'annual'
-            
-            # Calculate annualized cost for reference
-            if frequency == 'monthly':
-                annual_cost = premium * 12
-            elif frequency == 'quarterly':
-                annual_cost = premium * 4
-            elif frequency in ('semi-annual', 'semi_annual'):
-                annual_cost = premium * 2
-            else:
-                annual_cost = premium
-            
-            timeline_entries.append({
-                'id': policy.id,
-                'type': 'insurance',
-                'title': policy.provider,
-                'description': f"{policy.provider} - {policy.policy_number or 'Policy'}",
-                'amount': premium,  # Show per-payment amount, not annualized
-                'cost': premium,    # Show per-payment amount, not annualized
-                'annual_cost': annual_cost,  # Include annualized cost for reference
-                'payment_frequency': frequency,
-                'date': policy.start_date.isoformat() if policy.start_date else None,
-                'vehicle_id': policy.vehicle_id,
-                'created_at': policy.created_at.isoformat() if policy.created_at else None,
-                'policy_type': policy.policy_type,
-                'status': policy.status,
-            })
-    except Exception as e:
-        pass
-    
-    # Sort all entries by date descending
-    timeline_entries.sort(key=lambda x: x.get('date') or '', reverse=True)
-    
-    # Paginate
-    total = len(timeline_entries)
-    start = (page - 1) * per_page
-    end = start + per_page
-    paginated_entries = timeline_entries[start:end]
-    
+
+    page = max(1, request.args.get('page', 1, type=int))
+    per_page = min(max(10, request.args.get('per_page', 50, type=int)), 200)
+
+    _VALID_TYPES = {
+        'all', 'fuel', 'service', 'repair', 'tax',
+        'parking', 'reminder', 'todo', 'insurance',
+    }
+    entry_type = request.args.get('type', 'all').strip().lower()
+    if entry_type not in _VALID_TYPES:
+        entry_type = 'all'
+
+    include_insurance = entry_type in ('all', 'insurance')
+
+    # ------------------------------------------------------------------
+    # Insurance policies — always a small set (< ~20 per vehicle).
+    # Safe to fetch all without risk of OOM.
+    # ------------------------------------------------------------------
+    insurance_items = []
+    insurance_total = 0
+    if include_insurance:
+        try:
+            from app.models.insurance import InsurancePolicy
+            ins_query = InsurancePolicy.query.filter_by(vehicle_id=vehicle_id)
+            insurance_total = ins_query.count()
+            # Only include insurance records on page 1 to avoid duplicating
+            # them across pages. (They're interleaved by date in the merge.)
+            if page == 1:
+                for policy in ins_query.order_by(InsurancePolicy.start_date.desc()).all():
+                    premium   = float(policy.premium or 0)
+                    frequency = policy.payment_frequency or 'annual'
+                    if frequency == 'monthly':
+                        annual_cost = premium * 12
+                    elif frequency == 'quarterly':
+                        annual_cost = premium * 4
+                    elif frequency in ('semi-annual', 'semi_annual'):
+                        annual_cost = premium * 2
+                    else:
+                        annual_cost = premium
+                    insurance_items.append({
+                        'id':               policy.id,
+                        'type':             'insurance',
+                        'title':            policy.provider,
+                        'description':      f"{policy.provider} - {policy.policy_number or 'Policy'}",
+                        'amount':           premium,
+                        'cost':             premium,
+                        'annual_cost':      annual_cost,
+                        'payment_frequency': frequency,
+                        'date':             policy.start_date.isoformat() if policy.start_date else None,
+                        'vehicle_id':       policy.vehicle_id,
+                        'created_at':       policy.created_at.isoformat() if policy.created_at else None,
+                        'policy_type':      policy.policy_type,
+                        'status':           policy.status,
+                    })
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # Entries — DB-level count + paginated fetch. No .all(), no OOM.
+    # ------------------------------------------------------------------
+    entry_total = 0
+    result_items = []
+
+    if entry_type == 'insurance':
+        # Pure insurance view — paginate the small in-memory list.
+        insurance_items.sort(key=lambda x: x.get('date') or '', reverse=True)
+        start = (page - 1) * per_page
+        result_items = insurance_items[start:start + per_page]
+        total = insurance_total
+
+    else:
+        eq = Entry.query.filter_by(vehicle_id=vehicle_id)
+        if entry_type != 'all':
+            eq = eq.filter(Entry.type == entry_type)
+
+        entry_total = eq.count()
+
+        # On page 1 we merge insurance records into the entry window.
+        # Fetch a slightly larger buffer so insurance doesn't displace entries
+        # that the user expects to see on this page.
+        buffer   = len(insurance_items)          # > 0 only on page 1
+        db_limit = per_page + buffer
+
+        # For pages after page 1: adjust the DB offset so we don't skip the
+        # entries that were "consumed" by insurance records on page 1.
+        if page == 1:
+            db_offset = 0
+        else:
+            # insurance_total records appeared before (or within) page 1;
+            # shift the offset back so those entries aren't silently skipped.
+            db_offset = max(0, (page - 1) * per_page - insurance_total)
+
+        entries_raw = (
+            eq
+            .order_by(Entry.date.desc(), Entry.id.desc())
+            .offset(db_offset)
+            .limit(db_limit)
+            .all()
+        )
+        entry_items = [e.to_dict(include_attachments=False) for e in entries_raw]
+
+        # In-memory merge is at most (per_page + ~20) items — no OOM risk.
+        merged = entry_items + insurance_items
+        merged.sort(key=lambda x: x.get('date') or '', reverse=True)
+        result_items = merged[:per_page]
+
+        total = entry_total + insurance_total
+
+    pages = max(1, (total + per_page - 1) // per_page)
+
     return jsonify({
-        'entries': paginated_entries,
-        'total': total,
-        'pages': (total + per_page - 1) // per_page,
+        'entries':      result_items,
+        'total':        total,
+        'pages':        pages,
         'current_page': page,
-        'has_next': end < total,
-        'has_prev': page > 1,
+        'per_page':     per_page,
+        'has_next':     page < pages,
+        'has_prev':     page > 1,
     })
 
 
@@ -966,9 +1136,7 @@ BENCHMARK_EFFICIENCY = {
 def get_vehicle_health(current_user, vehicle_id):
     """Get comprehensive vehicle health data including carbon footprint and maintenance status."""
     from datetime import datetime, timedelta
-    from app.models.reminder import Reminder
-    from app.models import TaxEntry, ParkingEntry
-    from app.models.insurance import InsurancePolicy
+    from sqlalchemy import func, extract
     
     vehicle = Vehicle.query.filter_by(
         id=vehicle_id,
@@ -978,16 +1146,115 @@ def get_vehicle_health(current_user, vehicle_id):
     if not vehicle:
         return jsonify({'error': 'Vehicle not found'}), 404
     
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     today = now.date()
     current_year = now.year
     one_year_ago = now - timedelta(days=365)
     six_months_ago = now - timedelta(days=180)
     
-    # Get all entries
-    fuel_entries = FuelEntry.query.filter_by(vehicle_id=vehicle_id).order_by(FuelEntry.date.desc()).all()
-    service_entries = ServiceEntry.query.filter_by(vehicle_id=vehicle_id).order_by(ServiceEntry.date.desc()).all()
-    repair_entries = RepairEntry.query.filter_by(vehicle_id=vehicle_id).order_by(RepairEntry.date.desc()).all()
+    # ------------------------------------------------------------------
+    # All-time scalar aggregates — zero rows fetched into Python memory
+    # ------------------------------------------------------------------
+    total_liters_all_time = float(
+        db.session.query(func.coalesce(func.sum(FuelEntry.liters), 0))
+        .filter(FuelEntry.vehicle_id == vehicle_id)
+        .scalar()
+    )
+    ytd_liters = float(
+        db.session.query(func.coalesce(func.sum(FuelEntry.liters), 0))
+        .filter(
+            FuelEntry.vehicle_id == vehicle_id,
+            extract('year', FuelEntry.date) == current_year,
+        )
+        .scalar()
+    )
+    yearly_liters = float(
+        db.session.query(func.coalesce(func.sum(FuelEntry.liters), 0))
+        .filter(
+            FuelEntry.vehicle_id == vehicle_id,
+            FuelEntry.date >= one_year_ago.date(),
+        )
+        .scalar()
+    )
+    _avg_eff_raw = (
+        db.session.query(func.avg(FuelEntry.fuel_efficiency))
+        .filter(
+            FuelEntry.vehicle_id == vehicle_id,
+            FuelEntry.fuel_efficiency.isnot(None),
+            FuelEntry.fuel_efficiency > 0,
+        )
+        .scalar()
+    )
+    avg_efficiency = float(_avg_eff_raw) if _avg_eff_raw is not None else None
+
+    total_distance = float(
+        db.session.query(func.coalesce(func.sum(FuelEntry.trip_distance), 0))
+        .filter(
+            FuelEntry.vehicle_id == vehicle_id,
+            FuelEntry.trip_distance.isnot(None),
+        )
+        .scalar()
+    )
+    total_fuel_cost = float(
+        db.session.query(func.coalesce(func.sum(FuelEntry.total_price), 0))
+        .filter(FuelEntry.vehicle_id == vehicle_id)
+        .scalar()
+    )
+    total_service_cost = float(
+        db.session.query(func.coalesce(func.sum(ServiceEntry.amount), 0))
+        .filter(ServiceEntry.vehicle_id == vehicle_id, ServiceEntry.date <= today)
+        .scalar()
+    )
+    total_repair_cost = float(
+        db.session.query(func.coalesce(func.sum(RepairEntry.amount), 0))
+        .filter(RepairEntry.vehicle_id == vehicle_id)
+        .scalar()
+    )
+
+    # ------------------------------------------------------------------
+    # Per-entry data — bounded to relevant time windows or capped
+    # ------------------------------------------------------------------
+    # Last-12-months fuel: for monthly CO2 / cost breakdown
+    fuel_year_entries = (
+        FuelEntry.query
+        .filter(FuelEntry.vehicle_id == vehicle_id, FuelEntry.date >= one_year_ago.date())
+        .order_by(FuelEntry.date.desc())
+        .all()
+    )
+    # Most-recent 20 fuel entries: for efficiency trend analysis
+    fuel_top20 = (
+        FuelEntry.query
+        .filter_by(vehicle_id=vehicle_id)
+        .order_by(FuelEntry.date.desc())
+        .limit(20)
+        .all()
+    )
+    # Service entries: most-recent 500 (years of annual services), ordered desc
+    service_entries = (
+        ServiceEntry.query
+        .filter_by(vehicle_id=vehicle_id)
+        .order_by(ServiceEntry.date.desc())
+        .limit(500)
+        .all()
+    )
+    # Recent repairs (last 6 months) for frequency check
+    recent_repairs = (
+        RepairEntry.query
+        .filter(
+            RepairEntry.vehicle_id == vehicle_id,
+            RepairEntry.date >= six_months_ago.date(),
+        )
+        .order_by(RepairEntry.date.desc())
+        .all()
+    )
+    # All repairs capped at 500 for component-wear keyword matching
+    repair_entries = (
+        RepairEntry.query
+        .filter_by(vehicle_id=vehicle_id)
+        .order_by(RepairEntry.date.desc())
+        .limit(500)
+        .all()
+    )
     
     # ============================================
     # CARBON FOOTPRINT TRACKER
@@ -996,32 +1263,24 @@ def get_vehicle_health(current_user, vehicle_id):
     fuel_type = (vehicle.fuel_type or 'petrol').lower()
     emission_factor = CO2_EMISSION_FACTORS.get(fuel_type, 2.31)
     
-    # Calculate total CO2 emissions
-    total_liters_all_time = sum(float(e.liters or 0) for e in fuel_entries)
+    # Calculate total CO2 emissions  (from DB aggregate — no row iteration)
     total_co2_all_time = total_liters_all_time * emission_factor  # kg
-    
-    # YTD emissions
-    ytd_fuel_entries = [e for e in fuel_entries if e.date and e.date.year == current_year]
-    ytd_liters = sum(float(e.liters or 0) for e in ytd_fuel_entries)
+
+    # YTD emissions (from DB aggregate)
     ytd_co2 = ytd_liters * emission_factor
-    
-    # Last 12 months emissions
-    yearly_fuel_entries = [e for e in fuel_entries if e.date and e.date >= one_year_ago.date()]
-    yearly_liters = sum(float(e.liters or 0) for e in yearly_fuel_entries)
+
+    # Last 12 months emissions (from DB aggregate)
     yearly_co2 = yearly_liters * emission_factor
-    
-    # Monthly breakdown for chart (last 12 months)
+
+    # Monthly breakdown for chart (last 12 months) — bounded fetch
     monthly_emissions = {}
-    for e in yearly_fuel_entries:
+    for e in fuel_year_entries:
         if e.date:
             key = e.date.strftime('%Y-%m')
             liters = float(e.liters or 0)
             monthly_emissions[key] = monthly_emissions.get(key, 0) + (liters * emission_factor)
     
-    # Calculate eco-driving score (0-100)
-    efficiencies = [e.fuel_efficiency for e in fuel_entries if e.fuel_efficiency and e.fuel_efficiency > 0]
-    avg_efficiency = sum(efficiencies) / len(efficiencies) if efficiencies else None
-    
+    # Calculate eco-driving score (0-100) — uses DB-level avg_efficiency
     benchmark = BENCHMARK_EFFICIENCY.get(fuel_type, 8.0)
     eco_score = 50  # Default
     if avg_efficiency and benchmark > 0:
@@ -1029,8 +1288,7 @@ def get_vehicle_health(current_user, vehicle_id):
         ratio = benchmark / avg_efficiency  # Higher is better
         eco_score = min(100, max(0, int(ratio * 60 + 20)))
     
-    # CO2 per km
-    total_distance = sum(e.trip_distance or 0 for e in fuel_entries if e.trip_distance)
+    # CO2 per km  (total_distance is already a DB aggregate scalar)
     co2_per_km = (total_co2_all_time / total_distance * 1000) if total_distance > 0 else None  # grams/km
     
     # Carbon offset recommendations
@@ -1076,9 +1334,9 @@ def get_vehicle_health(current_user, vehicle_id):
                 'actions': ['Keep up the eco-friendly driving habits!']
             })
     
-    # Check for efficiency degradation
-    recent_entries = [e for e in fuel_entries[:5] if e.fuel_efficiency]
-    older_entries = [e for e in fuel_entries[10:20] if e.fuel_efficiency]
+    # Check for efficiency degradation  (fuel_top20 is capped at 20 rows)
+    recent_entries = [e for e in fuel_top20[:5] if e.fuel_efficiency]
+    older_entries = [e for e in fuel_top20[10:20] if e.fuel_efficiency]
     if len(recent_entries) >= 3 and len(older_entries) >= 3:
         recent_avg = sum(e.fuel_efficiency for e in recent_entries) / len(recent_entries)
         older_avg = sum(e.fuel_efficiency for e in older_entries) / len(older_entries)
@@ -1153,8 +1411,7 @@ def get_vehicle_health(current_user, vehicle_id):
             'description': f'Last service was {days_since_service} days ago.',
         })
     
-    # Check repair frequency (too many repairs = issues)
-    recent_repairs = [r for r in repair_entries if r.date and r.date >= six_months_ago.date()]
+    # Check repair frequency — recent_repairs already bounded to last 6 months
     if len(recent_repairs) >= 3:
         maintenance_score -= 15
         maintenance_issues.append({
@@ -1324,19 +1581,17 @@ def get_vehicle_health(current_user, vehicle_id):
     # COST EFFICIENCY
     # ============================================
     
-    # Calculate cost per km
-    total_costs = sum(float(e.total_price or 0) for e in fuel_entries)
-    total_costs += sum(float(e.amount or 0) for e in service_entries if e.date and e.date <= today)
-    total_costs += sum(float(e.amount or 0) for e in repair_entries)
+    # Calculate cost per km  (all-time totals from DB aggregates)
+    total_costs = total_fuel_cost + total_service_cost + total_repair_cost
     
     cost_per_km = None
     if total_distance > 0:
         cost_per_km = total_costs / total_distance
     
-    # Monthly cost trend
+    # Monthly cost trend — bounded to last 12 months
     monthly_costs = {}
-    for e in fuel_entries:
-        if e.date and e.date >= one_year_ago.date():
+    for e in fuel_year_entries:
+        if e.date:
             key = e.date.strftime('%Y-%m')
             monthly_costs[key] = monthly_costs.get(key, 0) + float(e.total_price or 0)
     for e in service_entries:
@@ -1486,6 +1741,7 @@ def get_vehicle_health(current_user, vehicle_id):
             'fuel_type': fuel_type,
             'warranty_status': warranty_status,
             'warranty_tips': warranty_tips,
+            'distance_unit': vehicle.distance_unit or 'km',
         },
         'recommended_actions': recommended_actions[:10],  # Top 10
     })

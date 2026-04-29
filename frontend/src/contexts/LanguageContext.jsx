@@ -75,9 +75,8 @@ export function LanguageProvider({ children }) {
       console.warn('Failed to save language to DB:', error)
     }
     
-    // Sync to backend if authenticated
-    const token = localStorage.getItem('access_token')
-    if (token) {
+    // Sync to backend if authenticated (S05 — check non-secret flag, not token)
+    if (localStorage.getItem('auth_session')) {
       try {
         await api.put('/auth/me', { language: lang })
       } catch (error) {
@@ -100,10 +99,17 @@ export function LanguageProvider({ children }) {
   
   // Translation function
   const t = useCallback((key, params = {}) => {
-    const translation = getNestedValue(translations[language], key) 
-      || getNestedValue(translations[defaultLanguage], key) 
-      || key
-    
+    const inCurrentLang = getNestedValue(translations[language], key)
+    const inDefaultLang = getNestedValue(translations[defaultLanguage], key)
+    const translation = inCurrentLang || inDefaultLang || key
+
+    // I12: Warn in dev mode when a key is missing from ALL locales so missing
+    // translations are surfaced immediately rather than silently falling through
+    // to the hardcoded || 'English fallback' pattern in JSX.
+    if (import.meta.env.DEV && !inCurrentLang && !inDefaultLang) {
+      console.warn(`[i18n] Missing translation key: "${key}"`)
+    }
+
     // Replace params like {name} with actual values
     if (typeof translation === 'string' && Object.keys(params).length > 0) {
       return Object.entries(params).reduce(

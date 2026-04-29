@@ -2,7 +2,7 @@
 GearCargo - AI Predictions Routes
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, current_app
 import requests
 
@@ -252,7 +252,7 @@ def dismiss_prediction(current_user, prediction_id):
         return jsonify({'error': 'Prediction not found'}), 404
     
     prediction.status = 'dismissed'
-    prediction.dismissed_at = datetime.utcnow()
+    prediction.dismissed_at = datetime.now(timezone.utc)
     db.session.commit()
     
     return jsonify({
@@ -274,7 +274,7 @@ def acknowledge_prediction(current_user, prediction_id):
         return jsonify({'error': 'Prediction not found'}), 404
     
     prediction.status = 'acknowledged'
-    prediction.acknowledged_at = datetime.utcnow()
+    prediction.acknowledged_at = datetime.now(timezone.utc)
     db.session.commit()
     
     return jsonify({
@@ -479,7 +479,7 @@ def toggle_checklist_item(current_user, checklist_id, item_id):
                 completed.append(item_id)
                 # Check if all items completed
                 if len(completed) == len(SEASONAL_CHECKLISTS[checklist_id]['items']):
-                    prefs['seasonal_checklists'][checklist_id]['last_completed'] = datetime.utcnow().isoformat()
+                    prefs['seasonal_checklists'][checklist_id]['last_completed'] = datetime.now(timezone.utc).isoformat()
         else:
             # Mark as incomplete
             if item_id in completed:

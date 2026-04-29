@@ -9,33 +9,30 @@ export function AuthProvider({ children }) {
   const [isLoading, setIsLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   
-  // Check authentication on mount
+  // Check authentication on mount.
+  // S05 — tokens are httpOnly cookies; we cannot read them in JS.
+  // Instead we call /auth/me and let the browser send the cookie automatically.
+  // A 401 means "not authenticated" — no token to clear.
   useEffect(() => {
     const checkAuth = async () => {
-      const token = localStorage.getItem('access_token')
-      
-      if (!token) {
-        setIsLoading(false)
-        return
-      }
-      
       try {
         const response = await api.get('/auth/me')
         setUser(response.data)
         setIsAuthenticated(true)
-        
+        localStorage.setItem('auth_session', '1')
+
         // Cache user data offline
         await db.settings.put({ key: 'user', value: response.data })
       } catch (error) {
-        // Try to get cached user data
+        // Try to get cached user data for offline support
         const cachedUser = await db.settings.get('user')
-        if (cachedUser) {
+        if (cachedUser && navigator.onLine === false) {
+          // Offline — surface cached profile, auth state uncertain
           setUser(cachedUser.value)
           setIsAuthenticated(true)
         } else {
-          // Token invalid, clear storage
-          localStorage.removeItem('access_token')
-          localStorage.removeItem('refresh_token')
+          // Online 401 or network error — not authenticated
+          localStorage.removeItem('auth_session')
         }
       } finally {
         setIsLoading(false)
@@ -57,11 +54,11 @@ export function AuthProvider({ children }) {
       return { requires2FA: true }
     }
     
-    const { access_token, refresh_token, user: userData } = response.data
-    
-    localStorage.setItem('access_token', access_token)
-    localStorage.setItem('refresh_token', refresh_token)
-    
+    // S05 — tokens are set as httpOnly cookies by the server.
+    // We only read the user profile from the JSON response.
+    const { user: userData } = response.data
+
+    localStorage.setItem('auth_session', '1')
     setUser(userData)
     setIsAuthenticated(true)
     
@@ -74,11 +71,10 @@ export function AuthProvider({ children }) {
   const register = useCallback(async (data) => {
     const response = await api.post('/auth/register', data)
     
-    const { access_token, refresh_token, user: userData } = response.data
-    
-    localStorage.setItem('access_token', access_token)
-    localStorage.setItem('refresh_token', refresh_token)
-    
+    // S05 — tokens delivered via cookies only.
+    const { user: userData } = response.data
+
+    localStorage.setItem('auth_session', '1')
     setUser(userData)
     setIsAuthenticated(true)
     
@@ -92,11 +88,11 @@ export function AuthProvider({ children }) {
     try {
       await api.post('/auth/logout')
     } catch (error) {
-      // Ignore logout errors
+      // Ignore logout errors — server clears cookies regardless
     }
     
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
+    // S05 — cookies are expired by the server response; clear local state.
+    localStorage.removeItem('auth_session')
     
     // Clear cached data
     await db.settings.delete('user')
@@ -123,22 +119,12 @@ export function AuthProvider({ children }) {
       return null
     }
   }, [])
-  
+
+  // S05 — token refresh is handled transparently by api.js interceptor via
+  // the httpOnly refresh_token cookie.  This stub is kept for API compatibility
+  // but callers no longer need to invoke it manually.
   const refreshToken = useCallback(async () => {
-    const refresh = localStorage.getItem('refresh_token')
-    
-    if (!refresh) {
-      throw new Error('No refresh token')
-    }
-    
-    const response = await api.post('/auth/refresh', {
-      refresh_token: refresh,
-    })
-    
-    localStorage.setItem('access_token', response.data.access_token)
-    localStorage.setItem('refresh_token', response.data.refresh_token)
-    
-    return response.data.access_token
+    await api.post('/auth/refresh', {})
   }, [])
   
   const value = {

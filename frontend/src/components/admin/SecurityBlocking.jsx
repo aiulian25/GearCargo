@@ -81,7 +81,6 @@ export default function SecurityBlocking() {
   
   // Modal states
   const [showBlockIPModal, setShowBlockIPModal] = useState(false)
-  const [showBlockDeviceModal, setShowBlockDeviceModal] = useState(false)
   const [showUnblockModal, setShowUnblockModal] = useState(null) // { type: 'ip' | 'device', item: object }
   const [expandedRow, setExpandedRow] = useState(null)
   

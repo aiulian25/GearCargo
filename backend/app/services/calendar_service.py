@@ -3,7 +3,7 @@ GearCargo - Calendar Sync Service
 Supports: Google Calendar, Nextcloud, Baikal, Radicale, Generic CalDAV
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import current_app
 from typing import Optional, Dict, List, Any, Tuple
 import logging
@@ -137,15 +137,46 @@ def encrypt_password(password: str) -> str:
 
 
 def decrypt_password(encrypted: str) -> str:
-    """Decrypt a stored password."""
+    """Decrypt a stored password.
+
+    Falls back to treating the value as plaintext for legacy rows that were
+    written before field-level encryption was introduced (S04).  The caller
+    will receive the raw credential so CalDAV auth continues to work; the
+    value is automatically re-encrypted the next time the user saves their
+    calendar settings.
+    """
     if not encrypted:
         return ''
     try:
         fernet = Fernet(get_encryption_key())
         return fernet.decrypt(encrypted.encode()).decode()
-    except Exception as e:
-        logger.error(f"Failed to decrypt password: {e}")
+    except Exception:
+        # Not a valid Fernet token — treat as legacy plaintext credential.
+        logger.warning(
+            '[Security] CalDAV credential could not be decrypted — '
+            'treating as legacy plaintext. Re-save calendar settings to encrypt.'
+        )
+        return encrypted
+
+
+def _ensure_encrypted(value: str) -> str:
+    """Return *value* encrypted with the current key.
+
+    If *value* is already a valid Fernet token for the current key it is
+    returned unchanged (idempotent).  If it is plaintext — e.g., a row
+    written before encryption was enforced — it is encrypted and the
+    ciphertext is returned.  This acts as a one-shot, transparent migration:
+    plaintext values are upgraded on the next write without requiring a
+    separate migration script.
+    """
+    if not value:
         return ''
+    try:
+        Fernet(get_encryption_key()).decrypt(value.encode())
+        return value  # already a valid ciphertext for this key
+    except Exception:
+        logger.warning('[Security] Re-encrypting legacy plaintext CalDAV credential')
+        return encrypt_password(value)
 
 
 def _is_allowed_caldav_url(url: str) -> bool:
@@ -235,7 +266,10 @@ def set_user_calendar_sources(user, sources: List[Dict[str, Any]]) -> None:
         user.calendar_provider = primary.get('provider')
         user.calendar_url = primary.get('url')
         user.calendar_username = primary.get('username')
-        user.calendar_password = primary.get('password', '')
+        # Passwords in `sources` are already encrypted by build_source_for_storage.
+        # _ensure_encrypted is an extra safety net for any future caller that
+        # bypasses build_source_for_storage (S04).
+        user.calendar_password = _ensure_encrypted(primary.get('password', '')) or None
         user.calendar_id = primary.get('calendar_id')
     else:
         user.calendar_enabled = False
@@ -274,6 +308,10 @@ def build_source_for_storage(payload: Dict[str, Any], existing: Optional[Dict[st
     incoming_password = str(payload.get('password') or '').strip()
     encrypted_password = incoming_password and encrypt_password(incoming_password)
 
+    # If no new password was supplied, preserve the stored one — but ensure it
+    # is encrypted (migrates legacy plaintext values on the first save after S04).
+    preserved_password = _ensure_encrypted(existing.get('password', ''))
+
     return {
         'id': str(payload.get('id') or existing.get('id') or uuid.uuid4()),
         'name': str(payload.get('name') or existing.get('name') or payload.get('provider') or 'caldav').strip()[:120],
@@ -283,7 +321,7 @@ def build_source_for_storage(payload: Dict[str, Any], existing: Optional[Dict[st
         'calendar_id': str(payload.get('calendar_id') or existing.get('calendar_id') or '').strip(),
         'enabled': bool(payload.get('enabled', existing.get('enabled', True))),
         # Keep current secret when password is omitted from update payload.
-        'password': encrypted_password or existing.get('password', ''),
+        'password': encrypted_password or preserved_password,
     }
 
 
@@ -359,7 +397,11 @@ class CalendarService:
                 # Try to create a new calendar
                 try:
                     self.calendar = principal.make_calendar(name="GearCargo")
-                except Exception:
+                except Exception as e:
+                    logger.warning(
+                        f"Could not create default 'GearCargo' calendar on server "
+                        f"(url={self.source.get('url', '?')!r}): {e}"
+                    )
                     return False, "No calendars found and couldn't create one"
             
             self._connected = True
@@ -420,7 +462,7 @@ class CalendarService:
             
             event = Event()
             event.add('uid', uid or str(uuid.uuid4()))
-            event.add('dtstamp', datetime.utcnow())
+            event.add('dtstamp', datetime.now(timezone.utc))
             event.add('summary', title)
             
             if all_day:
@@ -764,7 +806,7 @@ def get_event_data_for_entry(entry_type: str, entry: Any, vehicle_name: str) -> 
 
 def sync_all_entries_for_user(user) -> Dict[str, Any]:
     """Sync all vehicle entries to calendar for a user."""
-    from app.models import ServiceEntry, RepairEntry, Reminder, InsurancePolicy, TaxEntry, Vehicle
+    from app.models import ServiceEntry, Reminder, InsurancePolicy, TaxEntry, Vehicle
     
     results = {
         'synced': 0,

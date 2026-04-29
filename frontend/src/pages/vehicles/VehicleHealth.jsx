@@ -771,7 +771,7 @@ export default function VehicleHealth() {
                 {t('vehicleHealth.currentMileage') || 'Current Mileage'}
               </span>
               <span className="text-sm font-medium">
-                {health.vehicle_info?.current_mileage?.toLocaleString() || 0} km
+                {health.vehicle_info?.current_mileage?.toLocaleString() || 0} {health.vehicle_info?.distance_unit || 'km'}
               </span>
             </div>
             <div className="flex items-center justify-between py-2 border-b border-[var(--color-border)]">
@@ -823,7 +823,7 @@ export default function VehicleHealth() {
                   {t('vehicleHealth.totalDistance') || 'Total Distance'}
                 </p>
                 <p className="text-xl font-bold mt-1">
-                  {health.cost_efficiency?.total_distance_km?.toLocaleString() || 0} km
+                  {health.cost_efficiency?.total_distance_km?.toLocaleString() || 0} {health.vehicle_info?.distance_unit || 'km'}
                 </p>
               </div>
             </div>

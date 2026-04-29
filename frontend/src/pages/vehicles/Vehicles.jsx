@@ -98,7 +98,7 @@ export default function Vehicles() {
                 <p className="text-sm font-semibold">
                   {vehicle.current_mileage?.toLocaleString() || 0}
                 </p>
-                <p className="text-2xs text-[var(--color-text-muted)]">km</p>
+                <p className="text-2xs text-[var(--color-text-muted)]">{vehicle.distance_unit || 'km'}</p>
               </div>
               
               {/* Arrow */}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useAuth } from '../../contexts/AuthContext'
@@ -190,12 +190,6 @@ export default function Settings() {
   const [showIntegrations, setShowIntegrations] = useState(false)
   const [showEmailSettings, setShowEmailSettings] = useState(false)
   const [showCalendarSettings, setShowCalendarSettings] = useState(false)
-  const [isImporting, setIsImporting] = useState(false)
-  const fileInputRef = useRef(null)
-  const [notifications, setNotifications] = useState({
-    email: true,
-    reminders: true,
-  })
   
   // Email notification settings
   const [emailSettings, setEmailSettings] = useState({
@@ -206,15 +200,13 @@ export default function Settings() {
     email_service_alerts: true,
     email_reminder_alerts: true,
     email_smart_alerts: true,
+    login_alerts_enabled: true,
     weekly_report_enabled: false,
     monthly_report_enabled: true,
     alert_days_before: 14,
     email_enabled_on_server: false,
   })
-  const [emailSettingsLoading, setEmailSettingsLoading] = useState(false)
   const [sendingTestEmail, setSendingTestEmail] = useState(false)
-  
-  // GDPR Notification Email
   const [notifEmail, setNotifEmail] = useState('')
   const [notifEmailVerified, setNotifEmailVerified] = useState(false)
   const [hasNotifEmail, setHasNotifEmail] = useState(false)
@@ -224,7 +216,6 @@ export default function Settings() {
   const [consentHistory, setConsentHistory] = useState([])
   const [showConsentHistory, setShowConsentHistory] = useState(false)
   
-  const [backupStatus, setBackupStatus] = useState(null)
   const [showAdminSection, setShowAdminSection] = useState(false)
   const [adminTab, setAdminTab] = useState('users')  // 'users', 'logs', 'maintenance', or 'security'
   const [showArchiveSection, setShowArchiveSection] = useState(false)
@@ -434,20 +425,6 @@ export default function Settings() {
       fetchReportData()
     }
   }, [showReportsSection])
-  
-  useEffect(() => {
-    // Load backup status
-    const fetchBackupStatus = async () => {
-      try {
-        const response = await backupApi.getStatus()
-        setBackupStatus(response.data)
-      } catch (error) {
-        console.error('Failed to fetch backup status:', error)
-      }
-    }
-    
-    fetchBackupStatus()
-  }, [])
   
   // Load archived vehicles when section is expanded
   useEffect(() => {
@@ -842,69 +819,6 @@ export default function Settings() {
     if (window.confirm('Are you sure you want to logout?')) {
       logout()
       navigate('/login')
-    }
-  }
-  
-  const handleExportData = async () => {
-    try {
-      const response = await backupApi.export()
-      const blob = new Blob([JSON.stringify(response.data)], { type: 'application/json' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `gearcargo-backup-${new Date().toISOString().split('T')[0]}.json`
-      a.click()
-      URL.revokeObjectURL(url)
-      toast.success(t('settings.exportSuccess') || 'Data exported successfully')
-    } catch (error) {
-      console.error('Failed to export data:', error)
-      toast.error(t('settings.exportFailed') || 'Failed to export data')
-    }
-  }
-  
-  const handleImportClick = () => {
-    fileInputRef.current?.click()
-  }
-  
-  const handleImportData = async (event) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-    
-    // Validate file type
-    if (!file.name.endsWith('.json')) {
-      toast.error(t('settings.invalidFileType') || 'Please select a JSON file')
-      event.target.value = ''
-      return
-    }
-    
-    // Confirm before importing
-    if (!window.confirm(t('settings.importConfirm') || 'This will merge the backup data with your existing data. Continue?')) {
-      event.target.value = ''
-      return
-    }
-    
-    setIsImporting(true)
-    try {
-      // Send file as FormData (backend expects multipart/form-data)
-      const formData = new FormData()
-      formData.append('file', file)
-      
-      await backupApi.import(formData)
-      toast.success(t('settings.importSuccess') || 'Data imported successfully')
-      
-      // Refresh user data
-      await refreshUser()
-      
-      // Optionally reload the page to refresh all data
-      setTimeout(() => {
-        window.location.reload()
-      }, 1500)
-    } catch (error) {
-      console.error('Failed to import data:', error)
-      toast.error(error.response?.data?.error || t('settings.importFailed') || 'Failed to import data')
-    } finally {
-      setIsImporting(false)
-      event.target.value = ''
     }
   }
   
@@ -1423,6 +1337,26 @@ export default function Settings() {
                     className="w-4 h-4 rounded border-[var(--color-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
                   />
                 </label>
+
+                {/* Security Alerts */}
+                <p className="text-2xs text-[var(--color-text-muted)] font-medium uppercase tracking-wide mt-4 mb-1">
+                  {t('settings.securityAlerts') || 'Security Alerts'}
+                </p>
+
+                <div className="flex items-start justify-between py-1 gap-4">
+                  <div>
+                    <span className="text-sm">{t('settings.loginAlerts') || 'Suspicious Login Alerts'}</span>
+                    <p className="text-2xs text-[var(--color-text-muted)] mt-0.5">
+                      {t('settings.loginAlertsDesc') || 'Get notified when a login occurs from an unrecognised location or device. Your IP address is used locally for geolocation — never shared with third parties.'}
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={emailSettings.login_alerts_enabled}
+                    onChange={(e) => handleEmailSettingChange('login_alerts_enabled', e.target.checked)}
+                    className="w-4 h-4 rounded border-[var(--color-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)] mt-0.5 shrink-0"
+                  />
+                </div>
                 
                 {/* Reports */}
                 <p className="text-2xs text-[var(--color-text-muted)] font-medium uppercase tracking-wide mt-4 mb-2">

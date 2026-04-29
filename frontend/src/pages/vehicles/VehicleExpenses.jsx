@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { vehicleApi, fuelApi, serviceApi, repairApi, taxApi, reminderApi, attachmentApi, insuranceApi } from '../../services/api'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { vehicleApi, fuelApi, serviceApi, repairApi, taxApi, reminderApi, insuranceApi } from '../../services/api'
 import api from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { formatDate } from '../../utils/dateFormat'
@@ -901,7 +901,7 @@ export default function VehicleExpenses() {
                 <tr key={entry.id} className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)]">
                   <td className="py-3 px-4">{formatDate(entry.date)}</td>
                   <td className="py-3 px-4">{entry.repair_type || entry.title || '-'}</td>
-                  <td className="py-3 px-4">{entry.odometer?.toLocaleString()} km</td>
+                  <td className="py-3 px-4">{entry.odometer?.toLocaleString()} {vehicle?.distance_unit || 'km'}</td>
                   <td className="py-3 px-4">{formatCurrency(entry.parts_cost || 0)}</td>
                   <td className="py-3 px-4">{formatCurrency(entry.labor_cost || 0)}</td>
                   <td className="py-3 px-4 text-[var(--color-accent)] font-medium">{formatCurrency(entry.amount)}</td>
@@ -1090,7 +1090,7 @@ export default function VehicleExpenses() {
                   <td className="py-3 px-4">{entry.title}</td>
                   <td className="py-3 px-4">{entry.reminder_type || '-'}</td>
                   <td className="py-3 px-4">{formatDate(entry.due_date)}</td>
-                  <td className="py-3 px-4">{entry.due_mileage?.toLocaleString() || '-'} km</td>
+                  <td className="py-3 px-4">{entry.due_mileage?.toLocaleString() || '-'} {vehicle?.distance_unit || 'km'}</td>
                   <td className="py-3 px-4">
                     <span className={`px-2 py-0.5 rounded text-xs ${
                       entry.status === 'completed' ? 'bg-green-500/20 text-green-400' :

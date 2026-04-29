@@ -1,0 +1,17 @@
+# robots.txt for GearCargo
+# I19: Prevent search engine crawlers from indexing API, auth, and admin routes.
+# The application is a PWA — all meaningful content is behind authentication,
+# so there is nothing useful for crawlers at any route. The Disallow: / rule
+# blocks all crawlers. Individual allows below are kept for completeness but
+# have no effect with Disallow: / — they serve as documentation of intent.
+
+User-agent: *
+# Block the entire site — it is a private PWA, not a public website.
+Disallow: /
+
+# Explicitly block high-noise routes that generate error logs when crawled:
+Disallow: /api/
+Disallow: /api/auth/
+Disallow: /api/admin/
+
+# No Sitemap — this is a private application.

@@ -2,7 +2,7 @@
 GearCargo - Todo Model
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from app import db
 
 
@@ -39,7 +39,7 @@ class Todo(db.Model):
     def mark_complete(self):
         """Mark todo as complete."""
         self.completed = True
-        self.completed_at = datetime.utcnow()
+        self.completed_at = datetime.now(timezone.utc)
     
     def mark_incomplete(self):
         """Mark todo as incomplete."""
@@ -52,14 +52,14 @@ class Todo(db.Model):
         if self.completed:
             return False
         if self.due_date:
-            return self.due_date < datetime.utcnow().date()
+            return self.due_date < datetime.now(timezone.utc).date()
         return False
     
     @property
     def days_until_due(self):
         """Days until due date."""
         if self.due_date:
-            delta = self.due_date - datetime.utcnow().date()
+            delta = self.due_date - datetime.now(timezone.utc).date()
             return delta.days
         return None
     

@@ -14,7 +14,6 @@ import zipfile
 import os
 import uuid
 import shutil
-from io import BytesIO
 from datetime import datetime, timezone, date
 from decimal import Decimal
 
@@ -230,7 +229,7 @@ def _parse_date(value):
             return datetime.fromisoformat(value.replace('Z', '+00:00')).date()
         except (ValueError, TypeError):
             pass
-    return datetime.utcnow().date()
+    return datetime.now(timezone.utc).date()
 
 
 def _safe_float(value, default=0.0):
@@ -335,7 +334,7 @@ def map_to_gearcargo(classified, config=None, distance_unit=None):
     gearcargo_data = {
         'version': '2.0',
         'source': 'lubelog',
-        'exported_at': datetime.utcnow().isoformat(),
+        'exported_at': datetime.now(timezone.utc).isoformat(),
         'vehicles': [],
         'reminders': [],
         'insurance_policies': [],

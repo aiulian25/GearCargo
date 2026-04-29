@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { vehicleApi } from '../../services/api'
-import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
+import { useTranslation } from '../../contexts/LanguageContext'
 import { formatDate } from '../../utils/dateFormat'
 
 // SVG Icons
@@ -117,11 +117,9 @@ export default function VehicleAlerts() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { t } = useTranslation()
-  const { currency } = useCurrency()
   
   const [vehicle, setVehicle] = useState(null)
   const [predictions, setPredictions] = useState([])
-  const [stats, setStats] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   
   useEffect(() => {
@@ -132,7 +130,6 @@ export default function VehicleAlerts() {
           vehicleApi.getStats(id)
         ])
         setVehicle(vehicleRes.data)
-        setStats(statsRes.data)
         
         // Generate predictions based on stats and vehicle data
         const generatedPredictions = generatePredictions(vehicleRes.data, statsRes.data)

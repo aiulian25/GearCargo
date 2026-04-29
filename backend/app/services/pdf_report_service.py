@@ -8,20 +8,19 @@ import os
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4, letter
+from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch, mm
+from reportlab.lib.units import inch
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    Image, PageBreak, HRFlowable
+    Image, HRFlowable
 )
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.lib.enums import TA_CENTER
 from flask import current_app
 
-from app import db
 from app.models import (
-    Vehicle, FuelEntry, ServiceEntry, RepairEntry,
-    TaxEntry, ParkingEntry, InsurancePolicy, Reminder
+    FuelEntry, ServiceEntry, RepairEntry,
+    TaxEntry, ParkingEntry, InsurancePolicy
 )
 
 

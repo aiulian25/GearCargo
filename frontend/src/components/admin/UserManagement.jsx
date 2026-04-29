@@ -556,6 +556,9 @@ export default function UserManagement() {
                 className="w-full px-4 py-3 rounded-xl bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-accent)]"
                 required
               />
+              <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+                {t('admin.mustChangePasswordNote') || 'The user will be required to change this password on first login.'}
+              </p>
             </div>
             
             {/* Role */}

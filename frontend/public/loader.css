@@ -1,0 +1,81 @@
+/*
+ * S14 / I04: Pre-React loading screen styles — extracted from index.html inline <style>
+ * so that 'unsafe-inline' can be removed from the CSP style-src directive.
+ *
+ * This file is included in Workbox's precache manifest (globPatterns includes *.css)
+ * so it is available immediately on first load and during offline use.
+ *
+ * Referenced via <link rel="stylesheet" href="/loader.css"> in index.html.
+ * Served from 'self' — no 'unsafe-inline' required.
+ */
+
+/* Initial loading state */
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #0f172a;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* Material Icons default size */
+.material-icons-outlined {
+  font-size: 20px;
+  line-height: 1;
+}
+
+/* Loading spinner */
+#app-loader {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: #0f172a;
+  z-index: 9999;
+}
+
+#app-loader img {
+  width: 80px;
+  height: 80px;
+  margin-bottom: 16px;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+#app-loader .spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #334155;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* Hide loader when app is loaded */
+.app-loaded #app-loader {
+  display: none;
+}
+
+/* I13: Light-theme overrides for the pre-React loading screen */
+.light body {
+  background-color: #f8fafc;
+}
+.light #app-loader {
+  background-color: #f8fafc;
+}
+.light #app-loader .spinner {
+  border-color: #e2e8f0;
+  border-top-color: #2563eb;
+}

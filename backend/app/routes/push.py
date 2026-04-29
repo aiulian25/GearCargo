@@ -2,7 +2,7 @@
 GearCargo - Push Notifications Routes
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, current_app
 from pywebpush import webpush, WebPushException
 import json
@@ -45,21 +45,34 @@ def subscribe(current_user):
     existing = PushSubscription.query.filter_by(endpoint=endpoint).first()
     
     if existing:
-        # Update existing subscription
-        existing.p256dh_key = keys['p256dh']
-        existing.auth_key = keys['auth']
-        existing.active = True
-        existing.user_id = current_user.id
-        existing.device_name = data.get('device_name')
-        existing.device_type = data.get('device_type')
-        existing.browser = data.get('browser')
-        existing.os = data.get('os')
-        db.session.commit()
-        
-        return jsonify({
-            'message': 'Subscription updated',
-            'subscription': existing.to_dict()
-        })
+        if existing.user_id == current_user.id:
+            # Legitimate re-registration from the same user — refresh keys and device info.
+            existing.p256dh_key = keys['p256dh']
+            existing.auth_key = keys['auth']
+            existing.active = True
+            existing.device_name = data.get('device_name')
+            existing.device_type = data.get('device_type')
+            existing.browser = data.get('browser')
+            existing.os = data.get('os')
+            db.session.commit()
+
+            return jsonify({
+                'message': 'Subscription updated',
+                'subscription': existing.to_dict()
+            })
+        else:
+            # Endpoint already belongs to a different user — this is either a stale record
+            # from a shared device whose previous owner did not unsubscribe cleanly, or a
+            # deliberate attempt to hijack another user's push endpoint.
+            # In both cases: evict the stale record so the current user gets a clean
+            # registration below. Never silently transfer ownership across users.
+            current_app.logger.warning(
+                '[Security] Push endpoint re-registration: evicting stale record '
+                'for user_id=%s, new owner user_id=%s',
+                existing.user_id, current_user.id
+            )
+            db.session.delete(existing)
+            db.session.flush()   # enforce deletion before the INSERT below
     
     # Create new subscription
     push_sub = PushSubscription(
@@ -197,7 +210,7 @@ def test_notification(current_user):
     db.session.commit()
     
     return jsonify({
-        'message': f'Test notification sent',
+        'message': 'Test notification sent',
         'sent': sent,
         'failed': failed
     })
@@ -276,7 +289,7 @@ def send_push_to_user(user_id, title, body, data=None, tag=None):
                 data=data,
                 channel='push',
                 status='sent',
-                sent_at=datetime.utcnow()
+                sent_at=datetime.now(timezone.utc)
             )
             db.session.add(log)
             

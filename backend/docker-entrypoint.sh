@@ -27,6 +27,13 @@ done
 
 # Run database migrations
 echo "Running database migrations..."
+# NOTE (read_only: true): 'flask db upgrade' only writes to the database (network),
+# not to the container filesystem — fully compatible with read_only: true.
+# The fallback below ('flask db migrate') would write new migration scripts to
+# migrations/versions/ which IS inside the read-only container filesystem and
+# will therefore fail with "Read-only file system" in locked-down deployments.
+# That fallback is a last-resort recovery path and should never trigger in a
+# properly initialized deployment.
 flask db upgrade 2>&1 || {
     echo "Migration failed, attempting to initialize database..."
     flask db init 2>/dev/null || true

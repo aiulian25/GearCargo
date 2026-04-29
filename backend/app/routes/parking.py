@@ -2,7 +2,7 @@
 GearCargo - Parking Entry Routes
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, current_app
 
 from app import db
@@ -54,7 +54,7 @@ def create_parking_entry(current_user):
         return jsonify({'error': 'Vehicle not found'}), 404
     
     # Parse date - support both 'date' and 'entry_date' field names
-    entry_date = datetime.utcnow().date()
+    entry_date = datetime.now(timezone.utc).date()
     if data.get('date'):
         entry_date = datetime.fromisoformat(data['date'].replace('Z', '+00:00')).date()
     elif data.get('entry_date'):

@@ -2,7 +2,7 @@
 GearCargo - Reminder Model
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from app import db
 
 
@@ -71,12 +71,12 @@ class Reminder(db.Model):
     def mark_complete(self):
         """Mark reminder as complete."""
         self.completed = True
-        self.completed_at = datetime.utcnow()
+        self.completed_at = datetime.now(timezone.utc)
     
     def mark_dismissed(self):
         """Dismiss reminder."""
         self.dismissed = True
-        self.dismissed_at = datetime.utcnow()
+        self.dismissed_at = datetime.now(timezone.utc)
     
     def snooze(self, until):
         """Snooze reminder until specified datetime."""
@@ -87,13 +87,13 @@ class Reminder(db.Model):
         """Check if reminder is overdue."""
         if self.completed or self.dismissed:
             return False
-        return self.due_date < datetime.utcnow().date()
+        return self.due_date < datetime.now(timezone.utc).date()
     
     @property
     def days_until_due(self):
         """Days until due date."""
         if self.due_date:
-            delta = self.due_date - datetime.utcnow().date()
+            delta = self.due_date - datetime.now(timezone.utc).date()
             return delta.days
         return None
     
@@ -116,6 +116,7 @@ class Reminder(db.Model):
             'days_until_due': self.days_until_due,
             'vehicle_id': self.vehicle_id,
             'vehicle_name': self.vehicle.name if self.vehicle else None,
+            'vehicle_distance_unit': self.vehicle.distance_unit if self.vehicle else 'km',
             'calendar_sync': self.calendar_sync,
             'sync_conflict': self.sync_conflict,
             'created_at': self.created_at.isoformat() if self.created_at else None,

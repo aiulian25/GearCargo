@@ -13,7 +13,6 @@ import logging
 from urllib.parse import quote_plus
 
 import requests
-from flask import current_app
 
 logger = logging.getLogger(__name__)
 

@@ -2,22 +2,26 @@
 GearCargo - Widget API Routes (Gethomepage integration)
 """
 
+import hashlib
 import secrets
 from datetime import date
 from functools import wraps
 
 from flask import Blueprint, request, jsonify
-from sqlalchemy import func
 
 from app import db
 from app.models import User, Vehicle, Reminder
-from app.models.entry import Entry
 from app.models.service import ServiceEntry
 from app.models.repair import RepairEntry
 from app.models.fuel import FuelEntry
 from app.routes.auth import token_required
 
 widget_bp = Blueprint('widget', __name__)
+
+
+def _hash_api_key(raw_key: str) -> str:
+    """Return the SHA-256 hex digest of a raw API key (S07)."""
+    return hashlib.sha256(raw_key.encode('utf-8')).hexdigest()
 
 
 def api_key_required(f):
@@ -29,7 +33,12 @@ def api_key_required(f):
         if not api_key:
             return jsonify({'error': 'API key is required'}), 401
 
-        user = User.query.filter_by(api_key=api_key, is_active=True).first()
+        # S07: look up by SHA-256 hash, never by plaintext
+        hashed = _hash_api_key(api_key)
+        user = User.query.filter(
+            User.api_key_hash == hashed,
+            User.is_active == True
+        ).first()
         if not user:
             return jsonify({'error': 'Invalid API key'}), 401
 
@@ -160,12 +169,17 @@ def homepage_vehicles(current_user):
 @widget_bp.route('/api-key', methods=['POST'])
 @token_required
 def generate_api_key(current_user):
-    """Generate or regenerate an API key for the current user."""
-    current_user.api_key = secrets.token_hex(32)
+    """Generate or regenerate an API key. Returns the raw key ONCE — never stored in DB (S07)."""
+    raw_key = secrets.token_hex(32)  # 64-char hex
+    current_user.api_key_hash = _hash_api_key(raw_key)
+    current_user.api_key_prefix = raw_key[:8]
+    current_user.api_key = None  # ensure plaintext is never/no-longer stored
     db.session.commit()
 
+    # Raw key is returned exactly once; caller must copy it immediately
     return jsonify({
-        'api_key': current_user.api_key,
+        'raw_key': raw_key,
+        'prefix': current_user.api_key_prefix,
         'message': 'API key generated'
     })
 
@@ -173,9 +187,11 @@ def generate_api_key(current_user):
 @widget_bp.route('/api-key', methods=['GET'])
 @token_required
 def get_api_key(current_user):
-    """Get the current API key."""
+    """Return whether a key exists and its display prefix — raw key is never returned after generation (S07)."""
+    has_key = current_user.api_key_hash is not None
     return jsonify({
-        'api_key': current_user.api_key
+        'has_key': has_key,
+        'prefix': current_user.api_key_prefix if has_key else None
     })
 
 
@@ -183,6 +199,8 @@ def get_api_key(current_user):
 @token_required
 def revoke_api_key(current_user):
     """Revoke the current API key."""
+    current_user.api_key_hash = None
+    current_user.api_key_prefix = None
     current_user.api_key = None
     db.session.commit()
 

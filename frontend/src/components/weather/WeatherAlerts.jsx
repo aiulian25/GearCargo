@@ -109,7 +109,6 @@ export default function WeatherAlerts({ userLocation, compact = false, onDismiss
   const [alertData, setAlertData] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [isExpanded, setIsExpanded] = useState(false)
   const [dismissedAlerts, setDismissedAlerts] = useState(() => {
     try {
       const saved = localStorage.getItem('dismissedWeatherAlerts')

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link, useSearchParams, useNavigate } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { useLanguage } from '../../contexts/LanguageContext'
 import { authApi } from '../../services/api'
@@ -97,7 +97,6 @@ function PasswordStrength({ password }) {
 
 export default function ResetPassword() {
   const { t } = useLanguage()
-  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)

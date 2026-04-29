@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { fuelApi, vehicleApi } from '../../services/api'
+import { formatDate } from '../../utils/dateFormat'
 
 export default function FuelEntries() {
   const [searchParams] = useSearchParams()
@@ -136,7 +137,7 @@ export default function FuelEntries() {
                   )}
                 </div>
                 <p className="text-2xs text-[var(--color-text-muted)]">
-                  {entry.date} • {entry.mileage?.toLocaleString()} {vehicles.find(v => v.id === entry.vehicle_id)?.distance_unit || 'km'}
+                  {formatDate(entry.date)} • {entry.mileage?.toLocaleString()} {vehicles.find(v => v.id === entry.vehicle_id)?.distance_unit || 'km'}
                   {vehicles.length > 1 && entry.vehicle_name && ` • ${entry.vehicle_name}`}
                 </p>
               </div>

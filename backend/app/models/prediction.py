@@ -2,7 +2,7 @@
 GearCargo - Prediction Alert Model
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from app import db
 
 
@@ -55,19 +55,19 @@ class PredictionAlert(db.Model):
     def dismiss(self):
         """Dismiss the alert."""
         self.dismissed = True
-        self.dismissed_at = datetime.utcnow()
+        self.dismissed_at = datetime.now(timezone.utc)
     
     def mark_actioned(self):
         """Mark as user took action."""
         self.actioned = True
-        self.actioned_at = datetime.utcnow()
+        self.actioned_at = datetime.now(timezone.utc)
     
     @property
     def is_active(self):
         """Check if alert is still active."""
         if self.dismissed or self.actioned:
             return False
-        if self.expires_at and self.expires_at < datetime.utcnow():
+        if self.expires_at and self.expires_at < datetime.now(timezone.utc):
             return False
         return True
     

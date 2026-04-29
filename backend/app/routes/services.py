@@ -2,7 +2,7 @@
 GearCargo - Service Entry Routes
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, current_app
 
 from app import db
@@ -74,7 +74,7 @@ def create_service_entry(current_user):
         return jsonify({'error': 'At least one valid service type is required'}), 400
     
     # Parse date - support both 'date' and 'entry_date' field names
-    entry_date = datetime.utcnow().date()
+    entry_date = datetime.now(timezone.utc).date()
     if data.get('date'):
         entry_date = datetime.fromisoformat(data['date'].replace('Z', '+00:00')).date()
     elif data.get('entry_date'):
@@ -248,7 +248,7 @@ def get_upcoming_services(current_user):
     query = ServiceEntry.query.join(Vehicle).filter(
         Vehicle.user_id == current_user.id,
         ServiceEntry.next_service_date.isnot(None),
-        ServiceEntry.next_service_date >= datetime.utcnow()
+        ServiceEntry.next_service_date >= datetime.now(timezone.utc)
     )
     
     if vehicle_id:

@@ -3,7 +3,7 @@ GearCargo - Blocked IP and Device Models
 For security - tracking and blocking malicious IPs and devices
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from app import db
 
 
@@ -82,7 +82,7 @@ class BlockedIP(db.Model):
         blocked = cls.query.filter_by(ip_address=ip_address, is_active=True).first()
         if blocked:
             # Check if block has expired
-            if blocked.expires_at and blocked.expires_at < datetime.utcnow():
+            if blocked.expires_at and blocked.expires_at < datetime.now(timezone.utc):
                 blocked.is_active = False
                 db.session.commit()
                 return False, None
@@ -105,7 +105,7 @@ class BlockedIP(db.Model):
             
             # Previously blocked but now unblocked - increment counter
             existing.failed_attempts += 1
-            existing.last_failed_attempt = datetime.utcnow()
+            existing.last_failed_attempt = datetime.now(timezone.utc)
             if email:
                 existing.target_email = email
             if user_id:
@@ -129,7 +129,7 @@ class BlockedIP(db.Model):
         new_record = cls(
             ip_address=ip_address,
             failed_attempts=1,
-            last_failed_attempt=datetime.utcnow(),
+            last_failed_attempt=datetime.now(timezone.utc),
             target_email=email,
             target_user_id=user_id,
             is_active=False,  # Not blocked yet
@@ -248,7 +248,7 @@ class BlockedDevice(db.Model):
         fingerprint = cls.generate_fingerprint(user_agent, ip_address)
         blocked = cls.query.filter_by(device_fingerprint=fingerprint, is_active=True).first()
         if blocked:
-            if blocked.expires_at and blocked.expires_at < datetime.utcnow():
+            if blocked.expires_at and blocked.expires_at < datetime.now(timezone.utc):
                 blocked.is_active = False
                 db.session.commit()
                 return False, None
@@ -278,7 +278,7 @@ class BlockedDevice(db.Model):
             
             # Previously blocked but now unblocked - increment counter
             existing.failed_attempts += 1
-            existing.last_failed_attempt = datetime.utcnow()
+            existing.last_failed_attempt = datetime.now(timezone.utc)
             if email:
                 existing.target_email = email
             if user_id:
@@ -310,7 +310,7 @@ class BlockedDevice(db.Model):
             device_fingerprint=fingerprint,
             user_agent=user_agent,
             failed_attempts=1,
-            last_failed_attempt=datetime.utcnow(),
+            last_failed_attempt=datetime.now(timezone.utc),
             target_email=email,
             target_user_id=user_id,
             is_active=False,

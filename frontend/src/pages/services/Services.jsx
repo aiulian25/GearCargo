@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { serviceApi, vehicleApi } from '../../services/api'
+import { formatDate } from '../../utils/dateFormat'
 
 export default function Services() {
   const [searchParams] = useSearchParams()
@@ -83,8 +84,8 @@ export default function Services() {
       {/* Entries List */}
       {isLoading ? (
         <div className="space-y-2">
-          {[1, 2, 3, 4, 5].map(i => (
-            <div key={i} className="skeleton h-16 rounded-xl" />
+          {Array.from({ length: 5 }, (_, i) => (
+            <div key={`skeleton-${i}`} className="skeleton h-16 rounded-xl" />
           ))}
         </div>
       ) : entries.length === 0 ? (
@@ -121,7 +122,7 @@ export default function Services() {
                     : entry.service_type_label || entry.service_type || entry.description}
                 </p>
                 <p className="text-2xs text-[var(--color-text-muted)]">
-                  {entry.date} • {entry.mileage?.toLocaleString() || '-'} {vehicles.find(v => v.id === entry.vehicle_id)?.distance_unit || 'km'}
+                  {formatDate(entry.date)} • {entry.mileage?.toLocaleString() || '-'} {vehicles.find(v => v.id === entry.vehicle_id)?.distance_unit || 'km'}
                   {vehicles.length > 1 && entry.vehicle_name && ` • ${entry.vehicle_name}`}
                 </p>
               </div>

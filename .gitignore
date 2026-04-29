@@ -162,3 +162,6 @@ backend/requirements-dev.txt
 
 # Internal security audit
 Security.md
+
+# Internal audit — do not commit
+FINDINGS.md

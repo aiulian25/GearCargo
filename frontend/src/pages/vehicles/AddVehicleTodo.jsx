@@ -74,9 +74,7 @@ export default function AddVehicleTodo() {
             due_date: entry.due_date ? entry.due_date.split('T')[0] : '',
           })
           
-          // Store existing attachments
           if (entry.attachments && entry.attachments.length > 0) {
-            setExistingAttachments(entry.attachments)
           }
         }
       } catch (error) {

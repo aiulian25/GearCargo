@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { repairApi, vehicleApi } from '../../services/api'
+import { formatDate } from '../../utils/dateFormat'
 
 export default function Repairs() {
   const [searchParams] = useSearchParams()
@@ -133,12 +134,12 @@ export default function Repairs() {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{entry.description}</p>
                 <p className="text-2xs text-[var(--color-text-muted)]">
-                  {entry.date} • {entry.mileage?.toLocaleString() || '-'} {vehicles.find(v => v.id === entry.vehicle_id)?.distance_unit || 'km'}
+                  {formatDate(entry.date)} • {entry.mileage?.toLocaleString() || '-'} {vehicles.find(v => v.id === entry.vehicle_id)?.distance_unit || 'km'}
                   {vehicles.length > 1 && entry.vehicle_name && ` • ${entry.vehicle_name}`}
                 </p>
                 {entry.warranty_expires && (
                   <p className="text-2xs text-green-500">
-                    Warranty until {entry.warranty_expires}
+                    Warranty until {formatDate(entry.warranty_expires)}
                   </p>
                 )}
               </div>

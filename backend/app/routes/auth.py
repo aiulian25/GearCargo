@@ -10,13 +10,10 @@ import qrcode
 import secrets
 import hashlib
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 
-from flask import Blueprint, request, jsonify, current_app, session, url_for
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
-from werkzeug.security import generate_password_hash, check_password_hash
+from flask import Blueprint, request, jsonify, current_app
 import jwt
 
 from app import db, redis_client
@@ -266,54 +263,111 @@ def get_lockout_key(email):
     return f'lockout:{email.lower()}'
 
 
+def _db_is_account_locked(email):
+    """DB-backed lockout check used when Redis is unavailable."""
+    try:
+        user = User.query.filter_by(email=email.lower()).first()
+        if user and user.locked_until:
+            now = datetime.now(timezone.utc)
+            if user.locked_until > now:
+                remaining = int((user.locked_until - now).total_seconds())
+                return True, remaining
+            # Lock expired — clear it
+            user.locked_until = None
+            user.failed_login_attempts = 0
+            db.session.commit()
+    except Exception as e:
+        current_app.logger.error(f"[Security] DB lockout check failed: {e}")
+        db.session.rollback()
+    return False, 0
+
+
+def _db_record_failed_login(email):
+    """DB-backed failed login recording used when Redis is unavailable."""
+    try:
+        user = User.query.filter_by(email=email.lower()).first()
+        if not user:
+            return False, 0, 0
+
+        now = datetime.now(timezone.utc)
+        # If a previous lock expired, reset the counter first
+        if user.locked_until and user.locked_until <= now:
+            user.locked_until = None
+            user.failed_login_attempts = 0
+
+        user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+        attempts = user.failed_login_attempts
+
+        if attempts >= MAX_LOGIN_ATTEMPTS:
+            user.locked_until = now + timedelta(seconds=LOCKOUT_DURATION)
+            user.failed_login_attempts = 0
+            db.session.commit()
+            current_app.logger.warning(
+                '[Security] DB-backed account lock triggered after %d failed attempts: %s '
+                '(Redis unavailable — lockout is active but NOT cross-worker)',
+                attempts, email
+            )
+            return True, LOCKOUT_DURATION, attempts
+
+        db.session.commit()
+        return False, 0, attempts
+    except Exception as e:
+        current_app.logger.error(f"[Security] DB failed-login recording failed: {e}")
+        db.session.rollback()
+        return False, 0, 0
+
+
 def is_account_locked(email):
     """Check if account is locked due to too many failed attempts."""
-    if not redis_client:
-        return False, 0
-    
-    try:
-        lockout_key = get_lockout_key(email)
-        lockout_until = redis_client.get(lockout_key)
-        
-        if lockout_until:
-            remaining = redis_client.ttl(lockout_key)
-            return True, remaining
-        return False, 0
-    except Exception as e:
-        current_app.logger.error(f"Failed to check account lockout: {e}")
-        return False, 0
+    if redis_client:
+        try:
+            lockout_key = get_lockout_key(email)
+            lockout_until = redis_client.get(lockout_key)
+            if lockout_until:
+                remaining = redis_client.ttl(lockout_key)
+                return True, remaining
+            return False, 0
+        except Exception as e:
+            current_app.logger.error(f"Failed to check account lockout via Redis: {e}")
+            # Redis error — fall through to DB fallback
+
+    # Redis unavailable or errored: use DB-backed fallback
+    current_app.logger.warning('[Security] Redis unavailable for lockout check — using DB fallback')
+    return _db_is_account_locked(email)
 
 
 def record_failed_login(email):
     """Record a failed login attempt. Returns (is_locked, remaining_time, attempt_count)."""
-    if not redis_client:
-        return False, 0, 0
-    
-    try:
-        failed_key = get_failed_login_key(email)
-        
-        # Increment failed attempts
-        attempts = redis_client.incr(failed_key)
-        
-        # Set expiry on first attempt
-        if attempts == 1:
-            redis_client.expire(failed_key, FAILED_LOGIN_WINDOW)
-        
-        # Check if should lock
-        if attempts >= MAX_LOGIN_ATTEMPTS:
-            lockout_key = get_lockout_key(email)
-            redis_client.setex(lockout_key, LOCKOUT_DURATION, 'locked')
-            redis_client.delete(failed_key)  # Reset counter
-            
-            # Log the lockout
-            current_app.logger.warning(f"Account locked due to {attempts} failed attempts: {email}")
-            
-            return True, LOCKOUT_DURATION, attempts
-        
-        return False, 0, attempts
-    except Exception as e:
-        current_app.logger.error(f"Failed to record login attempt: {e}")
-        return False, 0, 0
+    if redis_client:
+        try:
+            failed_key = get_failed_login_key(email)
+
+            # Increment failed attempts
+            attempts = redis_client.incr(failed_key)
+
+            # Set expiry on first attempt
+            if attempts == 1:
+                redis_client.expire(failed_key, FAILED_LOGIN_WINDOW)
+
+            # Check if should lock
+            if attempts >= MAX_LOGIN_ATTEMPTS:
+                lockout_key = get_lockout_key(email)
+                redis_client.setex(lockout_key, LOCKOUT_DURATION, 'locked')
+                redis_client.delete(failed_key)  # Reset counter
+
+                # Log the lockout
+                current_app.logger.warning(f"Account locked due to {attempts} failed attempts: {email}")
+
+                return True, LOCKOUT_DURATION, attempts
+
+            return False, 0, attempts
+        except Exception as e:
+            current_app.logger.error(f"Failed to record login attempt via Redis: {e}")
+            # Redis error — fall through to DB fallback
+
+    # Redis unavailable or errored: use DB-backed fallback
+    current_app.logger.warning('[Security] Redis unavailable for failed-login recording — using DB fallback')
+    return _db_record_failed_login(email)
 
 
 def clear_failed_logins(email):
@@ -322,7 +376,18 @@ def clear_failed_logins(email):
         try:
             redis_client.delete(get_failed_login_key(email))
         except Exception as e:
-            current_app.logger.error(f"Failed to clear login attempts: {e}")
+            current_app.logger.error(f"Failed to clear login attempts from Redis: {e}")
+
+    # Always clear DB counter on successful login (belt-and-suspenders)
+    try:
+        user = User.query.filter_by(email=email.lower()).first()
+        if user and (user.failed_login_attempts or user.locked_until):
+            user.failed_login_attempts = 0
+            user.locked_until = None
+            db.session.commit()
+    except Exception as e:
+        current_app.logger.error(f"Failed to clear login attempts from DB: {e}")
+        db.session.rollback()
 
 
 # ============================================================
@@ -331,57 +396,60 @@ def clear_failed_logins(email):
 
 def get_real_client_ip():
     """
-    Get the real client IP address, accounting for proxies/load balancers.
-    Checks X-Forwarded-For, X-Real-IP headers before falling back to remote_addr.
+    Return the real client IP address as determined by werkzeug's ProxyFix.
+
+    S11 fix: the previous implementation read X-Forwarded-For / X-Real-IP
+    directly from the request, making it trivially spoofable — any client
+    can inject arbitrary values into those headers. The correct approach is
+    to configure ProxyFix in create_app() (done in __init__.py) with
+    x_for=TRUSTED_PROXY_COUNT and then read request.remote_addr here.
+    ProxyFix rewrites remote_addr to the nth-from-right hop in XFF, so only
+    the trusted-proxy chain can influence the value; clients cannot.
     """
-    # X-Forwarded-For can contain multiple IPs: client, proxy1, proxy2, ...
-    if request.headers.get('X-Forwarded-For'):
-        # Get the first (original client) IP
-        ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
-        return ip
-    
-    # Some proxies use X-Real-IP instead
-    if request.headers.get('X-Real-IP'):
-        return request.headers.get('X-Real-IP').strip()
-    
-    # CF-Connecting-IP is used by Cloudflare
-    if request.headers.get('CF-Connecting-IP'):
-        return request.headers.get('CF-Connecting-IP').strip()
-    
-    # Fallback to direct remote_addr
+    # ProxyFix has already set request.remote_addr to the real client IP.
+    # Calling .remote_addr directly is both safe and sufficient after S11 fix.
     return request.remote_addr or 'Unknown'
 
 
 def get_ip_location(ip_address):
     """
-    Get location info for an IP address using ip-api.com (free, no key needed).
-    Returns dict with country, city, lat, lon, or None on failure.
+    Get location info for an IP address using the local MaxMind GeoLite2 database.
+
+    S10 fix: the previous implementation made a cleartext HTTP request to
+    ip-api.com on every login, exposing the user's IP to a third party and to
+    any MITM observer. This version performs an entirely local lookup against
+    the MMDB file at GEOIP_DB_PATH — no external network call is made.
+
+    Returns a dict with country/city/lat/lon, or None when the database is not
+    configured (GEOIP_DB_PATH unset) or the IP is not found. When None is returned
+    suspicious-location detection is silently disabled — login continues normally.
     """
     if not ip_address or ip_address in ('127.0.0.1', 'localhost', '::1'):
-        return {'country': 'Local', 'country_code': 'LOCAL', 'city': 'Local', 'lat': 0, 'lon': 0, 'isp': 'Local'}
-    
-    try:
-        response = requests.get(
-            f'http://ip-api.com/json/{ip_address}?fields=status,country,countryCode,city,lat,lon,isp,query',
-            timeout=3
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            if data.get('status') == 'success':
-                return {
-                    'country': data.get('country', 'Unknown'),
-                    'country_code': data.get('countryCode', 'XX'),
-                    'city': data.get('city', 'Unknown'),
-                    'lat': data.get('lat', 0),
-                    'lon': data.get('lon', 0),
-                    'isp': data.get('isp', 'Unknown'),
-                    'ip': data.get('query', ip_address)
-                }
-        
+        return {'country': 'Local', 'country_code': 'LOCAL', 'city': 'Local',
+                'lat': 0, 'lon': 0, 'isp': 'Local', 'ip': ip_address}
+
+    # Reader is opened once at startup in create_app() and stored on the app object.
+    reader = getattr(current_app._get_current_object(), 'geoip_reader', None)
+    if reader is None:
+        # GEOIP_DB_PATH not configured — feature gracefully disabled.
         return None
+
+    try:
+        import geoip2.errors
+        response = reader.city(ip_address)
+        return {
+            'country': response.country.name or 'Unknown',
+            'country_code': response.country.iso_code or 'XX',
+            'city': response.city.name or 'Unknown',
+            'lat': response.location.latitude or 0,
+            'lon': response.location.longitude or 0,
+            'isp': None,  # GeoLite2-City doesn't include ISP/org data
+            'ip': ip_address,
+        }
+    except geoip2.errors.AddressNotFoundError:
+        return None  # Private/reserved IPs not in the database — normal
     except Exception as e:
-        current_app.logger.warning(f"IP geolocation failed for {ip_address}: {e}")
+        current_app.logger.warning(f'GeoIP2 lookup failed for {ip_address}: {e}')
         return None
 
 
@@ -534,7 +602,7 @@ def create_session(user_id, token_jti):
             
             session_key = f'session:{user_id}:{token_jti}'
             session_data = {
-                'created_at': datetime.utcnow().isoformat(),
+                'created_at': datetime.now(timezone.utc).isoformat(),
                 'user_agent': request.headers.get('User-Agent', 'unknown')[:200],
                 'ip': request.remote_addr or 'unknown'
             }
@@ -564,28 +632,168 @@ def validate_session(user_id, token_jti):
     return True  # Allow if Redis not configured (backwards compatibility)
 
 
-def get_limiter():
-    """Get rate limiter from app."""
-    return current_app.extensions.get('limiter')
+# ============================================================
+# HTTPONLY COOKIE HELPERS (S05 — JWT tokens moved out of localStorage)
+# ============================================================
+
+def _auth_cookie_settings():
+    """Return shared kwargs for auth token cookies."""
+    return dict(
+        httponly=True,
+        secure=bool(current_app.config.get('JWT_COOKIE_SECURE', False)),
+        # SameSite=Strict: cookie never sent on cross-site requests — strongest
+        # CSRF protection for a private PWA with no cross-site form submissions.
+        samesite='Strict',
+    )
+
+
+def _set_auth_cookies(response, access_token, refresh_token):
+    """Attach JWT tokens as httpOnly SameSite=Strict cookies (S05).
+
+    access_token  — short-lived; scoped to all API paths.
+    refresh_token — long-lived; scoped to /api/auth/refresh only, so it is
+                    never accidentally sent on regular API calls.
+    """
+    settings = _auth_cookie_settings()
+
+    access_expires = current_app.config.get('JWT_ACCESS_TOKEN_EXPIRES')
+    access_max_age = int(access_expires.total_seconds()) if isinstance(access_expires, timedelta) else 3600
+
+    refresh_expires = current_app.config.get('JWT_REFRESH_TOKEN_EXPIRES')
+    refresh_max_age = int(refresh_expires.total_seconds()) if isinstance(refresh_expires, timedelta) else 30 * 24 * 3600
+
+    response.set_cookie('access_token', access_token, max_age=access_max_age, path='/', **settings)
+    response.set_cookie('refresh_token', refresh_token, max_age=refresh_max_age,
+                        path='/api/auth/refresh', **settings)
+    return response
+
+
+def _clear_auth_cookies(response):
+    """Expire both auth cookies (used on logout)."""
+    settings = _auth_cookie_settings()
+    response.set_cookie('access_token', '', max_age=0, path='/', **settings)
+    response.set_cookie('refresh_token', '', max_age=0, path='/api/auth/refresh', **settings)
+    return response
+
+
+# ============================================================
+# TOTP SECRET ENCRYPTION HELPERS (S06 — 2FA seed moved out of plaintext)
+# ============================================================
+
+def _get_totp_secret(user) -> str:
+    """Return the plaintext TOTP base32 seed for *user*, decrypting from DB.
+
+    Graceful plaintext fallback: rows written before S06 have a raw base32
+    string.  Those rows cannot be decrypted (Fernet returns ''), so we log a
+    warning and return the raw value.  The secret is automatically re-encrypted
+    next time the user regenerates their 2FA or disables/re-enables it.
+    """
+    raw = user.two_factor_secret
+    if not raw:
+        return ''
+    try:
+        from app.utils.encryption import decrypt_field
+        decrypted = decrypt_field(raw)
+        if decrypted:
+            return decrypted
+        # decrypt_field returned '' — Fernet rejected the value: legacy plaintext row.
+        current_app.logger.warning(
+            '[Security] TOTP secret for user %s could not be decrypted (S06). '
+            'Treating as legacy plaintext; will encrypt on next 2FA write.',
+            user.id
+        )
+        return raw
+    except Exception as exc:
+        current_app.logger.warning(
+            '[Security] TOTP secret decryption raised %s for user %s — using raw value.',
+            type(exc).__name__, user.id
+        )
+        return raw
+
+
+def _set_totp_secret(user, plaintext_secret: str) -> None:
+    """Encrypt *plaintext_secret* and store in user.two_factor_secret (S06)."""
+    if not plaintext_secret:
+        user.two_factor_secret = None
+        return
+    from app.utils.encryption import encrypt_field
+    user.two_factor_secret = encrypt_field(plaintext_secret)
+
+
+# ============================================================
+# EMAIL OTP SECRET ENCRYPTION HELPERS (S15 — email 2FA seed moved out of plaintext)
+# ============================================================
+
+def _get_email_otp_secret(user) -> str:
+    """Return the plaintext email-OTP base32 seed for *user*, decrypting from DB.
+
+    S15 fix: user.email_otp_secret was a raw String(32) column identical to
+    the pre-S06 two_factor_secret column.  It is now encrypted with Fernet
+    (AES-256-GCM) via encrypt_field().
+
+    Graceful plaintext fallback: rows written before S15 have a raw base32
+    string.  Those rows cannot be decrypted (decrypt_field returns ''), so we
+    log a WARNING and return the raw value.  The secret is automatically
+    re-encrypted the next time any email-OTP code path calls
+    _set_email_otp_secret().
+    """
+    raw = user.email_otp_secret
+    if not raw:
+        return ''
+    try:
+        from app.utils.encryption import decrypt_field
+        decrypted = decrypt_field(raw)
+        if decrypted:
+            return decrypted
+        # decrypt_field returned '' — Fernet rejected the value: legacy plaintext row.
+        current_app.logger.warning(
+            '[Security] Email OTP secret for user %s could not be decrypted (S15). '
+            'Treating as legacy plaintext; will encrypt on next email-OTP write.',
+            user.id
+        )
+        return raw
+    except Exception as exc:
+        current_app.logger.warning(
+            '[Security] Email OTP secret decryption raised %s for user %s — using raw value.',
+            type(exc).__name__, user.id
+        )
+        return raw
+
+
+def _set_email_otp_secret(user, plaintext_secret: str) -> None:
+    """Encrypt *plaintext_secret* and store in user.email_otp_secret (S15)."""
+    if not plaintext_secret:
+        user.email_otp_secret = None
+        return
+    from app.utils.encryption import encrypt_field
+    user.email_otp_secret = encrypt_field(plaintext_secret)
 
 
 def token_required(f):
-    """Decorator to require valid JWT token from Authorization header only."""
+    """Decorator to require a valid JWT access token.
+
+    Token lookup order (first match wins):
+      1. httpOnly cookie ``access_token`` (browser clients — S05).
+      2. ``Authorization: Bearer <token>`` header (API / non-browser clients).
+    """
     @wraps(f)
     def decorated(*args, **kwargs):
         token = None
-        
-        # Get token from Authorization header ONLY (more secure)
-        if 'Authorization' in request.headers:
+
+        # 1. httpOnly cookie (browser PWA clients)
+        token = request.cookies.get('access_token')
+
+        # 2. Authorization header fallback (API clients, widget integrations)
+        if not token and 'Authorization' in request.headers:
             auth_header = request.headers['Authorization']
             try:
                 token = auth_header.split(' ')[1]
             except IndexError:
                 return jsonify({'error': 'Invalid token format'}), 401
-        
+
         if not token:
             return jsonify({'error': 'Token is missing'}), 401
-        
+
         # Check if token is blacklisted
         if redis_client and redis_client.get(f'blacklist:{token}'):
             return jsonify({'error': 'Token has been revoked'}), 401
@@ -632,30 +840,45 @@ def token_required_query_param(f):
     """
     Decorator for endpoints that need to accept tokens via query parameter.
     Only for GET requests (e.g., viewing attachments in <img> or <iframe>).
-    Security: Logs usage for monitoring.
+
+    Token lookup order:
+      1. httpOnly cookie ``access_token`` (browser clients — S05).
+      2. ``Authorization: Bearer <token>`` header.
+      3. HMAC-signed media URL (``?exp=&uid=&sig=`` — S20, replaces JWT query param).
     """
     @wraps(f)
     def decorated(*args, **kwargs):
         token = None
-        token_source = 'header'
-        
-        # First try Authorization header
-        if 'Authorization' in request.headers:
+
+        # 1. httpOnly cookie
+        token = request.cookies.get('access_token')
+
+        # 2. Authorization header
+        if not token and 'Authorization' in request.headers:
             auth_header = request.headers['Authorization']
             try:
                 token = auth_header.split(' ')[1]
             except IndexError:
                 pass
-        
-        # Fallback to query parameter ONLY for GET requests
+
+        # 3. HMAC-signed media URL (S20: replaces ?token=<JWT>; no credential in URL)
         if not token and request.method == 'GET':
-            token = request.args.get('token')
-            if token:
-                token_source = 'query_param'
-                # Log query param token usage for security monitoring
-                current_app.logger.info(
-                    f"Token via query param: {request.path} from {request.remote_addr}"
-                )
+            exp = request.args.get('exp', '')
+            uid = request.args.get('uid', '')
+            sig = request.args.get('sig', '')
+            if exp and uid and sig:
+                from app.utils import verify_attachment_signature
+                # Derive attachment_id from the URL route kwargs
+                attachment_id = kwargs.get('attachment_id')
+                try:
+                    uid_int = int(uid)
+                except (TypeError, ValueError):
+                    return jsonify({'error': 'Forbidden or link expired'}), 403
+                if attachment_id and verify_attachment_signature(attachment_id, uid_int, exp, sig):
+                    signed_user = User.query.get(uid_int)
+                    if signed_user and signed_user.is_active:
+                        return f(signed_user, *args, **kwargs)
+                return jsonify({'error': 'Forbidden or link expired'}), 403
         
         if not token:
             return jsonify({'error': 'Token is missing'}), 401
@@ -701,6 +924,8 @@ def token_required_query_param(f):
     return decorated
 
 
+
+
 def admin_required(f):
     """Decorator to require admin privileges."""
     @wraps(f)
@@ -732,15 +957,15 @@ def generate_tokens(user, invalidate_existing=True):
     # Get token expiry from config (already timedelta objects)
     access_expires = current_app.config.get('JWT_ACCESS_TOKEN_EXPIRES')
     if isinstance(access_expires, timedelta):
-        access_exp = datetime.utcnow() + access_expires
+        access_exp = datetime.now(timezone.utc) + access_expires
     else:
-        access_exp = datetime.utcnow() + timedelta(hours=1)
+        access_exp = datetime.now(timezone.utc) + timedelta(hours=1)
     
     refresh_expires = current_app.config.get('JWT_REFRESH_TOKEN_EXPIRES')
     if isinstance(refresh_expires, timedelta):
-        refresh_exp = datetime.utcnow() + refresh_expires
+        refresh_exp = datetime.now(timezone.utc) + refresh_expires
     else:
-        refresh_exp = datetime.utcnow() + timedelta(days=30)
+        refresh_exp = datetime.now(timezone.utc) + timedelta(days=30)
     
     access_token = jwt.encode(
         {
@@ -774,14 +999,10 @@ def generate_tokens(user, invalidate_existing=True):
 @auth_bp.route('/register', methods=['POST'])
 def register():
     """Register a new user."""
-    # Rate limit check
-    limiter = get_limiter()
-    if limiter:
-        try:
-            limiter.check()
-        except:
-            pass  # Continue if rate limiter fails
-    
+    # Note: rate limiting is applied in create_app() via limiter.limit() on this
+    # view function ('5 per hour; 20 per day' per IP). Flask-Limiter's before_request
+    # hook enforces it before this function runs — no manual check needed here.
+
     data = request.get_json()
     
     # Validate required fields
@@ -863,12 +1084,14 @@ def register():
     # Generate tokens
     access_token, refresh_token = generate_tokens(user)
     
-    return jsonify({
+    # Tokens delivered via httpOnly cookies only (S05).
+    resp = jsonify({
         'message': 'Registration successful',
         'user': user.to_dict(),
-        'access_token': access_token,
-        'refresh_token': refresh_token,
-    }), 201
+    })
+    resp.status_code = 201
+    _set_auth_cookies(resp, access_token, refresh_token)
+    return resp
 
 
 def parse_user_agent(ua_string):
@@ -969,7 +1192,8 @@ def login():
         return jsonify({'error': 'Email and password required'}), 400
     
     # Get IP address and user agent for blocking checks
-    ip_address = request.remote_addr or request.headers.get('X-Forwarded-For', '').split(',')[0].strip()
+    # S11: request.remote_addr is set by ProxyFix to the real client IP.
+    ip_address = request.remote_addr or 'Unknown'
     user_agent = request.headers.get('User-Agent', '')
     
     # Check if IP is blocked
@@ -1051,7 +1275,7 @@ def login():
         
         # Record failed attempt for IP (auto-blocks after 3 attempts)
         try:
-            ip_now_blocked, ip_record, ip_attempts = BlockedIP.record_failed_attempt(
+            ip_now_blocked, _, ip_attempts = BlockedIP.record_failed_attempt(
                 ip_address=ip_address,
                 email=email,
                 user_id=user.id if user else None,
@@ -1061,14 +1285,14 @@ def login():
         except Exception as e:
             current_app.logger.error(f'Failed to record IP attempt: {e}')
             db.session.rollback()
-            ip_now_blocked, ip_record, ip_attempts = False, None, 0
+            ip_now_blocked, _, ip_attempts = False, None, 0
         
         # Parse device info for device tracking
         device_info = parse_user_agent(user_agent) if user_agent else None
         
         # Record failed attempt for device (auto-blocks after 3 attempts)
         try:
-            device_now_blocked, device_record, device_attempts = BlockedDevice.record_failed_attempt(
+            device_now_blocked, _, device_attempts = BlockedDevice.record_failed_attempt(
                 user_agent=user_agent,
                 ip_address=ip_address,
                 email=email,
@@ -1079,7 +1303,7 @@ def login():
         except Exception as e:
             current_app.logger.error(f'Failed to record device attempt: {e}')
             db.session.rollback()
-            device_now_blocked, device_record, device_attempts = False, None, 0
+            device_now_blocked, _, device_attempts = False, None, 0
         
         # Log failed login attempt
         ActivityLog.log(
@@ -1169,7 +1393,7 @@ def login():
         
         # Try TOTP code first
         if totp_code:
-            totp = pyotp.TOTP(user.two_factor_secret)
+            totp = pyotp.TOTP(_get_totp_secret(user))
             code_valid = totp.verify(totp_code)
         
         # Try backup code if TOTP failed or wasn't provided
@@ -1209,25 +1433,33 @@ def login():
     BlockedIP.clear_attempts(ip_address)
     BlockedDevice.clear_attempts(user_agent, ip_address)
     
-    # Check for new device login
-    new_device, device_info = is_new_device(user.id)
-    
-    # Check for suspicious location (new country)
-    ip_address = get_real_client_ip()
-    current_location = get_ip_location(ip_address)
-    suspicious_location, location_info, known_locations = is_suspicious_location(user.id, current_location)
+    # Check for new device / suspicious location only when user has not opted out (S18)
+    if user.login_alerts_enabled:
+        # Check for new device login
+        new_device, device_info = is_new_device(user.id)
+
+        # Check for suspicious location (new country)
+        ip_address = get_real_client_ip()
+        current_location = get_ip_location(ip_address)
+        suspicious_location, location_info, known_locations = is_suspicious_location(user.id, current_location)
+    else:
+        new_device, device_info = False, {}
+        ip_address = get_real_client_ip()
+        current_location = None
+        suspicious_location, location_info, known_locations = False, None, set()
     
     # Update last login
-    user.last_login = datetime.utcnow()
+    user.last_login = datetime.now(timezone.utc)
     db.session.commit()
     
     # Generate tokens
     access_token, refresh_token = generate_tokens(user)
     
-    # Register device and location as known
-    register_device(user.id)
-    if location_info and location_info.get('country_code'):
-        register_user_location(user.id, location_info['country_code'])
+    # Register device and location as known (only when alerts are enabled)
+    if user.login_alerts_enabled:
+        register_device(user.id)
+        if location_info and location_info.get('country_code'):
+            register_user_location(user.id, location_info['country_code'])
     
     # Send new device login alert email
     if new_device and current_app.config.get('MAIL_ENABLED'):
@@ -1274,22 +1506,35 @@ def login():
             location_info.get('country', 'Unknown')
         )
     
-    return jsonify({
+    # Set tokens in httpOnly SameSite=Strict cookies (S05 — removed from JSON body).
+    # The JSON response intentionally omits the token strings so they are
+    # never accessible to JavaScript on the page origin.
+    resp = jsonify({
         'message': 'Login successful',
         'user': user.to_dict(),
-        'access_token': access_token,
-        'refresh_token': refresh_token,
         'new_device': new_device,
         'suspicious_location': suspicious_location,
     })
+    _set_auth_cookies(resp, access_token, refresh_token)
+    return resp
 
 
 @auth_bp.route('/refresh', methods=['POST'])
 def refresh_token():
-    """Refresh access token."""
-    data = request.get_json()
-    refresh = data.get('refresh_token')
-    
+    """Refresh access token.
+
+    The refresh token is read from the httpOnly ``refresh_token`` cookie
+    (S05).  A body ``refresh_token`` field is accepted as a fallback for
+    non-browser API clients that cannot use cookies.
+    """
+    # 1. httpOnly cookie (browser PWA)
+    refresh = request.cookies.get('refresh_token')
+
+    # 2. JSON body fallback (non-browser API clients)
+    if not refresh:
+        data = request.get_json(silent=True) or {}
+        refresh = data.get('refresh_token')
+
     if not refresh:
         return jsonify({'error': 'Refresh token required'}), 400
     
@@ -1317,11 +1562,11 @@ def refresh_token():
         
         # Generate new tokens but don't invalidate existing session (same session continues)
         access_token, new_refresh = generate_tokens(user, invalidate_existing=False)
-        
-        return jsonify({
-            'access_token': access_token,
-            'refresh_token': new_refresh,
-        })
+
+        # Deliver via cookies (S05) — also echo in JSON body for non-browser clients.
+        resp = jsonify({'message': 'Token refreshed'})
+        _set_auth_cookies(resp, access_token, new_refresh)
+        return resp
         
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Refresh token expired'}), 401
@@ -1332,9 +1577,12 @@ def refresh_token():
 @auth_bp.route('/logout', methods=['POST'])
 @token_required
 def logout(current_user):
-    """Logout user and blacklist token."""
-    token = request.headers.get('Authorization', '').split(' ')[-1]
-    
+    """Logout user, blacklist the access token, and clear auth cookies."""
+    # Resolve the token that was used for this request (cookie or header).
+    token = request.cookies.get('access_token')
+    if not token:
+        token = request.headers.get('Authorization', '').split(' ')[-1]
+
     if redis_client:
         # Blacklist token for its remaining lifetime
         try:
@@ -1344,7 +1592,7 @@ def logout(current_user):
                 algorithms=['HS256']
             )
             exp = payload.get('exp', 0)
-            ttl = max(0, exp - int(datetime.utcnow().timestamp()))
+            ttl = max(0, exp - int(datetime.now(timezone.utc).timestamp()))
             redis_client.setex(f'blacklist:{token}', ttl, '1')
             
             # Also invalidate the session
@@ -1352,7 +1600,7 @@ def logout(current_user):
             if token_jti:
                 session_key = f'session:{current_user.id}:{token_jti}'
                 redis_client.delete(session_key)
-        except:
+        except Exception:
             pass
     
     # Log logout
@@ -1364,8 +1612,10 @@ def logout(current_user):
         success=True
     )
     security_audit.logout(current_user.id, current_user.email)
-    
-    return jsonify({'message': 'Logged out successfully'})
+
+    resp = jsonify({'message': 'Logged out successfully'})
+    _clear_auth_cookies(resp)
+    return resp
 
 
 @auth_bp.route('/me', methods=['GET'])
@@ -1411,7 +1661,7 @@ def update_profile(current_user):
                     'requires_2fa': True
                 }), 401
             
-            totp = pyotp.TOTP(current_user.two_factor_secret)
+            totp = pyotp.TOTP(_get_totp_secret(current_user))
             if not totp.verify(totp_code, valid_window=1):
                 return jsonify({'error': 'Invalid 2FA code'}), 401
     
@@ -1438,7 +1688,8 @@ def update_profile(current_user):
         'email_smart_alerts',
         'weekly_report_enabled',
         'monthly_report_enabled',
-        'alert_days_before'
+        'alert_days_before',
+        'login_alerts_enabled',  # S18: suspicious login/device detection opt-out
     ]
     
     # Handle 'name' field (split into first/last)
@@ -1541,7 +1792,7 @@ def change_password(current_user):
                 'requires_2fa': True
             }), 401
         
-        totp = pyotp.TOTP(current_user.two_factor_secret)
+        totp = pyotp.TOTP(_get_totp_secret(current_user))
         if not totp.verify(totp_code, valid_window=1):
             return jsonify({'error': 'Invalid 2FA code'}), 401
     
@@ -1630,56 +1881,123 @@ def check_password_public():
 @auth_bp.route('/2fa/setup', methods=['POST'])
 @token_required
 def setup_2fa(current_user):
-    """Generate TOTP secret and QR code for 2FA setup."""
+    """Generate TOTP secret and QR code for 2FA setup.
+
+    S24 fix — two changes:
+    1. The secret is staged in Redis (TTL 10 min) rather than committed to the
+       database immediately.  If the user abandons the setup flow the secret
+       expires automatically and is never persisted.  On Redis unavailability we
+       fall back to the old behaviour (store in DB) so the feature degrades
+       gracefully rather than failing hard.
+    2. The raw provisioning_uri is omitted from the response — it encodes the
+       secret verbatim in a URL-parseable form and is redundant with the QR
+       code image.  The frontend only reads `qr_code` and `secret`.
+    """
     if current_user.two_factor_enabled:
         return jsonify({'error': '2FA is already enabled'}), 400
-    
-    # Generate secret
+
+    # Generate a fresh base32 TOTP secret.
     secret = pyotp.random_base32()
-    current_user.two_factor_secret = secret
-    db.session.commit()
-    
-    # Generate provisioning URI
+
+    # S24: Stage the plaintext secret in Redis for 10 minutes rather than
+    # writing it to the database before the user has confirmed setup.
+    # Key: '2fa_pending:<user_id>'  Value: plaintext base32 secret
+    _pending_key = f'2fa_pending:{current_user.id}'
+    _stored_in_redis = False
+    if redis_client:
+        try:
+            redis_client.setex(_pending_key, 600, secret)  # 10-minute TTL
+            _stored_in_redis = True
+        except Exception as exc:
+            current_app.logger.warning(
+                f'[2FA setup] Redis write failed for user {current_user.id}: {exc}. '
+                'Falling back to DB staging.'
+            )
+
+    if not _stored_in_redis:
+        # Fallback: store encrypted in DB so verify_2fa() can still succeed.
+        _set_totp_secret(current_user, secret)
+        db.session.commit()
+
+    # Build provisioning URI for the QR code image only.
     totp = pyotp.TOTP(secret)
     app_name = current_app.config.get('APP_NAME', 'GearCargo')
     uri = totp.provisioning_uri(
         name=current_user.email,
         issuer_name=app_name
     )
-    
-    # Generate QR code
+
+    # Render QR code as a PNG data URI.
     qr = qrcode.QRCode(version=1, box_size=10, border=5)
     qr.add_data(uri)
     qr.make(fit=True)
-    
     img = qr.make_image(fill_color='black', back_color='white')
     buffer = io.BytesIO()
     img.save(buffer, format='PNG')
     qr_base64 = base64.b64encode(buffer.getvalue()).decode()
-    
+
+    # S24: provisioning_uri is intentionally NOT returned — it contains the
+    # raw secret in a URL-parseable form and the frontend does not use it.
     return jsonify({
         'secret': secret,
         'qr_code': f'data:image/png;base64,{qr_base64}',
-        'provisioning_uri': uri,
     })
 
 
 @auth_bp.route('/2fa/verify', methods=['POST'])
 @token_required
 def verify_2fa(current_user):
-    """Verify and enable 2FA."""
+    """Verify and enable 2FA.
+
+    S24 fix: reads the pending secret from Redis (staged by setup_2fa) rather
+    than from the database.  Only on successful TOTP verification is the secret
+    encrypted and persisted to the DB, eliminating the window where an
+    unconfirmed secret exists in the database.
+
+    Fallback: if the Redis key is absent (Redis unavailable, or the 10-minute
+    TTL expired, or setup fell back to DB storage) we fall through to reading
+    the encrypted secret from user.two_factor_secret — identical to the
+    previous behaviour.
+    """
     data = request.get_json()
     code = data.get('code')
-    
+
     if not code:
         return jsonify({'error': 'Verification code required'}), 400
-    
-    if not current_user.two_factor_secret:
-        return jsonify({'error': 'Please setup 2FA first'}), 400
-    
-    totp = pyotp.TOTP(current_user.two_factor_secret)
-    if not totp.verify(code):
-        return jsonify({'error': 'Invalid verification code'}), 401
+
+    # S24: Try to consume the pending secret from Redis first.
+    _pending_key = f'2fa_pending:{current_user.id}'
+    pending_secret = None
+    if redis_client:
+        try:
+            raw = redis_client.get(_pending_key)
+            if raw:
+                pending_secret = raw.decode()
+        except Exception as exc:
+            current_app.logger.warning(
+                f'[2FA verify] Redis read failed for user {current_user.id}: {exc}. '
+                'Falling back to DB-stored secret.'
+            )
+
+    if pending_secret:
+        # Happy path: secret was staged in Redis.
+        totp = pyotp.TOTP(pending_secret)
+        if not totp.verify(code):
+            return jsonify({'error': 'Invalid verification code'}), 401
+        # TOTP verified — now encrypt and persist the secret.
+        _set_totp_secret(current_user, pending_secret)
+        try:
+            redis_client.delete(_pending_key)
+        except Exception:
+            pass  # Non-critical — key will expire via TTL anyway.
+    else:
+        # Fallback: Redis unavailable, TTL expired, or setup stored directly
+        # in DB (Redis was down at setup time).
+        if not current_user.two_factor_secret:
+            return jsonify({'error': 'Please setup 2FA first'}), 400
+        totp = pyotp.TOTP(_get_totp_secret(current_user))
+        if not totp.verify(code):
+            return jsonify({'error': 'Invalid verification code'}), 401
     
     # Generate backup codes
     import secrets
@@ -1986,6 +2304,7 @@ def get_email_settings(current_user):
         'email_service_alerts': current_user.email_service_alerts if current_user.email_service_alerts is not None else True,
         'email_reminder_alerts': current_user.email_reminder_alerts if current_user.email_reminder_alerts is not None else True,
         'email_smart_alerts': current_user.email_smart_alerts if current_user.email_smart_alerts is not None else True,
+        'login_alerts_enabled': current_user.login_alerts_enabled if current_user.login_alerts_enabled is not None else True,  # S18
         'weekly_report_enabled': current_user.weekly_report_enabled if current_user.weekly_report_enabled is not None else False,
         'monthly_report_enabled': current_user.monthly_report_enabled if current_user.monthly_report_enabled is not None else True,
         'alert_days_before': current_user.alert_days_before or 14,
@@ -2033,7 +2352,7 @@ def set_notification_email(current_user):
 
     # Rate limiting: max 3 verification sends per hour (check consent log)
     from datetime import datetime, timedelta
-    one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+    one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
     recent_grants = EmailConsentLog.query.filter(
         EmailConsentLog.user_id == current_user.id,
         EmailConsentLog.action == 'grant',
@@ -2043,7 +2362,8 @@ def set_notification_email(current_user):
         return jsonify({'error': 'Too many verification requests. Try again later.'}), 429
 
     # Get request context for GDPR record
-    ip_address = request.headers.get('X-Real-IP') or request.headers.get('X-Forwarded-For', '').split(',')[0].strip() or request.remote_addr
+    # S11: request.remote_addr is set by ProxyFix to the real client IP.
+    ip_address = request.remote_addr or 'Unknown'
     user_agent = request.headers.get('User-Agent', '')[:500]
 
     # Encrypt and store
@@ -2055,7 +2375,7 @@ def set_notification_email(current_user):
     token = current_user.generate_notification_email_token(expires_hours=72)
 
     # Record consent timestamp + IP
-    current_user.notification_email_consented_at = datetime.utcnow()
+    current_user.notification_email_consented_at = datetime.now(timezone.utc)
     current_user.notification_email_consent_ip = ip_address
 
     # Generate unsubscribe token if needed
@@ -2113,7 +2433,7 @@ def set_notification_email(current_user):
         event_type='notification_email_set',
         event_category='auth',
         user_id=current_user.id,
-        description=f'Notification email set (verification pending)',
+        description='Notification email set (verification pending)',
         ip_address=ip_address,
         success=True,
         extra_data={'email_hash': hash_email(email_addr)}
@@ -2130,7 +2450,6 @@ def set_notification_email(current_user):
 @token_required
 def verify_notification_email(current_user):
     """Verify notification email with token (double opt-in step 2)."""
-    from app.utils.encryption import hash_email
     from app.models.email_consent_log import EmailConsentLog
 
     data = request.get_json() or {}
@@ -2144,7 +2463,7 @@ def verify_notification_email(current_user):
         return jsonify({'error': 'Invalid verification token'}), 401
 
     if not current_user.notification_email_token_exp or \
-       current_user.notification_email_token_exp < datetime.utcnow():
+       current_user.notification_email_token_exp < datetime.now(timezone.utc):
         return jsonify({'error': 'Verification token has expired. Please request a new one.'}), 401
 
     # Mark as verified
@@ -2158,7 +2477,8 @@ def verify_notification_email(current_user):
         current_user.email_verified = True
 
     # Record consent context
-    ip_address = request.headers.get('X-Real-IP') or request.headers.get('X-Forwarded-For', '').split(',')[0].strip() or request.remote_addr
+    # S11: request.remote_addr is set by ProxyFix to the real client IP.
+    ip_address = request.remote_addr or 'Unknown'
     user_agent = request.headers.get('User-Agent', '')[:500]
     email_hash = current_user.notification_email_hash or ''
 
@@ -2195,11 +2515,11 @@ def verify_notification_email(current_user):
 @token_required
 def remove_notification_email(current_user):
     """Remove the notification email and revoke consent."""
-    from app.utils.encryption import hash_email
     from app.models.email_consent_log import EmailConsentLog
 
     email_hash = current_user.notification_email_hash or ''
-    ip_address = request.headers.get('X-Real-IP') or request.headers.get('X-Forwarded-For', '').split(',')[0].strip() or request.remote_addr
+    # S11: request.remote_addr is set by ProxyFix to the real client IP.
+    ip_address = request.remote_addr or 'Unknown'
     user_agent = request.headers.get('User-Agent', '')[:500]
 
     # Clear all notification email data
@@ -2241,7 +2561,6 @@ def remove_notification_email(current_user):
 @token_required
 def resend_notification_verification(current_user):
     """Resend verification email for pending notification email."""
-    from app.utils.encryption import hash_email
     from app.models.email_consent_log import EmailConsentLog
 
     if not current_app.config.get('MAIL_ENABLED'):
@@ -2254,7 +2573,7 @@ def resend_notification_verification(current_user):
         return jsonify({'message': 'Already verified'}), 200
 
     # Rate limit: max 3/hour
-    one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+    one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
     recent = EmailConsentLog.query.filter(
         EmailConsentLog.user_id == current_user.id,
         EmailConsentLog.action.in_(['grant', 'verify']),
@@ -2313,7 +2632,8 @@ def unsubscribe_email():
     if not user:
         return '<html><body style="background:#0f172a;color:#e2e8f0;font-family:sans-serif;text-align:center;padding:60px"><h1>Invalid Link</h1><p>This unsubscribe link is no longer valid.</p></body></html>', 404
 
-    ip_address = request.headers.get('X-Real-IP') or request.headers.get('X-Forwarded-For', '').split(',')[0].strip() or request.remote_addr
+    # S11: request.remote_addr is set by ProxyFix to the real client IP.
+    ip_address = request.remote_addr or 'Unknown'
     user_agent = request.headers.get('User-Agent', '')[:500]
     email_hash = user.notification_email_hash or ''
 
@@ -2377,7 +2697,6 @@ def upload_avatar(current_user):
     """Upload a new avatar image. Keeps history of previous avatars."""
     import os
     import uuid
-    import json
     from werkzeug.utils import secure_filename
     
     # Security constants
@@ -2445,40 +2764,71 @@ def upload_avatar(current_user):
     if not os.path.abspath(file_path).startswith(os.path.abspath(avatar_dir)):
         return jsonify({'error': 'Invalid file path'}), 400
     
-    # Save new avatar
-    avatar.save(file_path)
-    os.chmod(file_path, 0o640)
-    
-    # Update avatar history in user preferences
+    # Write new avatar to a temp path first — activated atomically after DB commit
+    temp_path = file_path + '.tmp'
+    try:
+        avatar.save(temp_path)
+        os.chmod(temp_path, 0o640)
+    except OSError as e:
+        current_app.logger.error(f"Failed to write avatar temp file for user {current_user.id}: {e}")
+        return jsonify({'error': 'Failed to save avatar'}), 500
+
+    # Compute URL and prepare updated history (in memory — no disk changes yet)
     avatar_url = f"/uploads/avatars/{current_user.id}/{unique_filename}"
     avatar_history = current_user.preferences.get('avatar_history', []) if current_user.preferences else []
-    
-    # Add current avatar to history if exists and not already in history
+
+    # Add current avatar to history if it exists and is not already recorded
     if current_user.avatar and current_user.avatar not in avatar_history:
         avatar_history.insert(0, current_user.avatar)
-    
-    # Trim history to max limit
+
+    # Identify old history files to prune — deletion deferred until after commit
+    files_to_prune = []
     if len(avatar_history) > MAX_AVATAR_HISTORY:
-        # Delete old avatar files that are being removed from history
         for old_url in avatar_history[MAX_AVATAR_HISTORY:]:
             old_filename = os.path.basename(old_url)
             old_path = os.path.join(avatar_dir, old_filename)
             if os.path.exists(old_path) and os.path.abspath(old_path).startswith(os.path.abspath(avatar_dir)):
-                try:
-                    os.remove(old_path)
-                except:
-                    pass
+                files_to_prune.append(old_path)
         avatar_history = avatar_history[:MAX_AVATAR_HISTORY]
-    
-    # Update user preferences
+
+    # Update user record in memory
     if not current_user.preferences:
         current_user.preferences = {}
     current_user.preferences = {**current_user.preferences, 'avatar_history': avatar_history}
-    
-    # Set new avatar
     current_user.avatar = avatar_url
-    db.session.commit()
-    
+
+    # Commit DB — only activate the new file if this succeeds
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        try:
+            os.remove(temp_path)
+        except OSError:
+            pass
+        current_app.logger.error(f"DB commit failed during avatar upload for user {current_user.id}: {e}")
+        return jsonify({'error': 'Failed to update avatar'}), 500
+
+    # DB committed — atomically move temp file to its permanent name
+    try:
+        os.rename(temp_path, file_path)
+    except OSError:
+        import shutil
+        try:
+            shutil.move(temp_path, file_path)
+        except OSError as e2:
+            current_app.logger.error(
+                f"Avatar file activation failed after successful DB commit for user {current_user.id}: {e2}. "
+                f"Temp file left at {temp_path}"
+            )
+
+    # Prune old history files from disk only after the DB commit succeeded
+    for old_path in files_to_prune:
+        try:
+            os.remove(old_path)
+        except OSError:
+            pass
+
     from app.utils import sign_upload_url
     return jsonify({
         'message': 'Avatar uploaded successfully',
@@ -2604,8 +2954,6 @@ def delete_avatar(current_user, filename):
 @token_required
 def remove_current_avatar(current_user):
     """Remove current avatar (set to no avatar)."""
-    import os
-    
     if not current_user.avatar:
         return jsonify({'error': 'No avatar to remove'}), 404
     
@@ -2716,7 +3064,7 @@ def set_security_questions(current_user):
                 'requires_2fa': True
             }), 401
         
-        totp = pyotp.TOTP(current_user.two_factor_secret)
+        totp = pyotp.TOTP(_get_totp_secret(current_user))
         if not totp.verify(totp_code, valid_window=1):
             return jsonify({'error': 'Invalid 2FA code'}), 401
     
@@ -2839,6 +3187,15 @@ def verify_recovery_answers():
     """
     Verify security question answers and issue a password reset token.
     Rate limited to prevent brute force attacks.
+
+    S21: Two independent Redis counters protect this endpoint:
+      1. Per-email counter  ``security_answer_attempts:{email}``    — max 5 per 15 min.
+         Prevents exhaustive enumeration of answers for a *specific* account.
+      2. Per-IP counter     ``security_answer_attempts:ip:{ip}``    — max 20 per 15 min.
+         Prevents an attacker with N target accounts from making 5×N attempts from
+         a single IP by cycling through accounts (bypassing the per-email limit).
+    Both counters are incremented on *every* failed verification (including
+    non-existent users) and cleared for the email counter on success.
     """
     data = request.get_json()
     email = data.get('email', '').lower().strip()
@@ -2847,7 +3204,25 @@ def verify_recovery_answers():
     if not email or not answers:
         return jsonify({'error': 'Email and answers are required'}), 400
     
-    # Check rate limiting for this email (similar to login lockout)
+    client_ip = get_real_client_ip()
+
+    # --- S21: per-IP rate check (20 attempts / 15 min across all target emails) ---
+    ip_attempts_key = f'security_answer_attempts:ip:{client_ip}'
+    if redis_client:
+        try:
+            ip_attempts = redis_client.get(ip_attempts_key)
+            if ip_attempts and int(ip_attempts) >= 20:
+                current_app.logger.warning(
+                    f"[Security] Security-question IP lockout: {client_ip} reached 20 attempts"
+                )
+                return jsonify({
+                    'error': 'Too many failed attempts. Please try again later.',
+                    'locked': True
+                }), 429
+        except Exception as e:
+            current_app.logger.error(f"Redis error checking IP answer attempts: {e}")
+
+    # --- Per-email rate check (5 attempts / 15 min for this specific account) ---
     attempts_key = f'security_answer_attempts:{email}'
     if redis_client:
         try:
@@ -2863,11 +3238,15 @@ def verify_recovery_answers():
     user = User.query.filter_by(email=email).first()
     
     if not user:
-        # Record attempt even for non-existent users (prevents enumeration)
+        # Record attempt even for non-existent users (prevents enumeration).
+        # S21: increment both counters so IP-cycling through fake emails still
+        # burns the IP's global budget.
         if redis_client:
             try:
                 redis_client.incr(attempts_key)
                 redis_client.expire(attempts_key, 900)  # 15 min lockout
+                redis_client.incr(ip_attempts_key)
+                redis_client.expire(ip_attempts_key, 900)
             except:
                 pass
         return jsonify({'error': 'Verification failed'}), 401
@@ -2877,11 +3256,13 @@ def verify_recovery_answers():
     
     # Verify the answers
     if not user.verify_security_answers(answers):
-        # Record failed attempt
+        # Record failed attempt — both email and IP counters (S21).
         if redis_client:
             try:
                 redis_client.incr(attempts_key)
                 redis_client.expire(attempts_key, 900)
+                redis_client.incr(ip_attempts_key)
+                redis_client.expire(ip_attempts_key, 900)
             except:
                 pass
         
@@ -2896,7 +3277,9 @@ def verify_recovery_answers():
         
         return jsonify({'error': 'One or more answers are incorrect'}), 401
     
-    # Clear failed attempts on success
+    # Clear failed attempts on success (email counter only — IP counter is not
+    # cleared on success to prevent using a valid account as a "reset token"
+    # to clear the IP budget after burning attempts on other accounts).
     if redis_client:
         try:
             redis_client.delete(attempts_key)

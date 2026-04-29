@@ -4,7 +4,7 @@
  */
 
 import db from './database'
-import api, { 
+import { 
   vehicleApi, 
   fuelApi, 
   serviceApi, 
@@ -12,9 +12,8 @@ import api, {
   reminderApi,
   taxApi,
   insuranceApi,
-  predictionApi,
 } from '../services/api'
-import offlineQueue, { 
+import { 
   getPendingOperations, 
   markAsProcessing, 
   markAsCompleted, 
@@ -23,6 +22,11 @@ import offlineQueue, {
   EntityType,
 } from './offlineQueue'
 import { detectConflict, createConflict } from './conflictManager'
+
+// Dev-only loggers — Vite replaces import.meta.env.DEV with false at build time
+// and tree-shakes the dead branch, so these are zero-cost no-ops in production.
+const log = import.meta.env.DEV ? console.log.bind(console) : () => {}
+const warn = import.meta.env.DEV ? console.warn.bind(console) : () => {}
 
 // API mapping for each entity type
 const apiMap = {
@@ -54,10 +58,13 @@ export function isOnline() {
 }
 
 /**
- * Check if user is authenticated (has valid token)
+ * Check if user is authenticated.
+ * S05 — tokens are now httpOnly cookies, invisible to JS.  We rely on the
+ * non-secret 'auth_session' flag that AuthContext sets on login/me-success
+ * and clears on logout/401.
  */
 function isAuthenticated() {
-  return !!localStorage.getItem('access_token')
+  return !!localStorage.getItem('auth_session')
 }
 
 /**
@@ -65,16 +72,16 @@ function isAuthenticated() {
  */
 export async function syncFromServer() {
   if (!isOnline()) {
-    console.log('[Sync] Offline - skipping server sync')
+    log('[Sync] Offline - skipping server sync')
     return { success: false, reason: 'offline' }
   }
 
   if (!isAuthenticated()) {
-    console.log('[Sync] Not authenticated - skipping server sync')
+    log('[Sync] Not authenticated - skipping server sync')
     return { success: false, reason: 'not_authenticated' }
   }
 
-  console.log('[Sync] Starting full sync from server...')
+  log('[Sync] Starting full sync from server...')
   const results = {}
 
   try {
@@ -93,7 +100,7 @@ export async function syncFromServer() {
     // Update sync metadata
     await updateSyncMeta('all', new Date().toISOString())
 
-    console.log('[Sync] Full sync completed:', results)
+    log('[Sync] Full sync completed:', results)
     return { success: true, results }
   } catch (error) {
     console.error('[Sync] Full sync failed:', error)
@@ -132,7 +139,7 @@ export async function syncVehicleData(vehicleId) {
   if (!isOnline()) return { success: false, reason: 'offline' }
   if (!isAuthenticated()) return { success: false, reason: 'not_authenticated' }
 
-  console.log(`[Sync] Syncing data for vehicle ${vehicleId}...`)
+  log(`[Sync] Syncing data for vehicle ${vehicleId}...`)
   const results = {}
 
   try {
@@ -163,7 +170,7 @@ export async function syncVehicleData(vehicleId) {
     }
     results.repairs = repairEntries.length
 
-    console.log(`[Sync] Vehicle ${vehicleId} sync completed:`, results)
+    log(`[Sync] Vehicle ${vehicleId} sync completed:`, results)
     return { success: true, results }
   } catch (error) {
     console.error(`[Sync] Vehicle ${vehicleId} sync failed:`, error)
@@ -176,23 +183,23 @@ export async function syncVehicleData(vehicleId) {
  */
 export async function processOfflineQueue() {
   if (!isOnline()) {
-    console.log('[Sync] Offline - cannot process queue')
+    log('[Sync] Offline - cannot process queue')
     return { success: false, reason: 'offline' }
   }
 
   if (!isAuthenticated()) {
-    console.log('[Sync] Not authenticated - cannot process queue')
+    log('[Sync] Not authenticated - cannot process queue')
     return { success: false, reason: 'not_authenticated' }
   }
 
   const pending = await getPendingOperations()
   
   if (pending.length === 0) {
-    console.log('[Sync] No pending operations to process')
+    log('[Sync] No pending operations to process')
     return { success: true, processed: 0 }
   }
 
-  console.log(`[Sync] Processing ${pending.length} queued operations...`)
+  log(`[Sync] Processing ${pending.length} queued operations...`)
   
   let processed = 0
   let failed = 0
@@ -210,7 +217,7 @@ export async function processOfflineQueue() {
     }
   }
 
-  console.log(`[Sync] Queue processing complete: ${processed} processed, ${failed} failed`)
+  log(`[Sync] Queue processing complete: ${processed} processed, ${failed} failed`)
   
   // Notify UI about sync completion
   if (typeof window !== 'undefined') {
@@ -262,7 +269,7 @@ async function processQueueItem(item) {
         
         // Detect conflict
         if (detectConflict(localData, serverData)) {
-          console.log(`[Sync] Conflict detected for ${entity}/${entityId}`)
+          log(`[Sync] Conflict detected for ${entity}/${entityId}`)
           await createConflict(entity, entityId, localData, serverData, operation)
           throw new Error('CONFLICT_DETECTED')
         }
@@ -271,7 +278,7 @@ async function processQueueItem(item) {
           throw error
         }
         // If we can't fetch server version, proceed with update
-        console.warn(`[Sync] Could not check for conflicts: ${error.message}`)
+        warn(`[Sync] Could not check for conflicts: ${error.message}`)
       }
       
       await entityApi.update(entityId, data)
@@ -311,7 +318,7 @@ export async function getLastSyncTime(entity = 'all') {
  * Clear all local data (for logout)
  */
 export async function clearAllData() {
-  console.log('[Sync] Clearing all local data...')
+  log('[Sync] Clearing all local data...')
   
   await Promise.all([
     db.vehicles.clear(),
@@ -328,18 +335,18 @@ export async function clearAllData() {
     db.syncMeta.clear(),
   ])
   
-  console.log('[Sync] All local data cleared')
+  log('[Sync] All local data cleared')
 }
 
 /**
  * Initialize sync - call on app startup
  */
 export async function initializeSync() {
-  console.log('[Sync] Initializing...')
+  log('[Sync] Initializing...')
   
   // Listen for online event
   window.addEventListener('online', async () => {
-    console.log('[Sync] Back online - processing queue...')
+    log('[Sync] Back online - processing queue...')
     await processOfflineQueue()
     await syncFromServer()
   })
@@ -357,7 +364,7 @@ export async function initializeSync() {
     }
   }
   
-  console.log('[Sync] Initialization complete')
+  log('[Sync] Initialization complete')
 }
 
 export default {

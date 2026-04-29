@@ -21,7 +21,11 @@ max_requests_jitter = 50
 # Server mechanics
 daemon = False
 pidfile = None
-umask = 0
+# I08: umask 0o027 → new files are created as 0o640 (owner rw, group r, others none).
+# umask = 0 (the gunicorn default) would leave every temp upload and log file
+# world-readable before an explicit chmod is applied, exposing partial file
+# content to other processes in the container.
+umask = 0o027
 user = None
 group = None
 tmp_upload_dir = None
@@ -35,22 +39,45 @@ access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"
 # Process naming
 proc_name = "gearcargo"
 
-# Only run background scheduler in ONE worker process to prevent duplicate
-# scheduled jobs (backups, emails etc.) from firing N times in parallel.
+# Load the Flask application once in the master process so all workers share
+# the same code-object and only ONE scheduler instance is ever started.
+# Without this, each worker calls create_app() independently and starts its
+# own scheduler — multiplying every cron/interval job by the worker count.
+preload_app = True
+
 def post_fork(server, worker):
-    """Called after a worker process is forked. Only worker 0 runs the scheduler."""
-    import os
-    if worker.age == 0:
-        # First worker: init the scheduler
-        pass  # Scheduler is already initialized in create_app()
-    else:
-        # All other workers: disable the scheduler that was started by create_app()
-        try:
-            from app.services import scheduler
-            if scheduler.running:
-                scheduler.shutdown(wait=False)
-        except Exception:
-            pass
+    """
+    Called in each worker immediately after fork().
+
+    With preload_app=True the master has already called create_app() and
+    started the APScheduler.  After fork() the child inherits the Python
+    objects but POSIX threads are NOT copied, so the scheduler's thread pool
+    is already dead in the worker — we just clean up its state so no
+    zombie references remain.
+
+    We also dispose the SQLAlchemy connection pool: file-descriptors for DB
+    connections opened in the master must not be shared across processes or
+    queries will corrupt each other's results.
+    """
+    # 1. Dispose the inherited DB connection pool — each worker gets fresh
+    #    connections.  This is mandatory with preload_app=True.
+    try:
+        from app import db
+        db.engine.dispose()
+    except Exception:
+        pass
+
+    # 2. Shut down any APScheduler state that survived the fork as a zombie.
+    #    The scheduler's background thread is already dead; this clears the
+    #    running flag and releases internal locks so the worker process is
+    #    not left with a stale reference that might cause spurious logging or
+    #    lock contention with the master's live scheduler.
+    try:
+        from app.services import scheduler
+        if scheduler.running:
+            scheduler.shutdown(wait=False)
+    except Exception:
+        pass
 
 # SSL (handled by external reverse proxy)
 # keyfile = None

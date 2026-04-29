@@ -2,7 +2,7 @@
 GearCargo - Background Task Scheduler Service
 """
 
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from flask_apscheduler import APScheduler
 
 scheduler = APScheduler()
@@ -12,66 +12,81 @@ def init_scheduler(app):
     """Initialize the background task scheduler."""
     scheduler.init_app(app)
     
-    # Add scheduled jobs
+    # Add scheduled jobs.
+    # replace_existing=True prevents ConflictingIdError if init_scheduler is
+    # somehow called twice (e.g. during testing or app-factory edge cases).
+    # coalesce=True collapses multiple missed executions into a single run so
+    # a delayed start never floods the system with catch-up iterations.
+    # misfire_grace_time=300 gives jobs 5 minutes to fire before they are
+    # considered missed (handles slow startup / GC pauses).
+    _job_defaults = dict(replace_existing=True, coalesce=True, misfire_grace_time=300)
+
     scheduler.add_job(
         id='check_reminders',
         func=check_due_reminders,
         trigger='interval',
         hours=1,
-        args=[app]
+        args=[app],
+        **_job_defaults
     )
-    
+
     scheduler.add_job(
         id='check_predictions',
         func=generate_auto_predictions,
         trigger='cron',
         hour=3,  # Run at 3 AM
-        args=[app]
+        args=[app],
+        **_job_defaults
     )
-    
+
     scheduler.add_job(
         id='cleanup_old_data',
         func=cleanup_old_data,
         trigger='cron',
         hour=4,  # Run at 4 AM
-        args=[app]
+        args=[app],
+        **_job_defaults
     )
-    
+
     scheduler.add_job(
         id='send_scheduled_backups',
         func=process_scheduled_backups,
         trigger='cron',
         hour='*',  # Every hour
-        args=[app]
+        args=[app],
+        **_job_defaults
     )
-    
+
     # Email notification jobs
     scheduler.add_job(
         id='send_daily_alerts',
         func=send_daily_email_alerts,
         trigger='cron',
         hour=8,  # Run at 8 AM
-        args=[app]
+        args=[app],
+        **_job_defaults
     )
-    
+
     scheduler.add_job(
         id='send_weekly_reports',
         func=send_weekly_reports,
         trigger='cron',
         day_of_week='mon',  # Every Monday
         hour=9,
-        args=[app]
+        args=[app],
+        **_job_defaults
     )
-    
+
     scheduler.add_job(
         id='send_monthly_reports',
         func=send_monthly_reports,
         trigger='cron',
         day=1,  # First of month
         hour=9,
-        args=[app]
+        args=[app],
+        **_job_defaults
     )
-    
+
     # Fuel price auto-refresh — every Monday at 10 AM UTC
     # (after UK Gov & EU Oil Bulletin publish their weekly updates)
     scheduler.add_job(
@@ -80,7 +95,8 @@ def init_scheduler(app):
         trigger='cron',
         day_of_week='mon',
         hour=10,
-        args=[app]
+        args=[app],
+        **_job_defaults
     )
 
     # Recurring tax entry generation — daily at 6 AM
@@ -89,7 +105,8 @@ def init_scheduler(app):
         func=process_recurring_tax_entries,
         trigger='cron',
         hour=6,
-        args=[app]
+        args=[app],
+        **_job_defaults
     )
 
     scheduler.start()
@@ -180,7 +197,7 @@ def check_due_reminders(app):
                         app.logger.warning(f'Reminder email notification failed for reminder {reminder.id}: {email_exc}')
 
                 if should_notify:
-                    reminder.last_notified_at = datetime.utcnow()
+                    reminder.last_notified_at = datetime.now(timezone.utc)
         
         db.session.commit()
         app.logger.info(f'Checked {len(due_reminders)} due reminders')
@@ -192,12 +209,12 @@ def generate_auto_predictions(app):
         if not app.config.get('OLLAMA_ENABLED'):
             return
         
-        from app.models import Vehicle, User
+        from app.models import Vehicle
         from app import db
         
         # Get vehicles that haven't had predictions recently
         from datetime import timedelta
-        cutoff = datetime.utcnow() - timedelta(days=7)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=7)
         
         vehicles = Vehicle.query.filter(
             Vehicle.is_active == True,
@@ -209,7 +226,7 @@ def generate_auto_predictions(app):
             try:
                 # Generate predictions via Ollama
                 # This would call the predictions service
-                vehicle.last_prediction_at = datetime.utcnow()
+                vehicle.last_prediction_at = datetime.now(timezone.utc)
             except Exception as e:
                 app.logger.error(f'Prediction generation failed for vehicle {vehicle.id}: {e}')
         
@@ -224,7 +241,7 @@ def cleanup_old_data(app):
         from app import db
         
         # Delete old notification logs (older than 90 days)
-        cutoff = datetime.utcnow() - timedelta(days=90)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=90)
         
         deleted_logs = NotificationLog.query.filter(
             NotificationLog.created_at < cutoff
@@ -249,7 +266,7 @@ def process_scheduled_backups(app):
         from app import db
         import os
         
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         current_hour = now.hour
         
         # Get schedules that should run this hour — lock each row so only ONE
@@ -324,7 +341,7 @@ def process_scheduled_backups(app):
                     backup.reminders_count = len(export_data['reminders'])
                     backup.attachments_count = len(export_data.get('attachments', []))
                     backup.status = 'completed'
-                    backup.completed_at = datetime.utcnow()
+                    backup.completed_at = datetime.now(timezone.utc)
                     
                     # Send to all configured external destinations.
                     try:
@@ -362,7 +379,7 @@ def process_scheduled_backups(app):
                     if backup:
                         backup.status = 'failed'
                         backup.error_message = str(e)
-                        backup.completed_at = datetime.utcnow()
+                        backup.completed_at = datetime.now(timezone.utc)
                     
                     schedule.last_status = 'failed'
                     schedule.last_error = str(e)
@@ -390,7 +407,6 @@ def cleanup_user_backups(user_id, max_backups, retention_days, user_folder, db):
     from app.models import Backup
 
     keep = int(max_backups or 10)
-    days = int(retention_days or 90)
 
     if not os.path.exists(user_folder):
         return
@@ -408,8 +424,6 @@ def cleanup_user_backups(user_id, max_backups, retention_days, user_folder, db):
 
     # Sort newest first so index 0 = most recent
     files.sort(key=lambda x: x[1], reverse=True)
-
-    cutoff_timestamp = (datetime.utcnow() - timedelta(days=days)).timestamp()
 
     for i, (filepath, mtime) in enumerate(files):
         if i < keep:
@@ -442,12 +456,12 @@ def send_backup_notification(user, backup, status, app, error_message=None):
         
         if status == 'success':
             title = 'Backup Completed'
-            body = f'Your scheduled backup has completed successfully.'
+            body = 'Your scheduled backup has completed successfully.'
             if backup:
                 body += f' Size: {format_size(backup.file_size)}'
         else:
             title = 'Backup Failed'
-            body = f'Your scheduled backup failed.'
+            body = 'Your scheduled backup failed.'
             if error_message:
                 body += f' Error: {error_message[:100]}'
         
@@ -568,7 +582,7 @@ def send_weekly_reports(app):
                     upcoming.extend(alerts[:3])  # Max 3 per type
                 
                 if EmailService.send_weekly_report(user, summary, upcoming[:5]):
-                    user.last_weekly_report = datetime.utcnow()
+                    user.last_weekly_report = datetime.now(timezone.utc)
                     sent_count += 1
                     
             except Exception as e:
@@ -623,7 +637,7 @@ def send_monthly_reports(app):
                         insights.append(f"{most_expensive['name']} was your most expensive vehicle this month.")
                 
                 if EmailService.send_monthly_report(user, month, year, summary, vehicles, insights):
-                    user.last_monthly_report = datetime.utcnow()
+                    user.last_monthly_report = datetime.now(timezone.utc)
                     sent_count += 1
                     
             except Exception as e:
@@ -663,7 +677,6 @@ def process_recurring_tax_entries(app):
         created_count = 0
 
         # Heal entries that are recurring but have next_due_date=NULL (set after creation)
-        from app.models.entry import Entry as BaseEntry
         null_due = TaxEntry.query.filter(
             TaxEntry.recurring == True,
             TaxEntry.next_due_date.is_(None),

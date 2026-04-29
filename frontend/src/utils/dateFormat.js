@@ -6,13 +6,37 @@
 const LOCALE = 'en-GB'
 
 /**
+ * Parse a date value as LOCAL midnight.
+ *
+ * `new Date("2026-01-06")` is treated as UTC midnight by the spec, which
+ * shifts the displayed day backwards on any machine with a UTC− offset.
+ * Replacing hyphens with slashes makes the browser parse the string as
+ * local midnight instead, which is always the correct intent for date-only
+ * strings stored in the backend as YYYY-MM-DD.
+ *
+ * Datetime strings (containing "T") and Date objects are passed through
+ * unchanged — they already carry timezone information.
+ *
+ * @param {string|Date} value
+ * @returns {Date}
+ */
+function _parseDate(value) {
+  if (value instanceof Date) return value
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    // "2026-01-06" → "2026/01/06" → parsed as local midnight by all browsers
+    return new Date(value.replace(/-/g, '/'))
+  }
+  return new Date(value)
+}
+
+/**
  * Format a date value as dd/mm/yyyy  (e.g. 28/04/2026)
  * @param {string|Date|null} value
  * @returns {string}
  */
 export function formatDate(value) {
   if (!value) return '-'
-  const d = value instanceof Date ? value : new Date(value)
+  const d = _parseDate(value)
   if (isNaN(d.getTime())) return '-'
   return d.toLocaleDateString(LOCALE)
 }
@@ -22,7 +46,7 @@ export function formatDate(value) {
  */
 export function formatDateLong(value) {
   if (!value) return '-'
-  const d = value instanceof Date ? value : new Date(value)
+  const d = _parseDate(value)
   if (isNaN(d.getTime())) return '-'
   return d.toLocaleDateString(LOCALE, { day: 'numeric', month: 'long', year: 'numeric' })
 }
@@ -32,7 +56,7 @@ export function formatDateLong(value) {
  */
 export function formatDateWithWeekday(value) {
   if (!value) return '-'
-  const d = value instanceof Date ? value : new Date(value)
+  const d = _parseDate(value)
   if (isNaN(d.getTime())) return '-'
   return d.toLocaleDateString(LOCALE, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 }
@@ -42,7 +66,7 @@ export function formatDateWithWeekday(value) {
  */
 export function formatMonthYear(value) {
   if (!value) return '-'
-  const d = value instanceof Date ? value : new Date(value)
+  const d = _parseDate(value)
   if (isNaN(d.getTime())) return '-'
   return d.toLocaleDateString(LOCALE, { year: 'numeric', month: 'long' })
 }
@@ -52,7 +76,7 @@ export function formatMonthYear(value) {
  */
 export function formatDateShort(value) {
   if (!value) return '-'
-  const d = value instanceof Date ? value : new Date(value)
+  const d = _parseDate(value)
   if (isNaN(d.getTime())) return '-'
   return d.toLocaleDateString(LOCALE, { day: 'numeric', month: 'short', year: 'numeric' })
 }
@@ -62,6 +86,7 @@ export function formatDateShort(value) {
  */
 export function formatDateTime(value) {
   if (!value) return '-'
+  // DateTime strings already carry timezone info — use new Date() directly.
   const d = value instanceof Date ? value : new Date(value)
   if (isNaN(d.getTime())) return '-'
   return d.toLocaleString(LOCALE)

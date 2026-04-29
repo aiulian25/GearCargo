@@ -2,7 +2,7 @@
 GearCargo - Calendar Sync Routes
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify, current_app
 from icalendar import Calendar, Event
 from io import BytesIO
@@ -33,14 +33,14 @@ def get_calendar_entries(current_user):
             start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
         else:
             # Default to start of current month
-            today = datetime.utcnow()
+            today = datetime.now(timezone.utc)
             start_date = today.replace(day=1).date()
         
         if end_date_str:
             end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
         else:
             # Default to end of current month + next month
-            today = datetime.utcnow()
+            today = datetime.now(timezone.utc)
             if today.month == 12:
                 end_date = today.replace(year=today.year + 1, month=2, day=1).date() - timedelta(days=1)
             else:
@@ -371,8 +371,8 @@ def export_calendar(current_user):
         alarm.add('description', f'Reminder: {reminder.title}')
         event.add_component(alarm)
         
-        event.add('created', reminder.created_at or datetime.utcnow())
-        event.add('dtstamp', datetime.utcnow())
+        event.add('created', reminder.created_at or datetime.now(timezone.utc))
+        event.add('dtstamp', datetime.now(timezone.utc))
         
         cal.add_component(event)
     
@@ -445,8 +445,8 @@ def calendar_feed(token):
         event.add('description', reminder.description or '')
         event.add('dtstart', reminder.due_date)
         event.add('dtend', reminder.due_date)
-        event.add('created', reminder.created_at or datetime.utcnow())
-        event.add('dtstamp', datetime.utcnow())
+        event.add('created', reminder.created_at or datetime.now(timezone.utc))
+        event.add('dtstamp', datetime.now(timezone.utc))
         
         cal.add_component(event)
     
@@ -468,8 +468,8 @@ def generate_feed_token(current_user):
         {
             'user_id': current_user.id,
             'type': 'calendar_feed',
-            'created': datetime.utcnow().isoformat(),
-            'exp': datetime.utcnow() + timedelta(days=90)
+            'created': datetime.now(timezone.utc).isoformat(),
+            'exp': datetime.now(timezone.utc) + timedelta(days=90)
         },
         current_app.config['JWT_SECRET_KEY'],
         algorithm='HS256'
@@ -766,7 +766,7 @@ def sync_all_entries(current_user):
     results = sync_all_entries_for_user(current_user)
     
     # Update last sync time
-    current_user.calendar_last_sync = datetime.utcnow()
+    current_user.calendar_last_sync = datetime.now(timezone.utc)
     db.session.commit()
     
     return jsonify({

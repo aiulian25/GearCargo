@@ -3,12 +3,11 @@
  * UI for resolving data sync conflicts
  */
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useLanguage } from '../../contexts/LanguageContext'
 import { 
   getUnresolvedConflicts, 
   resolveConflict, 
-  dismissConflict,
   findDifferences,
   ConflictStrategy,
 } from '../../db/conflictManager'

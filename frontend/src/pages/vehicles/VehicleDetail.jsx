@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { vehicleApi, fuelApi, serviceApi, repairApi, taxApi, reminderApi } from '../../services/api'
+import { vehicleApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { formatDate } from '../../utils/dateFormat'
 

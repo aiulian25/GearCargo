@@ -6,7 +6,6 @@ PDF report generation for vehicle expenses
 from datetime import datetime
 from flask import Blueprint, request, jsonify, send_file, current_app
 
-from app import db
 from app.models import Vehicle
 from app.routes.auth import token_required
 from app.services.pdf_report_service import (

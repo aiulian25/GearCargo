@@ -49,7 +49,7 @@ const TrashIcon = ({ className }) => (
 
 export default function SetupSecurityQuestions() {
   const { t } = useTranslation()
-  const { user, refreshUser } = useAuth()
+  const { refreshUser } = useAuth()
   const navigate = useNavigate()
   
   const [step, setStep] = useState(1) // 1: intro, 2: questions, 3: success

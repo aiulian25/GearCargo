@@ -5,96 +5,78 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  // S05 — tokens are now httpOnly cookies; withCredentials ensures the browser
+  // includes cookies on every request (including cross-origin in dev mode where
+  // Vite proxies /api to the backend on a different port).
+  withCredentials: true,
 })
 
-// Request interceptor - add auth token
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('access_token')
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
-    }
-    return config
-  },
-  (error) => {
-    return Promise.reject(error)
-  }
-)
+// No request interceptor needed — the browser attaches the httpOnly
+// access_token cookie automatically on every request.  Manual Authorization
+// header injection from localStorage is removed (S05).
 
-// Response interceptor - handle token refresh
+// Response interceptor — transparent token refresh via cookie
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config
-    
-    // Skip auth handling if already on auth-related pages
+
+    // Skip auth handling on login / register / change-password pages.
     const currentPath = window.location.pathname
-    const isAuthPage = currentPath === '/login' || currentPath === '/register' || currentPath === '/change-password'
-    
-    // Check for session expired/invalid errors - these should NOT try to refresh
+    const isAuthPage =
+      currentPath === '/login' ||
+      currentPath === '/register' ||
+      currentPath === '/change-password'
+
+    // Session definitively expired / invalid — no point refreshing.
     const errorCode = error.response?.data?.code
     if (errorCode === 'SESSION_EXPIRED' || errorCode === 'SESSION_INVALID') {
-      localStorage.removeItem('access_token')
-      localStorage.removeItem('refresh_token')
+      // Clear the local auth flag so ThemeContext / LanguageContext stop
+      // attempting background sync (they check this flag, not the cookie).
+      localStorage.removeItem('auth_session')
       if (!isAuthPage) {
-        // Show message and redirect
         alert(error.response?.data?.error || 'Your session has expired. Please login again.')
         window.location.href = '/login'
       }
       return Promise.reject(error)
     }
-    
-    // If 401 and not already retrying
+
+    // 401 — try a silent token refresh; the browser sends the refresh_token
+    // cookie automatically because withCredentials: true is set.
     if (error.response?.status === 401 && !originalRequest._retry) {
-      // Don't try to refresh on auth pages - just reject silently
       if (isAuthPage) {
         return Promise.reject(error)
       }
-      
+
       originalRequest._retry = true
-      
+
       try {
-        const refreshToken = localStorage.getItem('refresh_token')
-        
-        if (!refreshToken) {
-          throw new Error('No refresh token')
-        }
-        
-        const response = await axios.post('/api/auth/refresh', {
-          refresh_token: refreshToken,
-        })
-        
-        const { access_token, refresh_token: newRefresh } = response.data
-        
-        localStorage.setItem('access_token', access_token)
-        localStorage.setItem('refresh_token', newRefresh)
-        
-        originalRequest.headers.Authorization = `Bearer ${access_token}`
+        // POST with empty body — the httpOnly refresh_token cookie is sent
+        // automatically.  No localStorage read needed (S05).
+        await axios.post('/api/auth/refresh', {}, { withCredentials: true })
+
+        // New access_token cookie is now set by the server.  Retry original request.
         return api(originalRequest)
-        
       } catch (refreshError) {
-        // Check if refresh failed due to session expiry
         const refreshErrorCode = refreshError.response?.data?.code
         if (refreshErrorCode === 'SESSION_EXPIRED' || refreshErrorCode === 'SESSION_INVALID') {
-          localStorage.removeItem('access_token')
-          localStorage.removeItem('refresh_token')
+          localStorage.removeItem('auth_session')
           if (!isAuthPage) {
             alert(refreshError.response?.data?.error || 'Your session has expired. Please login again.')
             window.location.href = '/login'
           }
           return Promise.reject(refreshError)
         }
-        
-        // Refresh failed for other reasons, logout user
-        localStorage.removeItem('access_token')
-        localStorage.removeItem('refresh_token')
+
+        // Refresh failed for any other reason — send user to login.
+        localStorage.removeItem('auth_session')
         if (!isAuthPage) {
           window.location.href = '/login'
         }
         return Promise.reject(refreshError)
       }
     }
-    
+
     return Promise.reject(error)
   }
 )
@@ -116,7 +98,8 @@ export const vehicleApi = {
   getStats: (id) => api.get(`/vehicles/${id}/stats`),
   getHealth: (id) => api.get(`/vehicles/${id}/health`),
   getManual: (id) => api.get(`/vehicles/${id}/manual`),
-  getTimeline: (id, page = 1) => api.get(`/vehicles/${id}/timeline?page=${page}`),
+  getTimeline: (id, page = 1, type = 'all', perPage = 50) =>
+    api.get(`/vehicles/${id}/timeline?page=${page}&type=${type}&per_page=${perPage}`),
   reorder: (order) => api.post('/vehicles/reorder', { order }),
   updateMileage: (id, mileage) => api.post(`/vehicles/${id}/mileage`, { mileage }),
   uploadPhoto: (id, file) => {
@@ -456,10 +439,12 @@ export const attachmentApi = {
   update: (id, data) => api.put(`/attachments/${id}`, data),
   delete: (id) => api.delete(`/attachments/${id}`),
   download: (id) => api.get(`/attachments/${id}/download`, { responseType: 'blob' }),
-  getViewUrl: (id) => {
-    const token = localStorage.getItem('access_token')
-    return `/api/attachments/${id}/view?token=${token}`
-  },
+  // S20: returns the plain view URL — the browser sends the httpOnly session
+  // cookie automatically for same-origin <img>/<iframe> requests.
+  getViewUrl: (id) => `/api/attachments/${id}/view`,
+  // S20: for non-cookie contexts (e.g. programmatic download / external use),
+  // call this to obtain a short-lived HMAC-signed URL (valid 5 min).
+  getSignedViewUrl: (id) => api.get(`/attachments/${id}/token`).then(r => r.data.url),
   getExpiring: (days = 30, includeExpired = true) => {
     const params = new URLSearchParams()
     params.append('days', days)

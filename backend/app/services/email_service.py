@@ -3,11 +3,11 @@ GearCargo - Email Notification Service
 Handles all email notifications: alerts, reminders, reports
 """
 
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from flask import current_app, render_template_string
 from flask_mail import Message
 from app import mail, db
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Any
 import logging
 import re
 
@@ -322,7 +322,7 @@ class EmailService:
                     channel='email',
                     status=status,
                     error_message=error,
-                    sent_at=datetime.utcnow() if status == 'sent' else None,
+                    sent_at=datetime.now(timezone.utc) if status == 'sent' else None,
                 )
                 db.session.add(log_entry)
                 
@@ -687,7 +687,7 @@ def get_all_alerts_for_user(user_id: int, days_ahead: int = 30) -> Dict[str, Lis
 
 def get_user_weekly_summary(user_id: int) -> Dict:
     """Generate weekly summary data for a user."""
-    from app.models import User, Vehicle, FuelEntry, ServiceEntry, RepairEntry
+    from app.models import User, Vehicle, FuelEntry, ServiceEntry
     
     user = User.query.get(user_id)
     if not user:
@@ -706,7 +706,6 @@ def get_user_weekly_summary(user_id: int) -> Dict:
     ).all()
     
     fuel_spent = sum(e.total_cost or 0 for e in fuel_entries)
-    total_liters = sum(e.liters or 0 for e in fuel_entries)
     
     # Services
     services = ServiceEntry.query.filter(

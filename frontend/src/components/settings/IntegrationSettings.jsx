@@ -5,7 +5,8 @@ import toast from 'react-hot-toast'
 
 export default function IntegrationSettings() {
   const { t } = useLanguage()
-  const [apiKey, setApiKey] = useState(null)
+  const [keyInfo, setKeyInfo] = useState({ hasKey: false, prefix: null })
+  const [newKey, setNewKey] = useState(null)   // raw key shown ONCE after generation
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [copied, setCopied] = useState(null)
@@ -14,7 +15,7 @@ export default function IntegrationSettings() {
     const fetchKey = async () => {
       try {
         const res = await widgetApi.getApiKey()
-        setApiKey(res.data.api_key)
+        setKeyInfo({ hasKey: res.data.has_key, prefix: res.data.prefix })
       } catch {
         // No key yet
       } finally {
@@ -25,11 +26,12 @@ export default function IntegrationSettings() {
   }, [])
 
   const handleGenerate = async () => {
-    if (apiKey && !window.confirm(t('integrations.regenerateConfirm') || 'Regenerate API key? The old key will stop working.')) return
+    if (keyInfo.hasKey && !window.confirm(t('integrations.regenerateConfirm') || 'Regenerate API key? The old key will stop working.')) return
     setGenerating(true)
     try {
       const res = await widgetApi.generateApiKey()
-      setApiKey(res.data.api_key)
+      setKeyInfo({ hasKey: true, prefix: res.data.prefix })
+      setNewKey(res.data.raw_key)
       toast.success(t('integrations.keyGenerated') || 'API key generated')
     } catch {
       toast.error(t('integrations.keyFailed') || 'Failed to generate API key')
@@ -42,12 +44,15 @@ export default function IntegrationSettings() {
     if (!window.confirm(t('integrations.revokeConfirm') || 'Revoke API key? External integrations will stop working.')) return
     try {
       await widgetApi.revokeApiKey()
-      setApiKey(null)
+      setKeyInfo({ hasKey: false, prefix: null })
+      setNewKey(null)
       toast.success(t('integrations.keyRevoked') || 'API key revoked')
     } catch {
       toast.error(t('integrations.revokeFailed') || 'Failed to revoke API key')
     }
   }
+
+  const dismissNewKey = () => setNewKey(null)
 
   const copyToClipboard = async (text, label) => {
     try {
@@ -71,6 +76,10 @@ export default function IntegrationSettings() {
   }
 
   const baseUrl = window.location.origin
+  // Masked display uses the prefix + dots; raw key only shown immediately after generation
+  const maskedKey = keyInfo.prefix ? `${keyInfo.prefix}${'•'.repeat(56)}` : null
+  // For homepage config snippet, use raw key if freshly generated, else placeholder
+  const configKey = newKey || (keyInfo.prefix ? `${keyInfo.prefix}••••••••••••••••••••••••••••••••••••••••••••••••••••••••` : '')
 
   if (loading) {
     return (
@@ -90,22 +99,42 @@ export default function IntegrationSettings() {
           {t('integrations.apiKeyDesc') || 'Used to authenticate external services like Gethomepage'}
         </p>
 
-        {apiKey ? (
-          <div className="space-y-2">
+        {/* One-time new key banner — shown immediately after generation */}
+        {newKey && (
+          <div className="mb-3 rounded-lg border border-amber-400/40 bg-amber-50/10 p-3 space-y-2">
+            <p className="text-xs font-medium text-amber-500 flex items-center gap-1">
+              <span className="material-icons-outlined text-base">warning</span>
+              {t('integrations.copyNowWarning') || 'Copy your key now — it will not be shown again.'}
+            </p>
             <div className="flex items-center gap-2">
-              <code className="flex-1 bg-[var(--color-bg-tertiary)] text-xs px-3 py-2 rounded-lg font-mono truncate">
-                {apiKey}
+              <code className="flex-1 bg-[var(--color-bg-tertiary)] text-xs px-3 py-2 rounded-lg font-mono break-all select-all">
+                {newKey}
               </code>
               <button
-                onClick={() => copyToClipboard(apiKey, 'key')}
+                onClick={() => copyToClipboard(newKey, 'newKey')}
                 className="btn btn-ghost btn-sm flex-shrink-0"
                 title="Copy"
               >
                 <span className="material-icons-outlined text-sm">
-                  {copied === 'key' ? 'check' : 'content_copy'}
+                  {copied === 'newKey' ? 'check' : 'content_copy'}
                 </span>
               </button>
             </div>
+            <button onClick={dismissNewKey} className="text-2xs text-[var(--color-text-muted)] hover:underline">
+              {t('integrations.gotIt') || 'I have copied the key'}
+            </button>
+          </div>
+        )}
+
+        {keyInfo.hasKey ? (
+          <div className="space-y-2">
+            {!newKey && (
+              <div className="flex items-center gap-2">
+                <code className="flex-1 bg-[var(--color-bg-tertiary)] text-xs px-3 py-2 rounded-lg font-mono truncate text-[var(--color-text-muted)]">
+                  {maskedKey}
+                </code>
+              </div>
+            )}
             <div className="flex gap-2">
               <button onClick={handleGenerate} disabled={generating} className="btn btn-secondary btn-sm">
                 {generating ? (t('common.loading') || 'Loading...') : (t('integrations.regenerate') || 'Regenerate')}
@@ -123,7 +152,7 @@ export default function IntegrationSettings() {
       </div>
 
       {/* Gethomepage Config */}
-      {apiKey && (
+      {keyInfo.hasKey && (
         <div>
           <h4 className="text-sm font-medium mb-2">
             <span className="inline-flex items-center gap-1.5">
@@ -141,7 +170,7 @@ export default function IntegrationSettings() {
     href: ${baseUrl}
     widget:
       type: customapi
-      url: ${baseUrl}/api/widget/v1/homepage?key=${apiKey}
+      url: ${baseUrl}/api/widget/v1/homepage?key=${configKey}
       display: block
       mappings:
         - field: vehicles
@@ -156,15 +185,17 @@ export default function IntegrationSettings() {
         - field: next_reminder
           label: Next Reminder
           format: text`}</pre>
-            <button
-              onClick={() => copyToClipboard(`- GearCargo:\n    icon: ${baseUrl}/icons/logo.png\n    href: ${baseUrl}\n    widget:\n      type: customapi\n      url: ${baseUrl}/api/widget/v1/homepage?key=${apiKey}\n      display: block\n      mappings:\n        - field: vehicles\n          label: Vehicles\n          format: number\n        - field: service_records\n          label: Service Records\n          format: number\n        - field: reminders\n          label: Reminders\n          format: number\n        - field: next_reminder\n          label: Next Reminder\n          format: text`, 'config')}
-              className="absolute top-2 right-2 btn btn-ghost btn-sm"
-              title="Copy config"
-            >
-              <span className="material-icons-outlined text-sm">
-                {copied === 'config' ? 'check' : 'content_copy'}
-              </span>
-            </button>
+            {newKey && (
+              <button
+                onClick={() => copyToClipboard(`- GearCargo:\n    icon: ${baseUrl}/icons/logo.png\n    href: ${baseUrl}\n    widget:\n      type: customapi\n      url: ${baseUrl}/api/widget/v1/homepage?key=${newKey}\n      display: block\n      mappings:\n        - field: vehicles\n          label: Vehicles\n          format: number\n        - field: service_records\n          label: Service Records\n          format: number\n        - field: reminders\n          label: Reminders\n          format: number\n        - field: next_reminder\n          label: Next Reminder\n          format: text`, 'config')}
+                className="absolute top-2 right-2 btn btn-ghost btn-sm"
+                title="Copy config"
+              >
+                <span className="material-icons-outlined text-sm">
+                  {copied === 'config' ? 'check' : 'content_copy'}
+                </span>
+              </button>
+            )}
           </div>
 
           {/* Endpoint reference */}
@@ -204,3 +235,4 @@ export default function IntegrationSettings() {
     </div>
   )
 }
+

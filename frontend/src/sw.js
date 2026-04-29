@@ -2,10 +2,15 @@
 
 // CACHE VERSION - increment to force update
 const CACHE_VERSION = 'v2.0.1'
-console.log('Service Worker Version:', CACHE_VERSION)
 
-import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL } from 'workbox-precaching'
-import { registerRoute, NavigationRoute } from 'workbox-routing'
+// Dev-only logger — compiled to a no-op in production builds by Vite
+// so no internal details leak to the browser console in production.
+const log = import.meta.env.DEV ? console.log.bind(console) : () => {}
+
+log('Service Worker Version:', CACHE_VERSION)
+
+import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL, matchPrecache } from 'workbox-precaching'
+import { registerRoute, NavigationRoute, setCatchHandler } from 'workbox-routing'
 import { CacheFirst, NetworkFirst, StaleWhileRevalidate, NetworkOnly } from 'workbox-strategies'
 import { ExpirationPlugin } from 'workbox-expiration'
 import { CacheableResponsePlugin } from 'workbox-cacheable-response'
@@ -22,7 +27,7 @@ const bgSyncPlugin = new BackgroundSyncPlugin('gearcargo-sync-queue', {
     let entry
     while ((entry = await queue.shiftRequest())) {
       try {
-        const response = await fetch(entry.request.clone())
+        await fetch(entry.request.clone())
         
         // Notify the app that sync succeeded
         const clients = await self.clients.matchAll()
@@ -34,7 +39,7 @@ const bgSyncPlugin = new BackgroundSyncPlugin('gearcargo-sync-queue', {
           })
         }
         
-        console.log('Background sync successful:', entry.request.url)
+        log('Background sync successful:', entry.request.url)
       } catch (error) {
         console.error('Background sync failed, re-queuing:', error)
         // Put the entry back in the queue and re-throw to signal failure
@@ -67,7 +72,9 @@ cleanupOutdatedCaches()
 // SPA navigation fallback - serve index.html for all navigation requests
 const navigationHandler = createHandlerBoundToURL('/index.html')
 const navigationRoute = new NavigationRoute(navigationHandler, {
-  denylist: [/^\/api/],
+  // Exclude API routes and the offline fallback page from SPA navigation handling.
+  // offline.html must be reachable directly so setCatchHandler can return it.
+  denylist: [/^\/api/, /^\/offline\.html$/],
 })
 registerRoute(navigationRoute)
 
@@ -207,7 +214,20 @@ registerRoute(
 // ============================================================
 // OFFLINE FALLBACK
 // ============================================================
-const FALLBACK_HTML_URL = '/offline.html'
+// I16: offline.html is included in self.__WB_MANIFEST via globPatterns (*.html).
+// Workbox assigns it a content-hash revision; when the file changes the hash
+// changes, the new SW downloads and caches the updated page, and
+// cleanupOutdatedCaches() removes the stale copy — automatic versioning.
+//
+// setCatchHandler fires only when ALL other routes fail (e.g. network down
+// while offline). matchPrecache resolves the versioned cache key automatically.
+setCatchHandler(async ({ request }) => {
+  if (request.destination === 'document') {
+    const cached = await matchPrecache('/offline.html')
+    return cached || Response.error()
+  }
+  return Response.error()
+})
 
 // ============================================================
 // MESSAGE HANDLING
@@ -315,8 +335,8 @@ self.addEventListener('notificationclick', (event) => {
 
 self.addEventListener('sync', (event) => {
   if (event.tag === 'workbox-background-sync:gearcargo-sync-queue') {
-    console.log('Background sync triggered for gearcargo-sync-queue')
+    log('Background sync triggered for gearcargo-sync-queue')
   }
 })
 
-console.log('GearCargo Service Worker loaded with Background Sync support')
+log('GearCargo Service Worker loaded with Background Sync support')

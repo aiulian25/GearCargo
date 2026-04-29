@@ -18,8 +18,7 @@ import json
 import re
 import csv
 import io
-import time
-from datetime import datetime
+from datetime import datetime, timezone
 import requests
 import redis as redis_mod
 
@@ -477,7 +476,7 @@ def _parse_uk_csv(text):
             premium = price
 
     if not date_val:
-        date_val = datetime.utcnow().strftime('%Y-%m-%d')
+        date_val = datetime.now(timezone.utc).strftime('%Y-%m-%d')
 
     return {
         'currency': '£',
@@ -624,7 +623,7 @@ def _parse_eu_csv(text, app):
             'lpg': lpg or baseline.get('lpg'),
             'premium': premium or baseline.get('premium'),
             'source': 'EU Weekly Oil Bulletin',
-            'last_update': date_str or datetime.utcnow().strftime('%Y-%m-%d'),
+            'last_update': date_str or datetime.now(timezone.utc).strftime('%Y-%m-%d'),
         }
 
     if results:
@@ -652,7 +651,7 @@ def _parse_eu_inline_json(data, app):
                     'lpg': val.get('lpg') or baseline.get('lpg'),
                     'premium': val.get('premium') or val.get('super') or baseline.get('premium'),
                     'source': 'EU Weekly Oil Bulletin',
-                    'last_update': val.get('date', datetime.utcnow().strftime('%Y-%m-%d')),
+                    'last_update': val.get('date', datetime.now(timezone.utc).strftime('%Y-%m-%d')),
                 }
 
     return results if results else None

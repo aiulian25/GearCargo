@@ -227,7 +227,7 @@ export default function Reminders() {
                   <h3 className="text-sm font-medium truncate">{reminder.title}</h3>
                   <p className="text-2xs text-[var(--color-text-secondary)] truncate">
                     {reminder.vehicle_name || t('reminders.noVehicle') || 'No vehicle'}
-                    {reminder.due_mileage && ` • ${reminder.due_mileage.toLocaleString()} km`}
+                    {reminder.due_mileage && ` • ${reminder.due_mileage.toLocaleString()} ${reminder.vehicle_distance_unit || 'km'}`}
                   </p>
                   <p className={`text-2xs mt-0.5 ${dueDate.className}`}>
                     {dueDate.text}

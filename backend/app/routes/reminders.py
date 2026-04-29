@@ -2,7 +2,7 @@
 GearCargo - Reminders Routes
 """
 
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from flask import Blueprint, request, jsonify, current_app
 
 from app import db
@@ -209,10 +209,8 @@ def complete_reminder(current_user, reminder_id):
     if not reminder:
         return jsonify({'error': 'Reminder not found'}), 404
     
-    data = request.get_json() or {}
-    
     reminder.completed = True
-    reminder.completed_at = datetime.utcnow()
+    reminder.completed_at = datetime.now(timezone.utc)
     
     # Handle recurring reminder
     if reminder.recurring and reminder.frequency:
@@ -276,7 +274,7 @@ def snooze_reminder(current_user, reminder_id):
     if reminder.due_date:
         reminder.due_date = reminder.due_date + timedelta(days=days)
     
-    reminder.snoozed_until = datetime.utcnow() + timedelta(days=days)
+    reminder.snoozed_until = datetime.now(timezone.utc) + timedelta(days=days)
     
     db.session.commit()
     

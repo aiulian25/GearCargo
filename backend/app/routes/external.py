@@ -2,11 +2,9 @@
 GearCargo - External API Routes (Weather, Fuel Prices)
 """
 
-import os
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify, current_app
-from functools import lru_cache
 
 from app.routes.auth import token_required
 
@@ -19,7 +17,7 @@ CACHE_DURATION = timedelta(minutes=30)
 
 def get_cached(key, fetch_func, cache_duration=CACHE_DURATION):
     """Simple cache wrapper."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     if key in _cache:
         data, timestamp = _cache[key]
         if now - timestamp < cache_duration:
@@ -51,7 +49,7 @@ def get_weather(current_user):
         lon = -0.1278
         location = 'London, United Kingdom'
     
-    cache_key = f"weather_{lat}_{lon}"
+    cache_key = f"weather_{round(lat, 2)}_{round(lon, 2)}"
     
     def fetch_weather():
         # Open-Meteo API (free, no key required)
@@ -192,22 +190,55 @@ def get_fuel_prices(current_user):
         },
         'source': prices.get('source', 'EU Weekly Oil Bulletin'),
         'last_update': prices.get('last_update'),
-        'fetched_at': datetime.utcnow().isoformat()
+        'fetched_at': datetime.now(timezone.utc).isoformat()
     })
 
 
+# Nominatim Usage Policy: max 1 request/second, descriptive User-Agent required.
+# See: https://operations.osmfoundation.org/policies/nominatim/
+_NOMINATIM_USER_AGENT = 'GearCargo/1.0 (https://github.com/gearcargo; gearcargo-app@proton.me)'
+_NOMINATIM_THROTTLE_KEY = 'nominatim_throttle'
+_NOMINATIM_MIN_INTERVAL_MS = 1100  # 1.1 s — slightly above the 1 req/s policy limit
+
+
 def detect_country_from_coords(lat, lon):
-    """Detect country code from coordinates using reverse geocoding."""
+    """Detect country code from coordinates using Nominatim reverse geocoding.
+
+    Complies with the Nominatim Usage Policy (max 1 req/s) by acquiring a
+    short-lived Redis lock before each request.  If the lock is already held
+    by another worker the call is skipped gracefully and None is returned so
+    the caller falls back to the user-supplied country value.
+    """
     try:
-        # Use Open-Meteo's geocoding API (free, no key needed)
-        url = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lon}&format=json"
-        response = requests.get(url, headers={'User-Agent': 'GearCargo/1.0'}, timeout=5)
+        from app import redis_client
+        if redis_client:
+            # SET NX with automatic expiry — acts as a cross-worker throttle
+            acquired = redis_client.set(
+                _NOMINATIM_THROTTLE_KEY, 1,
+                px=_NOMINATIM_MIN_INTERVAL_MS,
+                nx=True,
+            )
+            if not acquired:
+                current_app.logger.debug(
+                    'Nominatim throttle active — skipping reverse-geocode request'
+                )
+                return None
+
+        url = (
+            f'https://nominatim.openstreetmap.org/reverse'
+            f'?lat={lat}&lon={lon}&format=json'
+        )
+        response = requests.get(
+            url,
+            headers={'User-Agent': _NOMINATIM_USER_AGENT},
+            timeout=5,
+        )
         if response.status_code == 200:
             data = response.json()
             country_code = data.get('address', {}).get('country_code', '').upper()
             return country_code if country_code else None
     except Exception as e:
-        current_app.logger.warning(f"Country detection failed: {e}")
+        current_app.logger.warning(f'Country detection failed: {e}')
     return None
 
 
@@ -218,7 +249,7 @@ def get_air_quality(current_user):
     lat = request.args.get('lat', 51.5074, type=float)
     lon = request.args.get('lon', -0.1278, type=float)
     
-    cache_key = f"air_quality_{lat}_{lon}"
+    cache_key = f"air_quality_{round(lat, 2)}_{round(lon, 2)}"
     
     def fetch_air_quality():
         url = "https://air-quality-api.open-meteo.com/v1/air-quality"
@@ -288,7 +319,7 @@ def get_weather_alerts(current_user):
         lon = -0.1278
         location = 'London, United Kingdom'
     
-    cache_key = f"weather_alerts_{lat}_{lon}"
+    cache_key = f"weather_alerts_{round(lat, 2)}_{round(lon, 2)}"
     
     def fetch_detailed_weather():
         """Fetch detailed weather data for driving alerts."""
@@ -315,7 +346,6 @@ def get_weather_alerts(current_user):
     alerts = []
     current = data.get('current', {})
     hourly = data.get('hourly', {})
-    daily = data.get('daily', {})
     
     # Current conditions
     weather_code = current.get('weather_code', 0)
@@ -501,8 +531,6 @@ def get_weather_alerts(current_user):
     if hourly.get('time'):
         for i in range(min(12, len(hourly['time']))):
             hour_code = hourly.get('weather_code', [0])[i] if i < len(hourly.get('weather_code', [])) else 0
-            hour_precip = hourly.get('precipitation_probability', [0])[i] if i < len(hourly.get('precipitation_probability', [])) else 0
-            hour_wind = hourly.get('wind_gusts_10m', [0])[i] if i < len(hourly.get('wind_gusts_10m', [])) else 0
             
             # Check for upcoming hazardous conditions
             if hour_code in weather_hazards and hour_code not in [h.get('weather_code') for h in upcoming_alerts]:
@@ -545,7 +573,7 @@ def get_weather_alerts(current_user):
             'visibility': visibility,
             'precipitation': precipitation,
         },
-        'updated': datetime.utcnow().isoformat()
+        'updated': datetime.now(timezone.utc).isoformat()
     })
 
 

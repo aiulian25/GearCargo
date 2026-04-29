@@ -1,6 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
+    <!--
+      I13: FOUC prevention — apply saved theme class before any stylesheet or
+      React code runs. The browser reads localStorage synchronously here, so
+      <html class="light"> is set before the first paint when the user prefers
+      the light theme. Dark is the CSS default so no class is needed for dark.
+      The SHA-256 hash of this script is allowlisted in the backend CSP
+      (script-src) so 'unsafe-inline' is NOT required.
+    -->
+    <script>(function(){var t=localStorage.getItem('theme');if(t==='light'||(!t&&window.matchMedia('(prefers-color-scheme: light)').matches)){document.documentElement.classList.add('light')}})()</script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     
@@ -35,67 +44,14 @@
     
     <!-- Manifest -->
     <link rel="manifest" href="/manifest.json" />
-    
-    <style>
-      /* Initial loading state */
-      body {
-        margin: 0;
-        padding: 0;
-        background-color: #0f172a;
-        font-family: 'Inter', system-ui, sans-serif;
-      }
-      
-      /* Material Icons default size */
-      .material-icons-outlined {
-        font-size: 20px;
-        line-height: 1;
-      }
-      
-      /* Loading spinner */
-      #app-loader {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        background-color: #0f172a;
-        z-index: 9999;
-      }
-      
-      #app-loader img {
-        width: 80px;
-        height: 80px;
-        margin-bottom: 16px;
-        animation: pulse 2s ease-in-out infinite;
-      }
-      
-      #app-loader .spinner {
-        width: 32px;
-        height: 32px;
-        border: 3px solid #334155;
-        border-top-color: #2563eb;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-      }
-      
-      @keyframes spin {
-        to { transform: rotate(360deg); }
-      }
-      
-      @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.7; }
-      }
-      
-      /* Hide loader when app is loaded */
-      .app-loaded #app-loader {
-        display: none;
-      }
-    </style>
+
+    <!--
+      S14: Pre-React loader styles extracted to external file so 'unsafe-inline' can
+      be removed from the CSP style-src directive. Served from 'self' (no unsafe-inline
+      needed). Workbox precaches this file (css matches globPatterns) so it is
+      available instantly and during offline use.
+    -->
+    <link rel="stylesheet" href="/loader.css" />
   </head>
   <body>
     <div id="root">

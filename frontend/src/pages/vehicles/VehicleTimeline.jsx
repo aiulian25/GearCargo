@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { vehicleApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
@@ -139,12 +139,15 @@ export default function VehicleTimeline() {
   const { currency } = useCurrency()
   
   const [vehicle, setVehicle] = useState(null)
-  const [timeline, setTimeline] = useState([])
-  const [filteredTimeline, setFilteredTimeline] = useState([])
+  const [entries, setEntries] = useState([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [filter, setFilter] = useState('all')
   const [showFilters, setShowFilters] = useState(false)
-  
+  const [currentPage, setCurrentPage] = useState(1)
+  const [hasMore, setHasMore] = useState(false)
+  const [total, setTotal] = useState(0)
+
   const filterOptions = [
     { id: 'all', label: t('timeline.all') || 'All' },
     { id: 'fuel', label: t('timeline.fuel') || 'Fuel' },
@@ -156,36 +159,54 @@ export default function VehicleTimeline() {
     { id: 'todo', label: t('timeline.todo') || 'Todo' },
     { id: 'insurance', label: t('timeline.insurance') || 'Insurance' },
   ]
-  
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [vehicleRes, timelineRes] = await Promise.all([
-          vehicleApi.getById(id),
-          vehicleApi.getTimeline(id)
-        ])
-        setVehicle(vehicleRes.data)
-        const entries = timelineRes.data?.entries || []
-        setTimeline(entries)
-        setFilteredTimeline(entries)
-      } catch (error) {
-        console.error('Failed to fetch timeline:', error)
-        navigate('/vehicles')
-      } finally {
-        setIsLoading(false)
+
+  // Fetch a page; reset=true clears existing entries (used on first load and filter change)
+  const fetchPage = useCallback(async (page, type, reset) => {
+    if (page === 1) setIsLoading(true)
+    else setIsLoadingMore(true)
+
+    try {
+      const requests = [vehicleApi.getTimeline(id, page, type)]
+      if (page === 1) requests.unshift(vehicleApi.getById(id))
+
+      const results = await Promise.all(requests)
+      if (page === 1) {
+        setVehicle(results[0].data)
       }
+      const timelineRes = results[page === 1 ? 1 : 0]
+      const pageEntries = timelineRes.data?.entries || []
+      const pageHasNext = timelineRes.data?.has_next || false
+      const pageTotal   = timelineRes.data?.total   || 0
+
+      setEntries(prev => reset || page === 1 ? pageEntries : [...prev, ...pageEntries])
+      setHasMore(pageHasNext)
+      setTotal(pageTotal)
+      setCurrentPage(page)
+    } catch (error) {
+      console.error('Failed to fetch timeline:', error)
+      if (page === 1) navigate('/vehicles')
+    } finally {
+      setIsLoading(false)
+      setIsLoadingMore(false)
     }
-    
-    fetchData()
   }, [id, navigate])
-  
+
+  // Initial load
   useEffect(() => {
-    if (filter === 'all') {
-      setFilteredTimeline(timeline)
-    } else {
-      setFilteredTimeline(timeline.filter(entry => entry.type === filter))
-    }
-  }, [filter, timeline])
+    fetchPage(1, filter, true)
+  }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Filter change: reset and re-fetch from server
+  const handleFilterChange = (newFilter) => {
+    setFilter(newFilter)
+    setEntries([])
+    setCurrentPage(1)
+    fetchPage(1, newFilter, true)
+  }
+
+  const handleLoadMore = () => {
+    fetchPage(currentPage + 1, filter, false)
+  }
   
   const formatCurrency = (amount) => {
     if (!amount && amount !== 0) return `${currency.symbol}0`
@@ -210,25 +231,26 @@ export default function VehicleTimeline() {
     return `/vehicles/${id}/${style.editPath}/add?edit=${entry.id}`
   }
   
-  // Group timeline by month
+  // Group timeline by month.
+  // We slice the YYYY-MM key directly from the date string to avoid
+  // new Date("YYYY-MM-DD") parsing it as UTC midnight, which shifts
+  // the month backwards for UTC− users.
   const groupByMonth = (entries) => {
     const groups = {}
     entries.forEach(entry => {
-      const date = new Date(entry.date)
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-      const label = formatMonthYear(date)
+      const key = entry.date.slice(0, 7) // "YYYY-MM" — no Date, no TZ shift
       if (!groups[key]) {
-        groups[key] = { label, entries: [] }
+        groups[key] = { label: formatMonthYear(entry.date), entries: [] }
       }
       groups[key].entries.push(entry)
     })
     // Sort by key descending (newest first)
     return Object.entries(groups)
       .sort(([a], [b]) => b.localeCompare(a))
-      .map(([key, value]) => value)
+      .map(([, value]) => value)
   }
   
-  const groupedTimeline = groupByMonth(filteredTimeline)
+  const groupedTimeline = groupByMonth(entries)
   
   if (isLoading) {
     return (
@@ -259,7 +281,8 @@ export default function VehicleTimeline() {
             <div>
               <h1 className="text-lg font-semibold">{t('timeline.title') || 'Timeline'}</h1>
               <p className="text-xs text-[var(--color-text-secondary)]">
-                {vehicle?.make} {vehicle?.model} • {filteredTimeline.length} {t('timeline.entries') || 'entries'}
+                {vehicle?.make} {vehicle?.model} • {total} {t('timeline.entries') || 'entries'}
+                {hasMore && '+'}
               </p>
             </div>
           </div>
@@ -282,7 +305,7 @@ export default function VehicleTimeline() {
               {filterOptions.map(option => (
                 <button
                   key={option.id}
-                  onClick={() => setFilter(option.id)}
+                  onClick={() => handleFilterChange(option.id)}
                   className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
                     filter === option.id
                       ? 'bg-[var(--color-accent)] text-white'
@@ -390,6 +413,21 @@ export default function VehicleTimeline() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Load more */}
+        {hasMore && (
+          <div className="mt-6 flex justify-center">
+            <button
+              onClick={handleLoadMore}
+              disabled={isLoadingMore}
+              className="px-6 py-2.5 rounded-xl bg-[var(--color-bg-secondary)] border border-[var(--color-border)] text-sm font-medium hover:bg-[var(--color-bg-tertiary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoadingMore
+                ? (t('common.loading') || 'Loading…')
+                : (t('timeline.loadMore') || 'Load more')}
+            </button>
           </div>
         )}
       </div>

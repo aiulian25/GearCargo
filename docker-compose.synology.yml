@@ -92,22 +92,70 @@ services:
       - MAIL_DEFAULT_SENDER=${MAIL_DEFAULT_SENDER:-}
 
       # Push Notifications
+      # VAPID_PUBLIC_KEY and VAPID_SUBJECT are non-sensitive — kept as env vars.
+      # VAPID_PRIVATE_KEY is mounted as a Docker secret (see 'secrets:' below)
+      # so it does NOT appear in `docker inspect` or /proc/<pid>/environ.
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
-      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
       - VAPID_SUBJECT=${VAPID_SUBJECT:-}
       
       # Worker count — capped to prevent OOM kills on many-core hosts
       - GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}
+
+      # read_only: true — explicit temp-dir anchors
+      # Python is told not to write .pyc files via PYTHONDONTWRITEBYTECODE=1 in
+      # the image, but PYTHONPYCACHEPREFIX redirects any stray cache writes that
+      # a library might trigger through importlib/pkgutil to /tmp (tmpfs).
+      # TMPDIR makes the tempfile module's default explicit: backup-restore and
+      # lubelog-import both call tempfile.TemporaryDirectory / NamedTemporaryFile.
+      # Flask-Session filesystem fallback (used when Redis is unreachable) writes
+      # to SESSION_FILE_DIR=/tmp/flask_session (set in config.py).  All of these
+      # must live inside the /tmp tmpfs declared below, NOT in the read-only rootfs.
+      - TMPDIR=/tmp
+      - PYTHONPYCACHEPREFIX=/tmp/pycache
+      # S10: Local GeoIP2 database (optional).
+      # Set to the container path of a MaxMind GeoLite2-City MMDB file.
+      # When unset, suspicious-login country detection is disabled but login
+      # continues normally. Download free: https://dev.maxmind.com/geoip/geolite2-free-geolocation-data
+      - GEOIP_DB_PATH=${GEOIP_DB_PATH:-}
+      # S11: Number of trusted reverse proxies in front of the app.
+      # ProxyFix peels exactly this many hops from X-Forwarded-For to set request.remote_addr.
+      #   0 — direct-bind (no proxy); 1 — one proxy (nginx/Traefik/Cloudflare); 2 — CDN + proxy.
+      # Clients cannot spoof their IP by prepending entries to the left of XFF.
+      - TRUSTED_PROXY_COUNT=${TRUSTED_PROXY_COUNT:-1}    secrets:
+      - vapid_private_key
     volumes:
+      # ── write paths ──────────────────────────────────────────────────────────
+      # All runtime writes MUST target one of these bind-mounts or the /tmp tmpfs.
+      # Adding a new write path that falls outside these mounts will silently fail
+      # with "Read-only file system" because read_only: true is set below.
+      #
+      #  /app/volumes/attachments  ← user-uploaded files (attachments route)
+      #  /app/volumes/backups      ← backup archives (backup route)
+      #  /app/uploads              ← vehicle photos & avatars (vehicles route)
+      #  /app/volumes/logs         ← application log files (logging config)
+      #  /tmp                      ← tmpfile.TemporaryDirectory, NamedTemporaryFile,
+      #                               gunicorn worker heartbeat files,
+      #                               Flask-Session filesystem fallback (/tmp/flask_session),
+      #                               Python __pycache__ redirect (/tmp/pycache)
+      #
+      # /run is intentionally NOT a tmpfs: gunicorn binds on TCP (0.0.0.0:5000,
+      # no Unix socket) and sets pidfile=None, so nothing writes to /run at
+      # runtime.  Docker secrets (vapid_private_key) are bind-mounted by the
+      # Docker engine at /run/secrets/vapid_private_key; this bind-mount works
+      # correctly over the read-only root filesystem without needing /run as tmpfs.
       - ./volumes/attachments:/app/volumes/attachments
       - ./volumes/backups:/app/volumes/backups
       - ./volumes/uploads:/app/uploads
       - ./volumes/logs:/app/volumes/logs
+      # Optional: mount GeoLite2 database for suspicious-login detection (S10).
+      # Place GeoLite2-City.mmdb in ./volumes/geoip/ and set
+      # GEOIP_DB_PATH=/app/volumes/geoip/GeoLite2-City.mmdb in your .env file.
+      - ./volumes/geoip:/app/volumes/geoip:ro
     user: "${PUID:-1026}:${PGID:-100}"
     read_only: true
     tmpfs:
+      # /tmp is the only tmpfs the backend needs.  See write-path notes above.
       - /tmp
-      - /run
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -218,3 +266,16 @@ networks:
   gearcargo-net:
     driver: bridge
     name: gearcargo-network
+
+# ============================================================
+# DOCKER SECRETS
+# I06: VAPID private key stored as a file secret instead of an
+# environment variable, so it is not exposed in `docker inspect`.
+#
+# Setup: echo 'YOUR_VAPID_PRIVATE_KEY' > secrets/vapid_private_key
+#        chmod 600 secrets/vapid_private_key
+# (see secrets/vapid_private_key.example for the expected format)
+# ============================================================
+secrets:
+  vapid_private_key:
+    file: ./secrets/vapid_private_key

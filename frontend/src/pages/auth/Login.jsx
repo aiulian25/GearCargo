@@ -21,7 +21,7 @@ export default function Login() {
   const codeInputRef = useRef(null)
   
   const { register, handleSubmit, formState: { errors } } = useForm()
-  const { register: register2FA, handleSubmit: handleSubmit2FA, setValue: setValue2FA } = useForm()
+  const { handleSubmit: handleSubmit2FA, setValue: setValue2FA } = useForm()
   
   // Auto-focus username field on mount
   useEffect(() => {

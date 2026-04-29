@@ -126,7 +126,6 @@ export default function VehicleCharts() {
   const { currency } = useCurrency()
   
   const [vehicle, setVehicle] = useState(null)
-  const [stats, setStats] = useState(null)
   const [timeline, setTimeline] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
@@ -134,13 +133,12 @@ export default function VehicleCharts() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [vehicleRes, statsRes, timelineRes] = await Promise.all([
+        const [vehicleRes, , timelineRes] = await Promise.all([
           vehicleApi.getById(id),
           vehicleApi.getStats(id),
           vehicleApi.getTimeline(id)
         ])
         setVehicle(vehicleRes.data)
-        setStats(statsRes.data)
         setTimeline(timelineRes.data?.entries || [])
       } catch (error) {
         console.error('Failed to fetch data:', error)
@@ -162,14 +160,17 @@ export default function VehicleCharts() {
   const chartData = useMemo(() => {
     if (!timeline.length) return null
     
+    // I17 + B11: Use string slicing instead of new Date() on date-only strings.
+    // new Date('2025-01-01') is parsed as UTC midnight, which shifts the date
+    // in negative-offset timezones (e.g. UTC-5 sees 2024-12-31).
+    const getYear  = (d) => parseInt(d.slice(0, 4), 10)
+    const getMonth = (d) => parseInt(d.slice(5, 7), 10) - 1  // 0-indexed
+    
     // Filter by selected year
-    const yearEntries = timeline.filter(entry => {
-      const year = new Date(entry.date).getFullYear()
-      return year === selectedYear
-    })
+    const yearEntries = timeline.filter(entry => getYear(entry.date) === selectedYear)
     
     // Get available years
-    const years = [...new Set(timeline.map(e => new Date(e.date).getFullYear()))].sort((a, b) => b - a)
+    const years = [...new Set(timeline.map(e => getYear(e.date)))].sort((a, b) => b - a)
     
     // Expenses by category
     const categoryTotals = {
@@ -195,7 +196,7 @@ export default function VehicleCharts() {
     // Monthly expenses
     const monthlyExpenses = Array(12).fill(0)
     yearEntries.forEach(entry => {
-      const month = new Date(entry.date).getMonth()
+      const month = getMonth(entry.date)
       monthlyExpenses[month] += parseFloat(entry.cost) || 0
     })
     
@@ -283,14 +284,33 @@ export default function VehicleCharts() {
       
       {/* Content */}
       <div className="p-4 space-y-6">
-        {!chartData || chartData.totalExpenses === 0 ? (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[var(--color-bg-tertiary)] flex items-center justify-center">
+        {/* I17: Two distinct empty states.
+            Case 1 — no entries at all: chartData is null.
+            Case 2 — entries exist in other years but not the selected year:
+                     chartData is set but totalExpenses is 0; year selector
+                     remains visible in the header so the user can switch. */}
+        {!chartData ? (
+          /* Case 1: vehicle has no expenses recorded at all */
+          <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+            <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-[var(--color-bg-secondary)] flex items-center justify-center opacity-60">
               {Icons.calendar}
             </div>
-            <h3 className="font-medium mb-1">{t('charts.noData') || 'No data available'}</h3>
-            <p className="text-sm text-[var(--color-text-secondary)]">
-              {t('charts.noDataDesc') || 'Start adding expenses to see charts'}
+            <h3 className="text-lg font-semibold mb-2">{t('charts.noData')}</h3>
+            <p className="text-sm text-[var(--color-text-secondary)] max-w-xs leading-relaxed">
+              {t('charts.noDataDesc')}
+            </p>
+          </div>
+        ) : chartData.totalExpenses === 0 ? (
+          /* Case 2: entries exist but none in the currently selected year */
+          <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+            <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-[var(--color-bg-secondary)] flex items-center justify-center opacity-60">
+              {Icons.calendar}
+            </div>
+            <h3 className="text-lg font-semibold mb-2">
+              {t('charts.noDataForYear').replace('{year}', String(selectedYear))}
+            </h3>
+            <p className="text-sm text-[var(--color-text-secondary)] max-w-xs leading-relaxed">
+              {t('charts.noDataForYearDesc')}
             </p>
           </div>
         ) : (

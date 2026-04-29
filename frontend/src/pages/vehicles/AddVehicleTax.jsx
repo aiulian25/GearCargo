@@ -105,9 +105,7 @@ export default function AddVehicleTax() {
             insurance_policy_id: entry.insurance_policy_id || '',
           })
           
-          // Store existing attachments
           if (entry.attachments && entry.attachments.length > 0) {
-            setExistingAttachments(entry.attachments)
           }
         }
       } catch (error) {

@@ -12,6 +12,7 @@ export const translations = {
       alerts: 'Reminders',
       recommendations: 'Smart',
       settings: 'Settings',
+      insurance: 'Insurance',
     },
     
     // User Menu
@@ -175,6 +176,7 @@ export const translations = {
       noEntriesFilter: 'Try changing the filter',
       noEntriesYet: 'Start adding expenses to see them here',
       mileage: 'Mileage',
+      loadMore: 'Load more',
     },
     
     // Charts Page
@@ -182,6 +184,9 @@ export const translations = {
       title: 'Charts',
       noData: 'No data available',
       noDataDesc: 'Start adding expenses to see charts',
+      // I17: year-specific empty state
+      noDataForYear: 'No expenses in {year}',
+      noDataForYearDesc: 'Try selecting a different year using the selector above.',
       totalExpenses: 'Total Expenses',
       byCategory: 'By Category',
       monthlyExpenses: 'Monthly Expenses',
@@ -413,6 +418,7 @@ export const translations = {
       action_eco_driving_desc: 'Follow fuel efficiency tips to reduce emissions',
       action_overdue_desc: 'Maintenance overdue. Please schedule service soon.',
       action_due_soon_desc: 'Maintenance due soon. Plan accordingly.',
+      action_carbon_offset_title: 'Consider carbon offset',
     },
     
     // Weather Alerts
@@ -738,6 +744,7 @@ export const translations = {
       notes: 'Notes',
       optionalNotes: 'Optional notes...',
       error: 'Failed to add parking entry',
+      optional: 'Optional',
     },
     
     // Parking Types
@@ -1054,6 +1061,9 @@ export const translations = {
       serviceAlerts: 'Service & Maintenance',
       reminderAlerts: 'Reminders',
       smartAlerts: 'Smart Recommendations',
+      securityAlerts: 'Security Alerts',
+      loginAlerts: 'Suspicious Login Alerts',
+      loginAlertsDesc: 'Get notified when a login occurs from an unrecognised location or device. Your IP address is used locally for geolocation — never shared with third parties.',
       scheduledReports: 'Scheduled Reports',
       weeklyReport: 'Weekly Summary',
       monthlyReport: 'Monthly Report',
@@ -1247,6 +1257,7 @@ export const translations = {
       vehicles: 'vehicles',
       joined: 'Joined',
       emailPasswordRequired: 'Email and password are required',
+      mustChangePasswordNote: 'The user will be required to change this password on first login.',
       optionalUsername: 'Optional username',
       optionalDisplayName: 'Optional display name',
       vehicleLimit: 'Vehicle Limit',
@@ -1366,6 +1377,7 @@ export const translations = {
         failed24h: 'Failed (24h)',
         failed7d: 'Failed (7d)',
       },
+      invalidFileType: 'Please select a JSON file',
     },
     
     // Auth
@@ -1454,6 +1466,7 @@ export const translations = {
       resendVerification: 'Resend Verification Email',
       emailNotVerified: 'Email not verified',
       emailNotVerifiedDesc: 'Please verify your email address to access all features.',
+      twoFactorCode: '2FA Code',
     },
     
     // Security Questions
@@ -1535,6 +1548,14 @@ export const translations = {
         sports: 'What is your favorite sports team?',
         employer: 'What was the name of your first employer?',
       },
+      '2faRequired': '2FA code required',
+      loadError: 'Failed to load security questions',
+      redirecting: 'Redirecting to dashboard...',
+      setUpNow: 'Set Up Security Questions',
+      setupError: 'Failed to save security questions',
+      setupSuccess: 'Security questions saved successfully!',
+      updateTitle: 'Update Security Questions',
+      welcomeTitle: 'One More Step for Security',
     },
     
     // Profile/Settings
@@ -1725,6 +1746,8 @@ export const translations = {
       futureDateNotAllowed: 'Future date is not allowed',
       fileTooLarge: 'File is too large',
       invalidFileType: 'Invalid file type',
+      addVehicleFirst: 'You need to add a vehicle first before logging fuel.',
+      selectVehicle: 'Select a vehicle',
     },
 
     // Privacy Policy
@@ -1947,6 +1970,14 @@ export const translations = {
       monthlyExpenses: 'Monthly Expenses',
       refresh: 'Refresh',
       logout: 'Logout',
+      clearFilters: 'Clear all filters',
+      dismiss: 'Dismiss',
+      failed: 'Failed',
+      filename: 'Filename',
+      goBack: 'Go Back',
+      sending: 'Sending...',
+      size: 'Size',
+      uploading: 'Uploading...',
     },
     
     // Days
@@ -2049,6 +2080,8 @@ export const translations = {
       keyFailed: 'Failed to generate API key',
       keyRevoked: 'API key revoked',
       revokeFailed: 'Failed to revoke API key',
+      copyNowWarning: 'Copy your key now — it will not be shown again.',
+      gotIt: 'I have copied the key',
       gethomepage: 'Gethomepage',
       gethomepageDesc: 'Add to your Gethomepage services.yaml:',
       endpoints: 'Available endpoints:',
@@ -2201,6 +2234,7 @@ export const translations = {
       alerts: 'Memento-uri',
       recommendations: 'Smart',
       settings: 'Setări',
+      insurance: 'Asigurare',
     },
     
     // User Menu
@@ -2364,6 +2398,7 @@ export const translations = {
       noEntriesFilter: 'Încercați să schimbați filtrul',
       noEntriesYet: 'Începeți să adăugați cheltuieli pentru a le vedea aici',
       mileage: 'Kilometraj',
+      loadMore: 'Încarcă mai mult',
     },
     
     // Charts Page
@@ -2371,6 +2406,9 @@ export const translations = {
       title: 'Grafice',
       noData: 'Nu există date disponibile',
       noDataDesc: 'Începeți să adăugați cheltuieli pentru a vedea graficele',
+      // I17: year-specific empty state
+      noDataForYear: 'Nicio cheltuială în {year}',
+      noDataForYearDesc: 'Încercați să selectați un alt an folosind selectorul de mai sus.',
       totalExpenses: 'Total Cheltuieli',
       byCategory: 'Pe Categorii',
       monthlyExpenses: 'Cheltuieli Lunare',
@@ -2602,6 +2640,7 @@ export const translations = {
       action_eco_driving_desc: 'Urmează sfaturile pentru eficiență pentru a reduce emisiile',
       action_overdue_desc: 'Mentenanță întârziată. Te rugăm să programezi service-ul cât mai curând.',
       action_due_soon_desc: 'Mentenanță în curând. Planifică în consecință.',
+      action_carbon_offset_title: 'Consideră compensarea carbonului',
     },
     
     // Weather Alerts
@@ -2927,6 +2966,7 @@ export const translations = {
       notes: 'Notițe',
       optionalNotes: 'Notițe opționale...',
       error: 'Eroare la adăugarea parcării',
+      optional: 'Opțional',
     },
     
     // Parking Types
@@ -3243,6 +3283,9 @@ export const translations = {
       serviceAlerts: 'Service și Întreținere',
       reminderAlerts: 'Memento-uri',
       smartAlerts: 'Recomandări Inteligente',
+      securityAlerts: 'Alerte de Securitate',
+      loginAlerts: 'Alerte de Autentificare Suspectă',
+      loginAlertsDesc: 'Primiți notificări când are loc o autentificare dintr-o locație sau dispozitiv nerecunoscut. Adresa dvs. IP este utilizată local pentru geolocalizare — nu este niciodată partajată cu terți.',
       scheduledReports: 'Rapoarte Programate',
       weeklyReport: 'Rezumat Săptămânal',
       monthlyReport: 'Raport Lunar',
@@ -3453,6 +3496,7 @@ export const translations = {
       vehicles: 'vehicule',
       joined: 'Înscris',
       emailPasswordRequired: 'Email-ul și parola sunt obligatorii',
+      mustChangePasswordNote: 'Utilizatorul va fi obligat să schimbe această parolă la prima autentificare.',
       optionalUsername: 'Nume utilizator opțional',
       optionalDisplayName: 'Nume afișat opțional',
       vehicleLimit: 'Limită Vehicule',
@@ -3660,6 +3704,7 @@ export const translations = {
       resendVerification: 'Retrimite Email de Verificare',
       emailNotVerified: 'Email neverificat',
       emailNotVerifiedDesc: 'Te rugăm să îți verifici adresa de email pentru a accesa toate funcțiile.',
+      twoFactorCode: 'Cod 2FA',
     },
     
     // Security Questions
@@ -3741,6 +3786,14 @@ export const translations = {
         sports: 'Care este echipa ta sportivă preferată?',
         employer: 'Care a fost numele primului tău angajator?',
       },
+      '2faRequired': 'Cod 2FA necesar',
+      loadError: 'Nu s-au putut încărca întrebările de securitate',
+      redirecting: 'Redirecționare către panou...',
+      setUpNow: 'Configurează Întrebări de Securitate',
+      setupError: 'Nu s-au putut salva întrebările de securitate',
+      setupSuccess: 'Întrebările de securitate au fost salvate!',
+      updateTitle: 'Actualizează Întrebările de Securitate',
+      welcomeTitle: 'Încă un pas pentru securitate',
     },
     
     // Profile/Settings
@@ -3931,6 +3984,8 @@ export const translations = {
       futureDateNotAllowed: 'Data viitoare nu este permisă',
       fileTooLarge: 'Fișierul este prea mare',
       invalidFileType: 'Tip de fișier invalid',
+      addVehicleFirst: 'Trebuie să adaugi mai întâi un vehicul înainte de a înregistra combustibil.',
+      selectVehicle: 'Selectează un vehicul',
     },
 
     // Politica de Confidențialitate
@@ -4046,6 +4101,7 @@ export const translations = {
       contactDesc: 'Pentru întrebări despre acești Termeni și Condiții, vă rugăm să ne contactați la gearcargo.team@gmail.com.',
       
       understood: 'Am Înțeles',
+      invalidFileType: 'Selectează un fișier JSON',
     },
 
     // Common
@@ -4153,6 +4209,14 @@ export const translations = {
       zoomOut: 'Micșorează',
       instead: 'în schimb',
       logout: 'Deconectare',
+      clearFilters: 'Șterge toate filtrele',
+      dismiss: 'Respinge',
+      failed: 'Eșuat',
+      filename: 'Nume fișier',
+      goBack: 'Înapoi',
+      sending: 'Se trimite...',
+      size: 'Dimensiune',
+      uploading: 'Se încarcă...',
     },
     
     // Days
@@ -4255,6 +4319,8 @@ export const translations = {
       keyFailed: 'Nu s-a putut genera cheia API',
       keyRevoked: 'Cheie API revocată',
       revokeFailed: 'Nu s-a putut revoca cheia API',
+      copyNowWarning: 'Copiază cheia acum — nu va mai fi afișată din nou.',
+      gotIt: 'Am copiat cheia',
       gethomepage: 'Gethomepage',
       gethomepageDesc: 'Adaugă în fișierul services.yaml din Gethomepage:',
       endpoints: 'Endpoint-uri disponibile:',
@@ -4407,6 +4473,7 @@ export const translations = {
       alerts: 'Recordatorios',
       recommendations: 'Smart',
       settings: 'Ajustes',
+      insurance: 'Seguro',
     },
     
     // User Menu
@@ -4570,6 +4637,7 @@ export const translations = {
       noEntriesFilter: 'Intente cambiar el filtro',
       noEntriesYet: 'Comience a agregar gastos para verlos aquí',
       mileage: 'Kilometraje',
+      loadMore: 'Cargar más',
     },
     
     // Charts Page
@@ -4577,6 +4645,9 @@ export const translations = {
       title: 'Gráficos',
       noData: 'No hay datos disponibles',
       noDataDesc: 'Comience a agregar gastos para ver gráficos',
+      // I17: year-specific empty state
+      noDataForYear: 'Sin gastos en {year}',
+      noDataForYearDesc: 'Intente seleccionar un año diferente usando el selector de arriba.',
       totalExpenses: 'Gastos Totales',
       byCategory: 'Por Categoría',
       monthlyExpenses: 'Gastos Mensuales',
@@ -4808,6 +4879,7 @@ export const translations = {
       action_eco_driving_desc: 'Sigue los consejos de eficiencia para reducir emisiones',
       action_overdue_desc: 'Mantenimiento atrasado. Por favor programa el servicio pronto.',
       action_due_soon_desc: 'Mantenimiento próximo. Planifica en consecuencia.',
+      action_carbon_offset_title: 'Considere compensar el carbono',
     },
     
     // Weather Alerts
@@ -5133,6 +5205,7 @@ export const translations = {
       notes: 'Notas',
       optionalNotes: 'Notas opcionales...',
       error: 'Error al añadir parking',
+      optional: 'Opcional',
     },
     
     // Parking Types
@@ -5449,6 +5522,9 @@ export const translations = {
       serviceAlerts: 'Servicio y Mantenimiento',
       reminderAlerts: 'Recordatorios',
       smartAlerts: 'Recomendaciones Inteligentes',
+      securityAlerts: 'Alertas de Seguridad',
+      loginAlerts: 'Alertas de Inicio de Sesión Sospechoso',
+      loginAlertsDesc: 'Recibe notificaciones cuando se produce un inicio de sesión desde una ubicación o dispositivo no reconocido. Su dirección IP se usa localmente para geolocalización — nunca se comparte con terceros.',
       scheduledReports: 'Reportes Programados',
       weeklyReport: 'Resumen Semanal',
       monthlyReport: 'Reporte Mensual',
@@ -5659,6 +5735,7 @@ export const translations = {
       vehicles: 'vehículos',
       joined: 'Registrado',
       emailPasswordRequired: 'El correo y la contraseña son obligatorios',
+      mustChangePasswordNote: 'El usuario deberá cambiar esta contraseña en el primer inicio de sesión.',
       optionalUsername: 'Nombre de usuario opcional',
       optionalDisplayName: 'Nombre a mostrar opcional',
       vehicleLimit: 'Límite de Vehículos',
@@ -5866,6 +5943,7 @@ export const translations = {
       resendVerification: 'Reenviar Correo de Verificación',
       emailNotVerified: 'Correo no verificado',
       emailNotVerifiedDesc: 'Por favor verifica tu dirección de correo para acceder a todas las funciones.',
+      twoFactorCode: 'Código 2FA',
     },
     
     // Security Questions
@@ -5947,6 +6025,14 @@ export const translations = {
         sports: '¿Cuál es tu equipo deportivo favorito?',
         employer: '¿Cuál fue el nombre de tu primer empleador?',
       },
+      '2faRequired': 'Código 2FA requerido',
+      loadError: 'Error al cargar preguntas de seguridad',
+      redirecting: 'Redirigiendo al panel...',
+      setUpNow: 'Configurar Preguntas de Seguridad',
+      setupError: 'Error al guardar preguntas de seguridad',
+      setupSuccess: '¡Preguntas de seguridad guardadas correctamente!',
+      updateTitle: 'Actualizar Preguntas de Seguridad',
+      welcomeTitle: 'Un paso más para la seguridad',
     },
     
     // Profile/Settings
@@ -6137,6 +6223,8 @@ export const translations = {
       futureDateNotAllowed: 'La fecha futura no está permitida',
       fileTooLarge: 'El archivo es demasiado grande',
       invalidFileType: 'Tipo de archivo inválido',
+      addVehicleFirst: 'Necesitas añadir un vehículo primero antes de registrar combustible.',
+      selectVehicle: 'Selecciona un vehículo',
     },
 
     // Política de Privacidad
@@ -6252,6 +6340,7 @@ export const translations = {
       contactDesc: 'Para preguntas sobre estos Términos de Servicio, contáctenos a gearcargo.team@gmail.com.',
       
       understood: 'Entendido',
+      invalidFileType: 'Selecciona un archivo JSON',
     },
 
     // Common
@@ -6364,6 +6453,14 @@ export const translations = {
       zoomOut: 'Alejar',
       instead: 'en su lugar',
       logout: 'Cerrar Sesión',
+      clearFilters: 'Limpiar todos los filtros',
+      dismiss: 'Descartar',
+      failed: 'Fallido',
+      filename: 'Nombre de archivo',
+      goBack: 'Volver',
+      sending: 'Enviando...',
+      size: 'Tamaño',
+      uploading: 'Subiendo...',
     },
     
     // Days
@@ -6466,6 +6563,8 @@ export const translations = {
       keyFailed: 'Error al generar clave API',
       keyRevoked: 'Clave API revocada',
       revokeFailed: 'Error al revocar clave API',
+      copyNowWarning: 'Copia tu clave ahora — no se mostrará de nuevo.',
+      gotIt: 'He copiado la clave',
       gethomepage: 'Gethomepage',
       gethomepageDesc: 'Añade a tu services.yaml de Gethomepage:',
       endpoints: 'Endpoints disponibles:',

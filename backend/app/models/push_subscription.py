@@ -2,7 +2,7 @@
 GearCargo - Push Subscription Model
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from app import db
 
 
@@ -55,7 +55,7 @@ class PushSubscription(db.Model):
     
     def mark_used(self):
         """Mark subscription as recently used."""
-        self.last_used_at = datetime.utcnow()
+        self.last_used_at = datetime.now(timezone.utc)
         self.error_count = 0
         self.last_error = None
     
@@ -122,12 +122,12 @@ class NotificationLog(db.Model):
     def mark_sent(self):
         """Mark notification as sent."""
         self.status = 'sent'
-        self.sent_at = datetime.utcnow()
+        self.sent_at = datetime.now(timezone.utc)
     
     def mark_clicked(self, action=None):
         """Mark notification as clicked."""
         self.status = 'clicked'
-        self.clicked_at = datetime.utcnow()
+        self.clicked_at = datetime.now(timezone.utc)
         if action:
             self.action_taken = action
     

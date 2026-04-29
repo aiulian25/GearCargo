@@ -47,6 +47,7 @@ export default function AddVehicle() {
   }
   
   const onSubmit = async (data) => {
+    if (isSubmitting) return   // guard against rapid double-click before React re-render
     setIsSubmitting(true)
     setError('')
     

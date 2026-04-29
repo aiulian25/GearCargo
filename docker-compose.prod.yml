@@ -85,13 +85,26 @@ services:
       - MAIL_DEFAULT_SENDER=${MAIL_DEFAULT_SENDER}
       
       # Push Notifications
+      # VAPID_PUBLIC_KEY and VAPID_SUBJECT are non-sensitive — kept as env vars.
+      # VAPID_PRIVATE_KEY is mounted as a Docker secret (see 'secrets:' below)
+      # so it does NOT appear in `docker inspect` or /proc/<pid>/environ.
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
-      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
       - VAPID_SUBJECT=${VAPID_SUBJECT}
       
       # Worker count — capped to fit the 1G container memory limit
       # (host cpu_count * 2 + 1 would OOM-kill workers on many-core hosts)
       - GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}
+
+      # S10: Local GeoIP2 database (optional).
+      # Set to the container path of a MaxMind GeoLite2-City MMDB file.
+      # When unset, suspicious-login country detection is disabled but login
+      # continues normally. Download free: https://dev.maxmind.com/geoip/geolite2-free-geolocation-data
+      - GEOIP_DB_PATH=${GEOIP_DB_PATH:-}
+      # S11: Number of trusted reverse proxies in front of the app.
+      # ProxyFix peels exactly this many hops from X-Forwarded-For to set request.remote_addr.
+      #   0 — direct-bind (no proxy); 1 — one proxy (nginx/Traefik/Cloudflare); 2 — CDN + proxy.
+      # Clients cannot spoof their IP by prepending entries to the left of XFF.
+      - TRUSTED_PROXY_COUNT=${TRUSTED_PROXY_COUNT:-1}
     user: "${PUID:-1000}:${PGID:-1000}"
     read_only: true
     tmpfs:
@@ -101,11 +114,17 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    secrets:
+      - vapid_private_key
     volumes:
       - ./volumes/attachments:/app/volumes/attachments
       - ./volumes/backups:/app/volumes/backups
       - ./volumes/uploads:/app/uploads
       - ./volumes/logs:/app/volumes/logs
+      # Optional: mount GeoLite2 database for suspicious-login detection (S10).
+      # Place GeoLite2-City.mmdb in ./volumes/geoip/ and set
+      # GEOIP_DB_PATH=/app/volumes/geoip/GeoLite2-City.mmdb in your .env file.
+      - ./volumes/geoip:/app/volumes/geoip:ro
     depends_on:
       db:
         condition: service_healthy
@@ -254,29 +273,83 @@ services:
   #     - gearcargo-net
 
   # ============================================================
-  # AUTOMATED BACKUPS (Optional)
-  # Runs daily backup at 3 AM
+  # AUTOMATED BACKUPS (I14)
+  # Runs pg_dump + attachments/uploads archive on a cron schedule.
+  # Archives land in ./volumes/backups/system/{daily,weekly}/ and
+  # are compatible with restore.sh and the in-app Backup page.
+  #
+  # Schedule (UTC):
+  #   Daily  — every day at 03:00
+  #   Weekly — every Sunday at 03:30
+  #
+  # Tune retention: set BACKUP_KEEP_LAST in your .env (default: 7).
+  # Run a one-off manual backup:
+  #   docker compose -f docker-compose.prod.yml exec backup \
+  #       sh /usr/local/bin/backup.sh manual
   # ============================================================
-  # backup:
-  #   image: postgres:16-alpine
-  #   container_name: gearcargo-backup
-  #   environment:
-  #     - PGPASSWORD=${DB_PASSWORD}
-  #   volumes:
-  #     - ./volumes/backups/db:/backups
-  #   entrypoint: |
-  #     sh -c 'while true; do
-  #       sleep 86400
-  #       pg_dump -h db -U gearcargo gearcargo | gzip > /backups/gearcargo_$$(date +%Y%m%d_%H%M%S).sql.gz
-  #       find /backups -name "*.sql.gz" -mtime +7 -delete
-  #     done'
-  #   depends_on:
-  #     - db
-  #   restart: always
-  #   networks:
-  #     - gearcargo-net
+  backup:
+    image: postgres:16-alpine
+    container_name: gearcargo-backup
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      # PGPASSWORD is the standard libpq env var — pg_dump picks it up automatically.
+      - PGPASSWORD=${DB_PASSWORD}
+      - DB_HOST=db
+      - DB_USER=gearcargo
+      - DB_NAME=gearcargo
+      - KEEP_LAST=${BACKUP_KEEP_LAST:-7}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    volumes:
+      - ./volumes/backups/system:/backups
+      - ./volumes/attachments:/attachments:ro
+      - ./volumes/uploads:/uploads:ro
+      - ./scripts/docker-backup.sh:/usr/local/bin/backup.sh:ro
+    entrypoint:
+      - sh
+      - -c
+      - |
+        mkdir -p /tmp/crontabs
+        printf '0 3 * * * sh /usr/local/bin/backup.sh daily\n30 3 * * 0 sh /usr/local/bin/backup.sh weekly\n' \
+            > /tmp/crontabs/root
+        echo "[backup] Scheduler ready — daily 03:00, weekly (Sun) 03:30 UTC"
+        exec crond -c /tmp/crontabs -f -L /dev/stdout
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 32M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+    networks:
+      - gearcargo-net
 
 networks:
   gearcargo-net:
     driver: bridge
     name: gearcargo-network
+
+# ============================================================
+# DOCKER SECRETS
+# I06: VAPID private key stored as a file secret instead of an
+# environment variable, so it is not exposed in `docker inspect`.
+#
+# Setup: echo 'YOUR_VAPID_PRIVATE_KEY' > secrets/vapid_private_key
+#        chmod 600 secrets/vapid_private_key
+# (see secrets/vapid_private_key.example for the expected format)
+# ============================================================
+secrets:
+  vapid_private_key:
+    file: ./secrets/vapid_private_key

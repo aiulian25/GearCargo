@@ -75,7 +75,6 @@ export default function AddVehicleParking() {
   
   // Watch recurring and parking type
   const isRecurring = useWatch({ control, name: 'recurring' })
-  const parkingType = useWatch({ control, name: 'parking_type' })
   
   useEffect(() => {
     const fetchData = async () => {
@@ -103,9 +102,7 @@ export default function AddVehicleParking() {
             permit_expires: entry.permit_expires ? entry.permit_expires.split('T')[0] : '',
           })
           
-          // Store existing attachments
           if (entry.attachments && entry.attachments.length > 0) {
-            setExistingAttachments(entry.attachments)
           }
         }
       } catch (error) {

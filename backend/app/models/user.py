@@ -2,7 +2,8 @@
 GearCargo - User Model
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+import hashlib
 import secrets
 from flask_login import UserMixin
 from app import db, bcrypt, login_manager
@@ -40,10 +41,10 @@ class User(UserMixin, db.Model):
     preferences = db.Column(db.JSON, default=dict)
     
     # 2FA / Security
-    two_factor_secret = db.Column(db.String(32))
+    two_factor_secret = db.Column(db.Text)  # Encrypted (Fernet) — S06
     two_factor_enabled = db.Column(db.Boolean, default=False)
     two_factor_backup_codes = db.Column(db.JSON)
-    email_otp_secret = db.Column(db.String(32))
+    email_otp_secret = db.Column(db.Text)  # Encrypted (Fernet) — S15; widened from String(32)
     email_verified = db.Column(db.Boolean, default=False)
     email_verification_token = db.Column(db.String(255))
     email_verification_expires = db.Column(db.DateTime)  # Token expiration
@@ -66,7 +67,9 @@ class User(UserMixin, db.Model):
     max_sessions = db.Column(db.Integer, default=10)  # Max concurrent sessions (1 = single device)
     
     # API Key for external integrations (Gethomepage, etc.)
-    api_key = db.Column(db.String(64), unique=True, index=True)
+    api_key = db.Column(db.String(64), nullable=True)  # DEPRECATED — nulled post-migration; use api_key_hash (S07)
+    api_key_hash = db.Column(db.String(64), unique=True, index=True, nullable=True)  # SHA-256 hex of raw key (S07)
+    api_key_prefix = db.Column(db.String(12), nullable=True)  # First 8 chars for display only (S07)
     
     # Email Notifications
     notifications_enabled = db.Column(db.Boolean, default=True)  # Master switch
@@ -84,6 +87,7 @@ class User(UserMixin, db.Model):
     email_service_alerts = db.Column(db.Boolean, default=True)
     email_reminder_alerts = db.Column(db.Boolean, default=True)
     email_smart_alerts = db.Column(db.Boolean, default=True)
+    login_alerts_enabled = db.Column(db.Boolean, default=True)  # S18: opt-out for suspicious login/device detection
     weekly_report_enabled = db.Column(db.Boolean, default=False)
     monthly_report_enabled = db.Column(db.Boolean, default=True)
     alert_days_before = db.Column(db.Integer, default=14)  # Days before due date to alert
@@ -105,6 +109,10 @@ class User(UserMixin, db.Model):
     calendar_id = db.Column(db.String(255))  # Specific calendar to use
     calendar_last_sync = db.Column(db.DateTime)
     
+    # DB-backed lockout fallback (used when Redis is unavailable)
+    failed_login_attempts = db.Column(db.Integer, default=0, nullable=False, server_default='0')
+    locked_until = db.Column(db.DateTime, nullable=True)
+
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -122,35 +130,50 @@ class User(UserMixin, db.Model):
     def set_password(self, password):
         """Hash and set the password."""
         self.password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
-        self.last_password_change = datetime.utcnow()
+        self.last_password_change = datetime.now(timezone.utc)
     
     def check_password(self, password):
         """Check password against hash."""
         return bcrypt.check_password_hash(self.password_hash, password)
     
+    @staticmethod
+    def _hash_reset_token(raw_token: str) -> str:
+        """Return SHA-256 hex digest of a raw reset token (S08)."""
+        return hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
+
     def generate_reset_token(self, expires_hours=24):
-        """Generate a password reset token."""
-        self.password_reset_token = secrets.token_urlsafe(32)
-        self.password_reset_expires = datetime.utcnow() + timedelta(hours=expires_hours)
+        """Generate a password reset token.
+
+        Stores only the SHA-256 hash in the database (S08).
+        Returns the raw token — callers must deliver it to the user and never store it.
+        """
+        raw_token = secrets.token_urlsafe(32)
+        self.password_reset_token = User._hash_reset_token(raw_token)  # store hash only
+        self.password_reset_expires = datetime.now(timezone.utc) + timedelta(hours=expires_hours)
         db.session.commit()
-        return self.password_reset_token
+        return raw_token  # raw token returned once — never stored
     
     @staticmethod
     def verify_reset_token(token):
-        """Verify a password reset token and return the user."""
+        """Verify a password reset token and return the user.
+
+        Hashes the incoming token before DB lookup so the column never holds a
+        plaintext value that could be used directly if the DB is read (S08).
+        """
         if not token:
             return None
-        user = User.query.filter_by(password_reset_token=token).first()
+        hashed = User._hash_reset_token(token)
+        user = User.query.filter_by(password_reset_token=hashed).first()
         if user is None:
             return None
-        if user.password_reset_expires is None or user.password_reset_expires < datetime.utcnow():
+        if user.password_reset_expires is None or user.password_reset_expires < datetime.now(timezone.utc):
             return None
         return user
     
     def generate_verification_token(self, expires_hours=48):
         """Generate an email verification token."""
         self.email_verification_token = secrets.token_urlsafe(32)
-        self.email_verification_expires = datetime.utcnow() + timedelta(hours=expires_hours)
+        self.email_verification_expires = datetime.now(timezone.utc) + timedelta(hours=expires_hours)
         db.session.commit()
         return self.email_verification_token
     
@@ -162,7 +185,7 @@ class User(UserMixin, db.Model):
         user = User.query.filter_by(email_verification_token=token).first()
         if user is None:
             return None
-        if user.email_verification_expires is None or user.email_verification_expires < datetime.utcnow():
+        if user.email_verification_expires is None or user.email_verification_expires < datetime.now(timezone.utc):
             return None
         return user
     
@@ -192,7 +215,7 @@ class User(UserMixin, db.Model):
             })
         
         self.security_questions = hashed_qs
-        self.security_questions_set_at = datetime.utcnow()
+        self.security_questions_set_at = datetime.now(timezone.utc)
         db.session.commit()
     
     def verify_security_answers(self, answers):
@@ -272,7 +295,7 @@ class User(UserMixin, db.Model):
     def generate_notification_email_token(self, expires_hours=72):
         """Generate a verification token for the notification email."""
         self.notification_email_token = secrets.token_urlsafe(32)
-        self.notification_email_token_exp = datetime.utcnow() + timedelta(hours=expires_hours)
+        self.notification_email_token_exp = datetime.now(timezone.utc) + timedelta(hours=expires_hours)
         return self.notification_email_token
 
     def _signed_avatar_url(self):
@@ -333,6 +356,7 @@ class User(UserMixin, db.Model):
             data['email_service_alerts'] = self.email_service_alerts if self.email_service_alerts is not None else True
             data['email_reminder_alerts'] = self.email_reminder_alerts if self.email_reminder_alerts is not None else True
             data['email_smart_alerts'] = self.email_smart_alerts if self.email_smart_alerts is not None else True
+            data['login_alerts_enabled'] = self.login_alerts_enabled if self.login_alerts_enabled is not None else True
             data['weekly_report_enabled'] = self.weekly_report_enabled if self.weekly_report_enabled is not None else False
             data['monthly_report_enabled'] = self.monthly_report_enabled if self.monthly_report_enabled is not None else True
             data['alert_days_before'] = self.alert_days_before or 14

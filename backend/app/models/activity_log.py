@@ -147,17 +147,14 @@ class ActivityLog(db.Model):
     
     @staticmethod
     def _get_client_ip(request):
-        """Get the real client IP address, considering proxies."""
-        # Check X-Forwarded-For header (common with proxies/load balancers)
-        if request.headers.get('X-Forwarded-For'):
-            # Get the first IP in the chain
-            ip = request.headers['X-Forwarded-For'].split(',')[0].strip()
-        elif request.headers.get('X-Real-IP'):
-            ip = request.headers['X-Real-IP']
-        else:
-            ip = request.remote_addr
-        
-        return ip
+        """Return the real client IP address.
+
+        S11 fix: werkzeug's ProxyFix (applied in create_app) rewrites
+        request.remote_addr to the real client IP before any route code runs,
+        so reading raw X-Forwarded-For / X-Real-IP headers here is both
+        unnecessary and spoofable by clients. Use remote_addr directly.
+        """
+        return request.remote_addr or 'Unknown'
     
     @staticmethod
     def _parse_user_agent(ua_string):
@@ -248,32 +245,41 @@ class ActivityLog(db.Model):
     
     @staticmethod
     def _get_geo_from_ip(ip_address):
-        """Get geolocation data from IP address using free API."""
+        """Get geolocation data from IP address using the local GeoLite2 database.
+
+        S10 fix: the previous implementation made an HTTP request to ip-api.com.
+        This version reads from the local MMDB file opened at startup (app.geoip_reader).
+        Returns None when the database is not configured or the IP is not found.
+        """
         # Skip private/local IPs
-        if not ip_address or ip_address.startswith(('127.', '10.', '192.168.', '172.', '::1', 'localhost')):
+        if not ip_address or ip_address.startswith(
+            ('127.', '10.', '192.168.', '172.', '::1', 'localhost')
+        ):
             return None
-        
+
         try:
-            import requests
-            # Using ip-api.com free API (no key needed, 45 requests/min limit)
-            response = requests.get(
-                f'http://ip-api.com/json/{ip_address}',
-                timeout=2,
-                params={'fields': 'status,country,countryCode,region,regionName,city,lat,lon'}
-            )
-            if response.status_code == 200:
-                data = response.json()
-                if data.get('status') == 'success':
-                    return {
-                        'country': data.get('country'),
-                        'country_code': data.get('countryCode'),
-                        'region': data.get('regionName'),
-                        'city': data.get('city'),
-                        'latitude': data.get('lat'),
-                        'longitude': data.get('lon'),
-                    }
+            from flask import current_app
+            import geoip2.errors
+            reader = getattr(current_app._get_current_object(), 'geoip_reader', None)
+            if reader is None:
+                return None  # GeoIP DB not configured
+
+            response = reader.city(ip_address)
+            return {
+                'country': response.country.name,
+                'country_code': response.country.iso_code,
+                'region': response.subdivisions.most_specific.name,
+                'city': response.city.name,
+                'latitude': response.location.latitude,
+                'longitude': response.location.longitude,
+            }
+        except geoip2.errors.AddressNotFoundError:
+            return None
         except Exception as e:
             # Don't fail the request if geo lookup fails
-            print(f"Geo lookup failed for {ip_address}: {e}")
-        
+            from flask import current_app as _app
+            try:
+                _app.logger.warning(f'ActivityLog geo lookup failed for {ip_address}: {e}')
+            except RuntimeError:
+                pass  # Outside app context
         return None

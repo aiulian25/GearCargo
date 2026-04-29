@@ -7,8 +7,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import db from '../db/database'
 import { 
-  getUnresolvedConflicts, 
-  getConflictCount,
   resolveConflict,
   resolveAllConflicts,
   ConflictStrategy,

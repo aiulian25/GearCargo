@@ -3,7 +3,7 @@ GearCargo - Backup Model
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from app import db
 
 
@@ -86,7 +86,11 @@ class Backup(db.Model):
             'reminders_count': self.reminders_count,
             'attachments_count': self.attachments_count,
             'status': self.status,
-            'error_message': self.error_message,
+            # S12: Never surface raw exception text from the DB to API clients.
+            # The DB column may contain internal details (filesystem paths, connection
+            # strings, stack fragments) written before this fix. Return a fixed generic
+            # sentinel when an error is recorded; the full detail lives in server logs.
+            'error_message': 'Backup failed. Check server logs for details.' if self.error_message else None,
             'encrypted': self.encrypted,
             'duration_seconds': self.duration_seconds,
             'started_at': self.started_at.isoformat() if self.started_at else None,
@@ -238,7 +242,7 @@ class BackupSchedule(db.Model):
         from datetime import timedelta
         import calendar
         
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         
         if self.frequency == 'weekly':
             # Next occurrence of the specified day of week

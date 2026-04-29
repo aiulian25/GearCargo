@@ -2,7 +2,7 @@
 GearCargo - Admin Routes
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify, current_app
 from sqlalchemy import func, desc
 
@@ -23,7 +23,7 @@ def get_system_stats(current_user):
     total_entries = Entry.query.count()
     
     # Recent activity
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
     week_ago = today - timedelta(days=7)
     
     new_users_week = User.query.filter(
@@ -123,6 +123,7 @@ def create_user(current_user):
         vehicle_limit=vehicle_limit
     )
     user.set_password(data['password'])
+    user.must_change_password = True  # S25: admin-set passwords are temporary; force change on first login
     
     db.session.add(user)
     db.session.commit()
@@ -372,7 +373,7 @@ def get_logs(current_user):
     
     # Get statistics
     total_logs = ActivityLog.query.count()
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
     today_logs = ActivityLog.query.filter(
         func.date(ActivityLog.created_at) == today
     ).count()
@@ -414,8 +415,8 @@ def run_cleanup(current_user):
     backup_retention_days = 30
     activity_log_retention_days = 90
     
-    cutoff_backups = datetime.utcnow() - timedelta(days=backup_retention_days)
-    cutoff_logs = datetime.utcnow() - timedelta(days=activity_log_retention_days)
+    cutoff_backups = datetime.now(timezone.utc) - timedelta(days=backup_retention_days)
+    cutoff_logs = datetime.now(timezone.utc) - timedelta(days=activity_log_retention_days)
     
     results = {
         'preview': preview_only,
@@ -480,8 +481,6 @@ def run_cleanup(current_user):
             for filename in files:
                 file_path = os.path.join(root, filename)
                 # Check if this file is referenced in any attachment
-                relative_path = os.path.relpath(file_path, attachments_dir)
-                
                 attachment = Attachment.query.filter(
                     Attachment.filepath.like(f'%{filename}')
                 ).first()
@@ -548,7 +547,7 @@ def get_blocked_ips(current_user):
     active_only = request.args.get('active_only', 'true').lower() == 'true'
     block_type = request.args.get('type')  # 'auto' or 'manual'
     page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 50, type=int)
+    per_page = min(request.args.get('per_page', 50, type=int), 100)  # S17: cap at 100
     
     # Build query
     query = BlockedIP.query
@@ -587,7 +586,7 @@ def get_blocked_devices(current_user):
     active_only = request.args.get('active_only', 'true').lower() == 'true'
     block_type = request.args.get('type')
     page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 50, type=int)
+    per_page = min(request.args.get('per_page', 50, type=int), 100)  # S17: cap at 100
     
     # Build query
     query = BlockedDevice.query
@@ -631,7 +630,7 @@ def unblock_ip(current_user, block_id):
         return jsonify({'error': 'IP is not currently blocked'}), 400
     
     blocked.is_active = False
-    blocked.unblocked_at = datetime.utcnow()
+    blocked.unblocked_at = datetime.now(timezone.utc)
     blocked.unblocked_by_id = current_user.id
     blocked.unblock_reason = reason
     blocked.failed_attempts = 0  # Reset counter
@@ -671,7 +670,7 @@ def unblock_device(current_user, block_id):
         return jsonify({'error': 'Device is not currently blocked'}), 400
     
     blocked.is_active = False
-    blocked.unblocked_at = datetime.utcnow()
+    blocked.unblocked_at = datetime.now(timezone.utc)
     blocked.unblocked_by_id = current_user.id
     blocked.unblock_reason = reason
     blocked.failed_attempts = 0  # Reset counter
@@ -730,7 +729,7 @@ def block_ip_manually(current_user):
         existing.unblock_reason = None
         
         if expires_hours:
-            existing.expires_at = datetime.utcnow() + timedelta(hours=expires_hours)
+            existing.expires_at = datetime.now(timezone.utc) + timedelta(hours=expires_hours)
         else:
             existing.expires_at = None
         
@@ -743,7 +742,7 @@ def block_ip_manually(current_user):
             block_type='manual',
             blocked_by_id=current_user.id,
             is_active=True,
-            expires_at=datetime.utcnow() + timedelta(hours=expires_hours) if expires_hours else None
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=expires_hours) if expires_hours else None
         )
         db.session.add(blocked)
     
@@ -804,7 +803,7 @@ def block_device_manually(current_user):
         existing.unblock_reason = None
         
         if expires_hours:
-            existing.expires_at = datetime.utcnow() + timedelta(hours=expires_hours)
+            existing.expires_at = datetime.now(timezone.utc) + timedelta(hours=expires_hours)
         else:
             existing.expires_at = None
         
@@ -818,7 +817,7 @@ def block_device_manually(current_user):
             block_type='manual',
             blocked_by_id=current_user.id,
             is_active=True,
-            expires_at=datetime.utcnow() + timedelta(hours=expires_hours) if expires_hours else None
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=expires_hours) if expires_hours else None
         )
         db.session.add(blocked)
     
@@ -851,13 +850,13 @@ def get_failed_logins(current_user):
     """Get failed login attempts with full details."""
     # Query parameters
     page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 50, type=int)
+    per_page = min(request.args.get('per_page', 50, type=int), 100)  # S17: cap at 100
     days = request.args.get('days', 7, type=int)  # Last N days
     email_filter = request.args.get('email')
     ip_filter = request.args.get('ip')
     
     # Build query
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     query = ActivityLog.query.filter(
         ActivityLog.event_type.in_(['login_failed', 'login_blocked_lockout', 'login_blocked_ip', 'login_blocked_device', '2fa_failed']),
         ActivityLog.created_at >= cutoff,
@@ -928,14 +927,14 @@ def get_blocked_summary(current_user):
     blocked_devices_manual = BlockedDevice.query.filter_by(is_active=True, block_type='manual').count()
     
     # Recent failed logins (last 24 hours)
-    cutoff_24h = datetime.utcnow() - timedelta(hours=24)
+    cutoff_24h = datetime.now(timezone.utc) - timedelta(hours=24)
     failed_24h = ActivityLog.query.filter(
         ActivityLog.event_type == 'login_failed',
         ActivityLog.created_at >= cutoff_24h
     ).count()
     
     # Recent failed logins (last 7 days)
-    cutoff_7d = datetime.utcnow() - timedelta(days=7)
+    cutoff_7d = datetime.now(timezone.utc) - timedelta(days=7)
     failed_7d = ActivityLog.query.filter(
         ActivityLog.event_type == 'login_failed',
         ActivityLog.created_at >= cutoff_7d

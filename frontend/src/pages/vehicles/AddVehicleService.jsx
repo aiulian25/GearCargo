@@ -41,7 +41,7 @@ export default function AddVehicleService() {
   const [existingAttachments, setExistingAttachments] = useState([])
   const [selectedServiceTypes, setSelectedServiceTypes] = useState([])
   
-  const { register, handleSubmit, formState: { errors }, control, setValue, reset } = useForm({
+  const { register, handleSubmit, control, setValue, reset } = useForm({
     defaultValues: {
       date: new Date().toISOString().split('T')[0],
       mileage: '',
@@ -99,9 +99,7 @@ export default function AddVehicleService() {
             setSelectedServiceTypes([entry.service_type])
           }
           
-          // Store existing attachments
           if (entry.attachments && entry.attachments.length > 0) {
-            setExistingAttachments(entry.attachments)
           }
         }
       } catch (error) {
