@@ -253,16 +253,14 @@ def create_app(config_class=None):
             'report-uri': '/api/csp-report',  # S27: receive CSP violation reports in DEBUG too
         }
     else:
-        # S14: 'unsafe-inline' removed from style-src.
-        # The pre-React loader CSS (loader.css) and offline page CSS (offline.css)
-        # are external files served from 'self' — no inline <style> blocks remain.
-        # React's style={{}} props are applied via the JS CSSOM API (element.style.*),
-        # which is NOT subject to style-src restrictions — only HTML-parser-encountered
-        # inline styles and <style> blocks are governed by this directive.
+        # 'unsafe-inline' is required in style-src: third-party JS libraries
+        # (recharts, react-hot-toast, react-spring, etc.) inject inline styles via
+        # element.style and CSSStyleSheet.insertRule() — both of which ARE gated by
+        # style-src in Chrome/Firefox despite being CSSOM calls (not HTML-parser paths).
         csp = {
             'default-src': "'self'",
             'script-src': ["'self'", _FOUC_SCRIPT_HASH],  # Hash allowlists the I13 theme-loader inline script
-            'style-src': ["'self'", "https://fonts.googleapis.com"],
+            'style-src': ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
             'font-src': ["'self'", "https://fonts.gstatic.com", "data:"],
             'img-src': ["'self'", "data:", "blob:", "https:"],
             'connect-src': [
