@@ -27,9 +27,9 @@ depends_on = None
 def upgrade():
     conn = op.get_bind()
 
-    # 1. Add new columns
-    op.add_column('users', sa.Column('api_key_hash', sa.String(64), nullable=True))
-    op.add_column('users', sa.Column('api_key_prefix', sa.String(12), nullable=True))
+    # 1. Add new columns (idempotent)
+    conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS api_key_hash VARCHAR(64)"))
+    conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS api_key_prefix VARCHAR(12)"))
 
     # 2. Migrate existing plaintext api_key values → hash + prefix (Python loop, no pgcrypto)
     rows = conn.execute(text("SELECT id, api_key FROM users WHERE api_key IS NOT NULL")).fetchall()

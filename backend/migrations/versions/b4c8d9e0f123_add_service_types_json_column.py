@@ -17,14 +17,17 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column('service_entries', sa.Column('service_types', sa.JSON(), nullable=True))
+    conn = op.get_bind()
+    conn.execute(sa.text(
+        "ALTER TABLE service_entries ADD COLUMN IF NOT EXISTS service_types JSON"
+    ))
 
     # Backfill existing entries: wrap service_type in a JSON array
-    op.execute("""
+    conn.execute(sa.text("""
         UPDATE service_entries
         SET service_types = json_build_array(service_type)
         WHERE service_type IS NOT NULL AND service_types IS NULL
-    """)
+    """))
 
 
 def downgrade():

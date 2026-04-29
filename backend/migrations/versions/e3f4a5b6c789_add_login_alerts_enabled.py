@@ -17,10 +17,10 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column(
-        'users',
-        sa.Column('login_alerts_enabled', sa.Boolean(), nullable=True, server_default='true')
-    )
+    conn = op.get_bind()
+    conn.execute(sa.text(
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS login_alerts_enabled BOOLEAN DEFAULT true"
+    ))
 
 
 def downgrade():
