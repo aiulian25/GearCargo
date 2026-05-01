@@ -551,7 +551,7 @@ def get_insurance_alerts(user_id: int, days_ahead: int = 30) -> List[Dict]:
     
     policies = InsurancePolicy.query.join(Vehicle).filter(
         Vehicle.user_id == user_id,
-        Vehicle.is_active == True,
+        Vehicle.archived == False,
         InsurancePolicy.end_date.isnot(None),
         InsurancePolicy.end_date <= cutoff,
         InsurancePolicy.end_date >= date.today()
@@ -580,26 +580,27 @@ def get_tax_alerts(user_id: int, days_ahead: int = 30) -> List[Dict]:
     cutoff = date.today() + timedelta(days=days_ahead)
     alerts = []
     
-    # Get most recent tax for each vehicle
-    taxes = db.session.query(TaxEntry).join(Vehicle).filter(
-        Vehicle.user_id == user_id,
-        Vehicle.is_active == True,
-        TaxEntry.valid_until.isnot(None),
-        TaxEntry.valid_until <= cutoff,
-        TaxEntry.valid_until >= date.today()
+# Get taxes due soon (use next_due_date for recurring, due_date otherwise)
+    taxes = db.session.query(TaxEntry).join(Vehicle, Vehicle.id == TaxEntry.vehicle_id).filter(
+        TaxEntry.user_id == user_id,
+        Vehicle.archived == False,
+        TaxEntry.due_date.isnot(None),
+        TaxEntry.due_date >= date.today(),
+        TaxEntry.due_date <= cutoff
     ).all()
-    
+
     for tax in taxes:
-        days_left = (tax.valid_until - date.today()).days
+        alert_date = tax.due_date
+        days_left = (alert_date - date.today()).days
         severity = "urgent" if days_left <= 7 else "warning" if days_left <= 14 else "info"
-        
+
         alerts.append({
             'title': "Road Tax Due",
-            'subtitle': f"Expires on {tax.valid_until.strftime('%d %B %Y')}",
+            'subtitle': f"Due on {alert_date.strftime('%d %B %Y')}",
             'details': f"{days_left} days remaining",
             'vehicle': tax.vehicle.name if tax.vehicle else None,
             'severity': severity,
-            'due_date': tax.valid_until.strftime('%d %b %Y')
+            'due_date': alert_date.strftime('%d %b %Y')
         })
     
     return alerts
@@ -616,10 +617,11 @@ def get_service_alerts(user_id: int, days_ahead: int = 30) -> List[Dict]:
 
     reminders = Reminder.query.join(Vehicle).filter(
         Reminder.user_id == user_id,
-        Vehicle.is_active == True,
+        Vehicle.archived == False,
         Reminder.completed == False,
         Reminder.dismissed == False,
         Reminder.due_date.isnot(None),
+        Reminder.due_date >= date.today(),
         Reminder.due_date <= cutoff,
         Reminder.reminder_type.in_(SERVICE_TYPES)
     ).all()
@@ -650,11 +652,12 @@ def get_reminder_alerts(user_id: int, days_ahead: int = 30) -> List[Dict]:
 
     reminders = Reminder.query.join(Vehicle).filter(
         Reminder.user_id == user_id,
-        Vehicle.is_active == True,
+        Vehicle.archived == False,
         Reminder.completed == False,
         Reminder.dismissed == False,
         Reminder.notify_email == True,
         Reminder.due_date.isnot(None),
+        Reminder.due_date >= date.today(),
         Reminder.due_date <= cutoff,
     ).all()
 
