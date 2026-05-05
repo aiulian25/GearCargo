@@ -1,15 +1,57 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import { translations, defaultLanguage, supportedLanguages } from '../i18n/translations'
 import { db } from '../services/db'
 import api from '../services/api'
 
 const LanguageContext = createContext(null)
 
-// Language to Currency mapping
+// Language to Currency mapping (fallback when location is unavailable)
 const languageCurrencyMap = {
   en: { code: 'GBP', symbol: '£', name: 'British Pound' },
   ro: { code: 'RON', symbol: 'lei', name: 'Romanian Leu' },
   es: { code: 'EUR', symbol: '€', name: 'Euro' },
+}
+
+// Country ISO code → currency (covers all EU + common countries)
+const countryCurrencyMap = {
+  // Euro zone
+  AT: { code: 'EUR', symbol: '€', name: 'Euro' },
+  BE: { code: 'EUR', symbol: '€', name: 'Euro' },
+  CY: { code: 'EUR', symbol: '€', name: 'Euro' },
+  DE: { code: 'EUR', symbol: '€', name: 'Euro' },
+  EE: { code: 'EUR', symbol: '€', name: 'Euro' },
+  ES: { code: 'EUR', symbol: '€', name: 'Euro' },
+  FI: { code: 'EUR', symbol: '€', name: 'Euro' },
+  FR: { code: 'EUR', symbol: '€', name: 'Euro' },
+  GR: { code: 'EUR', symbol: '€', name: 'Euro' },
+  HR: { code: 'EUR', symbol: '€', name: 'Euro' },
+  IE: { code: 'EUR', symbol: '€', name: 'Euro' },
+  IT: { code: 'EUR', symbol: '€', name: 'Euro' },
+  LT: { code: 'EUR', symbol: '€', name: 'Euro' },
+  LU: { code: 'EUR', symbol: '€', name: 'Euro' },
+  LV: { code: 'EUR', symbol: '€', name: 'Euro' },
+  MT: { code: 'EUR', symbol: '€', name: 'Euro' },
+  NL: { code: 'EUR', symbol: '€', name: 'Euro' },
+  PT: { code: 'EUR', symbol: '€', name: 'Euro' },
+  SI: { code: 'EUR', symbol: '€', name: 'Euro' },
+  SK: { code: 'EUR', symbol: '€', name: 'Euro' },
+  // Non-euro EU + common European countries
+  BG: { code: 'BGN', symbol: 'лв', name: 'Bulgarian Lev' },
+  CH: { code: 'CHF', symbol: 'CHF', name: 'Swiss Franc' },
+  CZ: { code: 'CZK', symbol: 'Kč', name: 'Czech Koruna' },
+  DK: { code: 'DKK', symbol: 'kr', name: 'Danish Krone' },
+  GB: { code: 'GBP', symbol: '£', name: 'British Pound' },
+  UK: { code: 'GBP', symbol: '£', name: 'British Pound' },
+  HU: { code: 'HUF', symbol: 'Ft', name: 'Hungarian Forint' },
+  NO: { code: 'NOK', symbol: 'kr', name: 'Norwegian Krone' },
+  PL: { code: 'PLN', symbol: 'zł', name: 'Polish Złoty' },
+  RO: { code: 'RON', symbol: 'lei', name: 'Romanian Leu' },
+  SE: { code: 'SEK', symbol: 'kr', name: 'Swedish Krona' },
+  // Other major countries
+  US: { code: 'USD', symbol: '$', name: 'US Dollar' },
+  CA: { code: 'CAD', symbol: 'CA$', name: 'Canadian Dollar' },
+  AU: { code: 'AUD', symbol: 'A$', name: 'Australian Dollar' },
+  JP: { code: 'JPY', symbol: '¥', name: 'Japanese Yen' },
 }
 
 // Language display names (in their native language)
@@ -27,7 +69,11 @@ function getNestedValue(obj, path) {
 export function LanguageProvider({ children }) {
   const [language, setLanguageState] = useState(defaultLanguage)
   const [isLoaded, setIsLoaded] = useState(false)
-  
+  // Location-detected currency overrides the language-based default
+  const [locationCurrency, setLocationCurrency] = useState(null)
+  // Live exchange rates keyed by currency code (EUR base)
+  const [exchangeRates, setExchangeRates] = useState(null)
+  const ratesFetchedRef = useRef(false)
   // Load saved language preference
   useEffect(() => {
     const loadLanguage = async () => {
@@ -96,7 +142,30 @@ export function LanguageProvider({ children }) {
       document.documentElement.lang = userData.language
     }
   }, [])
-  
+
+  // Set currency from detected country code (called by Dashboard after geolocation)
+  const setCurrencyFromCountry = useCallback((countryCode) => {
+    if (!countryCode) return
+    const cc = countryCode.toUpperCase()
+    const found = countryCurrencyMap[cc]
+    if (found) {
+      setLocationCurrency(found)
+    }
+  }, [])
+
+  // Fetch live exchange rates from backend once per session (after login)
+  useEffect(() => {
+    if (ratesFetchedRef.current || !localStorage.getItem('auth_session')) return
+    ratesFetchedRef.current = true
+    api.get('/external/currency-rates')
+      .then((res) => {
+        if (res.data?.rates) {
+          setExchangeRates(res.data.rates)
+        }
+      })
+      .catch(() => {/* silently ignore — fallback rates are baked into the backend */})
+  }, [])
+
   // Translation function
   const t = useCallback((key, params = {}) => {
     const inCurrentLang = getNestedValue(translations[language], key)
@@ -121,22 +190,29 @@ export function LanguageProvider({ children }) {
     return translation
   }, [language])
   
-  // Get current currency based on language
-  const currency = languageCurrencyMap[language] || languageCurrencyMap[defaultLanguage]
-  
+  // Active currency: location-detected wins over language default
+  const currency = locationCurrency || languageCurrencyMap[language] || languageCurrencyMap[defaultLanguage]
+
+  // Convert an amount from EUR to the active currency using live rates
+  const convertFromEur = useCallback((amountEur) => {
+    if (!exchangeRates || currency.code === 'EUR') return amountEur
+    const rate = exchangeRates[currency.code]
+    return rate ? amountEur * rate : amountEur
+  }, [exchangeRates, currency.code])
+
   // Format currency helper
   const formatCurrency = useCallback((amount, options = {}) => {
     const { showSymbol = true, decimals = 2 } = options
     const formattedAmount = Number(amount).toFixed(decimals)
-    
-    if (currency.code === 'RON') {
-      // Romanian format: 123.45 lei
+
+    // Currencies that follow the number (suffix format)
+    const suffixCodes = new Set(['RON', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK', 'HUF', 'CHF', 'BGN', 'kr', 'lei', 'Ft', 'Kč', 'zł', 'лв'])
+    if (suffixCodes.has(currency.code) || suffixCodes.has(currency.symbol)) {
       return showSymbol ? `${formattedAmount} ${currency.symbol}` : formattedAmount
     }
-    // Other currencies: £123.45 or €123.45
     return showSymbol ? `${currency.symbol}${formattedAmount}` : formattedAmount
   }, [currency])
-  
+
   const value = {
     language,
     setLanguage,
@@ -146,6 +222,9 @@ export function LanguageProvider({ children }) {
     supportedLanguages,
     currency,
     formatCurrency,
+    convertFromEur,
+    exchangeRates,
+    setCurrencyFromCountry,
     languageNames,
   }
   
@@ -172,6 +251,6 @@ export function useTranslation() {
 
 // Hook for currency
 export function useCurrency() {
-  const { currency, formatCurrency, language } = useLanguage()
-  return { currency, formatCurrency, language }
+  const { currency, formatCurrency, convertFromEur, exchangeRates, setCurrencyFromCountry, language } = useLanguage()
+  return { currency, formatCurrency, convertFromEur, exchangeRates, setCurrencyFromCountry, language }
 }

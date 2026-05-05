@@ -14,9 +14,9 @@ Sources:
   - EU: https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en
 """
 
+import csv
 import json
 import re
-import csv
 import io
 from datetime import datetime, timezone
 import requests
@@ -192,6 +192,76 @@ BASELINE_PRICES = {
         'source': 'Swiss Federal Statistics', 'last_update': '2026-02-03',
     },
 }
+
+# Fallback EUR → local-currency exchange rates.
+# These are only used when the live frankfurter.app API is unreachable.
+_EUR_RATES_FALLBACK = {
+    'BGN': 1.95583,  # Fixed peg since 1999
+    'CZK': 25.3,
+    'DKK': 7.46,     # Near-fixed peg
+    'HUF': 400.0,
+    'PLN': 4.25,
+    'RON': 5.0,
+    'SEK': 11.0,
+    'NOK': 11.8,
+    'CHF': 0.94,
+    'GBP': 0.86,
+    'USD': 1.08,
+}
+
+# Redis key for caching live currency rates (24-hour TTL)
+_RATES_REDIS_KEY = 'gearcargo:currency_rates'
+_RATES_TTL = 24 * 3600
+
+
+def get_live_eur_rates(app=None):
+    """
+    Return a dict of EUR → foreign currency conversion rates.
+
+    Fetch from frankfurter.app (ECB-backed, free, no API key).
+    Result is cached in Redis for 24 hours; falls back to hardcoded
+    approximations if the API and Redis are both unavailable.
+    """
+    # Try Redis cache first
+    if app is not None:
+        r = _redis_client(app)
+        if r:
+            try:
+                raw = r.get(_RATES_REDIS_KEY)
+                if raw:
+                    return json.loads(raw)
+            except Exception:
+                pass
+
+    # Fetch live rates from frankfurter.app (ECB source, free, no key)
+    try:
+        resp = requests.get(
+            'https://api.frankfurter.app/latest',
+            params={'from': 'EUR'},
+            headers={'User-Agent': 'GearCargo/1.0'},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        rates = data.get('rates', {})
+        # API returns X units of each currency per 1 EUR
+        if rates:
+            if app is not None:
+                r = _redis_client(app)
+                if r:
+                    try:
+                        r.setex(_RATES_REDIS_KEY, _RATES_TTL, json.dumps(rates))
+                    except Exception:
+                        pass
+            return rates
+    except Exception as exc:
+        if app is not None:
+            try:
+                app.logger.warning(f'Currency rate fetch failed: {exc}')
+            except Exception:
+                pass
+
+    return _EUR_RATES_FALLBACK
 
 # Country code → country name for the EU Oil Bulletin
 EU_COUNTRY_NAMES = {
@@ -524,151 +594,210 @@ def _fetch_eu_bulletin_all(app):
     """
     Fetch EU Oil Bulletin data for all EU countries.
 
-    Strategy:
-      1. Fetch the Oil Bulletin page
-      2. Find the download link for the latest data file (CSV or XLS)
-      3. Download and parse it
+    The EC publishes weekly retail prices (with taxes) as an XLSX file.
+    We parse it using Python's built-in zipfile + ElementTree — no extra deps.
 
-    If the page structure changes, this degrades gracefully to None.
+    Prices in the spreadsheet are EUR per 1000 litres; we divide by 1000
+    to get EUR/L, then apply approximate exchange rates for non-EUR countries.
     """
     try:
         resp = requests.get(EU_BULLETIN_PAGE, headers=FETCH_HEADERS, timeout=20)
         resp.raise_for_status()
         page_html = resp.text
 
-        # Look for CSV download link first (preferred — no extra deps needed)
-        csv_links = re.findall(
-            r'href="([^"]*(?:price|bulletin|fuel)[^"]*\.csv)"',
+        # Find the XLSX download link.
+        # We prefer the "with Taxes" file (retail pump prices incl. VAT/duty).
+        xlsx_links = re.findall(
+            r'href="(/document/download/[^"]*\.xlsx[^"]*)"',
             page_html, re.I
         )
 
-        if csv_links:
-            csv_url = csv_links[0]
-            if not csv_url.startswith('http'):
-                csv_url = f"https://energy.ec.europa.eu{csv_url}"
-            data_resp = requests.get(csv_url, headers=FETCH_HEADERS, timeout=20)
-            data_resp.raise_for_status()
-            return _parse_eu_csv(data_resp.text, app)
-
-        # Try to find the JSON data embedded in the page (some EC pages
-        # include inline JSON for their visualization widgets)
-        json_blocks = re.findall(
-            r'var\s+(?:data|prices|oilData)\s*=\s*(\{.*?\});',
-            page_html, re.S
-        )
-        for block in json_blocks:
-            try:
-                data = json.loads(block)
-                parsed = _parse_eu_inline_json(data, app)
-                if parsed:
-                    return parsed
-            except (json.JSONDecodeError, ValueError):
+        xlsx_url = None
+        for link in xlsx_links:
+            decoded = link.lower()
+            # Pick the weekly-prices-with-taxes file; skip history and duty files
+            if 'without' in decoded or 'histor' in decoded or 'dut' in decoded:
                 continue
+            if 'price' in decoded or 'bulletin' in decoded:
+                xlsx_url = link
+                break
+        # Fallback: first XLSX link that isn't the history/duties file
+        if not xlsx_url:
+            for link in xlsx_links:
+                if 'histor' not in link.lower() and 'dut' not in link.lower():
+                    xlsx_url = link
+                    break
 
-        app.logger.info("EU Oil Bulletin: no parseable data found on page")
-        return None
+        if not xlsx_url:
+            app.logger.info("EU Oil Bulletin: no XLSX link found on page")
+            return None
+
+        full_url = f"https://energy.ec.europa.eu{xlsx_url}"
+        app.logger.debug(f"EU Oil Bulletin XLSX URL: {full_url}")
+        data_resp = requests.get(full_url, headers=FETCH_HEADERS, timeout=30)
+        data_resp.raise_for_status()
+
+        return _parse_eu_bulletin_xlsx(data_resp.content, app)
 
     except Exception as e:
         app.logger.warning(f"EU Oil Bulletin fetch failed: {e}")
         return None
 
 
-def _parse_eu_csv(text, app):
+def _parse_eu_bulletin_xlsx(content, app):
     """
-    Parse EU Oil Bulletin CSV into per-country price dicts.
-    The CSV format varies but typically has columns for country + fuel types.
+    Parse the EU Oil Bulletin XLSX using only Python built-ins.
+
+    Spreadsheet layout (one sheet):
+      Row 1:  column headers — B=Euro-super 95, C=Gas oil auto, G=LPG
+      Row 2:  units row — column A holds an Excel date serial
+      Row 3+: one row per member state
+
+    All prices are in EUR per 1000 litres.  We divide by 1000 to get EUR/L
+    and then multiply by the local exchange rate where applicable.
     """
+    import zipfile
+    import xml.etree.ElementTree as ET
+
+    NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
+
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(content))
+    except Exception as e:
+        app.logger.warning(f"EU Oil Bulletin: could not open XLSX as ZIP: {e}")
+        return None
+
+    # --- Shared strings ---
+    shared = []
+    if 'xl/sharedStrings.xml' in zf.namelist():
+        ss_root = ET.fromstring(zf.read('xl/sharedStrings.xml'))
+        for si in ss_root.findall(f'.//{{{NS}}}si'):
+            text = ''.join(t.text or '' for t in si.findall(f'.//{{{NS}}}t')).strip()
+            shared.append(text)
+
+    # --- Worksheet ---
+    sheet_files = [
+        n for n in zf.namelist()
+        if n.startswith('xl/worksheets/sheet') and n.endswith('.xml')
+    ]
+    if not sheet_files:
+        app.logger.warning("EU Oil Bulletin XLSX: no worksheet found")
+        return None
+
+    ws_root = ET.fromstring(zf.read(sheet_files[0]))
+
+    petrol_col = diesel_col = lpg_col = None
+    date_val = None
     results = {}
-    reader = csv.DictReader(io.StringIO(text))
 
-    for row in reader:
-        # Try to identify the country column
-        country_val = None
-        for key in ('country', 'Country', 'member_state', 'Member State', 'COUNTRY'):
-            if key in row and row[key]:
-                country_val = row[key].strip().lower()
-                break
+    def _cell_val(c_el):
+        """Return (is_string, value) for a cell element."""
+        v = c_el.find(f'{{{NS}}}v')
+        if v is None or not v.text:
+            return False, None
+        if c_el.get('t') == 's':
+            idx = int(v.text)
+            return True, shared[idx] if idx < len(shared) else ''
+        return False, v.text
 
-        if not country_val:
-            continue
+    def _col_letter(cell_ref):
+        """Extract column letter(s) from a cell reference like 'AB12'."""
+        return re.sub(r'\d', '', cell_ref)
 
-        # Map country name to ISO code
-        cc = _BULLETIN_COUNTRY_MAP.get(country_val)
-        if not cc:
-            # Try partial match
-            for name, code in _BULLETIN_COUNTRY_MAP.items():
-                if name in country_val or country_val in name:
-                    cc = code
-                    break
-        if not cc:
-            continue
+    def _eur_per_litre(num_str):
+        """Convert a '1000 L' string value to EUR/L."""
+        try:
+            return float(num_str) / 1000.0
+        except (ValueError, TypeError):
+            return None
 
-        # Extract prices (try various column names)
-        diesel = _extract_price(row, ['diesel', 'gas oil', 'gasoil', 'automotive diesel'])
-        petrol = _extract_price(row, ['petrol', 'gasoline', 'euro 95', 'eurosuper 95', 'e10', 'unleaded'])
-        lpg = _extract_price(row, ['lpg', 'autogas', 'auto gas'])
-        premium = _extract_price(row, ['premium', 'super', 'euro 98', 'e5', 'super 98'])
-        date_str = None
-        for key in ('date', 'Date', 'DATE', 'week', 'Week', 'period', 'Period'):
-            if key in row and row[key]:
-                date_str = _normalize_date(row[key])
-                break
+    for row_el in ws_root.findall(f'.//{{{NS}}}row'):
+        r = int(row_el.get('r', 0))
 
-        baseline = BASELINE_PRICES.get(cc, {})
-        results[cc] = {
-            'currency': baseline.get('currency', '€'),
-            'currency_code': baseline.get('currency_code', 'EUR'),
-            'diesel': diesel or baseline.get('diesel'),
-            'petrol': petrol or baseline.get('petrol'),
-            'lpg': lpg or baseline.get('lpg'),
-            'premium': premium or baseline.get('premium'),
-            'source': 'EU Weekly Oil Bulletin',
-            'last_update': date_str or datetime.now(timezone.utc).strftime('%Y-%m-%d'),
-        }
+        cells = {}  # col_letter → (is_string, value)
+        for c in row_el.findall(f'{{{NS}}}c'):
+            col = _col_letter(c.get('r', ''))
+            is_str, val = _cell_val(c)
+            if val is not None:
+                cells[col] = (is_str, val)
+
+        if r == 1:
+            # Identify price columns from header text
+            for col, (is_str, val) in cells.items():
+                if not is_str:
+                    continue
+                vl = val.lower()
+                if ('super 95' in vl or 'euro-super' in vl or 'eurosuper' in vl) and petrol_col is None:
+                    petrol_col = col
+                elif ('gas oil auto' in vl or ('gas oil' in vl and 'chauf' not in vl and 'heat' not in vl)) and diesel_col is None:
+                    diesel_col = col
+                elif ('gpl' in vl or 'lpg' in vl) and lpg_col is None:
+                    lpg_col = col
+
+        elif r == 2:
+            # Column A in the units row holds the Excel date serial
+            a = cells.get('A')
+            if a and not a[0] and a[1]:
+                try:
+                    from datetime import date as _dt, timedelta
+                    serial = int(float(a[1]))
+                    d = _dt(1899, 12, 30) + timedelta(days=serial)
+                    date_val = d.strftime('%Y-%m-%d')
+                except (ValueError, TypeError):
+                    pass
+
+        elif r >= 3:
+            # Data row — column A is the country name (string)
+            a = cells.get('A')
+            if not a or not a[0]:
+                continue
+            country_name = a[1].strip().lower()
+
+            cc = _BULLETIN_COUNTRY_MAP.get(country_name)
+            if not cc:
+                for name, code in _BULLETIN_COUNTRY_MAP.items():
+                    if name in country_name:
+                        cc = code
+                        break
+            if not cc:
+                continue
+
+            # Extract EUR/1000L values → EUR/L
+            def _get(col):
+                if col and col in cells:
+                    is_str, val = cells[col]
+                    if not is_str and val:
+                        return _eur_per_litre(val)
+                return None
+
+            petrol_eur = _get(petrol_col)
+            diesel_eur = _get(diesel_col)
+            lpg_eur = _get(lpg_col)
+
+            baseline = BASELINE_PRICES.get(cc, {})
+            local_cc = baseline.get('currency_code', 'EUR')
+            local_sym = baseline.get('currency', '\u20ac')
+
+            # Apply local exchange rate so non-EUR users see local currency prices
+            _rates = get_live_eur_rates(app)
+            rate = _rates.get(local_cc, 1.0)
+
+            results[cc] = {
+                'currency': local_sym,
+                'currency_code': local_cc,
+                'diesel': round(diesel_eur * rate, 2) if diesel_eur else baseline.get('diesel'),
+                'petrol': round(petrol_eur * rate, 2) if petrol_eur else baseline.get('petrol'),
+                'lpg': round(lpg_eur * rate, 2) if lpg_eur else baseline.get('lpg'),
+                'premium': baseline.get('premium'),  # Bulletin does not publish premium
+                'source': 'EU Weekly Oil Bulletin',
+                'last_update': date_val or datetime.now(timezone.utc).strftime('%Y-%m-%d'),
+            }
 
     if results:
-        app.logger.info(f"EU Oil Bulletin: parsed prices for {len(results)} countries")
+        app.logger.info(
+            f"EU Oil Bulletin XLSX: parsed {len(results)} countries, date={date_val}"
+        )
     return results if results else None
-
-
-def _parse_eu_inline_json(data, app):
-    """Parse inline JSON from the Oil Bulletin page visualization."""
-    # This handles the case where the page embeds data for its charts
-    # Structure varies — try common patterns
-    results = {}
-
-    if isinstance(data, dict):
-        for key, val in data.items():
-            key_lower = key.lower()
-            cc = _BULLETIN_COUNTRY_MAP.get(key_lower)
-            if cc and isinstance(val, dict):
-                baseline = BASELINE_PRICES.get(cc, {})
-                results[cc] = {
-                    'currency': baseline.get('currency', '€'),
-                    'currency_code': baseline.get('currency_code', 'EUR'),
-                    'diesel': val.get('diesel') or baseline.get('diesel'),
-                    'petrol': val.get('petrol') or val.get('gasoline') or baseline.get('petrol'),
-                    'lpg': val.get('lpg') or baseline.get('lpg'),
-                    'premium': val.get('premium') or val.get('super') or baseline.get('premium'),
-                    'source': 'EU Weekly Oil Bulletin',
-                    'last_update': val.get('date', datetime.now(timezone.utc).strftime('%Y-%m-%d')),
-                }
-
-    return results if results else None
-
-
-def _extract_price(row, patterns):
-    """Extract a numeric price from a CSV row by trying multiple column name patterns."""
-    for col_name, col_val in row.items():
-        cl = col_name.lower().strip()
-        for pattern in patterns:
-            if pattern in cl:
-                try:
-                    val = float(col_val.strip().replace(',', '.'))
-                    return round(val, 2)
-                except (ValueError, TypeError, AttributeError):
-                    pass
-    return None
 
 
 # ──────────────────────────────────────────────

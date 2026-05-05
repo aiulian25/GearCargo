@@ -120,6 +120,19 @@ def init_scheduler(app):
     except Exception as e:
         app.logger.warning(f'Startup recurring tax run failed: {e}')
 
+    # Trigger a fuel price refresh 60 seconds after startup so Redis is
+    # populated for all supported countries on the first boot (and after
+    # any deployment that clears Redis).  This runs once in the background
+    # and does not block startup.
+    scheduler.add_job(
+        id='refresh_fuel_prices_startup',
+        func=refresh_fuel_prices,
+        trigger='date',
+        run_date=datetime.now(timezone.utc) + timedelta(seconds=60),
+        args=[app],
+        replace_existing=True,
+    )
+
 
 def check_due_reminders(app):
     """Check for due reminders and send notifications."""

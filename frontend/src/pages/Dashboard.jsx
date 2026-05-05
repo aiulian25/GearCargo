@@ -452,7 +452,7 @@ function FuelPricesWidget({ fuelPrices, currency, t, onRefresh, isRefreshing }) 
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const { currency } = useCurrency()
+  const { currency, setCurrencyFromCountry } = useCurrency()
   const { t, language } = useTranslation()
   const { user } = useAuth()
   const [vehicles, setVehicles] = useState([])
@@ -628,6 +628,8 @@ export default function Dashboard() {
           locationName += ', ' + (addr.country || 'Unknown')
           // Get country code for fuel prices (e.g., 'gb', 'de', 'fr')
           countryCode = (addr.country_code || 'uk').toUpperCase()
+          // Update app currency to match the user's physical location
+          setCurrencyFromCountry(countryCode)
         } catch (e) {
           console.warn('Geocoding failed:', e)
         }

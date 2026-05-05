@@ -413,6 +413,7 @@ export const externalApi = {
     if (location) params.append('location', location)
     return api.get(`/external/weather-alerts?${params}`)
   },
+  getCurrencyRates: () => api.get('/external/currency-rates'),
 }
 
 // Attachment/Receipt API

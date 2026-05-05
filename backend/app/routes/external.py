@@ -242,6 +242,35 @@ def detect_country_from_coords(lat, lon):
     return None
 
 
+@external_bp.route('/currency-rates', methods=['GET'])
+@token_required
+def get_currency_rates(current_user):
+    """Return live EUR-based exchange rates (ECB source via frankfurter.app).
+
+    Rates are cached in Redis for 24 hours.  Falls back to hardcoded
+    approximations when the upstream API is unavailable.
+
+    Response:
+      { "base": "EUR", "rates": { "GBP": 0.86, "RON": 5.0, ... },
+        "source": "...", "fetched_at": "..." }
+    """
+    from app.services.fuel_price_service import get_live_eur_rates
+
+    cache_key = 'currency_rates_eur'
+    rates = get_cached(cache_key, lambda: get_live_eur_rates(current_app._get_current_object()),
+                       timedelta(hours=24))
+
+    if not rates:
+        return jsonify({'error': 'Currency rate service unavailable'}), 503
+
+    return jsonify({
+        'base': 'EUR',
+        'rates': rates,
+        'source': 'European Central Bank via frankfurter.app',
+        'fetched_at': datetime.now(timezone.utc).isoformat(),
+    })
+
+
 @external_bp.route('/air-quality', methods=['GET'])
 @token_required
 def get_air_quality(current_user):
