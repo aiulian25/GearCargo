@@ -88,6 +88,7 @@ class User(UserMixin, db.Model):
     email_reminder_alerts = db.Column(db.Boolean, default=True)
     email_smart_alerts = db.Column(db.Boolean, default=True)
     login_alerts_enabled = db.Column(db.Boolean, default=True)  # S18: opt-out for suspicious login/device detection
+    daily_alerts_enabled = db.Column(db.Boolean, default=True)   # Controls the 8 AM daily alert digest
     weekly_report_enabled = db.Column(db.Boolean, default=False)
     monthly_report_enabled = db.Column(db.Boolean, default=True)
     alert_days_before = db.Column(db.Integer, default=14)  # Days before due date to alert
@@ -357,6 +358,7 @@ class User(UserMixin, db.Model):
             data['email_reminder_alerts'] = self.email_reminder_alerts if self.email_reminder_alerts is not None else True
             data['email_smart_alerts'] = self.email_smart_alerts if self.email_smart_alerts is not None else True
             data['login_alerts_enabled'] = self.login_alerts_enabled if self.login_alerts_enabled is not None else True
+            data['daily_alerts_enabled'] = self.daily_alerts_enabled if self.daily_alerts_enabled is not None else True
             data['weekly_report_enabled'] = self.weekly_report_enabled if self.weekly_report_enabled is not None else False
             data['monthly_report_enabled'] = self.monthly_report_enabled if self.monthly_report_enabled is not None else True
             data['alert_days_before'] = self.alert_days_before or 14

@@ -1687,6 +1687,7 @@ def update_profile(current_user):
         'email_service_alerts',
         'email_reminder_alerts',
         'email_smart_alerts',
+        'daily_alerts_enabled',
         'weekly_report_enabled',
         'monthly_report_enabled',
         'alert_days_before',
@@ -2306,6 +2307,7 @@ def get_email_settings(current_user):
         'email_reminder_alerts': current_user.email_reminder_alerts if current_user.email_reminder_alerts is not None else True,
         'email_smart_alerts': current_user.email_smart_alerts if current_user.email_smart_alerts is not None else True,
         'login_alerts_enabled': current_user.login_alerts_enabled if current_user.login_alerts_enabled is not None else True,  # S18
+        'daily_alerts_enabled': current_user.daily_alerts_enabled if current_user.daily_alerts_enabled is not None else True,
         'weekly_report_enabled': current_user.weekly_report_enabled if current_user.weekly_report_enabled is not None else False,
         'monthly_report_enabled': current_user.monthly_report_enabled if current_user.monthly_report_enabled is not None else True,
         'alert_days_before': current_user.alert_days_before or 14,

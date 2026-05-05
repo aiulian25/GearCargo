@@ -165,3 +165,6 @@ Security.md
 
 # Internal audit — do not commit
 FINDINGS.md
+
+# Internal planning docs — do not commit
+MARK_DONE_PLAN.md

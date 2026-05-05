@@ -33,11 +33,6 @@ const Icons = {
       <rect x="6" y="6" width="6" height="5" rx="1"/>
     </svg>
   ),
-  heart: (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>
-    </svg>
-  ),
   tree: (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 22v-7"/><path d="M4 12h16"/><path d="m12 5 7 7-7-7-7 7 7-7Z"/>
@@ -220,22 +215,78 @@ export default function VehicleHealth() {
   const [health, setHealth] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
-  
-  useEffect(() => {
-    const fetchHealth = async () => {
-      try {
-        const response = await vehicleApi.getHealth(id)
-        setHealth(response.data)
-      } catch (err) {
-        console.error('Failed to fetch health data:', err)
-        setError(err.response?.data?.error || 'Failed to load health data')
-      } finally {
-        setIsLoading(false)
-      }
+
+  // Mark Done state
+  const [completingAction, setCompletingAction] = useState(null)
+  const [completeForm, setCompleteForm] = useState({ mileage: '', notes: '' })
+  const [completing, setCompleting] = useState(false)
+  const [completeError, setCompleteError] = useState(null)
+  const [completeSuccess, setCompleteSuccess] = useState(false)
+
+  const fetchHealth = async () => {
+    try {
+      const response = await vehicleApi.getHealth(id)
+      setHealth(response.data)
+    } catch (err) {
+      console.error('Failed to fetch health data:', err)
+      setError(err.response?.data?.error || 'Failed to load health data')
+    } finally {
+      setIsLoading(false)
     }
-    
+  }
+
+  useEffect(() => {
     fetchHealth()
   }, [id])
+
+  const handleMarkDone = (action) => {
+    setCompletingAction(action)
+    setCompleteForm({
+      mileage: '',
+      notes: '',
+    })
+    setCompleteError(null)
+    setCompleteSuccess(false)
+  }
+
+  const handleCompleteSubmit = async () => {
+    if (!completingAction) return
+    setCompleting(true)
+    setCompleteError(null)
+    try {
+      const payload = {
+        component: completingAction.component,
+      }
+      if (completeForm.mileage !== '') {
+        const mileageInt = parseInt(completeForm.mileage, 10)
+        if (!isNaN(mileageInt) && mileageInt > 0) {
+          payload.mileage = mileageInt
+        }
+      }
+      if (completeForm.notes.trim()) {
+        payload.notes = completeForm.notes.trim()
+      }
+      await vehicleApi.completeHealthAction(id, payload)
+      setCompleteSuccess(true)
+      setTimeout(() => {
+        setCompletingAction(null)
+        setCompleteSuccess(false)
+        setIsLoading(true)
+        fetchHealth()
+      }, 1000)
+    } catch (err) {
+      setCompleteError(err.response?.data?.error || t('common.failed') || 'Failed. Please try again.')
+    } finally {
+      setCompleting(false)
+    }
+  }
+
+  const handleCloseModal = () => {
+    if (completing) return
+    setCompletingAction(null)
+    setCompleteError(null)
+    setCompleteSuccess(false)
+  }
   
   const formatCurrency = (amount) => {
     if (!amount && amount !== 0) return `${currency.symbol}0`
@@ -487,6 +538,7 @@ export default function VehicleHealth() {
             <div className="divide-y divide-[var(--color-border)]">
               {health.recommended_actions.slice(0, 5).map((action, idx) => {
                 const translated = translateAction(action)
+                const canMarkDone = action.type === 'maintenance' && action.component
                 return (
                   <div key={idx} className="px-4 py-3 flex items-start gap-3">
                     <div className={`p-1.5 rounded-lg shrink-0 ${
@@ -505,6 +557,16 @@ export default function VehicleHealth() {
                         {translated.description}
                       </p>
                     </div>
+                    {canMarkDone && (
+                      <button
+                        onClick={() => handleMarkDone(action)}
+                        className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border border-green-500/40 text-green-600 dark:text-green-400 bg-green-500/10 hover:bg-green-500/20 active:scale-95 transition-all touch-manipulation"
+                        aria-label={`${t('vehicleHealth.markDone') || 'Mark as Done'}: ${translated.title}`}
+                      >
+                        {Icons.check}
+                        <span className="hidden sm:inline">{t('vehicleHealth.markDone') || 'Done'}</span>
+                      </button>
+                    )}
                   </div>
                 )
               })}
@@ -841,6 +903,118 @@ export default function VehicleHealth() {
           </div>
         </ExpandableCard>
       </div>
+
+      {/* Mark Done Modal */}
+      {completingAction && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          onClick={handleCloseModal}
+          role="presentation"
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="mark-done-title"
+            className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border)] w-full max-w-sm shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal header */}
+            <div className="px-5 pt-5 pb-4 border-b border-[var(--color-border)]">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-green-500/10 text-green-500 shrink-0">
+                  {Icons.check}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 id="mark-done-title" className="font-semibold text-base">
+                    {t('vehicleHealth.markDoneTitle') || 'Log Completed Service'}
+                  </h3>
+                  <p className="text-xs text-[var(--color-text-secondary)] truncate mt-0.5">
+                    {translateAction(completingAction).title}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal body */}
+            <div className="px-5 py-4 space-y-4">
+              {/* Mileage — optional */}
+              <div>
+                <label className="block text-sm font-medium mb-1.5">
+                  {t('vehicleHealth.markDoneMileageOptional') || 'Mileage at Service (optional)'}
+                </label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min="0"
+                  max="9999999"
+                  value={completeForm.mileage}
+                  onChange={(e) => setCompleteForm(prev => ({ ...prev, mileage: e.target.value }))}
+                  placeholder={health.vehicle_info?.current_mileage?.toLocaleString() || ''}
+                  className="input w-full"
+                  disabled={completing}
+                  aria-label={t('vehicleHealth.markDoneMileage') || 'Mileage at Service'}
+                />
+                <p className="text-xs text-[var(--color-text-secondary)] mt-1">
+                  {t('vehicleHealth.currentMileage') || 'Current Mileage'}: {health.vehicle_info?.current_mileage?.toLocaleString() || '—'} {health.vehicle_info?.distance_unit || 'km'}
+                </p>
+              </div>
+
+              {/* Notes — optional */}
+              <div>
+                <label className="block text-sm font-medium mb-1.5">
+                  {t('vehicleHealth.markDoneNotes') || 'Notes (optional)'}
+                </label>
+                <textarea
+                  rows={2}
+                  value={completeForm.notes}
+                  onChange={(e) => setCompleteForm(prev => ({ ...prev, notes: e.target.value }))}
+                  className="input w-full resize-none"
+                  disabled={completing}
+                  maxLength={500}
+                />
+              </div>
+
+              {/* Error */}
+              {completeError && (
+                <p className="text-xs text-red-500 bg-red-500/10 rounded-lg px-3 py-2">
+                  {completeError}
+                </p>
+              )}
+
+              {/* Success */}
+              {completeSuccess && (
+                <p className="text-xs text-green-600 dark:text-green-400 bg-green-500/10 rounded-lg px-3 py-2 flex items-center gap-2">
+                  {Icons.check}
+                  {t('vehicleHealth.markDoneSuccess') || 'Service recorded successfully'}
+                </p>
+              )}
+            </div>
+
+            {/* Modal footer */}
+            <div className="px-5 pb-5 flex gap-3">
+              <button
+                onClick={handleCloseModal}
+                disabled={completing}
+                className="flex-1 btn btn-secondary"
+              >
+                {t('vehicleHealth.markDoneCancel') || 'Cancel'}
+              </button>
+              <button
+                onClick={handleCompleteSubmit}
+                disabled={completing || completeSuccess}
+                className="flex-1 btn btn-primary flex items-center justify-center gap-2"
+              >
+                {completing ? (
+                  <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                ) : (
+                  Icons.check
+                )}
+                {t('vehicleHealth.markDoneConfirm') || 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

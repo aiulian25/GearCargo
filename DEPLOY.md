@@ -301,17 +301,29 @@ MAIL_DEFAULT_SENDER=GearCargo <yourname@gmail.com>
 Push notifications require VAPID (Voluntary Application Server Identification) keys. Generate them once:
 
 ```bash
-# Method 1: npx (if Node.js is installed)
+# Method 1: npx (recommended — always produces the correct format)
 npx web-push generate-vapid-keys
 
 # Method 2: Python
 pip install py-vapid
 python3 -c "
 from py_vapid import Vapid
+from cryptography.hazmat.primitives.serialization import (
+    Encoding, PublicFormat, PrivateFormat, NoEncryption
+)
+import base64
 v = Vapid()
 v.generate_keys()
-print('Public:', v.public_key.public_bytes_raw().hex())
-print('Private:', v.private_key.private_bytes_raw().hex())
+# Private: raw 32-byte scalar in URL-safe base64 (accepted by pywebpush)
+priv = base64.urlsafe_b64encode(
+    v._private_key.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption())
+).rstrip(b'=').decode()
+# Public: uncompressed P-256 point (65 bytes) in URL-safe base64 (required by browser)
+pub = base64.urlsafe_b64encode(
+    v._private_key.public_key().public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
+).rstrip(b'=').decode()
+print('VAPID_PUBLIC_KEY=' + pub)
+print('VAPID_PRIVATE_KEY=' + priv)
 "
 ```
 

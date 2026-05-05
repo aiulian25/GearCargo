@@ -431,10 +431,20 @@ pip install py-vapid
 
 python3 -c "
 from py_vapid import Vapid
+from cryptography.hazmat.primitives.serialization import (
+    Encoding, PublicFormat, PrivateFormat, NoEncryption
+)
+import base64
 v = Vapid()
 v.generate_keys()
-print('VAPID_PUBLIC_KEY=' + v.public_key.public_bytes_raw().hex())
-print('VAPID_PRIVATE_KEY=' + v.private_key.private_bytes_raw().hex())
+priv = base64.urlsafe_b64encode(
+    v._private_key.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption())
+).rstrip(b'=').decode()
+pub = base64.urlsafe_b64encode(
+    v._private_key.public_key().public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
+).rstrip(b'=').decode()
+print('VAPID_PUBLIC_KEY=' + pub)
+print('VAPID_PRIVATE_KEY=' + priv)
 "
 \`\`\`
 

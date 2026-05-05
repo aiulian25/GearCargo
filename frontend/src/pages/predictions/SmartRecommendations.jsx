@@ -12,12 +12,6 @@ const Icons = {
       <path d="M12 3l1.912 5.813a2 2 0 001.275 1.275L21 12l-5.813 1.912a2 2 0 00-1.275 1.275L12 21l-1.912-5.813a2 2 0 00-1.275-1.275L3 12l5.813-1.912a2 2 0 001.275-1.275L12 3z"/>
     </svg>
   ),
-  alert: (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-      <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-    </svg>
-  ),
   clock: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
@@ -56,6 +50,13 @@ export default function SmartRecommendations() {
   const { t } = useTranslation()
   const [recommendations, setRecommendations] = useState([])
   const [isLoading, setIsLoading] = useState(true)
+
+  // Mark Done state
+  const [completingRec, setCompletingRec] = useState(null)
+  const [recForm, setRecForm] = useState({ mileage: '', notes: '' })
+  const [completing, setCompleting] = useState(false)
+  const [recError, setRecError] = useState(null)
+  const [recSuccess, setRecSuccess] = useState(false)
 
   useEffect(() => {
     const fetchData = async () => {
@@ -99,6 +100,53 @@ export default function SmartRecommendations() {
 
     fetchData()
   }, [])
+
+  const handleMarkDone = (rec, e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setCompletingRec(rec)
+    setRecForm({ mileage: '', notes: '' })
+    setRecError(null)
+    setRecSuccess(false)
+  }
+
+  const handleCompleteSubmit = async () => {
+    if (!completingRec) return
+    setCompleting(true)
+    setRecError(null)
+    try {
+      const payload = {
+        component: 'general_service',
+      }
+      if (recForm.mileage !== '') {
+        const mileageInt = parseInt(recForm.mileage, 10)
+        if (!isNaN(mileageInt) && mileageInt > 0) {
+          payload.mileage = mileageInt
+        }
+      }
+      if (recForm.notes.trim()) {
+        payload.notes = recForm.notes.trim()
+      }
+      await vehicleApi.completeHealthAction(completingRec.vehicleId, payload)
+      setRecSuccess(true)
+      setTimeout(() => {
+        setRecommendations(prev => prev.filter(r => r.id !== completingRec.id))
+        setCompletingRec(null)
+        setRecSuccess(false)
+      }, 1000)
+    } catch (err) {
+      setRecError(err.response?.data?.error || t('common.failed') || 'Failed. Please try again.')
+    } finally {
+      setCompleting(false)
+    }
+  }
+
+  const handleCloseRecModal = () => {
+    if (completing) return
+    setCompletingRec(null)
+    setRecError(null)
+    setRecSuccess(false)
+  }
 
   const generatePredictions = (vehicle, stats) => {
     const predictions = []
@@ -257,40 +305,69 @@ export default function SmartRecommendations() {
         </div>
       ) : (
         <div className="space-y-3">
-          {recommendations.map(rec => (
-            <Link
-              key={rec.id}
-              to={`/vehicles/${rec.vehicleId}`}
-              className="card flex items-start gap-3 touch-manipulation"
-            >
-              <div className={`w-10 h-10 rounded-xl ${rec.bgColor} flex items-center justify-center flex-shrink-0 ${rec.color}`}>
-                {rec.icon}
-              </div>
-              
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <p className="text-sm font-medium truncate">{rec.title}</p>
-                  {getPriorityBadge(rec.priority)}
+          {recommendations.map(rec => {
+            const canMarkDone = rec.type === 'service_due'
+            const cardContent = (
+              <>
+                <div className={`w-10 h-10 rounded-xl ${rec.bgColor} flex items-center justify-center flex-shrink-0 ${rec.color}`}>
+                  {rec.icon}
                 </div>
-                <p className="text-xs text-[var(--color-text-secondary)] flex items-center gap-1">
-                  <span className="text-[var(--color-text-muted)]">{Icons.car}</span>
-                  {rec.vehicleName}
-                </p>
-                {rec.daysUntil !== undefined && (
-                  <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                    {rec.daysUntil <= 0 
-                      ? t('smartRecommendations.overdue') || 'Overdue'
-                      : `${rec.daysUntil} ${t('common.days') || 'days'} ${t('smartRecommendations.remaining') || 'remaining'}`
-                    }
+                
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="text-sm font-medium truncate">{rec.title}</p>
+                    {getPriorityBadge(rec.priority)}
+                  </div>
+                  <p className="text-xs text-[var(--color-text-secondary)] flex items-center gap-1">
+                    <span className="text-[var(--color-text-muted)]">{Icons.car}</span>
+                    {rec.vehicleName}
                   </p>
-                )}
-              </div>
+                  {rec.daysUntil !== undefined && (
+                    <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                      {rec.daysUntil <= 0 
+                        ? t('smartRecommendations.overdue') || 'Overdue'
+                        : `${rec.daysUntil} ${t('common.days') || 'days'} ${t('smartRecommendations.remaining') || 'remaining'}`
+                      }
+                    </p>
+                  )}
+                </div>
+              </>
+            )
 
-              <span className="material-icons-outlined icon-sm text-[var(--color-text-muted)] flex-shrink-0">
-                chevron_right
-              </span>
-            </Link>
-          ))}
+            if (canMarkDone) {
+              return (
+                <div key={rec.id} className="card flex items-start gap-3 touch-manipulation">
+                  <Link
+                    to={`/vehicles/${rec.vehicleId}`}
+                    className="flex items-start gap-3 flex-1 min-w-0"
+                  >
+                    {cardContent}
+                  </Link>
+                  <button
+                    onClick={(e) => handleMarkDone(rec, e)}
+                    className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border border-green-500/40 text-green-600 dark:text-green-400 bg-green-500/10 hover:bg-green-500/20 active:scale-95 transition-all touch-manipulation self-center"
+                    aria-label={`${t('vehicleHealth.markDone') || 'Mark as Done'}: ${rec.title}`}
+                  >
+                    {Icons.check}
+                    <span className="hidden sm:inline">{t('vehicleHealth.markDone') || 'Done'}</span>
+                  </button>
+                </div>
+              )
+            }
+
+            return (
+              <Link
+                key={rec.id}
+                to={`/vehicles/${rec.vehicleId}`}
+                className="card flex items-start gap-3 touch-manipulation"
+              >
+                {cardContent}
+                <span className="material-icons-outlined icon-sm text-[var(--color-text-muted)] flex-shrink-0">
+                  chevron_right
+                </span>
+              </Link>
+            )
+          })}
         </div>
       )}
 
@@ -320,6 +397,114 @@ export default function SmartRecommendations() {
             <p className="text-2xs text-[var(--color-text-muted)]">
               {t('smartRecommendations.info') || 'Info'}
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Mark Done Modal */}
+      {completingRec && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          onClick={handleCloseRecModal}
+          role="presentation"
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rec-mark-done-title"
+            className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border)] w-full max-w-sm shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal header */}
+            <div className="px-5 pt-5 pb-4 border-b border-[var(--color-border)]">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-green-500/10 text-green-500 shrink-0">
+                  {Icons.check}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 id="rec-mark-done-title" className="font-semibold text-base">
+                    {t('vehicleHealth.markDoneTitle') || 'Log Completed Service'}
+                  </h3>
+                  <p className="text-xs text-[var(--color-text-secondary)] truncate mt-0.5">
+                    {completingRec.title} — {completingRec.vehicleName}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal body */}
+            <div className="px-5 py-4 space-y-4">
+              {/* Mileage — optional */}
+              <div>
+                <label className="block text-sm font-medium mb-1.5">
+                  {t('vehicleHealth.markDoneMileageOptional') || 'Mileage at Service (optional)'}
+                </label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min="0"
+                  max="9999999"
+                  value={recForm.mileage}
+                  onChange={(e) => setRecForm(prev => ({ ...prev, mileage: e.target.value }))}
+                  className="input w-full"
+                  disabled={completing}
+                  aria-label={t('vehicleHealth.markDoneMileage') || 'Mileage at Service'}
+                />
+              </div>
+
+              {/* Notes — optional */}
+              <div>
+                <label className="block text-sm font-medium mb-1.5">
+                  {t('vehicleHealth.markDoneNotes') || 'Notes (optional)'}
+                </label>
+                <textarea
+                  rows={2}
+                  value={recForm.notes}
+                  onChange={(e) => setRecForm(prev => ({ ...prev, notes: e.target.value }))}
+                  className="input w-full resize-none"
+                  disabled={completing}
+                  maxLength={500}
+                />
+              </div>
+
+              {/* Error */}
+              {recError && (
+                <p className="text-xs text-red-500 bg-red-500/10 rounded-lg px-3 py-2">
+                  {recError}
+                </p>
+              )}
+
+              {/* Success */}
+              {recSuccess && (
+                <p className="text-xs text-green-600 dark:text-green-400 bg-green-500/10 rounded-lg px-3 py-2 flex items-center gap-2">
+                  {Icons.check}
+                  {t('vehicleHealth.markDoneSuccess') || 'Service recorded successfully'}
+                </p>
+              )}
+            </div>
+
+            {/* Modal footer */}
+            <div className="px-5 pb-5 flex gap-3">
+              <button
+                onClick={handleCloseRecModal}
+                disabled={completing}
+                className="flex-1 btn btn-secondary"
+              >
+                {t('vehicleHealth.markDoneCancel') || 'Cancel'}
+              </button>
+              <button
+                onClick={handleCompleteSubmit}
+                disabled={completing || recSuccess}
+                className="flex-1 btn btn-primary flex items-center justify-center gap-2"
+              >
+                {completing ? (
+                  <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                ) : (
+                  Icons.check
+                )}
+                {t('vehicleHealth.markDoneConfirm') || 'Confirm'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -419,6 +419,15 @@ export const translations = {
       action_overdue_desc: 'Maintenance overdue. Please schedule service soon.',
       action_due_soon_desc: 'Maintenance due soon. Plan accordingly.',
       action_carbon_offset_title: 'Consider carbon offset',
+      // Mark Done
+      markDone: 'Mark as Done',
+      markDoneTitle: 'Log Completed Service',
+      markDoneMileage: 'Mileage at Service',
+      markDoneMileageOptional: 'Mileage at Service (optional)',
+      markDoneNotes: 'Notes (optional)',
+      markDoneSuccess: 'Service recorded successfully',
+      markDoneConfirm: 'Confirm',
+      markDoneCancel: 'Cancel',
     },
     
     // Weather Alerts
@@ -1065,6 +1074,8 @@ export const translations = {
       loginAlerts: 'Suspicious Login Alerts',
       loginAlertsDesc: 'Get notified when a login occurs from an unrecognised location or device. Your IP address is used locally for geolocation — never shared with third parties.',
       scheduledReports: 'Scheduled Reports',
+      alertTypesDesc: 'Sent as a daily digest when items are due within your alert window. Toggle types below to control what appears in the digest.',
+      dailyDigest: 'Daily Digest',
       weeklyReport: 'Weekly Summary',
       monthlyReport: 'Monthly Report',
       alertTiming: 'Alert Timing',
@@ -2641,6 +2652,15 @@ export const translations = {
       action_overdue_desc: 'Mentenanță întârziată. Te rugăm să programezi service-ul cât mai curând.',
       action_due_soon_desc: 'Mentenanță în curând. Planifică în consecință.',
       action_carbon_offset_title: 'Consideră compensarea carbonului',
+      // Mark Done
+      markDone: 'Marchează ca Efectuat',
+      markDoneTitle: 'Înregistrează Serviciu Efectuat',
+      markDoneMileage: 'Kilometraj la Service',
+      markDoneMileageOptional: 'Kilometraj la Service (opțional)',
+      markDoneNotes: 'Notițe (opțional)',
+      markDoneSuccess: 'Serviciul a fost înregistrat cu succes',
+      markDoneConfirm: 'Confirmă',
+      markDoneCancel: 'Anulează',
     },
     
     // Weather Alerts
@@ -3287,6 +3307,8 @@ export const translations = {
       loginAlerts: 'Alerte de Autentificare Suspectă',
       loginAlertsDesc: 'Primiți notificări când are loc o autentificare dintr-o locație sau dispozitiv nerecunoscut. Adresa dvs. IP este utilizată local pentru geolocalizare — nu este niciodată partajată cu terți.',
       scheduledReports: 'Rapoarte Programate',
+      alertTypesDesc: 'Trimis ca rezumat zilnic când elementele sunt scadente în fereastra dvs. de alertă. Activați tipurile de mai jos pentru a controla ce apare în rezumat.',
+      dailyDigest: 'Rezumat Zilnic',
       weeklyReport: 'Rezumat Săptămânal',
       monthlyReport: 'Raport Lunar',
       alertTiming: 'Timing Alerte',
@@ -4880,6 +4902,15 @@ export const translations = {
       action_overdue_desc: 'Mantenimiento atrasado. Por favor programa el servicio pronto.',
       action_due_soon_desc: 'Mantenimiento próximo. Planifica en consecuencia.',
       action_carbon_offset_title: 'Considere compensar el carbono',
+      // Mark Done
+      markDone: 'Marcar como Hecho',
+      markDoneTitle: 'Registrar Servicio Completado',
+      markDoneMileage: 'Kilometraje en el Servicio',
+      markDoneMileageOptional: 'Kilometraje en el Servicio (opcional)',
+      markDoneNotes: 'Notas (opcional)',
+      markDoneSuccess: 'Servicio registrado correctamente',
+      markDoneConfirm: 'Confirmar',
+      markDoneCancel: 'Cancelar',
     },
     
     // Weather Alerts
@@ -5526,6 +5557,8 @@ export const translations = {
       loginAlerts: 'Alertas de Inicio de Sesión Sospechoso',
       loginAlertsDesc: 'Recibe notificaciones cuando se produce un inicio de sesión desde una ubicación o dispositivo no reconocido. Su dirección IP se usa localmente para geolocalización — nunca se comparte con terceros.',
       scheduledReports: 'Reportes Programados',
+      alertTypesDesc: 'Enviado como resumen diario cuando los elementos vencen dentro de tu ventana de alerta. Activa los tipos a continuación para controlar qué aparece en el resumen.',
+      dailyDigest: 'Resumen Diario',
       weeklyReport: 'Resumen Semanal',
       monthlyReport: 'Reporte Mensual',
       alertTiming: 'Tiempo de Alertas',

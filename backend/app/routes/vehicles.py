@@ -1747,6 +1747,104 @@ def get_vehicle_health(current_user, vehicle_id):
     })
 
 
+@vehicles_bp.route('/<int:vehicle_id>/health/actions/complete', methods=['POST'])
+@token_required
+def complete_health_action(current_user, vehicle_id):
+    """Log a recommended maintenance action as a service entry (Mark Done).
+
+    Creates a real ServiceEntry so the health endpoint naturally recalculates
+    component status and clears the completed item from Recommended Actions.
+    Mileage is optional — when provided it is stored as the odometer reading
+    and, if higher than the vehicle's current mileage, updates it.
+    """
+    vehicle = Vehicle.query.filter_by(
+        id=vehicle_id,
+        user_id=current_user.id
+    ).first()
+    if not vehicle:
+        return jsonify({'error': 'Vehicle not found'}), 404
+
+    data = request.get_json(silent=True) or {}
+
+    # --- component validation -------------------------------------------
+    # Only accept known component keys — title is sourced from our own lookup,
+    # never from user input (prevents arbitrary string injection into ServiceEntry.title).
+    _COMPONENT_MAP = {
+        # component            service_type       human title
+        'oil_change':         ('oil_change',       'Oil Change'),
+        'air_filter':         ('air_filter',        'Air Filter'),
+        'cabin_filter':       ('cabin_filter',      'Cabin Filter'),
+        'brake_pads':         ('brake_service',     'Brake Pads'),
+        'brake_fluid':        ('brake_service',     'Brake Fluid'),
+        'tires':              ('tire_rotation',     'Tire Rotation'),
+        'spark_plugs':        ('spark_plugs',       'Spark Plugs'),
+        'timing_belt':        ('timing_belt',       'Timing Belt'),
+        'battery':            ('other',             'Battery'),
+        'transmission_fluid': ('transmission',      'Transmission Fluid'),
+        'coolant':            ('coolant',           'Coolant'),
+        'general_service':    ('other',             'Service'),
+    }
+
+    component_raw = data.get('component', '')
+    if not isinstance(component_raw, str) or not component_raw.strip():
+        return jsonify({'error': 'component is required'}), 400
+
+    component = component_raw.strip().lower()
+
+    if component not in _COMPONENT_MAP:
+        return jsonify({'error': 'Invalid component'}), 400
+
+    service_type, title = _COMPONENT_MAP[component]
+
+    # --- optional mileage -----------------------------------------------
+    # Cap at 9_999_999 to stay safely within DB INTEGER range (prevents overflow)
+    _MILEAGE_MAX = 9_999_999
+    odometer = None
+    mileage_raw = data.get('mileage')
+    if mileage_raw is not None:
+        try:
+            odometer = int(mileage_raw)
+            if odometer < 0 or odometer > _MILEAGE_MAX:
+                odometer = None
+        except (ValueError, TypeError):
+            odometer = None
+
+    # --- optional notes (sanitised) -------------------------------------
+    notes_raw = data.get('notes', '')
+    notes = str(notes_raw).strip()[:500] if notes_raw else None
+
+    today = datetime.now(timezone.utc).date()
+
+    entry = ServiceEntry(
+        user_id=current_user.id,
+        vehicle_id=vehicle_id,
+        title=title,
+        service_type=service_type,
+        service_types=[service_type],
+        date=today,
+        odometer=odometer,
+        amount=0,
+        currency=current_user.currency or 'EUR',
+        notes=notes,
+    )
+    db.session.add(entry)
+
+    # Update vehicle mileage only when new reading is higher (never decrement)
+    if odometer is not None and (vehicle.current_mileage is None or odometer > vehicle.current_mileage):
+        vehicle.current_mileage = odometer
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.error(
+            'Failed to log health action for vehicle %s', vehicle_id, exc_info=True
+        )
+        return jsonify({'error': 'Failed to record service. Please try again later.'}), 500
+
+    return jsonify({'success': True, 'service_entry_id': entry.id}), 201
+
+
 @vehicles_bp.route('/<int:vehicle_id>/manual', methods=['GET'])
 @token_required
 def get_vehicle_manual(current_user, vehicle_id):

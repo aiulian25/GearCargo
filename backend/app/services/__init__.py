@@ -142,17 +142,30 @@ def check_due_reminders(app):
             user = User.query.get(reminder.user_id)
             
             if user and user.notifications_enabled:
-                # Check if we should notify
-                should_notify = False
-                
+                # Determine notification intent separately for push vs email.
+                # Push uses a per-reminder tag so the device deduplicates; we
+                # allow it for up to 30 days overdue so the badge stays fresh.
+                # Email is far more intrusive: cap at 7 days overdue so users
+                # are not spammed indefinitely about long-past due dates.
+                should_notify = False   # gates push + last_notified_at update
+                should_email = False    # gates email only
+
+                never_notified = reminder.last_notified_at is None
+                not_yet_today = never_notified or reminder.last_notified_at.date() < today
+
                 if reminder.due_date == today:
                     should_notify = True
-                elif reminder.due_date < today:
-                    # Overdue - notify if not already notified today
-                    if not reminder.last_notified_at or \
-                       reminder.last_notified_at.date() < today:
+                    should_email = True
+                elif reminder.due_date < today and not_yet_today:
+                    days_overdue = (today - reminder.due_date).days
+                    # Push: notify for up to 30 days, or once if never notified
+                    if never_notified or days_overdue <= 30:
                         should_notify = True
-                
+                    # Email: only for up to 7 days overdue, or once if never notified
+                    # (handles imported reminders that were never notified)
+                    if never_notified or days_overdue <= 7:
+                        should_email = True
+
                 if should_notify and reminder.notify_push:
                     # Send push notification
                     from app.routes.push import send_push_to_user
@@ -176,7 +189,7 @@ def check_due_reminders(app):
                         tag=f'reminder-{reminder.id}'
                     )
 
-                if should_notify and getattr(reminder, 'notify_email', True) and user.notifications_enabled:
+                if should_email and getattr(reminder, 'notify_email', True) and user.notifications_enabled:
                     # Send email notification for this individual reminder
                     try:
                         if app.config.get('MAIL_ENABLED'):
@@ -196,7 +209,7 @@ def check_due_reminders(app):
                     except Exception as email_exc:
                         app.logger.warning(f'Reminder email notification failed for reminder {reminder.id}: {email_exc}')
 
-                if should_notify:
+                if should_notify or should_email:
                     reminder.last_notified_at = datetime.now(timezone.utc)
         
         db.session.commit()
@@ -518,6 +531,10 @@ def send_daily_email_alerts(app):
 
         for user in users:
             try:
+                # Skip users who opted out of the daily digest
+                if not getattr(user, 'daily_alerts_enabled', True):
+                    continue
+
                 days_before = user.alert_days_before or 14
 
                 # Collect alerts per category based on user preferences

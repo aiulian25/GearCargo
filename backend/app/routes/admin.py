@@ -7,7 +7,8 @@ from flask import Blueprint, request, jsonify, current_app
 from sqlalchemy import func, desc
 
 from app import db
-from app.models import User, Vehicle, Entry, Backup, ActivityLog, BlockedIP, BlockedDevice
+from app.models import (User, Vehicle, Entry, Backup, ActivityLog, BlockedIP, BlockedDevice,
+                         NotificationLog, BackupSchedule, Todo, EmailConsentLog)
 from app.routes.auth import admin_required
 
 admin_bp = Blueprint('admin', __name__)
@@ -251,7 +252,7 @@ def delete_user(current_user, user_id):
         if admin_count <= 1:
             return jsonify({'error': 'Cannot delete the last admin user'}), 400
     
-    # Log the deletion
+    # Log the deletion before making changes (user_id = admin who did it, not the deleted user)
     ActivityLog.log(
         event_type='user_deleted',
         event_category='admin',
@@ -260,17 +261,46 @@ def delete_user(current_user, user_id):
         success=True,
         extra_data={'deleted_user_id': user.id, 'deleted_email': user.email, 'was_admin': user.is_admin}
     )
-    
-    # Delete all user data
-    for vehicle in user.vehicles:
-        Entry.query.filter_by(vehicle_id=vehicle.id).delete()
-    
-    Vehicle.query.filter_by(user_id=user_id).delete()
-    Backup.query.filter_by(user_id=user_id).delete()
-    
-    db.session.delete(user)
-    db.session.commit()
-    
+
+    try:
+        # Step 1: Delete notification logs first — they FK to push_subscriptions,
+        # reminders, prediction_alerts, and vehicles which will be cascade-deleted later.
+        NotificationLog.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+
+        # Step 2: Delete backup schedule — not covered by User.backups cascade.
+        BackupSchedule.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+
+        # Step 3: Delete todos — FK to both users and vehicles, not in any cascade.
+        Todo.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+
+        # Step 4: Delete GDPR consent log — FK to users, append-only but user is being removed.
+        EmailConsentLog.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+
+        # Step 5: Null out nullable FK references so blocked-entity records are preserved
+        # for audit purposes even after the target user is gone.
+        BlockedIP.query.filter_by(target_user_id=user_id).update(
+            {'target_user_id': None}, synchronize_session=False
+        )
+        BlockedDevice.query.filter_by(target_user_id=user_id).update(
+            {'target_user_id': None}, synchronize_session=False
+        )
+
+        # Step 6: Preserve activity-log records for audit trail; just detach from the user.
+        ActivityLog.query.filter_by(user_id=user_id).update(
+            {'user_id': None}, synchronize_session=False
+        )
+
+        # Step 7: ORM-level delete — SQLAlchemy cascades in FK-safe order:
+        #   User → vehicles → (fuel/service/repair/tax/parking entries, reminders,
+        #                       predictions, attachments, insurance_policies)
+        #        → reminders, backups, push_subscriptions
+        db.session.delete(user)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.error('Failed to delete user %s', user_id, exc_info=True)
+        return jsonify({'error': 'Failed to delete user. Please try again later.'}), 500
+
     return jsonify({'message': 'User deleted'})
 
 

@@ -92,19 +92,40 @@ if grep -q "VAPID_PRIVATE_KEY=$" .env 2>/dev/null || grep -q "VAPID_PRIVATE_KEY=
     
     # Check if we have python and can generate keys
     if command -v python3 &> /dev/null; then
-        # Try to generate VAPID keys using Python
+        # Try to generate VAPID keys using Python.
+        # py_vapid stores keys as P-256 (ECDSA / SECP256R1).  The browser's
+        # PushManager requires the public key as the 65-byte uncompressed point
+        # (0x04 || X || Y) encoded in URL-safe base64 (no padding).
+        # pywebpush accepts the private key as the raw 32-byte scalar in
+        # URL-safe base64.  We use the cryptography library's serialisation API
+        # (always available alongside py_vapid) to extract both in the correct
+        # format.  NOTE: public_bytes_raw() does NOT exist on P-256 keys in the
+        # cryptography library — using it would silently fall into the except and
+        # produce unusable random bytes.
         VAPID_KEYS=$(python3 -c "
 try:
     from py_vapid import Vapid
+    from cryptography.hazmat.primitives.serialization import (
+        Encoding, PublicFormat, PrivateFormat, NoEncryption
+    )
+    import base64
     vapid = Vapid()
     vapid.generate_keys()
-    print(vapid.private_key.private_bytes_raw().hex())
-    print(vapid.public_key.public_bytes_raw().hex())
-except:
-    # Fallback: just generate random hex (user will need to replace)
-    import secrets
-    print(secrets.token_hex(32))
-    print(secrets.token_hex(32))
+    # Private: raw 32-byte scalar → URL-safe base64
+    priv_bytes = vapid._private_key.private_bytes(
+        Encoding.Raw, PrivateFormat.Raw, NoEncryption()
+    )
+    priv = base64.urlsafe_b64encode(priv_bytes).rstrip(b'=').decode()
+    # Public: uncompressed P-256 point (65 bytes: 04 || X || Y) → URL-safe base64
+    pub_bytes = vapid._private_key.public_key().public_bytes(
+        Encoding.X962, PublicFormat.UncompressedPoint
+    )
+    pub = base64.urlsafe_b64encode(pub_bytes).rstrip(b'=').decode()
+    print(priv)
+    print(pub)
+except Exception as e:
+    import sys
+    print(f'VAPID generation failed: {e}', file=sys.stderr)
 " 2>/dev/null || echo "")
         
         if [ -n "$VAPID_KEYS" ]; then

@@ -2,6 +2,8 @@
 GearCargo - Push Notifications Routes
 """
 
+import base64
+import re
 from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, current_app
 from pywebpush import webpush, WebPushException
@@ -14,15 +16,48 @@ from app.routes.auth import token_required
 push_bp = Blueprint('push', __name__)
 
 
+def _vapid_pubkey_to_base64url(key_str: str):
+    """
+    Normalize a VAPID public key to URL-safe base64 (no padding).
+
+    The browser's PushManager.subscribe() requires the 65-byte uncompressed
+    P-256 key (04 || X || Y) encoded as URL-safe base64.  Historically
+    setup.sh could emit the key as raw hex via secrets.token_hex() (the
+    py_vapid fallback) — this function converts that format transparently
+    so old deployments don't silently break.
+
+    Returns the normalised string, or None if the key is unusable.
+    """
+    if not key_str:
+        return None
+    s = key_str.strip()
+
+    # Detect raw hex (only [0-9a-fA-F], even length) and convert to base64url.
+    if re.fullmatch(r'[0-9a-fA-F]+', s) and len(s) % 2 == 0:
+        s = base64.urlsafe_b64encode(bytes.fromhex(s)).rstrip(b'=').decode('ascii')
+
+    # Validate: decoded bytes must be exactly 65 bytes and start with 0x04
+    # (uncompressed P-256 point).  Anything else is misconfigured.
+    try:
+        padding = '=' * ((4 - len(s) % 4) % 4)
+        raw = base64.urlsafe_b64decode(s + padding)
+        if len(raw) == 65 and raw[0] == 0x04:
+            return s
+    except Exception:
+        pass
+    return None
+
+
 @push_bp.route('/vapid-key', methods=['GET'])
 def get_vapid_key():
     """Get VAPID public key for push subscriptions."""
-    vapid_key = current_app.config.get('VAPID_PUBLIC_KEY')
-    
-    if not vapid_key:
+    raw_key = current_app.config.get('VAPID_PUBLIC_KEY', '')
+    normalized = _vapid_pubkey_to_base64url(raw_key)
+
+    if not normalized:
         return jsonify({'error': 'Push notifications not configured'}), 503
-    
-    return jsonify({'public_key': vapid_key})
+
+    return jsonify({'public_key': normalized})
 
 
 @push_bp.route('/subscribe', methods=['POST'])

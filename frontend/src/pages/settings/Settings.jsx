@@ -201,6 +201,7 @@ export default function Settings() {
     email_reminder_alerts: true,
     email_smart_alerts: true,
     login_alerts_enabled: true,
+    daily_alerts_enabled: true,
     weekly_report_enabled: false,
     monthly_report_enabled: true,
     alert_days_before: 14,
@@ -1284,8 +1285,11 @@ export default function Settings() {
                 </div>
                 
                 {/* Alert Types */}
-                <p className="text-2xs text-[var(--color-text-muted)] font-medium uppercase tracking-wide mb-2">
+                <p className="text-2xs text-[var(--color-text-muted)] font-medium uppercase tracking-wide mb-1">
                   {t('settings.alertTypes') || 'Alert Types'}
+                </p>
+                <p className="text-2xs text-[var(--color-text-muted)] mb-2">
+                  {t('settings.alertTypesDesc') || 'Sent as a daily digest when items are due within your alert window. Toggle types below to control what appears in the digest.'}
                 </p>
                 
                 <label className="flex items-center justify-between py-1 cursor-pointer">
@@ -1362,7 +1366,17 @@ export default function Settings() {
                 <p className="text-2xs text-[var(--color-text-muted)] font-medium uppercase tracking-wide mt-4 mb-2">
                   {t('settings.scheduledReports') || 'Scheduled Reports'}
                 </p>
-                
+
+                <label className="flex items-center justify-between py-1 cursor-pointer">
+                  <span className="text-sm">{t('settings.dailyDigest') || 'Daily Digest'}</span>
+                  <input
+                    type="checkbox"
+                    checked={emailSettings.daily_alerts_enabled}
+                    onChange={(e) => handleEmailSettingChange('daily_alerts_enabled', e.target.checked)}
+                    className="w-4 h-4 rounded border-[var(--color-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+                  />
+                </label>
+
                 <label className="flex items-center justify-between py-1 cursor-pointer">
                   <span className="text-sm">{t('settings.weeklyReport') || 'Weekly Summary'}</span>
                   <input

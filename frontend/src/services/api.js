@@ -97,6 +97,7 @@ export const vehicleApi = {
   unarchive: (id) => api.post(`/vehicles/${id}/unarchive`),
   getStats: (id) => api.get(`/vehicles/${id}/stats`),
   getHealth: (id) => api.get(`/vehicles/${id}/health`),
+  completeHealthAction: (id, data) => api.post(`/vehicles/${id}/health/actions/complete`, data),
   getManual: (id) => api.get(`/vehicles/${id}/manual`),
   getTimeline: (id, page = 1, type = 'all', perPage = 50) =>
     api.get(`/vehicles/${id}/timeline?page=${page}&type=${type}&per_page=${perPage}`),
