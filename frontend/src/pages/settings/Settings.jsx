@@ -713,13 +713,14 @@ export default function Settings() {
       const response = await calendarApi.testConnection({ source: selectedCalendarSource })
       toast.success((response.data?.message_key ? t(response.data.message_key) : null) || response.data.message || t('settings.calendarConnectionSuccess') || 'Calendar connection successful!')
       
-      // Fetch available calendars
-      const calendarsResponse = await calendarApi.getCalendars(selectedCalendarSource.id)
-      setAvailableCalendars(calendarsResponse.data.calendars || [])
+      // Use calendars returned by the test response directly (avoids a second round-trip
+      // and works even when the source hasn't been saved yet, preventing a 404)
+      const calendars = response.data?.calendars || []
+      setAvailableCalendars(calendars)
       
-      if (calendarsResponse.data.calendars?.length > 0 && !selectedCalendarSource.calendar_id) {
+      if (calendars.length > 0 && !selectedCalendarSource.calendar_id) {
         // Auto-select first calendar if none selected
-        handleCalendarSettingChange('calendar_id', calendarsResponse.data.calendars[0].id)
+        handleCalendarSettingChange('calendar_id', calendars[0].id)
       }
     } catch (error) {
       console.error('Failed to connect to calendar:', error)

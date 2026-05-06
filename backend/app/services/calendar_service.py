@@ -8,7 +8,6 @@ from flask import current_app
 from typing import Optional, Dict, List, Any, Tuple
 import logging
 from urllib.parse import urlparse
-import ipaddress
 import caldav
 from icalendar import Calendar, Event, Alarm
 from cryptography.fernet import Fernet
@@ -180,8 +179,13 @@ def _ensure_encrypted(value: str) -> str:
 
 
 def _is_allowed_caldav_url(url: str) -> bool:
-    """Allow HTTPS in production and localhost HTTP for local development only.
-    Blocks internal/private IP ranges to prevent SSRF."""
+    """Validate CalDAV URL scheme.
+
+    GearCargo is a self-hosted application and users frequently run CalDAV
+    servers (Nextcloud, Radicale, Baikal) on their local network. Blocking
+    private/LAN IP ranges would prevent all such setups, so we allow them.
+    We still reject non-HTTP(S) schemes to prevent protocol-level abuse.
+    """
     if not url:
         return False
 
@@ -190,25 +194,10 @@ def _is_allowed_caldav_url(url: str) -> bool:
         return False
 
     host = (parsed.hostname or '').lower()
+    if not host:
+        return False
 
-    # Block private/internal IP ranges (SSRF prevention)
-    try:
-        addr = ipaddress.ip_address(host)
-        if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
-            # Allow localhost for development only via HTTP
-            if addr.is_loopback and parsed.scheme == 'http':
-                return True
-            if parsed.scheme == 'https':
-                return False  # Block https to private IPs
-            return False
-    except ValueError:
-        pass  # Not an IP literal — hostname, allow resolution
-
-    if parsed.scheme == 'https':
-        return True
-
-    # HTTP only allowed for localhost development
-    return host in {'localhost', '127.0.0.1', '::1'}
+    return True
 
 
 def get_user_calendar_sources(user, include_secrets: bool = False) -> List[Dict[str, Any]]:
@@ -366,11 +355,19 @@ class CalendarService:
         
         try:
             password = decrypt_password(self.source.get('password') or '')
-            
+
+            url = self.source.get('url', '').rstrip('/')
+            provider = self.source.get('provider', '').lower()
+
+            # Nextcloud: append CalDAV base path when user only enters server root
+            if provider == 'nextcloud' and '/remote.php/dav' not in url:
+                url = url + '/remote.php/dav'
+
             self.client = caldav.DAVClient(
-                url=self.source.get('url'),
+                url=url,
                 username=self.source.get('username'),
-                password=password
+                password=password,
+                timeout=30,
             )
             
             # Try to get the principal (validates credentials)
