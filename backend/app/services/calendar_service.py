@@ -670,8 +670,8 @@ def get_event_data_for_entry(entry_type: str, entry: Any, vehicle_name: str) -> 
         description = f"Vehicle: {vehicle_name}\n"
         if hasattr(entry, 'description') and entry.description:
             description += f"Repair: {entry.description}\n"
-        if hasattr(entry, 'cost') and entry.cost:
-            description += f"Cost: {entry.cost}\n"
+        if getattr(entry, 'amount', None):
+            description += f"Cost: {float(entry.amount):.2f}\n"
         if hasattr(entry, 'notes') and entry.notes:
             description += f"Notes: {entry.notes}\n"
         
@@ -819,7 +819,7 @@ def get_event_data_for_entry(entry_type: str, entry: Any, vehicle_name: str) -> 
 
 def sync_all_entries_for_user(user) -> Dict[str, Any]:
     """Sync all vehicle entries to calendar for a user."""
-    from app.models import ServiceEntry, Reminder, InsurancePolicy, TaxEntry, Vehicle
+    from app.models import ServiceEntry, Reminder, InsurancePolicy, TaxEntry, Vehicle, FuelEntry, RepairEntry, ParkingEntry
     
     results = {
         'synced': 0,
@@ -877,6 +877,36 @@ def sync_all_entries_for_user(user) -> Dict[str, Any]:
             else:
                 results['failed'] += 1
                 results['errors'].append(f"Tax {tax.id}: {msg}")
+
+        # Sync fuel entries
+        fuel_entries = FuelEntry.query.filter_by(vehicle_id=vehicle.id).all()
+        for fuel in fuel_entries:
+            success, msg = sync_entry_to_calendar(user, 'fuel', fuel)
+            if success:
+                results['synced'] += 1
+            else:
+                results['failed'] += 1
+                results['errors'].append(f"Fuel {fuel.id}: {msg}")
+
+        # Sync repair entries
+        repairs = RepairEntry.query.filter_by(vehicle_id=vehicle.id).all()
+        for repair in repairs:
+            success, msg = sync_entry_to_calendar(user, 'repair', repair)
+            if success:
+                results['synced'] += 1
+            else:
+                results['failed'] += 1
+                results['errors'].append(f"Repair {repair.id}: {msg}")
+
+        # Sync parking entries
+        parking_entries = ParkingEntry.query.filter_by(vehicle_id=vehicle.id).all()
+        for parking in parking_entries:
+            success, msg = sync_entry_to_calendar(user, 'parking', parking)
+            if success:
+                results['synced'] += 1
+            else:
+                results['failed'] += 1
+                results['errors'].append(f"Parking {parking.id}: {msg}")
     
     logger.info(f"Calendar sync complete for user {user.id}: {results['synced']} synced, {results['failed']} failed")
     return results

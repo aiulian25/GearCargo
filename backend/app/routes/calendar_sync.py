@@ -14,6 +14,9 @@ from app.models import (
     TaxEntry, ParkingEntry, InsurancePolicy, Todo
 )
 from app.routes.auth import token_required
+import logging
+
+logger = logging.getLogger(__name__)
 
 calendar_bp = Blueprint('calendar', __name__)
 
@@ -770,12 +773,19 @@ def sync_all_entries(current_user):
     if not current_user.calendar_enabled:
         return jsonify({'error': 'Calendar sync is disabled', 'message_key': 'calendar.sync.disabled'}), 400
     
-    results = sync_all_entries_for_user(current_user)
-    
+    try:
+        results = sync_all_entries_for_user(current_user)
+    except Exception as e:
+        logger.exception("Unexpected error during calendar sync for user %s", current_user.id)
+        return jsonify({'error': 'Calendar sync failed', 'message_key': 'calendar.sync.error', 'details': str(e)}), 500
+
     # Update last sync time
-    current_user.calendar_last_sync = datetime.now(timezone.utc)
-    db.session.commit()
-    
+    try:
+        current_user.calendar_last_sync = datetime.now(timezone.utc)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
     return jsonify({
         'message_key': 'calendar.sync.summary',
         'message': f'Synced {results["synced"]} entries, {results["failed"]} failed',
@@ -790,7 +800,7 @@ def sync_all_entries(current_user):
 def sync_single_entry(current_user):
     """Sync a single entry to calendar."""
     from app.services.calendar_service import sync_entry_to_calendar
-    from app.models import ServiceEntry, RepairEntry, InsurancePolicy, TaxEntry
+    from app.models import ServiceEntry, RepairEntry, InsurancePolicy, TaxEntry, FuelEntry, ParkingEntry
     
     data = request.get_json(silent=True)
     if not data:
@@ -818,7 +828,11 @@ def sync_single_entry(current_user):
         ).first()
     elif entry_type == 'tax':
         entry = TaxEntry.query.filter_by(id=entry_id, user_id=current_user.id).first()
-    
+    elif entry_type == 'fuel':
+        entry = FuelEntry.query.filter_by(id=entry_id, user_id=current_user.id).first()
+    elif entry_type == 'parking':
+        entry = ParkingEntry.query.filter_by(id=entry_id, user_id=current_user.id).first()
+
     if not entry:
         return jsonify({'error': 'Entry not found', 'message_key': 'calendar.sync.entry_not_found'}), 404
     
