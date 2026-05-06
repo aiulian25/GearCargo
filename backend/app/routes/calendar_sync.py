@@ -8,7 +8,9 @@ from icalendar import Calendar, Event
 from io import BytesIO
 from sqlalchemy import and_, or_
 
-from app import db
+import json
+
+from app import db, redis_client
 from app.models import (
     Reminder, Vehicle, FuelEntry, ServiceEntry, RepairEntry,
     TaxEntry, ParkingEntry, InsurancePolicy, Todo
@@ -764,6 +766,19 @@ def get_available_calendars(current_user):
     return jsonify({'calendars': calendars, 'source_id': source.get('id')})
 
 
+def _sync_job_key(user_id: int) -> str:
+    return f"cal_sync_job:{user_id}"
+
+
+def _set_sync_job(user_id: int, payload: dict, ttl: int = 600) -> None:
+    """Write sync job state to Redis. Silently no-ops if Redis is unavailable."""
+    if redis_client:
+        try:
+            redis_client.setex(_sync_job_key(user_id), ttl, json.dumps(payload))
+        except Exception:
+            pass
+
+
 @calendar_bp.route('/sync', methods=['POST'])
 @token_required
 def sync_all_entries(current_user):
@@ -784,18 +799,32 @@ def sync_all_entries(current_user):
     user_id = current_user.id
     app = current_app._get_current_object()
 
+    _set_sync_job(user_id, {
+        'status': 'running',
+        'started': datetime.now(timezone.utc).isoformat(),
+    })
+
     def _run_sync():
         with app.app_context():
             from app.models import User
             try:
                 user = db.session.get(User, user_id)
                 if user:
-                    sync_all_entries_for_user(user)
+                    results = sync_all_entries_for_user(user)
                     user.calendar_last_sync = datetime.now(timezone.utc)
                     db.session.commit()
-            except Exception:
+                    _set_sync_job(user_id, {
+                        'status': 'done',
+                        'synced': results.get('synced', 0),
+                        'failed': results.get('failed', 0),
+                        'errors': results.get('errors', [])[:10],
+                    })
+                else:
+                    _set_sync_job(user_id, {'status': 'failed', 'error': 'User not found'})
+            except Exception as exc:
                 db.session.rollback()
                 logger.exception("Background calendar sync failed for user %s", user_id)
+                _set_sync_job(user_id, {'status': 'failed', 'error': str(exc)})
             finally:
                 db.session.remove()
 
@@ -806,6 +835,21 @@ def sync_all_entries(current_user):
         'queued': True,
         'synced': 0,
     }), 202
+
+
+@calendar_bp.route('/sync/job-status', methods=['GET'])
+@token_required
+def get_sync_job_status(current_user):
+    """Return the status of the most recent background sync job for this user."""
+    if not redis_client:
+        return jsonify({'status': 'unavailable'})
+    try:
+        raw = redis_client.get(_sync_job_key(current_user.id))
+    except Exception:
+        return jsonify({'status': 'unavailable'})
+    if not raw:
+        return jsonify({'status': 'idle'})
+    return jsonify(json.loads(raw))
 
 
 @calendar_bp.route('/sync/entry', methods=['POST'])

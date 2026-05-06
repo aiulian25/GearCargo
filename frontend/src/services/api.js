@@ -488,6 +488,7 @@ export const calendarApi = {
     return api.get(`/calendar/calendars${params}`)
   },
   syncAllEntries: () => api.post('/calendar/sync'),
+  getSyncJobStatus: () => api.get('/calendar/sync/job-status'),
   syncEntry: (type, id, action = 'create') => api.post('/calendar/sync/entry', { type, id, action }),
 }
 

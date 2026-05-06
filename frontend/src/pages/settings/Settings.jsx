@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useAuth } from '../../contexts/AuthContext'
@@ -290,6 +290,9 @@ export default function Settings() {
     return `${size.toFixed(1)} TB`
   }
   
+  // Clean up sync poll on unmount
+  useEffect(() => () => stopSyncPoll(), []) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Load expiring attachments
   useEffect(() => {
     const fetchExpiringAttachments = async () => {
@@ -731,24 +734,71 @@ export default function Settings() {
     }
   }
   
+  const syncPollRef = useRef(null)
+
+  const stopSyncPoll = () => {
+    if (syncPollRef.current) {
+      clearInterval(syncPollRef.current)
+      syncPollRef.current = null
+    }
+    setCalendarSyncing(false)
+  }
+
+  const startSyncPoll = () => {
+    let attempts = 0
+    const maxAttempts = 150 // 5 minutes at 2s intervals
+    syncPollRef.current = setInterval(async () => {
+      attempts++
+      try {
+        const status = await calendarApi.getSyncJobStatus()
+        const { status: state, synced, failed, error } = status.data
+        if (state === 'done') {
+          stopSyncPoll()
+          if (failed > 0) {
+            toast.success(
+              t('settings.calendarSyncSuccess', { count: synced }) ||
+              `Synced ${synced} entries (${failed} failed)`
+            )
+          } else {
+            toast.success(
+              t('settings.calendarSyncSuccess', { count: synced }) ||
+              `Successfully synced ${synced} entries to calendar`
+            )
+          }
+        } else if (state === 'failed') {
+          stopSyncPoll()
+          toast.error(error || t('settings.calendarSyncFailed') || 'Sync failed')
+        }
+      } catch (_) {
+        // poll error — keep trying
+      }
+      if (attempts >= maxAttempts) {
+        stopSyncPoll()
+        toast.error(t('settings.calendarSyncFailed') || 'Sync timed out')
+      }
+    }, 2000)
+  }
+
   const handleSyncAllToCalendar = async () => {
     if (calendarSyncing) return
-    
+
     setCalendarSyncing(true)
     try {
       const response = await calendarApi.syncAllEntries()
       if (response.status === 202 || response.data.queued) {
-        toast.success(t('settings.calendarSyncStarted') || 'Sync started in the background')
+        toast(t('settings.calendarSyncStarted') || 'Sync started — checking progress…', { icon: '⏳' })
+        startSyncPoll()
+        return // keep calendarSyncing=true while polling
       } else {
         toast.success(
           t('settings.calendarSyncSuccess', { count: response.data.synced }) ||
           `Successfully synced ${response.data.synced} entries to calendar`
         )
+        setCalendarSyncing(false)
       }
     } catch (error) {
       console.error('Failed to sync to calendar:', error)
       toast.error(error.response?.data?.error || t('settings.calendarSyncFailed') || 'Failed to sync to calendar')
-    } finally {
       setCalendarSyncing(false)
     }
   }
