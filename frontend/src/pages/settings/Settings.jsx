@@ -737,10 +737,14 @@ export default function Settings() {
     setCalendarSyncing(true)
     try {
       const response = await calendarApi.syncAllEntries()
-      toast.success(
-        t('settings.calendarSyncSuccess', { count: response.data.synced }) || 
-        `Successfully synced ${response.data.synced} entries to calendar`
-      )
+      if (response.status === 202 || response.data.queued) {
+        toast.success(t('settings.calendarSyncStarted') || 'Sync started in the background')
+      } else {
+        toast.success(
+          t('settings.calendarSyncSuccess', { count: response.data.synced }) ||
+          `Successfully synced ${response.data.synced} entries to calendar`
+        )
+      }
     } catch (error) {
       console.error('Failed to sync to calendar:', error)
       toast.error(error.response?.data?.error || t('settings.calendarSyncFailed') || 'Failed to sync to calendar')

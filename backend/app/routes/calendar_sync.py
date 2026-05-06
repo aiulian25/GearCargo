@@ -767,32 +767,45 @@ def get_available_calendars(current_user):
 @calendar_bp.route('/sync', methods=['POST'])
 @token_required
 def sync_all_entries(current_user):
-    """Manually sync all entries to calendar."""
+    """Kick off a background CalDAV sync and return 202 immediately.
+
+    The sync can take many seconds (network round-trips to Nextcloud for
+    every entry).  Running it synchronously blocks a Gunicorn worker for
+    the full duration, which causes 504 Gateway Timeout errors when a
+    reverse proxy sits in front.  We fire the work in a daemon thread so
+    the HTTP response is returned before any proxy timeout fires.
+    """
+    import threading
     from app.services.calendar_service import sync_all_entries_for_user
-    
+
     if not current_user.calendar_enabled:
         return jsonify({'error': 'Calendar sync is disabled', 'message_key': 'calendar.sync.disabled'}), 400
-    
-    try:
-        results = sync_all_entries_for_user(current_user)
-    except Exception as e:
-        logger.exception("Unexpected error during calendar sync for user %s", current_user.id)
-        return jsonify({'error': 'Calendar sync failed', 'message_key': 'calendar.sync.error', 'details': str(e)}), 500
 
-    # Update last sync time
-    try:
-        current_user.calendar_last_sync = datetime.now(timezone.utc)
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
+    user_id = current_user.id
+    app = current_app._get_current_object()
+
+    def _run_sync():
+        with app.app_context():
+            from app.models import User
+            try:
+                user = db.session.get(User, user_id)
+                if user:
+                    sync_all_entries_for_user(user)
+                    user.calendar_last_sync = datetime.now(timezone.utc)
+                    db.session.commit()
+            except Exception:
+                db.session.rollback()
+                logger.exception("Background calendar sync failed for user %s", user_id)
+            finally:
+                db.session.remove()
+
+    threading.Thread(target=_run_sync, daemon=True).start()
 
     return jsonify({
-        'message_key': 'calendar.sync.summary',
-        'message': f'Synced {results["synced"]} entries, {results["failed"]} failed',
-        'synced': results['synced'],
-        'failed': results['failed'],
-        'errors': results['errors'][:5] if results['errors'] else []  # Only return first 5 errors
-    })
+        'message_key': 'calendar.sync.started',
+        'queued': True,
+        'synced': 0,
+    }), 202
 
 
 @calendar_bp.route('/sync/entry', methods=['POST'])
