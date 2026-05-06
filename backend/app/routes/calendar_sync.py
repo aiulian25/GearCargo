@@ -697,7 +697,14 @@ def test_calendar_connection(current_user):
         raw_source = data.get('source')
         if not isinstance(raw_source, dict):
             return jsonify({'error': 'Invalid source', 'message_key': 'calendar.source.invalid_format'}), 400
-        source = build_source_for_storage(raw_source, source)
+        # Use the existing stored source (by ID) so that the saved encrypted password
+        # is preserved even when the frontend omits it from the payload (passwords
+        # are never returned to the frontend for security reasons).
+        existing_for_source = next(
+            (item for item in existing_sources if item.get('id') == raw_source.get('id')),
+            None
+        ) if source is None else source
+        source = build_source_for_storage(raw_source, existing_for_source)
 
     if not source:
         source = next((item for item in existing_sources if item.get('enabled')), None) or (existing_sources[0] if existing_sources else None)
