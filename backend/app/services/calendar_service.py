@@ -356,12 +356,28 @@ class CalendarService:
         try:
             password = decrypt_password(self.source.get('password') or '')
 
-            url = self.source.get('url', '').rstrip('/')
+            url = self.source.get('url', '').strip()
             provider = self.source.get('provider', '').lower()
 
-            # Nextcloud: append CalDAV base path when user only enters server root
-            if provider == 'nextcloud' and '/remote.php/dav' not in url:
-                url = url + '/remote.php/dav'
+            if provider == 'nextcloud':
+                # Strip query string — Nextcloud public-share export URLs end with
+                # ?export which makes them read-only; we always want the write path.
+                if '?' in url:
+                    url = url[:url.index('?')]
+
+                dav_marker = '/remote.php/dav'
+                dav_idx = url.find(dav_marker)
+                if dav_idx >= 0:
+                    # Truncate to the DAV base — removes sub-paths like
+                    # /public-calendars/<token> that Nextcloud share links contain.
+                    url = url[:dav_idx + len(dav_marker)]
+                else:
+                    # User entered just the server root
+                    url = url.rstrip('/') + dav_marker
+
+                # Fix any double slashes in the path (keep https://)
+                scheme_end = url.find('://') + 3
+                url = url[:scheme_end] + url[scheme_end:].replace('//', '/')
 
             self.client = caldav.DAVClient(
                 url=url,
