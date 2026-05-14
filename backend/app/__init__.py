@@ -683,7 +683,46 @@ def create_app(config_class=None):
     # Initialize default admin from environment variables
     with app.app_context():
         init_default_admin(app)
-    
+
+    # Startup Ollama connectivity probe — runs once in a background thread so it
+    # never delays the first request.  Clears a stale ollama:offline_since Redis
+    # key if Ollama is actually reachable (e.g. after a container restart where the
+    # previous run set the key before dying).  Sets the key if Ollama is down so
+    # the banner appears immediately rather than waiting for the first AI request.
+    if not app.config.get('TESTING') and app.config.get('OLLAMA_ENABLED', True):
+        import threading
+
+        def _startup_ollama_probe():
+            import time
+            time.sleep(5)  # Give the app a moment to finish starting up
+            with app.app_context():
+                try:
+                    from app.services.ollama import (
+                        validate_ollama_url,
+                        ollama_record_success,
+                        ollama_record_failure,
+                    )
+                    import requests as _req
+                    base_url = app.config.get('OLLAMA_BASE_URL', '')
+                    validated = validate_ollama_url(base_url)
+                    resp = _req.get(f'{validated.rstrip("/")}/api/tags', timeout=5)
+                    if resp.status_code == 200:
+                        ollama_record_success()
+                        app.logger.info('Startup Ollama probe: reachable — offline marker cleared.')
+                    else:
+                        ollama_record_failure()
+                        app.logger.warning(
+                            f'Startup Ollama probe: HTTP {resp.status_code} — marked offline.'
+                        )
+                except Exception as exc:
+                    try:
+                        ollama_record_failure()
+                    except Exception:
+                        pass
+                    app.logger.warning(f'Startup Ollama probe: unreachable — {exc}')
+
+        threading.Thread(target=_startup_ollama_probe, daemon=True, name='ollama-startup-probe').start()
+
     return app
 
 
