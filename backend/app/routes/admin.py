@@ -307,16 +307,161 @@ def delete_user(current_user, user_id):
 @admin_bp.route('/settings', methods=['GET'])
 @admin_required
 def get_settings(current_user):
-    """Get system settings."""
-    from flask import current_app
-    
+    """Get system settings including live Ollama status and prediction stats."""
+    import requests as req_lib
+    from app.models.prediction import PredictionAlert
+    from app.models.app_setting import AppSetting
+
+    ollama_enabled = bool(current_app.config.get('OLLAMA_ENABLED', False))
+    ollama_url_raw = (current_app.config.get('OLLAMA_URL') or
+                      current_app.config.get('OLLAMA_BASE_URL', '')).rstrip('/')
+
+    # Live Ollama connectivity probe (non-blocking, 3 s timeout)
+    ollama_live: dict = {'status': 'disabled'}
+    if ollama_enabled and ollama_url_raw:
+        try:
+            from app.services.ollama import validate_ollama_url
+            validated_url = validate_ollama_url(ollama_url_raw)
+            resp = req_lib.get(f"{validated_url}/api/tags", timeout=3)
+            checked_at = datetime.now(timezone.utc).isoformat()
+            if resp.status_code == 200:
+                raw_models = resp.json().get('models', [])
+                ollama_live = {
+                    'status': 'online',
+                    'models': [
+                        {
+                            'name': m.get('name', ''),
+                            'size': m.get('size'),
+                            'digest': (m.get('digest') or '')[:12] or None,
+                        }
+                        for m in raw_models
+                    ],
+                    'current_model': current_app.config.get('OLLAMA_MODEL', ''),
+                    'checked_at': checked_at,
+                }
+            else:
+                ollama_live = {'status': 'error', 'checked_at': checked_at}
+        except ValueError:
+            ollama_live = {'status': 'error', 'message': 'Invalid Ollama URL configured'}
+        except req_lib.RequestException:
+            ollama_live = {
+                'status': 'offline',
+                'checked_at': datetime.now(timezone.utc).isoformat(),
+            }
+
+    # Aggregate prediction stats
+    try:
+        total_predictions = PredictionAlert.query.count()
+        active_predictions = PredictionAlert.query.filter_by(
+            dismissed=False, actioned=False
+        ).count()
+        last_alert = (
+            PredictionAlert.query
+            .order_by(PredictionAlert.created_at.desc())
+            .first()
+        )
+        prediction_stats = {
+            'total': total_predictions,
+            'active': active_predictions,
+            'last_generated_at': (
+                last_alert.created_at.isoformat() if last_alert else None
+            ),
+        }
+    except Exception:
+        prediction_stats = {'total': 0, 'active': 0, 'last_generated_at': None}
+
+    # Per-task model settings — read from DB (admin UI) → env var → empty string.
+    # No hardcoded model names: the admin must configure what is available.
+    def _task_model(task_key: str) -> str:
+        db_val = AppSetting.get(f'ollama_model_{task_key}') or ''
+        if db_val:
+            return db_val
+        env_key = f'OLLAMA_MODEL_{task_key.upper()}'
+        return (current_app.config.get(env_key) or '').strip()
+
+    global_model = (AppSetting.get('ollama_model_global')
+                    or current_app.config.get('OLLAMA_MODEL')
+                    or '')
+
+    task_models = {
+        'global':   global_model,
+        'predict':  _task_model('predict')  or global_model,
+        'ocr':      _task_model('ocr')      or global_model,
+        'anomaly':  _task_model('anomaly')  or global_model,
+        'reminder': _task_model('reminder') or global_model,
+    }
+
+    if ollama_live.get('status') == 'online':
+        ollama_live['task_models'] = task_models
+
+    # AI response cache stats
+    from app.services.ollama import ai_cache_stats, ollama_downtime_info
+    ai_cache = ai_cache_stats()
+    ollama_downtime = ollama_downtime_info()
+
     return jsonify({
         'app_name': current_app.config.get('APP_NAME', 'GearCargo'),
-        'ollama_enabled': current_app.config.get('OLLAMA_ENABLED', False),
-        'ollama_url': current_app.config.get('OLLAMA_URL', ''),
+        'ollama_enabled': ollama_enabled,
+        'ollama_url': ollama_url_raw,
         'max_upload_size': current_app.config.get('MAX_CONTENT_LENGTH', 10485760),
         'registration_enabled': current_app.config.get('REGISTRATION_ENABLED', True),
+        'ollama_live': ollama_live,
+        'prediction_stats': prediction_stats,
+        'task_models': task_models,
+        'ai_cache': ai_cache,
+        'ollama_downtime': ollama_downtime,
     })
+
+
+_VALID_MODEL_RE = __import__('re').compile(r'^[a-zA-Z0-9][\w.\-:/]{0,99}$')
+
+
+@admin_bp.route('/settings', methods=['PUT'])
+@admin_required
+def update_settings(current_user):
+    """Update runtime-configurable settings (currently: per-task Ollama models)."""
+    from app.models.app_setting import AppSetting
+    from app import db
+
+    data = request.get_json(silent=True) or {}
+    task_models = data.get('task_models')
+
+    if not isinstance(task_models, dict):
+        return jsonify({'error': 'task_models must be an object'}), 400
+
+    allowed_tasks = {'global', 'predict', 'ocr', 'anomaly', 'reminder'}
+    saved = {}
+    for task, model_name in task_models.items():
+        if task not in allowed_tasks:
+            continue
+        if model_name is None or model_name == '':
+            # Empty string means "reset to global default"
+            AppSetting.set(f'ollama_model_{task}', None)
+            saved[task] = None
+            continue
+        if not isinstance(model_name, str) or not _VALID_MODEL_RE.match(model_name):
+            return jsonify({'error': f'Invalid model name for task {task!r}'}), 400
+        AppSetting.set(f'ollama_model_{task}', model_name)
+        saved[task] = model_name
+
+    db.session.commit()
+    return jsonify({'saved': saved})
+
+
+@admin_bp.route('/ai-cache', methods=['DELETE'])
+@admin_required
+def flush_ai_cache(current_user):
+    """Flush all Redis AI response cache entries.
+
+    This forces every AI task (predictions, OCR, anomaly, reminder) to
+    re-call Ollama on the next request, bypassing cached results.
+    Useful when the configured model has changed or when you want
+    fresh results immediately.
+    """
+    from app.services.ollama import ai_cache_flush, ai_cache_stats
+    deleted = ai_cache_flush()
+    after = ai_cache_stats()
+    return jsonify({'deleted': deleted, 'remaining': after.get('keys', 0)})
 
 
 @admin_bp.route('/logs', methods=['GET'])
@@ -326,7 +471,7 @@ def get_logs(current_user):
     # Pagination
     page = request.args.get('page', 1, type=int)
     per_page = min(request.args.get('per_page', 50, type=int), 100)  # Cap at 100
-    
+
     # Filters
     event_type = request.args.get('event_type')
     event_category = request.args.get('category')

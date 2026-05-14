@@ -39,6 +39,7 @@ import VehicleTimeline from './pages/vehicles/VehicleTimeline'
 import VehicleCharts from './pages/vehicles/VehicleCharts'
 import VehicleAlerts from './pages/vehicles/VehicleAlerts'
 import VehicleHealth from './pages/vehicles/VehicleHealth'
+import VehicleDocuments from './pages/vehicles/VehicleDocuments'
 import FuelEntries from './pages/fuel/FuelEntries'
 import AddFuel from './pages/fuel/AddFuel'
 import Calendar from './pages/calendar/Calendar'
@@ -175,6 +176,7 @@ function App() {
           <Route path="vehicles/:id/charts" element={<VehicleCharts />} />
           <Route path="vehicles/:id/alerts" element={<VehicleAlerts />} />
           <Route path="vehicles/:id/health" element={<VehicleHealth />} />
+          <Route path="vehicles/:id/search" element={<VehicleDocuments />} />
           
           {/* Calendar */}
           <Route path="calendar" element={<Calendar />} />

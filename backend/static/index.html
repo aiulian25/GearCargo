@@ -1,6 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
+    <!--
+      I13: FOUC prevention — apply saved theme class before any stylesheet or
+      React code runs. The browser reads localStorage synchronously here, so
+      <html class="light"> is set before the first paint when the user prefers
+      the light theme. Dark is the CSS default so no class is needed for dark.
+      The SHA-256 hash of this script is allowlisted in the backend CSP
+      (script-src) so 'unsafe-inline' is NOT required.
+    -->
+    <script>(function(){var t=localStorage.getItem('theme');if(t==='light'||(!t&&window.matchMedia('(prefers-color-scheme: light)').matches)){document.documentElement.classList.add('light')}})()</script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     
@@ -37,13 +46,15 @@
     <link rel="manifest" href="/manifest.json" />
 
     <!--
-      S14: Pre-React loader styles extracted to external file so 'unsafe-inline' is
-      not needed in the CSP style-src directive. Served from 'self'.
+      S14: Pre-React loader styles extracted to external file so 'unsafe-inline' can
+      be removed from the CSP style-src directive. Served from 'self' (no unsafe-inline
+      needed). Workbox precaches this file (css matches globPatterns) so it is
+      available instantly and during offline use.
     -->
     <link rel="stylesheet" href="/loader.css" />
-    <script type="module" crossorigin src="/assets/index-ajT6s2P0.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/vendor-C9LfHnzx.js">
-    <link rel="stylesheet" crossorigin href="/assets/index--FxaPVUw.css">
+    <script type="module" crossorigin src="/assets/index-Dkng1h6O.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/vendor-LAVilghm.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-BDryZRnJ.css">
   <link rel="manifest" href="/manifest.webmanifest"></head>
   <body>
     <div id="root">

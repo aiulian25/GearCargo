@@ -87,17 +87,25 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 - Fuel efficiency trends
 - Cost per kilometer/mile analysis
 
-### 🤖 AI-Powered Features (Optional)
-- Maintenance predictions based on vehicle history
-- Smart alerts for potential issues
-- OCR for receipt scanning
-- Powered by Ollama (local or external)
+### 🤖 AI-Powered Features (Optional, via Ollama)
+- **Automatic nightly maintenance predictions** — nightly scheduler analyses each vehicle's fuel, service, and repair history and generates multilingual prediction alerts (EN/RO/ES)
+- **Manual prediction trigger** — request an immediate AI analysis for any vehicle via the API
+- **OCR receipt scanning** — photos of receipts are automatically scanned (pytesseract) and parsed by Ollama into structured data (date, amount, vendor, line items) to pre-fill expense forms
+- **Fuel anomaly detection** — after each fuel entry, Ollama checks the last 20 entries for suspicious consumption spikes or data-entry errors
+- **AI reminder suggestions** — request 3 AI-generated service reminder suggestions per vehicle based on its history
+- **Per-task model configuration** — assign different Ollama models to different tasks (`OLLAMA_MODEL_PREDICT`, `OLLAMA_MODEL_OCR`, `OLLAMA_MODEL_ANOMALY`, `OLLAMA_MODEL_REMINDER`) for optimal speed/quality trade-offs
+- **Smart Recommendations page** — rule-based alerts for upcoming service, insurance, and tax deadlines
+- Powered by any Ollama-compatible model (local or external); recommended: `qwen2.5` for structured JSON and multilingual output
 
 ### 📎 Attachments & Documents
 - Attach receipts, invoices, documents to any entry
 - Image preview and gallery view
 - PDF document support
 - Organized by vehicle and entry type
+- **OCR text extraction** — images are automatically scanned in the background; click the scan icon in the viewer to review extracted text
+- **AI data extraction** — send OCR text to Ollama to parse structured fields and pre-fill the parent expense form with one tap
+- **OCR badge on thumbnails** — attachment cards display a badge when text has been successfully extracted
+- **Re-scan button** — retry OCR for blurry or rotated images via the attachment viewer
 
 ### ✅ To-Do Lists
 - Vehicle-specific task lists
@@ -346,6 +354,8 @@ sudo docker compose -f docker-compose.synology.yml up -d
 | **Image Source** | Local build | Local build | Local build | GHCR | GHCR |
 | **Debug Mode** | ✅ Enabled | ❌ Disabled | ❌ Disabled | ❌ Disabled | ❌ Disabled |
 | **Ollama AI** | Optional | Optional | ❌ Disabled | Optional | Optional |
+| **Per-task Models** | ✅ Yes | ✅ Yes | ❌ N/A | ✅ Yes | ✅ Yes |
+| **Automated Backups** | No | ✅ Yes | No | No | No |
 | **Resource Limits** | None | 2 CPU, 1GB | 2 CPU, 1GB | 2 CPU, 1GB | None (Synology) |
 | **Log Rotation** | No | Yes | Yes | Yes | Yes |
 | **Read-only FS** | Yes | Yes | Yes | Yes | Yes |
@@ -506,8 +516,27 @@ VAPID_SUBJECT=mailto:admin@yourdomain.com
 
 # AI Features (optional)
 OLLAMA_ENABLED=false
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=llama3.2
+OLLAMA_BASE_URL=http://192.168.1.80:11434
+# Global model fallback (run: ollama list to see installed models)
+OLLAMA_MODEL=qwen2.5
+OLLAMA_TIMEOUT=60
+# Per-task model overrides (leave empty to inherit OLLAMA_MODEL)
+OLLAMA_MODEL_PREDICT=qwen2.5
+OLLAMA_MODEL_OCR=qwen2.5
+OLLAMA_MODEL_ANOMALY=llama3.2
+OLLAMA_MODEL_REMINDER=qwen2.5
+
+# Reverse Proxy (1 = nginx/Traefik/Cloudflare)
+TRUSTED_PROXY_COUNT=1
+
+# GeoIP (optional — download GeoLite2-City.mmdb from MaxMind)
+GEOIP_DB_PATH=
+
+# Widget API CORS
+WIDGET_CORS_ORIGINS=*
+
+# Automated Backups
+BACKUP_KEEP_LAST=7
 
 # Theme
 DEFAULT_THEME=dark
@@ -605,10 +634,32 @@ The admin user can:
 | \`ADMIN_PASSWORD\` | Optional | Auto-create admin password | - |
 | \`MAIL_ENABLED\` | Optional | Enable email features | \`false\` |
 | \`VAPID_PUBLIC_KEY\` | Optional | Push notification public key | - |
-| \`VAPID_PRIVATE_KEY\` | Optional | Push notification private key | - |
-| \`OLLAMA_ENABLED\` | Optional | Enable AI features | \`false\` |
-| \`OLLAMA_BASE_URL\` | Optional | Ollama server URL | \`http://host.docker.internal:11434\` |
+| \`VAPID_PRIVATE_KEY\` | Optional | Push notification private key (prefer Docker secret) | - |
 | \`MAX_UPLOAD_SIZE_MB\` | Optional | Max file upload size in MB | \`200\` |
+| \`GUNICORN_WORKERS\` | Optional | Gunicorn worker process count | \`4\` |
+| \`TRUSTED_PROXY_COUNT\` | Optional | Trusted reverse proxy depth for real IP detection | \`1\` |
+| \`GEOIP_DB_PATH\` | Optional | Container path to GeoLite2-City.mmdb for login country detection | empty |
+| \`WIDGET_CORS_ORIGINS\` | Optional | CORS origin allowlist for widget API endpoints | \`*\` |
+| \`BACKUP_KEEP_LAST\` | Optional | Number of daily/weekly backup archives to retain | \`7\` |
+
+### Ollama AI Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| \`OLLAMA_ENABLED\` | Enable all AI features | \`false\` |
+| \`OLLAMA_BASE_URL\` | Ollama server URL | \`http://host.docker.internal:11434\` |
+| \`OLLAMA_MODEL\` | Global default model (fallback for all tasks) | empty |
+| \`OLLAMA_TIMEOUT\` | HTTP timeout in seconds | \`60\` |
+| \`OLLAMA_MODEL_PREDICT\` | Model for nightly maintenance predictions (complex JSON + multilingual) | inherits \`OLLAMA_MODEL\` |
+| \`OLLAMA_MODEL_OCR\` | Model for receipt OCR data extraction (structured fields) | inherits \`OLLAMA_MODEL\` |
+| \`OLLAMA_MODEL_ANOMALY\` | Model for fuel anomaly detection (fast classification) | inherits \`OLLAMA_MODEL\` |
+| \`OLLAMA_MODEL_REMINDER\` | Model for AI-generated reminder suggestions | inherits \`OLLAMA_MODEL\` |
+
+**Recommended model split** (8 GB VRAM):
+| Task | Model | Reason |
+|------|-------|--------|
+| Predictions, OCR, Reminders | \`qwen2.5\` | Best structured JSON + EN/RO/ES multilingual output |
+| Anomaly detection | \`llama3.2\` | Fast and lightweight — speed matters on every fuel save |
 
 ### JWT Token Expiration
 
@@ -711,6 +762,8 @@ pytest tests/test_backup_external_destinations.py -q
 | **Email** | Flask-Mail | Transactional emails |
 | **PDF** | ReportLab | Report generation |
 | **Security** | Flask-Talisman | Security headers |
+| **OCR** | pytesseract + Pillow | Receipt text extraction |
+| **GeoIP** | geoip2 + GeoLite2 | Suspicious-login country detection |
 
 ### Frontend
 | Component | Technology | Purpose |
@@ -727,7 +780,7 @@ pytest tests/test_backup_external_destinations.py -q
 |-----------|------------|---------|
 | **Containers** | Docker | Containerization |
 | **Orchestration** | Docker Compose | Multi-container management |
-| **AI (Optional)** | Ollama | Local LLM inference |
+| **AI (Optional)** | Ollama | Local LLM inference (predictions, OCR parsing, anomaly detection) |
 
 ---
 
@@ -768,8 +821,17 @@ Base URL: \`/api/\`
 |----------|--------|-------------|
 | \`/api/reminders\` | GET/POST | Reminders |
 | \`/api/attachments\` | GET/POST | File attachments |
+| \`/api/attachments/<id>/ocr\` | GET | Get OCR-extracted text for an attachment |
+| \`/api/attachments/<id>/ocr/retry\` | POST | Re-trigger OCR scan for an attachment |
 | \`/api/reports/generate\` | POST | Generate PDF report |
 | \`/api/backup/export\` | POST | Export backup |
+
+### AI Endpoints (requires `OLLAMA_ENABLED=true`)
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| \`/api/predictions/generate\` | POST | Manually trigger AI maintenance predictions for a vehicle |
+| \`/api/predictions/status\` | GET | Ollama connectivity status and available models |
+| \`/api/vehicles/<id>/suggest-reminder\` | POST | Get 3 AI-generated reminder suggestions |
 ### Widget API (Gethomepage)
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|

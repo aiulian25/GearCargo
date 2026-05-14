@@ -534,8 +534,8 @@ export default function Dashboard() {
       }
     }
     
-    // Auto-detect location with high accuracy (uses GPS when available)
-    if ('geolocation' in navigator) {
+    // Auto-detect location — only available over HTTPS or localhost
+    if ('geolocation' in navigator && window.isSecureContext) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const loc = {

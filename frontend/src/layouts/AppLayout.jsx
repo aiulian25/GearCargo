@@ -3,6 +3,7 @@ import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useTranslation } from '../contexts/LanguageContext'
 import { SyncIndicator } from '../components/PWA/SyncIndicator'
+import GlobalSearch from '../components/ui/GlobalSearch'
 
 // SVG Icons for navigation and menus
 const Icons = {
@@ -49,6 +50,12 @@ const Icons = {
     </svg>
   ),
   // User menu icons
+  search: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round"
+        d="M21 21l-4.35-4.35m0 0A7.5 7.5 0 104.5 4.5a7.5 7.5 0 0012.15 12.15z" />
+    </svg>
+  ),
   chevronDown: (
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -206,7 +213,20 @@ export default function AppLayout() {
   const { t } = useTranslation()
   const location = useLocation()
   const navigate = useNavigate()
-  
+  const [searchOpen, setSearchOpen] = useState(false)
+
+  // Ctrl+K / Cmd+K — open search modal
+  useEffect(() => {
+    const handler = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault()
+        setSearchOpen(true)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
   const handleLogout = async () => {
     await logout()
     navigate('/login')
@@ -229,13 +249,25 @@ export default function AppLayout() {
             </span>
           </NavLink>
           
-          {/* Sync Status and User Menu */}
-          <div className="flex items-center gap-3">
+          {/* Sync Status, Search, and User Menu */}
+          <div className="flex items-center gap-2">
             <SyncIndicator variant="badge" />
+            {/* Search button */}
+            <button
+              onClick={() => setSearchOpen(true)}
+              className="p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover,rgba(255,255,255,0.06))] transition-colors"
+              aria-label={t('search.title') || 'Search'}
+              title={`${t('search.title') || 'Search'} (Ctrl+K)`}
+            >
+              {Icons.search}
+            </button>
             <UserMenu user={user} onLogout={handleLogout} />
           </div>
         </div>
       </header>
+
+      {/* Global Search Modal */}
+      <GlobalSearch isOpen={searchOpen} onClose={() => setSearchOpen(false)} />
       
       {/* Main Content */}
       <main className="flex-1 pb-16">

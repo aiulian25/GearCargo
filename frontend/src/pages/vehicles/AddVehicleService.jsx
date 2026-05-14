@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useForm, useWatch } from 'react-hook-form'
 import { serviceApi, vehicleApi, attachmentApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { normalizeDistanceUnit } from '../../utils/fuelEconomy'
 import ReceiptUpload from '../../components/ReceiptUpload'
+import ScanReceiptBanner from '../../components/ui/ScanReceiptBanner'
 
 // SVG Icons
 const Icons = {
@@ -41,6 +42,9 @@ export default function AddVehicleService() {
   const [receiptFile, setReceiptFile] = useState(null)
   const [existingAttachments, setExistingAttachments] = useState([])
   const [selectedServiceTypes, setSelectedServiceTypes] = useState([])
+  const [uploadedAttachmentId, setUploadedAttachmentId] = useState(null)
+  const [ocrTypeHint, setOcrTypeHint] = useState(false)
+  const _ocrTypeTimerRef = useRef(null)
   
   const { register, handleSubmit, control, setValue, reset } = useForm({
     defaultValues: {
@@ -145,9 +149,15 @@ export default function AddVehicleService() {
         response = await serviceApi.create(payload)
       }
       
-      // Upload receipt if selected (only for new entries or if new file selected)
+      // Link or upload receipt attachment
       const entryId = isEditMode ? editId : response.data?.entry?.id
-      if (receiptFile && entryId) {
+      if (uploadedAttachmentId && entryId) {
+        try {
+          await attachmentApi.update(uploadedAttachmentId, { entry_id: entryId })
+        } catch (linkErr) {
+          console.error('Failed to link attachment:', linkErr)
+        }
+      } else if (receiptFile && entryId) {
         try {
           await attachmentApi.upload(receiptFile, {
             vehicleId: parseInt(vehicleId),
@@ -303,6 +313,16 @@ export default function AddVehicleService() {
             {selectedServiceTypes.length === 0 && error && (
               <p className="text-xs text-red-500 mt-1">{t('addService.typeRequired') || 'Service type is required'}</p>
             )}
+            {ocrTypeHint && (
+              <p className="text-xs text-purple-400 mt-1.5 flex items-center gap-1">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="4 7 4 4 7 4"/><polyline points="4 17 4 20 7 20"/>
+                  <polyline points="17 4 20 4 20 7"/><polyline points="17 20 20 20 20 17"/>
+                  <line x1="4" y1="12" x2="20" y2="12"/>
+                </svg>
+                {t('addService.ocrTypeHint') || 'Auto-selected from receipt'}
+              </p>
+            )}
           </div>
           
           <div>
@@ -411,14 +431,52 @@ export default function AddVehicleService() {
           </div>
         </div>
         
-        {/* Receipt Upload */}
+        {/* Receipt Upload + OCR Scan Banner */}
         <div className="card">
           <ReceiptUpload
             selectedFile={receiptFile}
-            onFileSelect={setReceiptFile}
-            onFileRemove={() => setReceiptFile(null)}
+            onFileSelect={(f) => { setReceiptFile(f); setUploadedAttachmentId(null) }}
+            onFileRemove={() => { setReceiptFile(null); setUploadedAttachmentId(null) }}
             label={t('receipt.serviceReceipt') || 'Service Receipt'}
             disabled={isSubmitting}
+          />
+          <ScanReceiptBanner
+            receiptFile={receiptFile}
+            vehicleId={parseInt(vehicleId)}
+            onUploadComplete={(id) => setUploadedAttachmentId(id)}
+            onPrefill={(data) => {
+              if (data.date) setValue('date', data.date)
+              if (data.amount != null) setValue('total_cost', String(data.amount))
+              if (data.vendor) setValue('shop_name', data.vendor)
+              if (data.line_items?.[0]?.description) setValue('description', data.line_items[0].description)
+              // §7.5 — infer service_type from OCR line items + category when none selected
+              if (selectedServiceTypes.length === 0) {
+                const haystack = [
+                  data.line_items?.[0]?.description,
+                  data.category,
+                  ...(data.line_items || []).slice(0, 3).map(i => i.description),
+                ].filter(Boolean).join(' ').toLowerCase()
+                const match =
+                  /oil.chang|engine.oil|synthetic.oil|schimb.ulei|cambio.aceit/.test(haystack) ? 'oil_change' :
+                  /tire.rotat|tyre.rotat|rotati.anvelop|rotaci.neum/.test(haystack) ? 'tire_rotation' :
+                  /\bbrake|\bfran[ae]\b|\bfrein\b/.test(haystack) ? 'brake_service' :
+                  /air.filter|filtru.aer|filtro.aire/.test(haystack) ? 'air_filter' :
+                  /cabin.filter|pollen.filter|filtru.cabin|filtro.habit/.test(haystack) ? 'cabin_filter' :
+                  /\btransmission\b|\bcutie.vitez|\bcaja.cambio/.test(haystack) ? 'transmission' :
+                  /coolant|antifreez|antigel|refrigerant/.test(haystack) ? 'coolant' :
+                  /spark.plug|bujie|bujia/.test(haystack) ? 'spark_plugs' :
+                  /timing.belt|timing.chain|curea.distribut|correa.distribuc/.test(haystack) ? 'timing_belt' :
+                  /\binspect|\bitp\b|revision|revizie/.test(haystack) ? 'inspection' :
+                  /full.service|service.complet|revizi.complet|servicio.complet/.test(haystack) ? 'full_service' :
+                  null
+                if (match) {
+                  setSelectedServiceTypes([match])
+                  clearTimeout(_ocrTypeTimerRef.current)
+                  setOcrTypeHint(true)
+                  _ocrTypeTimerRef.current = setTimeout(() => setOcrTypeHint(false), 5000)
+                }
+              }
+            }}
           />
         </div>
       </form>

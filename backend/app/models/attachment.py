@@ -83,6 +83,7 @@ class Attachment(db.Model):
             'is_image': self.is_image,
             'is_pdf': self.is_pdf,
             'ocr_processed': self.ocr_processed,
+            'has_text': bool(self.ocr_text and self.ocr_text.strip()),
             'expires_at': self.expires_at.isoformat() if self.expires_at else None,
             'entry_id': self.entry_id,
             'vehicle_id': self.vehicle_id,

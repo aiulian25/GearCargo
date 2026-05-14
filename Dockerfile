@@ -41,6 +41,8 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     postgresql-client \
     tesseract-ocr \
     tesseract-ocr-eng \
+    tesseract-ocr-ron \
+    tesseract-ocr-spa \
     curl \
     gosu \
     && rm -rf /var/lib/apt/lists/*

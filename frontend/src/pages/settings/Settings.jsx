@@ -10,6 +10,7 @@ import SystemLogs from '../../components/admin/SystemLogs'
 import MaintenanceCleanup from '../../components/admin/MaintenanceCleanup'
 import { formatDate, formatDateTime } from '../../utils/dateFormat'
 import SecurityBlocking from '../../components/admin/SecurityBlocking'
+import AiStatusPanel from '../../components/admin/AiStatusPanel'
 import TwoFactorSetup from '../../components/settings/TwoFactorSetup'
 import SecurityQuestionsSetup from '../../components/settings/SecurityQuestionsSetup'
 import BackupSettings from '../../components/settings/BackupSettings'
@@ -218,7 +219,7 @@ export default function Settings() {
   const [showConsentHistory, setShowConsentHistory] = useState(false)
   
   const [showAdminSection, setShowAdminSection] = useState(false)
-  const [adminTab, setAdminTab] = useState('users')  // 'users', 'logs', 'maintenance', or 'security'
+  const [adminTab, setAdminTab] = useState('users')  // 'users', 'logs', 'maintenance', 'security', or 'ai'
   const [showArchiveSection, setShowArchiveSection] = useState(false)
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false)
   const [showTermsOfService, setShowTermsOfService] = useState(false)
@@ -2359,6 +2360,16 @@ export default function Settings() {
                 >
                   {t('admin.maintenance') || 'Cleanup'}
                 </button>
+                <button
+                  onClick={() => setAdminTab('ai')}
+                  className={`flex-1 py-2 rounded-md text-xs font-medium transition-colors ${
+                    adminTab === 'ai'
+                      ? 'bg-[var(--color-bg-card)] text-[var(--color-accent)] shadow-sm'
+                      : 'text-[var(--color-text-secondary)]'
+                  }`}
+                >
+                  {t('admin.ai') || 'AI'}
+                </button>
               </div>
               
               {/* Tab Content */}
@@ -2366,6 +2377,7 @@ export default function Settings() {
               {adminTab === 'security' && <SecurityBlocking />}
               {adminTab === 'logs' && <SystemLogs />}
               {adminTab === 'maintenance' && <MaintenanceCleanup />}
+              {adminTab === 'ai' && <AiStatusPanel />}
             </div>
           )}
         </div>

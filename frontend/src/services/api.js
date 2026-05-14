@@ -111,6 +111,8 @@ export const vehicleApi = {
     })
   },
   deletePhoto: (id) => api.delete(`/vehicles/${id}/photo`),
+  suggestReminder: (id, locale = 'en-US') =>
+    api.post(`/vehicles/${id}/suggest-reminder`, { locale }),
 }
 
 export const fuelApi = {
@@ -350,16 +352,24 @@ export const insuranceApi = {
 }
 
 export const predictionApi = {
-  getAll: (vehicleId = null) => {
-    const params = vehicleId ? `?vehicle_id=${vehicleId}` : ''
-    return api.get(`/predictions${params}`)
+  getAll: (vehicleId = null, status = null, locale = 'en-US') => {
+    const params = new URLSearchParams()
+    if (vehicleId) params.set('vehicle_id', vehicleId)
+    if (status) params.set('status', status)
+    if (locale) params.set('locale', locale)
+    const qs = params.toString()
+    return api.get(`/predictions${qs ? `?${qs}` : ''}`)
   },
   get: (id) => api.get(`/predictions/${id}`),
   dismiss: (id) => api.post(`/predictions/${id}/dismiss`),
-  refresh: (vehicleId = null) => {
-    const params = vehicleId ? `?vehicle_id=${vehicleId}` : ''
-    return api.post(`/predictions/refresh${params}`)
+  refresh: (vehicleId = null, locale = 'en-US') => {
+    const params = new URLSearchParams()
+    if (vehicleId) params.set('vehicle_id', vehicleId)
+    if (locale && locale !== 'en-US') params.set('locale', locale)
+    const qs = params.toString()
+    return api.post(`/predictions/refresh${qs ? `?${qs}` : ''}`)
   },
+  getStatus: () => api.get('/predictions/status'),
   // Seasonal Checklists
   getChecklists: () => api.get('/predictions/checklists'),
   toggleChecklistItem: (checklistId, itemId, completed) => {
@@ -424,6 +434,8 @@ export const attachmentApi = {
     if (params.entryId) searchParams.append('entry_id', params.entryId)
     if (params.category) searchParams.append('category', params.category)
     if (params.page) searchParams.append('page', params.page)
+    if (params.perPage) searchParams.append('per_page', params.perPage)
+    if (params.q) searchParams.append('q', params.q)
     return api.get(`/attachments?${searchParams}`)
   },
   get: (id) => api.get(`/attachments/${id}`),
@@ -454,6 +466,9 @@ export const attachmentApi = {
     return api.get(`/attachments/expiring?${params}`)
   },
   getStats: () => api.get('/attachments/stats'),
+  getOcr: (id) => api.get(`/attachments/${id}/ocr`),
+  parseOcr: (id) => api.post(`/attachments/${id}/ocr/parse`),
+  retryOcr: (id) => api.post(`/attachments/${id}/ocr/retry`),
 }
 
 // Calendar API
@@ -523,6 +538,7 @@ export const adminApi = {
   // Settings
   getSettings: () => api.get('/admin/settings'),
   updateSettings: (data) => api.put('/admin/settings', data),
+  flushAiCache: () => api.delete('/admin/ai-cache'),
   
   // Activity Logs
   getLogs: (options = {}) => {
@@ -583,4 +599,14 @@ export const adminApi = {
     if (options.ip) params.append('ip', options.ip)
     return api.get(`/admin/blocked/failed-logins?${params}`)
   },
+}
+
+// Global Search API
+export const searchApi = {
+  /**
+   * Search across vehicles, entries, and attachment OCR text.
+   * @param {string} q - search query (2–100 chars)
+   * @returns Promise<AxiosResponse<{query, results, total}>>
+   */
+  search: (q) => api.get(`/search?q=${encodeURIComponent(q)}`),
 }

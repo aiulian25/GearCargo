@@ -44,6 +44,41 @@ const Icons = {
       <polyline points="9 18 15 12 9 6"/>
     </svg>
   ),
+  scan: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="4 7 4 4 7 4"/><polyline points="4 17 4 20 7 20"/>
+      <polyline points="17 4 20 4 20 7"/><polyline points="17 20 20 20 20 17"/>
+      <line x1="4" y1="12" x2="20" y2="12"/>
+    </svg>
+  ),
+  copy: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+    </svg>
+  ),
+  wand: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/>
+      <path d="M17.8 11.8 19 13"/><path d="M15 9h.01"/><path d="M17.8 6.2 19 5"/>
+      <path d="m3 21 9-9"/><path d="M12.2 6.2 11 5"/>
+    </svg>
+  ),
+  prefill: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+    </svg>
+  ),
+  chevronDown: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="6 9 12 15 18 9"/>
+    </svg>
+  ),
+  chevronUp: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="18 15 12 9 6 15"/>
+    </svg>
+  ),
 }
 
 // Attachment categories
@@ -65,6 +100,8 @@ const AttachmentViewer = ({
   isOpen, 
   onClose,
   onUpdate,
+  onPrefill,        // (parsedData) => void — called when user taps "Pre-fill Form"
+  initialShowOcr = false,  // auto-open OCR panel when viewer opens
   // For single attachment view (backwards compatible)
   attachment = null,
 }) => {
@@ -81,6 +118,19 @@ const AttachmentViewer = ({
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
+  // OCR panel state
+  const [showOcrPanel, setShowOcrPanel] = useState(false)
+  const [ocrData, setOcrData] = useState(null)   // { ocr_processed, has_text, ocr_text }
+  const [ocrLoading, setOcrLoading] = useState(false)
+  const [ocrCopied, setOcrCopied] = useState(false)
+  // OCR AI-parse state
+  const [ocrParsing, setOcrParsing] = useState(false)
+  const [ocrParsed, setOcrParsed] = useState(null)   // structured result from Ollama
+  const [ocrParseError, setOcrParseError] = useState('')
+  // OCR retry state
+  const [ocrRetrying, setOcrRetrying] = useState(false)
+  const [ocrRetryError, setOcrRetryError] = useState('')
+
   // Handle single attachment or array
   const allAttachments = attachment ? [attachment] : attachments
   const currentAttachment = allAttachments[currentIndex]
@@ -90,7 +140,30 @@ const AttachmentViewer = ({
     setZoom(1)
     setLoading(true)
     setError(null)
-  }, [initialIndex, isOpen])
+    const targetAttachment = (attachment ? [attachment] : attachments)[initialIndex]
+    if (initialShowOcr && targetAttachment?.is_image) {
+      setShowOcrPanel(true)
+      setOcrLoading(true)
+      attachmentApi.getOcr(targetAttachment.id)
+        .then(res => setOcrData(res.data))
+        .catch(() => setOcrData({ ocr_processed: false, has_text: false, ocr_text: '' }))
+        .finally(() => setOcrLoading(false))
+    } else {
+      setShowOcrPanel(false)
+      setOcrData(null)
+    }
+  }, [initialIndex, isOpen, initialShowOcr])
+
+  // Reset OCR panel when user navigates between attachments
+  useEffect(() => {
+    setShowOcrPanel(false)
+    setOcrData(null)
+    setOcrCopied(false)
+    setOcrParsed(null)
+    setOcrParseError('')
+    setOcrRetrying(false)
+    setOcrRetryError('')
+  }, [currentIndex])
 
   // Handle keyboard navigation
   useEffect(() => {
@@ -196,6 +269,108 @@ const AttachmentViewer = ({
       setSaveError(err.response?.data?.error || t('attachments.failedToUpdate') || 'Failed to update attachment')
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  // --- OCR helpers ---
+  const handleToggleOcr = async () => {
+    if (!currentAttachment?.is_image) return
+    if (showOcrPanel) {
+      setShowOcrPanel(false)
+      return
+    }
+    setShowOcrPanel(true)
+    if (!ocrData) {
+      setOcrLoading(true)
+      try {
+        const res = await attachmentApi.getOcr(currentAttachment.id)
+        setOcrData(res.data)
+      } catch (err) {
+        setOcrData({ ocr_processed: false, has_text: false, ocr_text: '' })
+      } finally {
+        setOcrLoading(false)
+      }
+    }
+  }
+
+  const handleCopyOcr = async () => {
+    if (!ocrData?.ocr_text) return
+    try {
+      await navigator.clipboard.writeText(ocrData.ocr_text)
+      setOcrCopied(true)
+      setTimeout(() => setOcrCopied(false), 2000)
+    } catch (_) {
+      // clipboard not available (e.g. insecure context) — silently ignore
+    }
+  }
+
+  const handleParseOcr = async () => {
+    if (!currentAttachment || ocrParsing) return
+    setOcrParsing(true)
+    setOcrParsed(null)
+    setOcrParseError('')
+    try {
+      const res = await attachmentApi.parseOcr(currentAttachment.id)
+      setOcrParsed(res.data)
+    } catch (err) {
+      const status = err.response?.status
+      if (status === 429) {
+        setOcrParseError(t('attachments.ocrParseRateLimited') || 'Too many requests. Please wait before trying again.')
+      } else if (status === 503) {
+        setOcrParseError(t('attachments.ocrAiDisabled') || 'AI extraction requires Ollama to be enabled.')
+      } else {
+        setOcrParseError(err.response?.data?.error || t('attachments.ocrParseError') || 'Could not extract data from this receipt.')
+      }
+    } finally {
+      setOcrParsing(false)
+    }
+  }
+
+  const handlePrefillForm = () => {
+    if (ocrParsed && onPrefill) {
+      onPrefill(ocrParsed)
+      onClose()
+    }
+  }
+
+  // Retry OCR: reset → re-enqueue → poll until done
+  const handleRetryOcr = async () => {
+    if (!currentAttachment || ocrRetrying) return
+    setOcrRetrying(true)
+    setOcrRetryError('')
+    try {
+      await attachmentApi.retryOcr(currentAttachment.id)
+      // Reset local OCR data so the panel shows "Scanning…"
+      setOcrData({ ocr_processed: false, has_text: false, ocr_text: '' })
+      // Poll every 3 s, up to 20 attempts (60 s total)
+      let attempts = 0
+      const poll = async () => {
+        if (attempts >= 20) {
+          setOcrRetrying(false)
+          return
+        }
+        attempts++
+        try {
+          const res = await attachmentApi.getOcr(currentAttachment.id)
+          if (res.data.ocr_processed) {
+            setOcrData(res.data)
+            setOcrRetrying(false)
+          } else {
+            setTimeout(poll, 3000)
+          }
+        } catch (_) {
+          setTimeout(poll, 3000)
+        }
+      }
+      setTimeout(poll, 3000)
+    } catch (err) {
+      const status = err.response?.status
+      if (status === 429) {
+        setOcrRetryError(t('attachments.ocrRetryRateLimited') || 'Too many retry requests. Please wait.')
+      } else {
+        setOcrRetryError(t('attachments.ocrRetryError') || 'Re-scan failed. Please try again.')
+      }
+      setOcrRetrying(false)
     }
   }
 
@@ -318,6 +493,17 @@ const AttachmentViewer = ({
             >
               {Icons.edit}
             </button>
+
+            {/* OCR scan button — images only */}
+            {fileType === 'image' && (
+              <button
+                onClick={handleToggleOcr}
+                className={`p-2 rounded-lg transition-colors ${showOcrPanel ? 'bg-cyan-500/30 text-cyan-300' : 'hover:bg-white/10'}`}
+                title={t('attachments.ocrText') || 'Scanned Text'}
+              >
+                {Icons.scan}
+              </button>
+            )}
             
             {/* Download button */}
             <button
@@ -365,7 +551,254 @@ const AttachmentViewer = ({
           
           {renderContent()}
         </div>
+
+        {/* OCR Panel — slides in below the image when scan button is active */}
+        {showOcrPanel && fileType === 'image' && (
+          <div className="bg-gray-900/80 border-t border-white/10 rounded-b-lg p-4 max-h-72 overflow-y-auto">
+            <div className="flex items-center justify-between mb-2">
+              <span className="flex items-center gap-2 text-sm font-medium text-cyan-300">
+                {Icons.scan}
+                {t('attachments.ocrText') || 'Scanned Text'}
+              </span>
+              <div className="flex items-center gap-1">
+                {ocrData?.has_text && (
+                  <button
+                    onClick={handleParseOcr}
+                    disabled={ocrParsing}
+                    className="flex items-center gap-1 text-xs text-purple-300 hover:text-white transition-colors px-2 py-1 rounded hover:bg-white/10 disabled:opacity-50"
+                    title={t('attachments.ocrExtract') || 'Extract Data with AI'}
+                  >
+                    {ocrParsing ? (
+                      <div className="w-3 h-3 border-2 border-purple-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                    ) : Icons.wand}
+                    {ocrParsing
+                      ? (t('attachments.ocrExtracting') || 'Extracting…')
+                      : (t('attachments.ocrExtract') || 'Extract Data')}
+                  </button>
+                )}
+                {ocrData?.has_text && (
+                  <button
+                    onClick={handleCopyOcr}
+                    className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors px-2 py-1 rounded hover:bg-white/10"
+                  >
+                    {Icons.copy}
+                    {ocrCopied ? (t('attachments.ocrCopied') || 'Copied!') : (t('attachments.copyText') || 'Copy')}
+                  </button>
+                )}
+              </div>
+            </div>
+            {ocrLoading ? (
+              <div className="flex items-center gap-2 text-sm text-gray-400">
+                <div className="w-4 h-4 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                {t('attachments.ocrPending') || 'Scanning…'}
+              </div>
+            ) : !ocrData?.ocr_processed ? (
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm text-gray-500 italic">
+                  {ocrRetrying
+                    ? (t('attachments.ocrRetrying') || 'Re-scanning…')
+                    : (t('attachments.ocrPending') || 'Scan in progress — check back in a moment.')}
+                </p>
+                {!ocrRetrying && (
+                  <button
+                    onClick={handleRetryOcr}
+                    className="flex-shrink-0 flex items-center gap-1 text-xs text-cyan-400 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition-colors touch-manipulation min-h-[36px]"
+                    title={t('attachments.ocrRetry') || 'Re-scan'}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                    </svg>
+                    {t('attachments.ocrRetry') || 'Re-scan'}
+                  </button>
+                )}
+              </div>
+            ) : ocrData?.has_text ? (
+              <>
+                <pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono leading-relaxed">
+                  {ocrData.ocr_text}
+                </pre>
+
+                {/* AI parse error */}
+                {ocrParseError && (
+                  <p className="mt-2 text-xs text-red-400">{ocrParseError}</p>
+                )}
+
+                {/* AI-parsed structured result */}
+                {ocrParsed && (
+                  <div className="mt-3 border border-purple-500/30 rounded-lg p-3 bg-purple-900/20">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="flex items-center gap-1 text-xs font-semibold text-purple-300">
+                        {Icons.wand}
+                        {t('attachments.ocrExtractResult') || 'Extracted Receipt Data'}
+                      </span>
+                      {onPrefill && (
+                        <button
+                          onClick={handlePrefillForm}
+                          className="flex items-center gap-1 text-xs bg-purple-600 hover:bg-purple-700 text-white px-2 py-1 rounded transition-colors"
+                        >
+                          {Icons.prefill}
+                          {t('attachments.ocrPrefill') || 'Pre-fill Form'}
+                        </button>
+                      )}
+                    </div>
+                    <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                      {ocrParsed.date && (
+                        <>
+                          <dt className="text-gray-400">{t('attachments.ocrDate') || 'Date'}</dt>
+                          <dd className="text-gray-200">{ocrParsed.date}</dd>
+                        </>
+                      )}
+                      {ocrParsed.vendor && (
+                        <>
+                          <dt className="text-gray-400">{t('attachments.ocrVendor') || 'Vendor'}</dt>
+                          <dd className="text-gray-200 truncate">{ocrParsed.vendor}</dd>
+                        </>
+                      )}
+                      {ocrParsed.amount != null && (
+                        <>
+                          <dt className="text-gray-400">{t('attachments.ocrAmount') || 'Amount'}</dt>
+                          <dd className="text-gray-200">{ocrParsed.amount}</dd>
+                        </>
+                      )}
+                      {ocrParsed.category && (
+                        <>
+                          <dt className="text-gray-400">{t('common.category') || 'Category'}</dt>
+                          <dd className="text-gray-200 capitalize">{ocrParsed.category}</dd>
+                        </>
+                      )}
+                    </dl>
+                    {ocrParsed.line_items?.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-gray-400 text-xs mb-1">{t('attachments.ocrLineItems') || 'Line Items'}</p>
+                        <ul className="space-y-0.5">
+                          {ocrParsed.line_items.map((item, i) => (
+                            <li key={i} className="flex justify-between text-xs text-gray-300">
+                              <span className="truncate max-w-[160px]">{item.description}</span>
+                              {item.cost != null && <span className="ml-2 flex-shrink-0">{item.cost}</span>}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-sm text-gray-500 italic">
+                  {t('attachments.ocrEmpty') || 'No text detected in this image.'}
+                </p>
+                {ocrRetryError && (
+                  <p className="text-xs text-red-400">{ocrRetryError}</p>
+                )}
+                <button
+                  onClick={handleRetryOcr}
+                  disabled={ocrRetrying}
+                  className="flex items-center gap-1.5 text-xs text-cyan-400 hover:text-white px-3 py-1.5 rounded border border-cyan-500/30 hover:border-cyan-400/60 hover:bg-white/5 transition-colors disabled:opacity-50 touch-manipulation min-h-[36px]"
+                >
+                  {ocrRetrying ? (
+                    <>
+                      <div className="w-3 h-3 border border-cyan-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                      {t('attachments.ocrRetrying') || 'Re-scanning…'}
+                    </>
+                  ) : (
+                    <>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                      </svg>
+                      {t('attachments.ocrRetry') || 'Re-scan'}
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         
+        {/* Thumbnail strip — multi-attachment navigation with OCR status badges */}
+        {allAttachments.length > 1 && (
+          <div
+            className="flex gap-2 px-3 py-2 overflow-x-auto overscroll-x-contain bg-gray-900/70 border-t border-white/10"
+            style={{ scrollbarWidth: 'thin', scrollbarColor: '#4b5563 transparent' }}
+            role="tablist"
+            aria-label={t('attachments.stripLabel') || 'Attachments'}
+          >
+            {allAttachments.map((att, idx) => {
+              const isActive = idx === currentIndex
+              const isImage = att.file_type?.startsWith('image/')
+
+              // OCR status — only meaningful for images
+              let ocrBadge = null
+              if (isImage) {
+                if (!att.ocr_processed) {
+                  ocrBadge = (
+                    <span
+                      className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center rounded-full bg-gray-900/80"
+                      title={t('attachments.ocrStatusScanning') || 'Scanning…'}
+                    >
+                      <span className="w-3 h-3 border border-cyan-400 border-t-transparent rounded-full animate-spin block" />
+                    </span>
+                  )
+                } else if (att.has_text) {
+                  ocrBadge = (
+                    <span
+                      className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center rounded-full bg-emerald-500 text-white text-[9px] font-bold leading-none"
+                      title={t('attachments.ocrStatusScanned') || 'Scanned ✓'}
+                      aria-label={t('attachments.ocrStatusScanned') || 'Scanned'}
+                    >✓</span>
+                  )
+                } else {
+                  ocrBadge = (
+                    <span
+                      className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center rounded-full bg-gray-600 text-gray-300 text-[9px] font-bold leading-none"
+                      title={t('attachments.ocrStatusNoText') || 'No text'}
+                      aria-label={t('attachments.ocrStatusNoText') || 'No text'}
+                    >–</span>
+                  )
+                }
+              }
+
+              return (
+                <button
+                  key={att.id}
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => {
+                    setCurrentIndex(idx)
+                    setZoom(1)
+                    setLoading(true)
+                    setError(null)
+                  }}
+                  className={`relative flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 transition-all touch-manipulation ${
+                    isActive
+                      ? 'border-cyan-400 ring-1 ring-cyan-400/50'
+                      : 'border-transparent hover:border-white/40'
+                  }`}
+                  title={att.original_filename || att.filename}
+                  aria-label={att.original_filename || att.filename}
+                >
+                  {isImage ? (
+                    <img
+                      src={attachmentApi.getViewUrl(att.id)}
+                      alt=""
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gray-700 flex items-center justify-center text-gray-400">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                      </svg>
+                    </div>
+                  )}
+                  {ocrBadge}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
         {/* Navigation arrows for multiple attachments */}
         {allAttachments.length > 1 && (
           <>

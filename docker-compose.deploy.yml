@@ -71,8 +71,14 @@ services:
       # Ollama AI (optional)
       - OLLAMA_ENABLED=${OLLAMA_ENABLED:-false}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2}
-      - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-30}
+      # Global default model (used when no per-task override is set)
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-}
+      - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-60}
+      # Per-task model overrides — leave empty to inherit OLLAMA_MODEL
+      - OLLAMA_MODEL_PREDICT=${OLLAMA_MODEL_PREDICT:-}
+      - OLLAMA_MODEL_OCR=${OLLAMA_MODEL_OCR:-}
+      - OLLAMA_MODEL_ANOMALY=${OLLAMA_MODEL_ANOMALY:-}
+      - OLLAMA_MODEL_REMINDER=${OLLAMA_MODEL_REMINDER:-}
       
       # Theme
       - DEFAULT_THEME=${DEFAULT_THEME:-dark}

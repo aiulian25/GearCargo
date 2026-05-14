@@ -346,6 +346,101 @@ def create_app(config_class=None):
         error_message='Too many requests. Please try again later.',
     )(app.view_functions['auth.check_password_public'])
 
+    # ---------------------------------------------------------------------------
+    # S24: AI endpoint rate limits — per authenticated user, not per IP.
+    #
+    # All Ollama calls are slow (up to 120 s) and CPU-intensive on the Ollama
+    # host.  Without tight per-user limits an attacker with a valid account could
+    # flood the AI service from multiple IPs.  Keying by user_id (not IP) means
+    # VPN-hopping or IPv6 rotation cannot bypass the limit.
+    #
+    # _ai_rate_key() extracts the authenticated user's ID from the JWT and
+    # returns "user:<id>" as the bucket key.  On any failure (missing / expired /
+    # invalid token) it falls back to the remote IP — the request will then fail
+    # the @token_required check anyway, so no legitimate user is disadvantaged.
+    # ---------------------------------------------------------------------------
+
+    def _ai_rate_key() -> str:
+        """Per-user rate-limit key for AI endpoints.
+
+        Returns 'user:<id>' when a valid JWT is present, otherwise falls back
+        to the remote IP address so unauthenticated requests are still bounded.
+        """
+        import jwt as _jwt  # PyJWT
+
+        token = request.cookies.get('access_token')
+        if not token and 'Authorization' in request.headers:
+            try:
+                token = request.headers['Authorization'].split(' ')[1]
+            except IndexError:
+                pass
+        if token:
+            try:
+                data = _jwt.decode(
+                    token,
+                    app.config['JWT_SECRET_KEY'],
+                    algorithms=['HS256'],
+                )
+                return f"user:{data['user_id']}"
+            except Exception:
+                pass
+        return get_remote_address()
+
+    # Limits per spec (ollama.md §4.3):
+    #   /predictions/generate|refresh  — 3/hour/user
+    #   /vehicles/<id>/chat             — 5/hour/user  (wired when endpoint exists)
+    #   /vehicles/<id>/suggest-reminder — 3/hour/user
+    #   /attachments/<id>/parse-ocr     — 5/hour/user
+
+    for _prediction_endpoint in ('predictions.generate_predictions', 'predictions.refresh_predictions'):
+        if _prediction_endpoint in app.view_functions:
+            app.view_functions[_prediction_endpoint] = limiter.limit(
+                '10 per hour',
+                key_func=_ai_rate_key,
+                error_message='Too many AI requests. Please wait before generating more predictions.',
+            )(app.view_functions[_prediction_endpoint])
+
+    # OCR AI parsing — 5/hour/user.
+    if 'attachments.parse_ocr_with_ai' in app.view_functions:
+        app.view_functions['attachments.parse_ocr_with_ai'] = limiter.limit(
+            '5 per hour',
+            key_func=_ai_rate_key,
+            error_message='Too many AI extraction requests. Please wait before trying again.',
+        )(app.view_functions['attachments.parse_ocr_with_ai'])
+
+    # OCR retry — 10/hour/user (re-runs tesseract, which is CPU-intensive).
+    if 'attachments.retry_ocr' in app.view_functions:
+        app.view_functions['attachments.retry_ocr'] = limiter.limit(
+            '10 per hour',
+            key_func=_ai_rate_key,
+            error_message='Too many OCR retry requests. Please wait before trying again.',
+        )(app.view_functions['attachments.retry_ocr'])
+
+    # AI reminder suggestions — 3/hour/user.
+    if 'vehicles.suggest_reminder' in app.view_functions:
+        app.view_functions['vehicles.suggest_reminder'] = limiter.limit(
+            '3 per hour',
+            key_func=_ai_rate_key,
+            error_message='Too many AI suggestion requests. Please wait before trying again.',
+        )(app.view_functions['vehicles.suggest_reminder'])
+
+    # AI vehicle chat — 5/hour/user.  Wired here when the endpoint is registered;
+    # the `if` guard makes this a no-op until section 3.7 is implemented.
+    if 'vehicles.vehicle_chat' in app.view_functions:
+        app.view_functions['vehicles.vehicle_chat'] = limiter.limit(
+            '5 per hour',
+            key_func=_ai_rate_key,
+            error_message='Too many chat requests. Please wait before sending more messages.',
+        )(app.view_functions['vehicles.vehicle_chat'])
+
+    # Global search — 30/minute/user (generous for real-time debounced queries).
+    if 'search.global_search' in app.view_functions:
+        app.view_functions['search.global_search'] = limiter.limit(
+            '30 per minute',
+            key_func=_ai_rate_key,
+            error_message='Too many search requests. Please slow down.',
+        )(app.view_functions['search.global_search'])
+
     from app.routes.widget import widget_bp
     limiter.exempt(widget_bp)
     

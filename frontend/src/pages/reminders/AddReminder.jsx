@@ -14,6 +14,10 @@ export default function AddReminder() {
   const [vehicles, setVehicles] = useState([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
+  // AI Suggest state
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState('')
+  const [aiSuggestions, setAiSuggestions] = useState([])
   
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm({
     defaultValues: {
@@ -30,6 +34,41 @@ export default function AddReminder() {
   })
   
   const reminderType = watch('type')
+  const selectedVehicleId = watch('vehicle_id')
+
+  // AI Suggest handler
+  const handleAiSuggest = async () => {
+    if (!selectedVehicleId) return
+    setAiLoading(true)
+    setAiError('')
+    setAiSuggestions([])
+    try {
+      const locale = navigator.language || 'en-US'
+      const resp = await vehicleApi.suggestReminder(selectedVehicleId, locale)
+      setAiSuggestions(resp.data.suggestions || [])
+    } catch (err) {
+      if (err.response?.status === 429) {
+        setAiError(t('reminders.aiRateLimited') || 'Too many AI requests. Please wait.')
+      } else if (err.response?.status === 503) {
+        setAiError(t('reminders.aiDisabled') || 'AI suggestions are not enabled.')
+      } else {
+        setAiError(t('reminders.aiError') || 'Could not load suggestions.')
+      }
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  const applyAiSuggestion = (s) => {
+    setValue('title', s.title)
+    setValue('type', s.reminder_type)
+    if (s.due_date) setValue('due_date', s.due_date)
+    if (s.due_mileage) setValue('due_mileage', s.due_mileage)
+    if (s.priority) setValue('priority', s.priority)
+    if (s.repeat_interval) setValue('repeat_interval', s.repeat_interval)
+    if (s.notes) setValue('notes', s.notes)
+    setAiSuggestions([]) // collapse panel after selection
+  }
   
   useEffect(() => {
     const fetchVehicles = async () => {
@@ -146,6 +185,93 @@ export default function AddReminder() {
         {error && (
           <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded-xl text-sm">
             {error}
+          </div>
+        )}
+
+        {/* AI Suggest — only shown when a vehicle is selected and Ollama is available */}
+        {selectedVehicleId && (
+          <div className="card">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-purple-400 text-base leading-none">✨</span>
+                <span className="text-sm font-medium">{t('reminders.aiSuggest') || 'AI Suggest'}</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleAiSuggest}
+                disabled={aiLoading}
+                className="btn btn-sm bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 border border-purple-500/20 flex items-center gap-1.5"
+              >
+                {aiLoading ? (
+                  <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                  </svg>
+                ) : (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                  </svg>
+                )}
+                {aiLoading
+                  ? (t('reminders.aiSuggesting') || 'Suggesting…')
+                  : (t('reminders.aiSuggest') || 'AI Suggest')}
+              </button>
+            </div>
+
+            {aiError && (
+              <p className="text-xs text-red-400 mt-2">{aiError}</p>
+            )}
+
+            {aiSuggestions.length > 0 && (
+              <div className="mt-3 space-y-2">
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  {t('reminders.aiSuggestions') || 'Suggestions — tap to pre-fill'}
+                </p>
+                {aiSuggestions.map((s, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => applyAiSuggestion(s)}
+                    className="w-full text-left p-3 rounded-lg border border-purple-500/20 bg-purple-500/5 hover:bg-purple-500/10 transition-colors"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-sm font-medium text-[var(--color-text)]">{s.title}</span>
+                      <span className={`text-2xs px-1.5 py-0.5 rounded shrink-0 ${
+                        s.priority === 'high'
+                          ? 'bg-red-500/10 text-red-400'
+                          : s.priority === 'medium'
+                          ? 'bg-amber-500/10 text-amber-400'
+                          : 'bg-green-500/10 text-green-400'
+                      }`}>
+                        {t(`reminders.${s.priority}`) || s.priority}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
+                      {s.due_date && (
+                        <span className="text-2xs text-[var(--color-text-muted)]">
+                          📅 {s.due_date}
+                        </span>
+                      )}
+                      {s.due_mileage && (
+                        <span className="text-2xs text-[var(--color-text-muted)]">
+                          🏁 {s.due_mileage.toLocaleString()}
+                        </span>
+                      )}
+                      {s.repeat_interval && (
+                        <span className="text-2xs text-[var(--color-text-muted)]">
+                          🔁 {t(`reminders.${s.repeat_interval}`) || s.repeat_interval}
+                        </span>
+                      )}
+                    </div>
+                    {s.notes && (
+                      <p className="text-2xs text-[var(--color-text-muted)] mt-1 line-clamp-2">{s.notes}</p>
+                    )}
+                    <p className="text-2xs text-purple-400 mt-1.5 font-medium">
+                      {t('reminders.useSuggestion') || 'Use this suggestion →'}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
         

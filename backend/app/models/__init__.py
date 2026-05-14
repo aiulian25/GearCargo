@@ -20,6 +20,7 @@ from app.models.todo import Todo
 from app.models.activity_log import ActivityLog
 from app.models.blocked_entity import BlockedIP, BlockedDevice
 from app.models.email_consent_log import EmailConsentLog
+from app.models.app_setting import AppSetting
 
 __all__ = [
     'User',
@@ -43,4 +44,5 @@ __all__ = [
     'BlockedIP',
     'BlockedDevice',
     'EmailConsentLog',
+    'AppSetting',
 ]

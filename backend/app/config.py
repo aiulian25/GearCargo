@@ -118,8 +118,18 @@ class Config:
     OLLAMA_ENABLED = os.environ.get('OLLAMA_ENABLED', 'true').lower() == 'true'
     OLLAMA_BASE_URL = os.environ.get('OLLAMA_BASE_URL', 'http://host.docker.internal:11434')
     OLLAMA_URL = OLLAMA_BASE_URL  # Alias for backwards compatibility
-    OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL', 'llama3.2')
+    # OLLAMA_MODEL: set this to the model name you have installed in Ollama.
+    # Run `ollama list` to see available models.  No default is set here —
+    # the admin must configure a model via the Admin > AI Settings panel or
+    # the OLLAMA_MODEL environment variable before AI features can be used.
+    OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL', '')
     OLLAMA_TIMEOUT = int(os.environ.get('OLLAMA_TIMEOUT', 30))
+    # Per-task model overrides — env-var defaults; also settable via admin UI.
+    # Empty string means "fall back to the global model".
+    OLLAMA_MODEL_PREDICT  = os.environ.get('OLLAMA_MODEL_PREDICT', '')
+    OLLAMA_MODEL_OCR      = os.environ.get('OLLAMA_MODEL_OCR', '')
+    OLLAMA_MODEL_ANOMALY  = os.environ.get('OLLAMA_MODEL_ANOMALY', '')
+    OLLAMA_MODEL_REMINDER = os.environ.get('OLLAMA_MODEL_REMINDER', '')
     
     # File uploads
     MAX_CONTENT_LENGTH = int(os.environ.get('MAX_UPLOAD_SIZE_MB', 200)) * 1024 * 1024

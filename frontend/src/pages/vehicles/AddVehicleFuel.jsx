@@ -5,6 +5,7 @@ import { fuelApi, vehicleApi, attachmentApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { normalizeDistanceUnit } from '../../utils/fuelEconomy'
 import ReceiptUpload from '../../components/ReceiptUpload'
+import ScanReceiptBanner from '../../components/ui/ScanReceiptBanner'
 
 // SVG Icons
 const Icons = {
@@ -41,6 +42,7 @@ export default function AddVehicleFuel() {
   const [isLoading, setIsLoading] = useState(true)
   const [receiptFile, setReceiptFile] = useState(null)
   const [existingAttachments, setExistingAttachments] = useState([])
+  const [uploadedAttachmentId, setUploadedAttachmentId] = useState(null)
   
   const { register, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm({
     defaultValues: {
@@ -131,9 +133,17 @@ export default function AddVehicleFuel() {
         response = await fuelApi.create(payload)
       }
       
-      // Upload receipt if selected (only for new entries or if new file selected)
+      // Link or upload receipt attachment
       const entryId = isEditMode ? editId : response.data?.entry?.id
-      if (receiptFile && entryId) {
+      if (uploadedAttachmentId && entryId) {
+        // File was already uploaded by ScanReceiptBanner — just link it to the entry
+        try {
+          await attachmentApi.update(uploadedAttachmentId, { entry_id: entryId })
+        } catch (linkErr) {
+          console.error('Failed to link attachment:', linkErr)
+        }
+      } else if (receiptFile && entryId) {
+        // Normal flow: upload now
         try {
           await attachmentApi.upload(receiptFile, {
             vehicleId: parseInt(vehicleId),
@@ -368,14 +378,24 @@ export default function AddVehicleFuel() {
           </div>
         </div>
         
-        {/* Receipt Upload */}
+        {/* Receipt Upload + OCR Scan Banner */}
         <div className="card">
           <ReceiptUpload
             selectedFile={receiptFile}
-            onFileSelect={setReceiptFile}
-            onFileRemove={() => setReceiptFile(null)}
+            onFileSelect={(f) => { setReceiptFile(f); setUploadedAttachmentId(null) }}
+            onFileRemove={() => { setReceiptFile(null); setUploadedAttachmentId(null) }}
             label={t('receipt.fuelReceipt') || 'Fuel Receipt'}
             disabled={isSubmitting}
+          />
+          <ScanReceiptBanner
+            receiptFile={receiptFile}
+            vehicleId={parseInt(vehicleId)}
+            onUploadComplete={(id) => setUploadedAttachmentId(id)}
+            onPrefill={(data) => {
+              if (data.date) setValue('date', data.date)
+              if (data.amount != null) setValue('total_cost', String(data.amount))
+              if (data.vendor) setValue('station_name', data.vendor)
+            }}
           />
         </div>
       </form>

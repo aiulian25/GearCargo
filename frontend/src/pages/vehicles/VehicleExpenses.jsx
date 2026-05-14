@@ -84,6 +84,13 @@ const Icons = {
       <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
     </svg>
   ),
+  scan: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="4 7 4 4 7 4"/><polyline points="4 17 4 20 7 20"/>
+      <polyline points="17 4 20 4 20 7"/><polyline points="17 20 20 20 20 17"/>
+      <line x1="4" y1="12" x2="20" y2="12"/>
+    </svg>
+  ),
 }
 
 // Donut Chart Component
@@ -261,6 +268,7 @@ export default function VehicleExpenses() {
   const [viewerOpen, setViewerOpen] = useState(false)
   const [viewerAttachments, setViewerAttachments] = useState([])
   const [viewerInitialIndex, setViewerInitialIndex] = useState(0)
+  const [viewerInitialShowOcr, setViewerInitialShowOcr] = useState(false)
   
   // Data states
   const [fuelEntries, setFuelEntries] = useState([])
@@ -610,10 +618,11 @@ export default function VehicleExpenses() {
   }
 
   // Open attachment viewer
-  const openAttachmentViewer = (attachments, index = 0) => {
+  const openAttachmentViewer = (attachments, index = 0, showOcr = false) => {
     if (attachments && attachments.length > 0) {
       setViewerAttachments(attachments)
       setViewerInitialIndex(index)
+      setViewerInitialShowOcr(showOcr)
       setViewerOpen(true)
     }
   }
@@ -623,15 +632,29 @@ export default function VehicleExpenses() {
     const attachments = entry.attachments || []
     if (attachments.length === 0) return <span className="text-[var(--color-text-muted)]">-</span>
     
+    const ocrIndex = attachments.findIndex(a => a.ocr_processed && a.has_text)
+    const hasOcrText = ocrIndex !== -1
+    
     return (
-      <button
-        onClick={() => openAttachmentViewer(attachments)}
-        className="flex items-center gap-1 text-yellow-500 hover:text-yellow-400 transition-colors"
-        title={`${attachments.length} ${t('common.attachment') || 'attachment'}${attachments.length > 1 ? 's' : ''}`}
-      >
-        {Icons.eye}
-        <span className="text-xs">({attachments.length})</span>
-      </button>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => openAttachmentViewer(attachments)}
+          className="flex items-center gap-1 text-yellow-500 hover:text-yellow-400 transition-colors"
+          title={`${attachments.length} ${t('common.attachment') || 'attachment'}${attachments.length > 1 ? 's' : ''}`}
+        >
+          {Icons.eye}
+          <span className="text-xs">({attachments.length})</span>
+        </button>
+        {hasOcrText && (
+          <button
+            onClick={(e) => { e.stopPropagation(); openAttachmentViewer(attachments, ocrIndex, true) }}
+            className="flex items-center gap-0.5 px-1 py-0.5 rounded text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 transition-colors"
+            title={t('attachments.ocrBadgeTitle') || 'Has scanned text — tap to view'}
+          >
+            {Icons.scan}
+          </button>
+        )}
+      </div>
     )
   }
 
@@ -1215,6 +1238,7 @@ export default function VehicleExpenses() {
       <AttachmentViewer
         attachments={viewerAttachments}
         initialIndex={viewerInitialIndex}
+        initialShowOcr={viewerInitialShowOcr}
         isOpen={viewerOpen}
         onClose={() => setViewerOpen(false)}
       />

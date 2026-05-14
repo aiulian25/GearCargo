@@ -56,6 +56,7 @@ class Vehicle(db.Model):
     # Status
     archived = db.Column(db.Boolean, default=False)
     archived_at = db.Column(db.DateTime)
+    last_prediction_at = db.Column(db.DateTime)  # Last AI prediction run timestamp
     
     # Display order for dashboard (user-customizable)
     display_order = db.Column(db.Integer, default=0)
