@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { fuelApi, vehicleApi } from '../../services/api'
+import { useAuth } from '../../contexts/AuthContext'
 import { formatDate } from '../../utils/dateFormat'
+import { formatFuelEconomy, getFuelEconomyUnit } from '../../utils/fuelEconomy'
 
 export default function FuelEntries() {
   const [searchParams] = useSearchParams()
@@ -12,6 +14,17 @@ export default function FuelEntries() {
   const [selectedVehicle, setSelectedVehicle] = useState(vehicleId || 'all')
   const [isLoading, setIsLoading] = useState(true)
   const [stats, setStats] = useState(null)
+  const { user } = useAuth()
+
+  const getVehicleDistanceUnit = (id) => {
+    return vehicles.find(v => String(v.id) === String(id))?.distance_unit || 'km'
+  }
+
+  const selectedVehicleUnit = selectedVehicle === 'all'
+    ? (user?.distance_unit || 'km')
+    : getVehicleDistanceUnit(selectedVehicle)
+
+  const avgFuelEconomy = stats?.avg_consumption ?? stats?.avg_efficiency ?? null
   
   useEffect(() => {
     const fetchVehicles = async () => {
@@ -76,9 +89,9 @@ export default function FuelEntries() {
         <div className="grid grid-cols-3 gap-2 mb-4">
           <div className="card text-center py-3">
             <p className="text-lg font-bold text-[var(--color-accent)]">
-              {stats.avg_consumption?.toFixed(1) || '-'}
+              {formatFuelEconomy(avgFuelEconomy, selectedVehicleUnit).split(' ')[0]}
             </p>
-            <p className="text-2xs text-[var(--color-text-muted)]">L/100km</p>
+            <p className="text-2xs text-[var(--color-text-muted)]">{getFuelEconomyUnit(selectedVehicleUnit)}</p>
           </div>
           <div className="card text-center py-3">
             <p className="text-lg font-bold">
@@ -146,7 +159,7 @@ export default function FuelEntries() {
                 <p className="text-sm font-semibold">{entry.total_cost}</p>
                 {entry.consumption && (
                   <p className="text-2xs text-[var(--color-text-muted)]">
-                    {entry.consumption.toFixed(1)} L/100
+                    {formatFuelEconomy(entry.consumption, getVehicleDistanceUnit(entry.vehicle_id))}
                   </p>
                 )}
               </div>

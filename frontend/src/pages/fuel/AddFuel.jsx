@@ -3,12 +3,15 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { fuelApi, vehicleApi } from '../../services/api'
 import { useTranslation } from '../../contexts/LanguageContext'
+import { useAuth } from '../../contexts/AuthContext'
+import { normalizeDistanceUnit } from '../../utils/fuelEconomy'
 
 export default function AddFuel() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const preselectedVehicle = searchParams.get('vehicle')
   const { t } = useTranslation()
+  const { user } = useAuth()
   
   const [vehicles, setVehicles] = useState([])
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -32,6 +35,9 @@ export default function AddFuel() {
   
   const liters = watch('liters')
   const pricePerLiter = watch('price_per_liter')
+  const selectedVehicleId = watch('vehicle_id')
+  const selectedVehicle = vehicles.find(v => v.id === parseInt(selectedVehicleId))
+  const distUnit = normalizeDistanceUnit(selectedVehicle?.distance_unit || user?.distance_unit) === 'miles' ? 'mi' : 'km'
   
   // Auto-calculate total cost
   useEffect(() => {
@@ -164,7 +170,7 @@ export default function AddFuel() {
             
             <div>
               <label className="block text-xs text-[var(--color-text-muted)] mb-1">
-                {t('addFuel.odometer') || 'Odometer (km)'} *
+                {t('addFuel.odometer') || 'Odometer'} ({distUnit}) *
               </label>
               <input
                 type="number"

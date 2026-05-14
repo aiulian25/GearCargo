@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { vehicleApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
+import { useAuth } from '../../contexts/AuthContext'
 import { formatDate } from '../../utils/dateFormat'
+import { formatFuelEconomy } from '../../utils/fuelEconomy'
 
 // SVG Icons
 const Icons = {
@@ -154,6 +156,7 @@ export default function VehicleDetail() {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { currency } = useCurrency()
+  const { user } = useAuth()
   const [vehicle, setVehicle] = useState(null)
   const [stats, setStats] = useState(null)
   const [timeline, setTimeline] = useState([])
@@ -294,6 +297,8 @@ export default function VehicleDetail() {
   }
   
   if (!vehicle) return null
+
+  const fuelEconomyUnit = vehicle?.distance_unit || user?.distance_unit || 'km'
   
   // Stats cards configuration
   const statsCards = [
@@ -303,7 +308,8 @@ export default function VehicleDetail() {
       value: formatCurrency(stats?.ytd_spent || stats?.total_costs || 0),
       icon: Icons.wallet,
       color: 'text-blue-500',
-      bgColor: 'bg-blue-500/10'
+      bgColor: 'bg-blue-500/10',
+      to: `/vehicles/${id}/expenses`
     },
     { 
       id: 'spentThisMonth',
@@ -311,15 +317,17 @@ export default function VehicleDetail() {
       value: formatCurrency(stats?.costs_this_month || 0),
       icon: Icons.calendar,
       color: 'text-green-500',
-      bgColor: 'bg-green-500/10'
+      bgColor: 'bg-green-500/10',
+      to: `/vehicles/${id}/expenses`
     },
     { 
       id: 'parkingExpense',
-      label: t('vehicleDetail.parkingExpense') || 'Parking Expense',
-      value: formatCurrency(stats?.parking_costs || 0),
+      label: t('vehicleDetail.parkingExpense') || 'YTD Parking',
+      value: formatCurrency(stats?.parking_ytd_cost ?? stats?.parking_costs ?? 0),
       icon: Icons.parking,
       color: 'text-purple-500',
-      bgColor: 'bg-purple-500/10'
+      bgColor: 'bg-purple-500/10',
+      to: `/vehicles/${id}/expenses?tab=parking`
     },
     { 
       id: 'totalFuelCost',
@@ -327,7 +335,8 @@ export default function VehicleDetail() {
       value: formatCurrency(stats?.ytd_fuel_costs || 0),
       icon: Icons.fuel,
       color: 'text-amber-500',
-      bgColor: 'bg-amber-500/10'
+      bgColor: 'bg-amber-500/10',
+      to: `/vehicles/${id}/expenses?tab=fuel`
     },
     { 
       id: 'totalMileage',
@@ -343,7 +352,8 @@ export default function VehicleDetail() {
       value: stats?.service_count || 0,
       icon: Icons.wrench,
       color: 'text-indigo-500',
-      bgColor: 'bg-indigo-500/10'
+      bgColor: 'bg-indigo-500/10',
+      to: `/vehicles/${id}/expenses?tab=service`
     },
     { 
       id: 'taxExpenses',
@@ -351,7 +361,8 @@ export default function VehicleDetail() {
       value: formatCurrency(stats?.tax_costs || 0),
       icon: Icons.receipt,
       color: 'text-rose-500',
-      bgColor: 'bg-rose-500/10'
+      bgColor: 'bg-rose-500/10',
+      to: `/vehicles/${id}/expenses?tab=tax`
     },
     { 
       id: 'insuranceExpenses',
@@ -359,15 +370,17 @@ export default function VehicleDetail() {
       value: formatCurrency(stats?.insurance_costs || 0),
       icon: Icons.shield,
       color: 'text-emerald-500',
-      bgColor: 'bg-emerald-500/10'
+      bgColor: 'bg-emerald-500/10',
+      to: `/vehicles/${id}/expenses?tab=insurance`
     },
     { 
       id: 'fuelEconomy',
       label: t('vehicleDetail.fuelEconomy') || 'Fuel Economy',
-      value: stats?.avg_consumption ? `${stats.avg_consumption.toFixed(1)} L/100km` : '-',
+      value: formatFuelEconomy(stats?.avg_consumption, fuelEconomyUnit),
       icon: Icons.gauge,
       color: 'text-teal-500',
-      bgColor: 'bg-teal-500/10'
+      bgColor: 'bg-teal-500/10',
+      to: `/vehicles/${id}/health`
     },
     { 
       id: 'nextServiceDue',
@@ -380,7 +393,8 @@ export default function VehicleDetail() {
       subValue: stats?.next_service_title || null,
       icon: Icons.clock,
       color: stats?.next_service_days !== null && stats.next_service_days <= 7 ? 'text-red-500' : 'text-orange-500',
-      bgColor: stats?.next_service_days !== null && stats.next_service_days <= 7 ? 'bg-red-500/10' : 'bg-orange-500/10'
+      bgColor: stats?.next_service_days !== null && stats.next_service_days <= 7 ? 'bg-red-500/10' : 'bg-orange-500/10',
+      to: `/vehicles/${id}/expenses?tab=reminder`
     },
     { 
       id: 'repairRecords',
@@ -388,7 +402,8 @@ export default function VehicleDetail() {
       value: stats?.repair_count || 0,
       icon: Icons.tools,
       color: 'text-red-500',
-      bgColor: 'bg-red-500/10'
+      bgColor: 'bg-red-500/10',
+      to: `/vehicles/${id}/expenses?tab=repair`
     },
   ]
   
@@ -554,20 +569,40 @@ export default function VehicleDetail() {
           {/* Stats Cards Grid */}
           <div className="flex-1 min-w-0">
             <div className="grid grid-cols-2 gap-3">
-              {statsCards.map(stat => (
-                <div key={stat.id} className="card flex items-center gap-3 p-3">
-                  <div className={`w-10 h-10 rounded-lg ${stat.bgColor} flex items-center justify-center ${stat.color}`}>
-                    {stat.icon}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-[var(--color-text-muted)] truncate">{stat.label}</p>
-                    <p className="text-sm font-bold truncate">{stat.value}</p>
-                    {stat.subValue && (
-                      <p className="text-xs text-[var(--color-text-secondary)] truncate">{stat.subValue}</p>
+              {statsCards.map(stat => {
+                const cardContent = (
+                  <>
+                    <div className={`w-10 h-10 rounded-lg ${stat.bgColor} flex items-center justify-center ${stat.color} flex-shrink-0`}>
+                      {stat.icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-[var(--color-text-muted)] truncate">{stat.label}</p>
+                      <p className="text-sm font-bold truncate">{stat.value}</p>
+                      {stat.subValue && (
+                        <p className="text-xs text-[var(--color-text-secondary)] truncate">{stat.subValue}</p>
+                      )}
+                    </div>
+                    {stat.to && (
+                      <svg className={`w-3.5 h-3.5 flex-shrink-0 ${stat.color} opacity-40`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M9 18l6-6-6-6"/>
+                      </svg>
                     )}
+                  </>
+                )
+                return stat.to ? (
+                  <Link
+                    key={stat.id}
+                    to={stat.to}
+                    className="card flex items-center gap-3 p-3 hover:bg-[var(--color-bg-tertiary)] active:scale-[0.98] transition-all cursor-pointer"
+                  >
+                    {cardContent}
+                  </Link>
+                ) : (
+                  <div key={stat.id} className="card flex items-center gap-3 p-3">
+                    {cardContent}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         </div>

@@ -372,9 +372,28 @@ function WeatherWidget({ weather, airQuality, weatherTab, setWeatherTab, weather
 }
 
 // Fuel Prices Widget
-function FuelPricesWidget({ fuelPrices, currency, t, onRefresh, isRefreshing }) {
+function FuelPricesWidget({ fuelPrices, currency, t, onRefresh, isRefreshing, lastAutoUpdate }) {
   // Use currency from fuel prices API (based on detected country) or fallback to user's currency
   const fuelCurrency = fuelPrices?.currency || currency.symbol
+
+  // Live "Updated X min ago" label — ticks every 30 s
+  const [timeAgoLabel, setTimeAgoLabel] = useState(null)
+  useEffect(() => {
+    const update = () => {
+      if (!lastAutoUpdate) { setTimeAgoLabel(null); return }
+      const mins = Math.floor((Date.now() - lastAutoUpdate) / 60000)
+      if (mins < 1) {
+        setTimeAgoLabel(t('fuelPrices.updatedJustNow') || 'Updated just now')
+      } else {
+        setTimeAgoLabel(
+          (t('fuelPrices.updatedAgo') || 'Updated {n} min ago').replace('{n}', mins)
+        )
+      }
+    }
+    update()
+    const id = setInterval(update, 30000)
+    return () => clearInterval(id)
+  }, [lastAutoUpdate, t])
   
   // Format last update date
   const formatLastUpdate = (dateStr) => {
@@ -399,16 +418,25 @@ function FuelPricesWidget({ fuelPrices, currency, t, onRefresh, isRefreshing }) 
             </span>
           )}
         </div>
-        <button
-          onClick={onRefresh}
-          disabled={isRefreshing}
-          title="Refresh fuel prices"
-          className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-tertiary)] transition-colors disabled:opacity-50"
-        >
-          <svg className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-2">
+          {isRefreshing ? (
+            <span className="text-xs text-[var(--color-text-muted)] animate-pulse">
+              {t('fuelPrices.autoRefreshing') || 'Refreshing...'}
+            </span>
+          ) : timeAgoLabel ? (
+            <span className="text-xs text-[var(--color-text-muted)]">{timeAgoLabel}</span>
+          ) : null}
+          <button
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            title={t('fuelPrices.refresh') || 'Refresh fuel prices'}
+            className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-tertiary)] transition-colors disabled:opacity-50"
+          >
+            <svg className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+            </svg>
+          </button>
+        </div>
       </div>
       
       <div className="p-4">
@@ -459,6 +487,10 @@ export default function Dashboard() {
   const [weather, setWeather] = useState(null)
   const [fuelPrices, setFuelPrices] = useState(null)
   const [isRefreshingFuel, setIsRefreshingFuel] = useState(false)
+  const [resolvedLocation, setResolvedLocation] = useState(null)
+  const [fuelPriceFetchedAt, setFuelPriceFetchedAt] = useState(null)
+  const fuelPriceFetchedAtRef = useRef(null)
+  const isRefreshingFuelRef = useRef(false)
   const [airQuality, setAirQuality] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [weatherTab, setWeatherTab] = useState('today')
@@ -643,6 +675,10 @@ export default function Dashboard() {
         setWeather(weatherRes.data)
         setFuelPrices(fuelRes.data)
         setAirQuality(aqRes.data)
+        const now = Date.now()
+        fuelPriceFetchedAtRef.current = now
+        setFuelPriceFetchedAt(now)
+        setResolvedLocation({ countryCode, locationName, lat: userLocation.lat, lon: userLocation.lon })
       } catch (error) {
         console.error('Failed to fetch external data:', error)
       }
@@ -653,34 +689,74 @@ export default function Dashboard() {
   
   // Manual fuel price refresh — force bypasses cache
   const handleRefreshFuelPrices = async () => {
-    if (!userLocation || isRefreshingFuel) return
+    if (!resolvedLocation || isRefreshingFuelRef.current) return
+    isRefreshingFuelRef.current = true
     setIsRefreshingFuel(true)
     try {
-      let locationName = fuelPrices?.location || 'London, United Kingdom'
-      let countryCode = fuelPrices?.country || 'UK'
-      try {
-        const geoRes = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?lat=${userLocation.lat}&lon=${userLocation.lon}&format=json&addressdetails=1&zoom=18`,
-          { headers: { 'User-Agent': 'GearCargo/1.0' } }
-        )
-        const geoData = await geoRes.json()
-        const addr = geoData.address || {}
-        locationName = addr.suburb || addr.hamlet || addr.village || addr.town ||
-                       addr.city || addr.municipality || addr.district || addr.county ||
-                       addr.state || 'Unknown'
-        locationName += ', ' + (addr.country || 'Unknown')
-        countryCode = (addr.country_code || 'uk').toUpperCase()
-      } catch (e) {
-        console.warn('Geocoding failed during refresh:', e)
-      }
-      const fuelRes = await externalApi.getFuelPrices(countryCode, locationName, userLocation.lat, userLocation.lon, true)
+      const fuelRes = await externalApi.getFuelPrices(
+        resolvedLocation.countryCode,
+        resolvedLocation.locationName,
+        resolvedLocation.lat,
+        resolvedLocation.lon,
+        true // force_refresh — bypass all caches
+      )
       setFuelPrices(fuelRes.data)
+      const now = Date.now()
+      fuelPriceFetchedAtRef.current = now
+      setFuelPriceFetchedAt(now)
     } catch (error) {
       console.error('Failed to refresh fuel prices:', error)
     } finally {
       setIsRefreshingFuel(false)
+      isRefreshingFuelRef.current = false
     }
   }
+
+  // Auto-refresh fuel prices every 30 min (matches backend in-memory cache TTL).
+  // Pauses when the tab is hidden; resumes immediately if data is stale on tab focus.
+  useEffect(() => {
+    if (!resolvedLocation) return
+    const INTERVAL_MS = 30 * 60 * 1000 // 30 minutes
+
+    const doAutoRefresh = async () => {
+      if (isRefreshingFuelRef.current) return
+      isRefreshingFuelRef.current = true
+      try {
+        const res = await externalApi.getFuelPrices(
+          resolvedLocation.countryCode,
+          resolvedLocation.locationName,
+          resolvedLocation.lat,
+          resolvedLocation.lon
+        )
+        setFuelPrices(res.data)
+        const now = Date.now()
+        fuelPriceFetchedAtRef.current = now
+        setFuelPriceFetchedAt(now)
+      } catch (err) {
+        console.warn('Auto-refresh fuel prices failed:', err)
+      } finally {
+        isRefreshingFuelRef.current = false
+      }
+    }
+
+    const intervalId = setInterval(doAutoRefresh, INTERVAL_MS)
+
+    // Re-fetch immediately when user returns to the tab after the data is stale
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        const lastFetch = fuelPriceFetchedAtRef.current
+        if (!lastFetch || Date.now() - lastFetch >= INTERVAL_MS) {
+          doAutoRefresh()
+        }
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    return () => {
+      clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [resolvedLocation])
   
   const handleDeleteVehicle = async (e, vehicleId) => {
     e.preventDefault()
@@ -918,7 +994,7 @@ export default function Dashboard() {
           />
         </div>
         <div>
-          <FuelPricesWidget fuelPrices={fuelPrices} currency={currency} t={t} onRefresh={handleRefreshFuelPrices} isRefreshing={isRefreshingFuel} />
+          <FuelPricesWidget fuelPrices={fuelPrices} currency={currency} t={t} onRefresh={handleRefreshFuelPrices} isRefreshing={isRefreshingFuel} lastAutoUpdate={fuelPriceFetchedAt} />
         </div>
       </div>
       

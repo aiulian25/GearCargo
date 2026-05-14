@@ -3,19 +3,22 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { repairApi, vehicleApi } from '../../services/api'
 import { useTranslation } from '../../contexts/LanguageContext'
+import { useAuth } from '../../contexts/AuthContext'
+import { normalizeDistanceUnit } from '../../utils/fuelEconomy'
 
 export default function AddRepair() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const preselectedVehicle = searchParams.get('vehicle')
   const { t } = useTranslation()
+  const { user } = useAuth()
   
   const [vehicles, setVehicles] = useState([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [selectedRepairTypes, setSelectedRepairTypes] = useState([])
   
-  const { register, handleSubmit, setValue, formState: { errors } } = useForm({
+  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm({
     defaultValues: {
       vehicle_id: preselectedVehicle || '',
       date: new Date().toISOString().split('T')[0],
@@ -106,7 +109,11 @@ export default function AddRepair() {
     { value: 'differential', label: t('repairTypes.differential') || 'Differential' },
     { value: 'other', label: t('repairTypes.other') || 'Other' },
   ]
-  
+
+  const selectedVehicleId = watch('vehicle_id')
+  const selectedVehicle = vehicles.find(v => v.id === parseInt(selectedVehicleId))
+  const distUnit = normalizeDistanceUnit(selectedVehicle?.distance_unit || user?.distance_unit) === 'miles' ? 'mi' : 'km'
+
   return (
     <div className="pb-4">
       {/* Header */}
@@ -169,7 +176,7 @@ export default function AddRepair() {
             
             <div>
               <label className="block text-xs text-[var(--color-text-muted)] mb-1">
-                Odometer (km)
+                {t('addRepair.odometer') || 'Odometer'} ({distUnit})
               </label>
               <input
                 type="number"

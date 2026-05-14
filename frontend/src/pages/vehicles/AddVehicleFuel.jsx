@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { fuelApi, vehicleApi, attachmentApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
+import { normalizeDistanceUnit } from '../../utils/fuelEconomy'
 import ReceiptUpload from '../../components/ReceiptUpload'
 
 // SVG Icons
@@ -162,6 +163,8 @@ export default function AddVehicleFuel() {
     { value: 'lpg', label: t('addFuel.lpg') || 'LPG' },
     { value: 'electric', label: t('addFuel.electric') || 'Electric (kWh)' },
   ]
+
+  const distUnit = normalizeDistanceUnit(vehicle?.distance_unit) === 'miles' ? 'mi' : 'km'
   
   if (isLoading) {
     return (
@@ -231,7 +234,7 @@ export default function AddVehicleFuel() {
             
             <div>
               <label className="block text-xs text-[var(--color-text-muted)] mb-1">
-                {t('addFuel.odometer') || 'Odometer (km)'} *
+                {t('addFuel.odometer') || 'Odometer'} ({distUnit}) *
               </label>
               <input
                 type="number"

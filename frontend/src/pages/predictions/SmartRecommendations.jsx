@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { vehicleApi } from '../../services/api'
 import { useTranslation } from '../../contexts/LanguageContext'
+import { useAuth } from '../../contexts/AuthContext'
 import SeasonalChecklists from '../../components/recommendations/SeasonalChecklists'
 import { formatDate } from '../../utils/dateFormat'
+import { formatFuelEconomy } from '../../utils/fuelEconomy'
 
 // SVG Icons
 const Icons = {
@@ -48,6 +50,7 @@ const Icons = {
 
 export default function SmartRecommendations() {
   const { t } = useTranslation()
+  const { user } = useAuth()
   const [recommendations, setRecommendations] = useState([])
   const [isLoading, setIsLoading] = useState(true)
 
@@ -221,7 +224,7 @@ export default function SmartRecommendations() {
         vehicleName: vehicle.name,
         type: 'fuel_efficiency',
         title: t('smartRecommendations.highFuelConsumption') || 'High Fuel Consumption',
-        description: `${stats.avg_consumption.toFixed(1)} L/100km`,
+        description: formatFuelEconomy(stats.avg_consumption, vehicle.distance_unit || user?.distance_unit),
         priority: 'low',
         icon: Icons.fuel,
         color: 'text-amber-500',

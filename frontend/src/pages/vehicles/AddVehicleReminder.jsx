@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { reminderApi, vehicleApi, attachmentApi } from '../../services/api'
 import { useTranslation } from '../../contexts/LanguageContext'
+import { normalizeDistanceUnit } from '../../utils/fuelEconomy'
 import ReceiptUpload from '../../components/ReceiptUpload'
 
 // SVG Icons
@@ -168,7 +169,9 @@ export default function AddVehicleReminder() {
     { value: '1_year', label: t('addReminder.everyYear') || 'Every year' },
     { value: '2_years', label: t('addReminder.every2Years') || 'Every 2 years' },
   ]
-  
+
+  const distUnit = normalizeDistanceUnit(vehicle?.distance_unit) === 'miles' ? 'mi' : 'km'
+
   if (isLoading) {
     return (
       <div className="p-4">
@@ -281,7 +284,7 @@ export default function AddVehicleReminder() {
             
             <div>
               <label className="block text-xs text-[var(--color-text-muted)] mb-1">
-                {t('addReminder.dueMileage') || 'Due Mileage (km)'}
+                {t('addReminder.dueMileage') || 'Due Mileage'} ({distUnit})
               </label>
               <input
                 type="number"
@@ -317,7 +320,7 @@ export default function AddVehicleReminder() {
             
             <div>
               <label className="block text-xs text-[var(--color-text-muted)] mb-1">
-                {t('addReminder.repeatMileage') || 'Repeat Every (km)'}
+                {t('addReminder.repeatMileage') || 'Repeat Every'} ({distUnit})
               </label>
               <input
                 type="number"

@@ -737,6 +737,8 @@ def get_vehicle_stats(current_user, vehicle_id):
     
     return jsonify({
         'vehicle_id': vehicle_id,
+        'distance_unit': vehicle.distance_unit or 'km',
+        'fuel_economy_unit': 'mpg' if (vehicle.distance_unit or '').lower() in ('miles', 'mi') else 'L/100km',
         'total_costs': float(total_costs),
         'ytd_spent': float(ytd_spent),
         'costs_this_month': float(costs_this_month),
@@ -746,6 +748,7 @@ def get_vehicle_stats(current_user, vehicle_id):
         'service_costs': float(total_service_cost),
         'repair_costs': float(total_repair_cost),
         'parking_costs': float(parking_costs),
+        'parking_ytd_cost': float(parking_ytd_cost),  # YTD parking expenses
         'tax_costs': float(ytd_tax_costs),  # YTD tax expenses
         'insurance_costs': float(ytd_insurance_costs),  # YTD insurance paid
         'insurance_annual_cost': float(insurance_annual_cost),  # Annualized insurance cost
@@ -1732,6 +1735,7 @@ def get_vehicle_health(current_user, vehicle_id):
         'cost_efficiency': {
             'total_costs': round(total_costs, 2),
             'total_distance_km': total_distance,
+            'distance_unit': vehicle.distance_unit or 'km',
             'cost_per_km': round(cost_per_km, 3) if cost_per_km else None,
             'monthly_costs': monthly_costs,
         },

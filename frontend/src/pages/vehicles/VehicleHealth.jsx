@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { vehicleApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
+import { useAuth } from '../../contexts/AuthContext'
 import { formatDate } from '../../utils/dateFormat'
+import { formatFuelEconomy } from '../../utils/fuelEconomy'
 
 // SVG Icons
 const Icons = {
@@ -211,6 +213,7 @@ export default function VehicleHealth() {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { currency } = useCurrency()
+  const { user } = useAuth()
   
   const [health, setHealth] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -387,6 +390,8 @@ export default function VehicleHealth() {
   }
   
   if (!health) return null
+
+  const fuelEconomyUnit = health.vehicle_info?.distance_unit || user?.distance_unit || 'km'
   
   const getHealthStatusColor = () => {
     switch (health.health_status) {
@@ -510,7 +515,7 @@ export default function VehicleHealth() {
               <span className="text-xs">{t('vehicleHealth.avgEfficiency') || 'Avg Efficiency'}</span>
             </div>
             <p className="text-xl font-bold">
-              {health.carbon_footprint?.avg_efficiency?.toFixed(1) || '-'} L/100km
+              {formatFuelEconomy(health.carbon_footprint?.avg_efficiency, fuelEconomyUnit)}
             </p>
           </div>
           

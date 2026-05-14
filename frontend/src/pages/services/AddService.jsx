@@ -3,19 +3,22 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { serviceApi, vehicleApi } from '../../services/api'
 import { useTranslation } from '../../contexts/LanguageContext'
+import { useAuth } from '../../contexts/AuthContext'
+import { normalizeDistanceUnit } from '../../utils/fuelEconomy'
 
 export default function AddService() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const preselectedVehicle = searchParams.get('vehicle')
   const { t } = useTranslation()
+  const { user } = useAuth()
   
   const [vehicles, setVehicles] = useState([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [selectedServiceTypes, setSelectedServiceTypes] = useState([])
   
-  const { register, handleSubmit, setValue, formState: { errors } } = useForm({
+  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm({
     defaultValues: {
       vehicle_id: preselectedVehicle || '',
       date: new Date().toISOString().split('T')[0],
@@ -93,7 +96,11 @@ export default function AddService() {
     { value: 'full_service', label: t('serviceTypes.fullService') || 'Full Service' },
     { value: 'other', label: t('serviceTypes.other') || 'Other' },
   ]
-  
+
+  const selectedVehicleId = watch('vehicle_id')
+  const selectedVehicle = vehicles.find(v => v.id === parseInt(selectedVehicleId))
+  const distUnit = normalizeDistanceUnit(selectedVehicle?.distance_unit || user?.distance_unit) === 'miles' ? 'mi' : 'km'
+
   return (
     <div className="pb-4">
       {/* Header */}
@@ -156,7 +163,7 @@ export default function AddService() {
             
             <div>
               <label className="block text-xs text-[var(--color-text-muted)] mb-1">
-                {t('addService.odometer') || 'Odometer (km)'}
+                {t('addService.odometer') || 'Odometer'} ({distUnit})
               </label>
               <input
                 type="number"

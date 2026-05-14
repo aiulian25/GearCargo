@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useForm, useWatch } from 'react-hook-form'
 import { repairApi, vehicleApi, attachmentApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
+import { normalizeDistanceUnit } from '../../utils/fuelEconomy'
 import ReceiptUpload from '../../components/ReceiptUpload'
 
 // SVG Icons
@@ -194,7 +195,9 @@ export default function AddVehicleRepair() {
     { value: 'differential', label: t('repairTypes.differential') || 'Differential' },
     { value: 'other', label: t('repairTypes.other') || 'Other' },
   ]
-  
+
+  const distUnit = normalizeDistanceUnit(vehicle?.distance_unit) === 'miles' ? 'mi' : 'km'
+
   if (isLoading) {
     return (
       <div className="p-4">
@@ -263,7 +266,7 @@ export default function AddVehicleRepair() {
             
             <div>
               <label className="block text-xs text-[var(--color-text-muted)] mb-1">
-                {t('addRepair.odometer') || 'Odometer (km)'}
+                {t('addRepair.odometer') || 'Odometer'} ({distUnit})
               </label>
               <input
                 type="number"

@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useForm, useWatch } from 'react-hook-form'
 import { serviceApi, vehicleApi, attachmentApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
+import { normalizeDistanceUnit } from '../../utils/fuelEconomy'
 import ReceiptUpload from '../../components/ReceiptUpload'
 
 // SVG Icons
@@ -180,7 +181,9 @@ export default function AddVehicleService() {
     { value: 'full_service', label: t('serviceTypes.fullService') || 'Full Service' },
     { value: 'other', label: t('serviceTypes.other') || 'Other' },
   ]
-  
+
+  const distUnit = normalizeDistanceUnit(vehicle?.distance_unit) === 'miles' ? 'mi' : 'km'
+
   if (isLoading) {
     return (
       <div className="p-4">
@@ -249,7 +252,7 @@ export default function AddVehicleService() {
             
             <div>
               <label className="block text-xs text-[var(--color-text-muted)] mb-1">
-                {t('addService.odometer') || 'Odometer (km)'}
+                {t('addService.odometer') || 'Odometer'} ({distUnit})
               </label>
               <input
                 type="number"

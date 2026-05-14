@@ -29,10 +29,14 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 - Vehicle timeline with all activities
 - Archive/restore vehicles
 - Drag-and-drop vehicle reordering on dashboard
+- **Clickable stat cards** — tap any dashboard card (fuel cost, service, tax, insurance, parking, reminders) to navigate directly to the relevant expense tab
+- **YTD expense cards** — Parking, Tax, and Insurance stat cards show year-to-date totals at a glance
 
 ### ⛽ Fuel Tracking
 - Log fuel entries with automatic consumption calculation
 - Track fuel costs and efficiency (L/100km or MPG)
+- **Unit-aware fuel economy** — economy displayed in L/100km or MPG automatically based on per-vehicle distance/volume unit settings
+- **Fuel price auto-refresh** — price field pre-fills with the latest recorded price per unit on new entries
 - Price comparison by station
 - Full tank vs partial fill tracking
 - Station location and address storage
