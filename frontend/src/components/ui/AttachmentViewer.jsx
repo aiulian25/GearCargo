@@ -131,6 +131,11 @@ const AttachmentViewer = ({
   const [ocrRetrying, setOcrRetrying] = useState(false)
   const [ocrRetryError, setOcrRetryError] = useState('')
 
+  // PDF blob URL — fetched via the authenticated API so the iframe never needs
+  // to send a Bearer token (iframes can't set headers) and never hits the
+  // frame-ancestors CSP restriction on the view endpoint.
+  const [pdfBlobUrl, setPdfBlobUrl] = useState(null)
+
   // Handle single attachment or array
   const allAttachments = attachment ? [attachment] : attachments
   const currentAttachment = allAttachments[currentIndex]
@@ -164,6 +169,43 @@ const AttachmentViewer = ({
     setOcrRetrying(false)
     setOcrRetryError('')
   }, [currentIndex])
+
+  // PDF blob loader — runs whenever the viewer opens or the current attachment
+  // changes.  Fetches the PDF through the regular authenticated Axios instance
+  // (which sends the Bearer token in headers, something an <iframe> cannot do)
+  // and hands a blob: URL to the iframe instead of the raw /api/…/view URL.
+  // The blob URL is revoked on cleanup to avoid memory leaks.
+  useEffect(() => {
+    if (!isOpen || !currentAttachment) {
+      setPdfBlobUrl(prev => { if (prev) URL.revokeObjectURL(prev); return null })
+      return
+    }
+    const type = currentAttachment.file_type || ''
+    if (type !== 'application/pdf') {
+      setPdfBlobUrl(prev => { if (prev) URL.revokeObjectURL(prev); return null })
+      return
+    }
+    let cancelled = false
+    let objectUrl = null
+    setLoading(true)
+    setError(null)
+    attachmentApi.download(currentAttachment.id)
+      .then(res => {
+        if (cancelled) return
+        objectUrl = URL.createObjectURL(res.data)
+        setPdfBlobUrl(objectUrl)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setLoading(false)
+        setError('Failed to load PDF')
+      })
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+      setPdfBlobUrl(null)
+    }
+  }, [isOpen, currentAttachment?.id])
 
   // Handle keyboard navigation
   useEffect(() => {
@@ -396,16 +438,18 @@ const AttachmentViewer = ({
       case 'pdf':
         return (
           <div className="w-full h-full">
-            <iframe
-              src={viewUrl}
-              className="w-full h-full border-0"
-              title={currentAttachment.original_filename || 'PDF Document'}
-              onLoad={() => setLoading(false)}
-              onError={() => {
-                setLoading(false)
-                setError('Failed to load PDF')
-              }}
-            />
+            {pdfBlobUrl && (
+              <iframe
+                src={pdfBlobUrl}
+                className="w-full h-full border-0"
+                title={currentAttachment.original_filename || 'PDF Document'}
+                onLoad={() => setLoading(false)}
+                onError={() => {
+                  setLoading(false)
+                  setError('Failed to load PDF')
+                }}
+              />
+            )}
           </div>
         )
       

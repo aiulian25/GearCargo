@@ -246,7 +246,7 @@ def create_app(config_class=None):
             ],
             'manifest-src': "'self'",
             'worker-src': ["'self'", "blob:"],
-            'frame-src': "'self'",             # Allow same-origin iframes (attachment PDF viewer)
+            'frame-src': ["'self'", "blob:"],    # Allow same-origin iframes and blob: PDF viewer
             'object-src': ["'none'"],
             'base-uri': ["'self'"],
             'form-action': ["'self'"],
@@ -276,7 +276,7 @@ def create_app(config_class=None):
             ],
             'manifest-src': "'self'",
             'worker-src': ["'self'", "blob:"],  # Service worker + Workbox
-            'frame-src': "'self'",             # Allow same-origin iframes (attachment PDF viewer)
+            'frame-src': ["'self'", "blob:"],    # Allow same-origin iframes and blob: PDF viewer
             'object-src': ["'none'"],          # Block plugins/Flash
             'base-uri': ["'self'"],             # Prevent base-tag injection
             'form-action': ["'self'"],          # Prevent form hijacking
