@@ -1151,18 +1151,23 @@ def ocr_backfill(current_user):
 
     Safe to call at any time — only images with ocr_processed=False AND a file
     that exists on disk are re-queued.  Already-processed images are skipped.
-    Returns immediately; OCR runs in background threads.
+    Returns immediately; OCR runs in background threads (max 2 concurrent to
+    avoid saturating the NAS CPU).
     """
     import os
     import threading
     from app.models.attachment import Attachment
     from app.routes.attachments import _run_ocr_background
 
+    _OCR_CONCURRENCY = 2
+    _sem = threading.Semaphore(_OCR_CONCURRENCY)
+    _app = current_app._get_current_object()
+
+    def _throttled(att):
+        with _sem:
+            _run_ocr_background(_app, att.id, att.filepath)
+
     pending = Attachment.query.filter_by(ocr_processed=False).all()
-    image_pending = [
-        a for a in pending
-        if a.is_image and a.filepath and os.path.exists(a.filepath)
-    ]
 
     queued = 0
     skipped_no_file = 0
@@ -1173,8 +1178,8 @@ def ocr_backfill(current_user):
             skipped_no_file += 1
             continue
         threading.Thread(
-            target=_run_ocr_background,
-            args=(current_app._get_current_object(), att.id, att.filepath),
+            target=_throttled,
+            args=(att,),
             daemon=False,
             name=f'ocr-admin-backfill-{att.id}',
         ).start()
@@ -1187,6 +1192,6 @@ def ocr_backfill(current_user):
     return jsonify({
         'queued': queued,
         'skipped_no_file': skipped_no_file,
-        'message': f'OCR re-queued for {queued} image(s). Results will appear in the Documents view shortly.',
+        'message': f'OCR re-queued for {queued} image(s) (max {_OCR_CONCURRENCY} concurrent). Results will appear shortly.',
     })
 

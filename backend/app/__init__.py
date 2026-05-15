@@ -763,12 +763,21 @@ def create_app(config_class=None):
 
         def _startup_ocr_backfill():
             import time
+            import os as _os
+            # Limit concurrent OCR threads so the NAS CPU isn't saturated.
+            # tesseract is CPU-bound; 2 concurrent jobs is safe on a Synology DS923.
+            _OCR_CONCURRENCY = 2
+            _sem = _threading.Semaphore(_OCR_CONCURRENCY)
+
+            def _throttled_ocr(a, s):
+                with s:
+                    _run_ocr_background(app, a.id, a.filepath)
+
             time.sleep(15)  # Let gunicorn workers start and DB pool warm up
             with app.app_context():
                 try:
                     from app.models.attachment import Attachment as _Att
                     from app.routes.attachments import _run_ocr_background
-                    import os as _os
                     pending = (
                         _Att.query
                         .filter_by(ocr_processed=False)
@@ -781,12 +790,13 @@ def create_app(config_class=None):
                     ]
                     if image_pending:
                         app.logger.info(
-                            f'OCR backfill: found {len(image_pending)} unprocessed image(s) — re-queuing.'
+                            f'OCR backfill: found {len(image_pending)} unprocessed image(s) — '
+                            f'queuing with max {_OCR_CONCURRENCY} concurrent threads.'
                         )
                         for att in image_pending:
                             _threading.Thread(
-                                target=_run_ocr_background,
-                                args=(app, att.id, att.filepath),
+                                target=_throttled_ocr,
+                                args=(att, _sem),
                                 daemon=False,  # non-daemon: survive until OCR is committed
                                 name=f'ocr-backfill-{att.id}',
                             ).start()
