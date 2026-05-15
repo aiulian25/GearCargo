@@ -246,6 +246,7 @@ def create_app(config_class=None):
             ],
             'manifest-src': "'self'",
             'worker-src': ["'self'", "blob:"],
+            'frame-src': "'self'",             # Allow same-origin iframes (attachment PDF viewer)
             'object-src': ["'none'"],
             'base-uri': ["'self'"],
             'form-action': ["'self'"],
@@ -275,6 +276,7 @@ def create_app(config_class=None):
             ],
             'manifest-src': "'self'",
             'worker-src': ["'self'", "blob:"],  # Service worker + Workbox
+            'frame-src': "'self'",             # Allow same-origin iframes (attachment PDF viewer)
             'object-src': ["'none'"],          # Block plugins/Flash
             'base-uri': ["'self'"],             # Prevent base-tag injection
             'form-action': ["'self'"],          # Prevent form hijacking
@@ -467,6 +469,20 @@ def create_app(config_class=None):
     class WidgetHeaderMiddleware:
         def __init__(self, wsgi):
             self.wsgi = wsgi
+
+        @staticmethod
+        def _is_attachment_view(path):
+            """Return True for /api/attachments/<int:id>/view paths."""
+            parts = path.split('/')
+            # ['', 'api', 'attachments', '<id>', 'view']
+            return (
+                len(parts) == 5
+                and parts[1] == 'api'
+                and parts[2] == 'attachments'
+                and parts[3].isdigit()
+                and parts[4] == 'view'
+            )
+
         def __call__(self, environ, start_response):
             path = environ.get('PATH_INFO', '')
             if path.startswith('/api/widget/v1/'):
@@ -487,6 +503,22 @@ def create_app(config_class=None):
                         headers.append(('Vary', 'Origin'))
                     return start_response(status, headers, exc_info)
                 return self.wsgi(environ, custom_start_response)
+            elif self._is_attachment_view(path):
+                # S22-attach: Attachment inline viewer uses a same-origin <iframe>.
+                # Talisman sets frame-ancestors:'none' globally (clickjacking protection),
+                # but that also blocks our own app from embedding its own files.
+                # Only for this endpoint we relax to 'self' so the viewer works while
+                # any external site is still denied.  X-Frame-Options follows suit.
+                def attach_start_response(status, headers, exc_info=None):
+                    new_headers = []
+                    for k, v in headers:
+                        if k == 'Content-Security-Policy':
+                            v = v.replace("frame-ancestors 'none'", "frame-ancestors 'self'")
+                        elif k == 'X-Frame-Options':
+                            v = 'SAMEORIGIN'
+                        new_headers.append((k, v))
+                    return start_response(status, new_headers, exc_info)
+                return self.wsgi(environ, attach_start_response)
             return self.wsgi(environ, start_response)
     
     app.wsgi_app = WidgetHeaderMiddleware(_original_wsgi)
