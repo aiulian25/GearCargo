@@ -1143,3 +1143,50 @@ def get_blocked_summary(current_user):
         }
     })
 
+
+@admin_bp.route('/maintenance/ocr-backfill', methods=['POST'])
+@admin_required
+def ocr_backfill(current_user):
+    """Bulk-requeue OCR for all unprocessed image attachments.
+
+    Safe to call at any time — only images with ocr_processed=False AND a file
+    that exists on disk are re-queued.  Already-processed images are skipped.
+    Returns immediately; OCR runs in background threads.
+    """
+    import os
+    import threading
+    from app.models.attachment import Attachment
+    from app.routes.attachments import _run_ocr_background
+
+    pending = Attachment.query.filter_by(ocr_processed=False).all()
+    image_pending = [
+        a for a in pending
+        if a.is_image and a.filepath and os.path.exists(a.filepath)
+    ]
+
+    queued = 0
+    skipped_no_file = 0
+    for att in pending:
+        if not att.is_image:
+            continue
+        if not att.filepath or not os.path.exists(att.filepath):
+            skipped_no_file += 1
+            continue
+        threading.Thread(
+            target=_run_ocr_background,
+            args=(current_app._get_current_object(), att.id, att.filepath),
+            daemon=False,
+            name=f'ocr-admin-backfill-{att.id}',
+        ).start()
+        queued += 1
+
+    current_app.logger.info(
+        'Admin OCR backfill: queued=%d skipped_no_file=%d triggered_by=%s',
+        queued, skipped_no_file, current_user.email,
+    )
+    return jsonify({
+        'queued': queued,
+        'skipped_no_file': skipped_no_file,
+        'message': f'OCR re-queued for {queued} image(s). Results will appear in the Documents view shortly.',
+    })
+

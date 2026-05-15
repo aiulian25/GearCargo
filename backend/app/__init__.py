@@ -755,6 +755,48 @@ def create_app(config_class=None):
 
         threading.Thread(target=_startup_ollama_probe, daemon=True, name='ollama-startup-probe').start()
 
+    # Startup OCR backfill — any image attachment that is still unprocessed
+    # after a container restart (daemon threads are killed on container stop)
+    # gets re-queued here so users never see a permanent "Scanning…" state.
+    if not app.config.get('TESTING'):
+        import threading as _threading
+
+        def _startup_ocr_backfill():
+            import time
+            time.sleep(15)  # Let gunicorn workers start and DB pool warm up
+            with app.app_context():
+                try:
+                    from app.models.attachment import Attachment as _Att
+                    from app.routes.attachments import _run_ocr_background
+                    import os as _os
+                    pending = (
+                        _Att.query
+                        .filter_by(ocr_processed=False)
+                        .all()
+                    )
+                    # Filter in Python — is_image is a @property, not a DB column
+                    image_pending = [
+                        a for a in pending
+                        if a.is_image and a.filepath and _os.path.exists(a.filepath)
+                    ]
+                    if image_pending:
+                        app.logger.info(
+                            f'OCR backfill: found {len(image_pending)} unprocessed image(s) — re-queuing.'
+                        )
+                        for att in image_pending:
+                            _threading.Thread(
+                                target=_run_ocr_background,
+                                args=(app, att.id, att.filepath),
+                                daemon=False,  # non-daemon: survive until OCR is committed
+                                name=f'ocr-backfill-{att.id}',
+                            ).start()
+                    else:
+                        app.logger.info('OCR backfill: no pending images found.')
+                except Exception as exc:
+                    app.logger.warning(f'OCR backfill startup probe failed: {exc}')
+
+        _threading.Thread(target=_startup_ocr_backfill, daemon=True, name='ocr-backfill-probe').start()
+
     return app
 
 

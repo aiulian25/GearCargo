@@ -400,6 +400,10 @@ def _run_ocr_background(app, attachment_id: int, filepath: str) -> None:
             app.logger.error(
                 'OCR DB update failed for attachment %s', attachment_id, exc_info=True
             )
+        finally:
+            # Always release the scoped session back to the pool when the
+            # background thread is done — prevents connection leaks.
+            db.session.remove()
 
 
 @attachments_bp.route('/<int:attachment_id>', methods=['GET'])
