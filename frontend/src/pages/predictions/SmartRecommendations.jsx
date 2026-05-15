@@ -261,7 +261,7 @@ export default function SmartRecommendations() {
     setAiGenerating(prev => ({ ...prev, [vehicleId]: true }))
     setAiErrors(prev => ({ ...prev, [vehicleId]: null }))
     try {
-      const res = await predictionApi.refresh(vehicleId, locale)
+      const res = await predictionApi.refresh(vehicleId, locale, true)
       const data = res.data || {}
       const newPreds = data.predictions || []
 

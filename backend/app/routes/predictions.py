@@ -110,6 +110,11 @@ def refresh_predictions(current_user):
     
     Accepts vehicle_id as a query param (?vehicle_id=X) or in the JSON body.
     This matches the predictionApi.refresh() call in the frontend.
+
+    Pass ?force=true (or force=true in the JSON body) to bypass the Redis
+    cache and force a fresh Ollama generation even when the vehicle data
+    fingerprint has not changed.  Used by the Re-analyze button so existing
+    duplicates are dismissed and a clean batch is stored.
     """
     if not ollama_enabled():
         return jsonify({'error': 'AI predictions are not enabled'}), 503
@@ -123,10 +128,17 @@ def refresh_predictions(current_user):
     locale = (data.get('locale') or request.args.get('locale', 'en-US'))
     if locale not in _VALID_LOCALES:
         locale = 'en-US'
-    return _run_prediction(current_user, vehicle_id, locale)
+
+    # force=true bypasses the data-fingerprint cache so the user can trigger a
+    # clean re-generation even when no new entries have been added.
+    _force_q = request.args.get('force', '').lower()
+    _force_b = str(data.get('force', '')).lower()
+    force = _force_q in ('1', 'true', 'yes') or _force_b in ('1', 'true', 'yes')
+
+    return _run_prediction(current_user, vehicle_id, locale, force=force)
 
 
-def _run_prediction(current_user, vehicle_id, locale='en-US'):
+def _run_prediction(current_user, vehicle_id, locale='en-US', force=False):
     """Core prediction logic: fetch data, call Ollama, save results."""
     vehicle = Vehicle.query.filter_by(
         id=vehicle_id,
@@ -140,6 +152,7 @@ def _run_prediction(current_user, vehicle_id, locale='en-US'):
     # Cache check — skip Ollama if this vehicle's data hasn't changed.
     # The fingerprint encodes the latest entry IDs; a new entry produces
     # a new key, so this never returns stale data in normal operation.
+    # Pass force=True to bypass the cache (e.g. user clicked Re-analyze).
     # ------------------------------------------------------------------
     try:
         fp = _prediction_fingerprint(vehicle_id)
@@ -147,7 +160,7 @@ def _run_prediction(current_user, vehicle_id, locale='en-US'):
         fp = 'nofp'
     cache_key = f"ai_cache:predict:{current_user.id}:{vehicle_id}:{fp}"
     cached_meta = ai_cache_get(cache_key)
-    if cached_meta:
+    if cached_meta and not force:
         # Re-query DB with the caller's locale — we never store serialised output.
         existing = (
             PredictionAlert.query
@@ -278,7 +291,22 @@ def _run_prediction(current_user, vehicle_id, locale='en-US'):
         urgency_to_severity = {'high': 'critical', 'medium': 'warning', 'low': 'info'}
         valid_urgencies = {'low', 'medium', 'high'}
         valid_alert_types = {'service', 'repair', 'fuel', 'maintenance'}
-        
+
+        # Dismiss all existing active AI-generated predictions for this vehicle
+        # before inserting the fresh batch — prevents duplication across cache
+        # misses, Re-analyze clicks, and scheduled background re-runs.
+        (
+            PredictionAlert.query
+            .filter_by(
+                vehicle_id=vehicle_id,
+                user_id=current_user.id,
+                generated_by='ollama',
+                dismissed=False,
+                actioned=False,
+            )
+            .update({'dismissed': True}, synchronize_session=False)
+        )
+
         # Save predictions
         saved_predictions = []
         for pred in predictions_data.get('predictions', []):

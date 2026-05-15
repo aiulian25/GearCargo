@@ -362,10 +362,11 @@ export const predictionApi = {
   },
   get: (id) => api.get(`/predictions/${id}`),
   dismiss: (id) => api.post(`/predictions/${id}/dismiss`),
-  refresh: (vehicleId = null, locale = 'en-US') => {
+  refresh: (vehicleId = null, locale = 'en-US', force = false) => {
     const params = new URLSearchParams()
     if (vehicleId) params.set('vehicle_id', vehicleId)
     if (locale && locale !== 'en-US') params.set('locale', locale)
+    if (force) params.set('force', 'true')
     const qs = params.toString()
     return api.post(`/predictions/refresh${qs ? `?${qs}` : ''}`)
   },
