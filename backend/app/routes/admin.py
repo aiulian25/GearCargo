@@ -1164,7 +1164,7 @@ def ocr_backfill(current_user):
 
     force = request.args.get('force', 'false').lower() == 'true'
 
-    _OCR_CONCURRENCY = 2
+    _OCR_CONCURRENCY = 1
     _sem = threading.Semaphore(_OCR_CONCURRENCY)
     _app = current_app._get_current_object()
 

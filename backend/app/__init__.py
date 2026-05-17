@@ -765,8 +765,8 @@ def create_app(config_class=None):
             import time
             import os as _os
             # Limit concurrent OCR threads so the NAS CPU isn't saturated.
-            # tesseract is CPU-bound; 2 concurrent jobs is safe on a Synology DS923.
-            _OCR_CONCURRENCY = 2
+            # tesseract is CPU-bound; keep to 1 on a dual-core DS923.
+            _OCR_CONCURRENCY = 1
             _sem = _threading.Semaphore(_OCR_CONCURRENCY)
 
             def _throttled_ocr(a, s):
