@@ -364,6 +364,17 @@ def _run_ocr_background(app, attachment_id: int, filepath: str) -> None:
     - OCR text is capped at OCR_TEXT_MAX_CHARS to prevent huge DB entries.
     - Null bytes and control characters (except newlines/tabs) are stripped.
     - ocr_processed is set True even on failure so we never retry forever.
+
+    Quality pipeline:
+    1. EXIF transpose  — corrects phone camera orientation metadata.
+    2. Grayscale       — reduces colour noise for sharper character edges.
+    3. Upscale         — images smaller than 1 000 px on the short side are
+                         enlarged so tesseract gets enough resolution.
+    4. Contrast boost  — helps faded thermal-paper receipts.
+    5. OSD rotation    — asks tesseract to detect text orientation and rotates
+                         the image to upright before the main OCR pass.
+    6. OCR (LSTM+PSM6) — single uniform block mode; LSTM-only engine for best
+                         accuracy on printed text.
     """
     OCR_TEXT_MAX_CHARS = 10_000
     _CONTROL_CHARS = dict.fromkeys(range(32), None)
@@ -374,13 +385,59 @@ def _run_ocr_background(app, attachment_id: int, filepath: str) -> None:
 
     ocr_text = None
     try:
-        from PIL import Image
+        from PIL import Image, ImageOps, ImageEnhance
         import pytesseract
+
         img = Image.open(filepath)
-        # Normalise colour mode — tesseract handles RGB/L best
+
+        # 1. Apply EXIF orientation — phone cameras store rotation in metadata;
+        #    without this, portrait photos are processed sideways or upside-down.
+        img = ImageOps.exif_transpose(img)
+
+        # 2. Normalise colour mode
         if img.mode not in ('RGB', 'L'):
             img = img.convert('RGB')
-        raw = pytesseract.image_to_string(img, lang='eng+ron+spa')
+
+        # 3. Convert to grayscale for OCR
+        gray = img.convert('L')
+
+        # 4. Upscale very small images — tesseract needs ~300 DPI equivalent
+        MIN_SHORT_SIDE = 1000
+        w, h = gray.size
+        if min(w, h) < MIN_SHORT_SIDE:
+            scale = MIN_SHORT_SIDE / min(w, h)
+            gray = gray.resize(
+                (int(w * scale), int(h * scale)),
+                Image.LANCZOS,
+            )
+
+        # 5. Boost contrast — helps faded thermal-paper receipts
+        gray = ImageEnhance.Contrast(gray).enhance(1.5)
+
+        # 6. Orientation & Script Detection — rotate image to upright.
+        #    OSD can fail on low-text images; we ignore errors and continue.
+        try:
+            osd = pytesseract.image_to_osd(
+                gray,
+                output_type=pytesseract.Output.DICT,
+                config='--psm 0',
+            )
+            rotate_angle = osd.get('rotate', 0)
+            if rotate_angle:
+                gray = gray.rotate(rotate_angle, expand=True)
+                app.logger.debug(
+                    'OCR attachment %s: rotated %d° to correct orientation',
+                    attachment_id, rotate_angle,
+                )
+        except Exception:
+            pass  # OSD unavailable or too little text — continue without rotation
+
+        # 7. Run OCR: LSTM engine (oem 1) + single uniform block (psm 6)
+        raw = pytesseract.image_to_string(
+            gray,
+            lang='eng+ron+spa',
+            config='--oem 1 --psm 6',
+        )
         cleaned = raw.strip().translate(_STRIP_TABLE)
         ocr_text = cleaned[:OCR_TEXT_MAX_CHARS] or None
     except Exception:

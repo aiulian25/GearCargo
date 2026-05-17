@@ -1149,15 +1149,20 @@ def get_blocked_summary(current_user):
 def ocr_backfill(current_user):
     """Bulk-requeue OCR for all unprocessed image attachments.
 
-    Safe to call at any time — only images with ocr_processed=False AND a file
-    that exists on disk are re-queued.  Already-processed images are skipped.
-    Returns immediately; OCR runs in background threads (max 2 concurrent to
-    avoid saturating the NAS CPU).
+    Safe to call at any time — only images with a file that exists on disk are
+    re-queued.  Returns immediately; OCR runs in background threads (max 2
+    concurrent to avoid saturating the NAS CPU).
+
+    Query params:
+      force=true   — also reprocess images that are already OCR'd (ocr_processed=True).
+                     Use this after upgrading the OCR pipeline to refresh stale results.
     """
     import os
     import threading
     from app.models.attachment import Attachment
     from app.routes.attachments import _run_ocr_background
+
+    force = request.args.get('force', 'false').lower() == 'true'
 
     _OCR_CONCURRENCY = 2
     _sem = threading.Semaphore(_OCR_CONCURRENCY)
@@ -1167,16 +1172,23 @@ def ocr_backfill(current_user):
         with _sem:
             _run_ocr_background(_app, att.id, att.filepath)
 
-    pending = Attachment.query.filter_by(ocr_processed=False).all()
+    if force:
+        candidates = Attachment.query.all()
+    else:
+        candidates = Attachment.query.filter_by(ocr_processed=False).all()
 
     queued = 0
     skipped_no_file = 0
-    for att in pending:
+    for att in candidates:
         if not att.is_image:
             continue
         if not att.filepath or not os.path.exists(att.filepath):
             skipped_no_file += 1
             continue
+        # When force=true, reset the flag so the UI shows "Scanning…" again
+        if force:
+            att.ocr_processed = False
+            att.ocr_text = None
         threading.Thread(
             target=_throttled,
             args=(att,),
@@ -1185,12 +1197,20 @@ def ocr_backfill(current_user):
         ).start()
         queued += 1
 
+    if force and queued:
+        from app import db
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
     current_app.logger.info(
-        'Admin OCR backfill: queued=%d skipped_no_file=%d triggered_by=%s',
-        queued, skipped_no_file, current_user.email,
+        'Admin OCR backfill: force=%s queued=%d skipped_no_file=%d triggered_by=%s',
+        force, queued, skipped_no_file, current_user.email,
     )
     return jsonify({
         'queued': queued,
+        'force': force,
         'skipped_no_file': skipped_no_file,
         'message': f'OCR re-queued for {queued} image(s) (max {_OCR_CONCURRENCY} concurrent). Results will appear shortly.',
     })
