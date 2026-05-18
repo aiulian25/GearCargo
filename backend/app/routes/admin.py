@@ -1160,17 +1160,11 @@ def ocr_backfill(current_user):
     import os
     import threading
     from app.models.attachment import Attachment
-    from app.routes.attachments import _run_ocr_background
+    from app.routes.attachments import _throttled_ocr_background, _OCR_CONCURRENCY
 
     force = request.args.get('force', 'false').lower() == 'true'
 
-    _OCR_CONCURRENCY = 1
-    _sem = threading.Semaphore(_OCR_CONCURRENCY)
     _app = current_app._get_current_object()
-
-    def _throttled(att):
-        with _sem:
-            _run_ocr_background(_app, att.id, att.filepath)
 
     if force:
         candidates = Attachment.query.all()
@@ -1190,8 +1184,8 @@ def ocr_backfill(current_user):
             att.ocr_processed = False
             att.ocr_text = None
         threading.Thread(
-            target=_throttled,
-            args=(att,),
+            target=_throttled_ocr_background,
+            args=(_app, att.id, att.filepath),
             daemon=False,
             name=f'ocr-admin-backfill-{att.id}',
         ).start()

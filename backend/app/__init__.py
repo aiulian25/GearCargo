@@ -764,20 +764,19 @@ def create_app(config_class=None):
         def _startup_ocr_backfill():
             import time
             import os as _os
-            # Limit concurrent OCR threads so the NAS CPU isn't saturated.
-            # tesseract is CPU-bound; keep to 1 on a dual-core DS923.
-            _OCR_CONCURRENCY = 1
-            _sem = _threading.Semaphore(_OCR_CONCURRENCY)
+            # Concurrency is governed by the module-level _OCR_SEMAPHORE in
+            # app.routes.attachments (max 2 concurrent).  No local semaphore
+            # needed here — _throttled_ocr_background handles throttling for
+            # all code paths (upload, retry, backfill) in one place.
 
-            def _throttled_ocr(a, s):
-                with s:
-                    _run_ocr_background(app, a.id, a.filepath)
+            def _run(a):
+                _throttled_ocr_background(app, a.id, a.filepath)
 
             time.sleep(15)  # Let gunicorn workers start and DB pool warm up
             with app.app_context():
                 try:
                     from app.models.attachment import Attachment as _Att
-                    from app.routes.attachments import _run_ocr_background
+                    from app.routes.attachments import _throttled_ocr_background
                     pending = (
                         _Att.query
                         .filter_by(ocr_processed=False)
@@ -791,12 +790,12 @@ def create_app(config_class=None):
                     if image_pending:
                         app.logger.info(
                             f'OCR backfill: found {len(image_pending)} unprocessed image(s) — '
-                            f'queuing with max {_OCR_CONCURRENCY} concurrent threads.'
+                            f'queuing with max 2 concurrent threads.'
                         )
                         for att in image_pending:
                             _threading.Thread(
-                                target=_throttled_ocr,
-                                args=(att, _sem),
+                                target=_run,
+                                args=(att,),
                                 daemon=False,  # non-daemon: survive until OCR is committed
                                 name=f'ocr-backfill-{att.id}',
                             ).start()

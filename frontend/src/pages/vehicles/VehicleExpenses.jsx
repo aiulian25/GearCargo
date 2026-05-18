@@ -168,45 +168,62 @@ const DonutChart = ({ data, centerText, centerSubtext }) => {
   )
 }
 
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+const MONTH_NAMES_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
 // Bar Chart Component
-const BarChart = ({ data, categories, title }) => {
+const BarChart = ({ data, categories, title, onMonthClick, selectedMonth, hintText }) => {
   const maxValue = Math.max(...data.map(d => d.total), 1)
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-  
+
   return (
     <div className="h-full flex flex-col">
-      <h3 className="text-[var(--color-accent)] text-sm font-medium mb-4 text-center">{title}</h3>
-      
+      <h3 className="text-[var(--color-accent)] text-sm font-medium mb-1 text-center">{title}</h3>
+      {hintText && <p className="text-[10px] text-center text-[var(--color-text-muted)] mb-3">{hintText}</p>}
+
       <div className="flex-1 flex items-end gap-1 px-2">
-        {months.map((month, i) => {
+        {MONTH_NAMES_SHORT.map((month, i) => {
           const monthData = data.find(d => d.month === i + 1) || { total: 0, breakdown: {} }
           const height = maxValue > 0 ? (monthData.total / maxValue) * 100 : 0
-          
+          const isSelected = selectedMonth === i
+          const isDimmed = selectedMonth !== null && !isSelected
+
           return (
-            <div key={month} className="flex-1 flex flex-col items-center">
-              <div className="w-full flex flex-col justify-end h-32">
+            <div
+              key={month}
+              className="flex-1 flex flex-col items-center cursor-pointer"
+              onClick={() => onMonthClick && onMonthClick(i)}
+              role="button"
+              aria-pressed={isSelected}
+              aria-label={MONTH_NAMES[i]}
+            >
+              <div className={`w-full flex flex-col justify-end h-32 relative transition-opacity duration-200 ${isDimmed ? 'opacity-30' : 'opacity-100'}`}>
+                {isSelected && (
+                  <div className="absolute inset-x-0 -top-0.5 bottom-0 rounded border-2 border-[var(--color-accent)] pointer-events-none" />
+                )}
                 {/* Stacked bars */}
-                <div 
+                <div
                   className="w-full rounded-t transition-all duration-300"
-                  style={{ 
+                  style={{
                     height: `${Math.max(height, 0)}%`,
                     minHeight: monthData.total > 0 ? '4px' : '0',
-                    background: monthData.total > 0 
+                    background: monthData.total > 0
                       ? 'linear-gradient(to top, #22c55e, #84cc16, #facc15, #f97316, #ef4444)'
                       : 'transparent'
                   }}
                 />
               </div>
-              <span className="text-[10px] text-[var(--color-text-muted)] mt-1">{month}</span>
+              <span className={`text-[10px] mt-1 transition-colors duration-200 ${isSelected ? 'text-[var(--color-accent)] font-semibold' : 'text-[var(--color-text-muted)]'}`}>
+                {month}
+              </span>
             </div>
           )
         })}
       </div>
-      
+
       {/* Category badges */}
       <div className="flex flex-wrap gap-2 mt-4 justify-center">
         {categories.map((cat, i) => (
-          <span 
+          <span
             key={i}
             className="px-2 py-0.5 rounded text-xs font-medium"
             style={{ backgroundColor: cat.color, color: '#fff' }}
@@ -263,7 +280,8 @@ export default function VehicleExpenses() {
   const initialTab = searchParams.get('tab')
   const [activeTab, setActiveTab] = useState(VALID_TABS.includes(initialTab) ? initialTab : 'fuel')
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
-  
+  const [selectedMonth, setSelectedMonth] = useState(null)
+
   // Attachment viewer state
   const [viewerOpen, setViewerOpen] = useState(false)
   const [viewerAttachments, setViewerAttachments] = useState([])
@@ -283,6 +301,10 @@ export default function VehicleExpenses() {
   useEffect(() => {
     fetchAllData()
   }, [id])
+
+  useEffect(() => {
+    setSelectedMonth(null)
+  }, [selectedYear])
 
   const fetchAllData = async () => {
     try {
@@ -413,16 +435,6 @@ export default function VehicleExpenses() {
     return { fuelTotal, serviceTotal, taxTotal, parkingTotal, repairTotal, insuranceTotal }
   }, [fuelEntries, serviceEntries, taxEntries, parkingEntries, repairEntries, insuranceEntries, selectedYear])
 
-  // Donut chart data
-  const donutData = [
-    { label: t('expenses.fuel') || 'Fuel', value: categoryTotals.fuelTotal, color: '#3b82f6' },
-    { label: t('expenses.service') || 'Service', value: categoryTotals.serviceTotal, color: '#22c55e' },
-    { label: t('expenses.tax') || 'Tax', value: categoryTotals.taxTotal, color: '#a855f7' },
-    { label: t('expenses.parking') || 'Parking', value: categoryTotals.parkingTotal, color: '#f59e0b' },
-    { label: t('expenses.repair') || 'Repairs', value: categoryTotals.repairTotal, color: '#ef4444' },
-    { label: t('expenses.insurance') || 'Insurance', value: categoryTotals.insuranceTotal, color: '#10b981' },
-  ]
-
   // Monthly expenses calculation
   const monthlyData = useMemo(() => {
     const months = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, total: 0, breakdown: {} }))
@@ -513,6 +525,33 @@ export default function VehicleExpenses() {
     
     return months
   }, [fuelEntries, serviceEntries, taxEntries, parkingEntries, repairEntries, insuranceEntries, selectedYear])
+
+  // Donut data: full-year or filtered to selectedMonth
+  const activeDonutData = useMemo(() => {
+    const colorMap = { fuel: '#3b82f6', service: '#22c55e', tax: '#a855f7', parking: '#f59e0b', repair: '#ef4444', insurance: '#10b981' }
+    const labelMap = {
+      fuel: t('expenses.fuel') || 'Fuel',
+      service: t('expenses.service') || 'Service',
+      tax: t('expenses.tax') || 'Tax',
+      parking: t('expenses.parking') || 'Parking',
+      repair: t('expenses.repair') || 'Repairs',
+      insurance: t('expenses.insurance') || 'Insurance',
+    }
+    if (selectedMonth !== null) {
+      const breakdown = monthlyData[selectedMonth]?.breakdown || {}
+      return Object.entries(breakdown)
+        .filter(([, v]) => v > 0)
+        .map(([key, value]) => ({ label: labelMap[key] || key, value, color: colorMap[key] || '#6b7280' }))
+    }
+    return [
+      { label: labelMap.fuel, value: categoryTotals.fuelTotal, color: colorMap.fuel },
+      { label: labelMap.service, value: categoryTotals.serviceTotal, color: colorMap.service },
+      { label: labelMap.tax, value: categoryTotals.taxTotal, color: colorMap.tax },
+      { label: labelMap.parking, value: categoryTotals.parkingTotal, color: colorMap.parking },
+      { label: labelMap.repair, value: categoryTotals.repairTotal, color: colorMap.repair },
+      { label: labelMap.insurance, value: categoryTotals.insuranceTotal, color: colorMap.insurance },
+    ]
+  }, [selectedMonth, monthlyData, categoryTotals, t])
 
   const categories = [
     { label: t('expenses.fuel') || 'Fuel', color: '#3b82f6' },
@@ -615,6 +654,10 @@ export default function VehicleExpenses() {
       insurance: `/vehicles/${id}/insurance/add?edit=${entryId}`,
     }
     navigate(editRoutes[type])
+  }
+
+  const handleMonthClick = (monthIndex) => {
+    setSelectedMonth(prev => prev === monthIndex ? null : monthIndex)
   }
 
   // Open attachment viewer
@@ -1188,10 +1231,23 @@ export default function VehicleExpenses() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Donut Chart Card */}
         <div className="bg-[var(--color-bg-secondary)] rounded-xl p-6 border border-[var(--color-border)]">
-          <DonutChart 
-            data={donutData}
-            centerText={`${vehicle?.year || ''} ${vehicle?.make || ''}`}
-            centerSubtext={vehicle?.model || ''}
+          {selectedMonth !== null && (
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-medium px-2 py-1 rounded-full bg-[var(--color-accent)]/20 text-[var(--color-accent)]">
+                {MONTH_NAMES[selectedMonth]} {selectedYear}
+              </span>
+              <button
+                onClick={() => setSelectedMonth(null)}
+                className="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors underline underline-offset-2"
+              >
+                {t('expenses.fullYear') || 'Full Year'}
+              </button>
+            </div>
+          )}
+          <DonutChart
+            data={activeDonutData}
+            centerText={selectedMonth !== null ? MONTH_NAMES_SHORT[selectedMonth] : `${vehicle?.year || ''} ${vehicle?.make || ''}`}
+            centerSubtext={selectedMonth !== null ? String(selectedYear) : (vehicle?.model || '')}
           />
         </div>
 
@@ -1209,7 +1265,14 @@ export default function VehicleExpenses() {
               ))}
             </select>
           </div>
-          <BarChart data={monthlyData} categories={categories} title={t('charts.monthlyExpenses') || 'Monthly Expenses'} />
+          <BarChart
+            data={monthlyData}
+            categories={categories}
+            title={t('charts.monthlyExpenses') || 'Monthly Expenses'}
+            onMonthClick={handleMonthClick}
+            selectedMonth={selectedMonth}
+            hintText={t('expenses.clickMonthHint') || 'Tap a month to filter'}
+          />
         </div>
       </div>
 

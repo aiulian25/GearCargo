@@ -22,6 +22,13 @@ attachments_bp = Blueprint('attachments', __name__)
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'xls', 'xlsx'}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
+# Global concurrency limit for OCR (pytesseract is CPU-bound).
+# All code paths — upload, retry, startup backfill, admin backfill — share this
+# single semaphore so the ceiling is always respected, regardless of how many
+# threads are started from different call sites.
+_OCR_CONCURRENCY = 2
+_OCR_SEMAPHORE = threading.Semaphore(_OCR_CONCURRENCY)
+
 # S13: Canonical extension → MIME mapping for every extension in ALLOWED_EXTENSIONS.
 # This replaces mimetypes.guess_type() (OS-dependent, could be manipulated) with a
 # tight, predictable table. Only types listed here are ever stored in the DB or served.
@@ -340,11 +347,13 @@ def upload_attachment(current_user):
                 f"Temp file left at {temp_path}"
             )
 
-    # Start background OCR for images (fire-and-forget, non-blocking)
+    # Start background OCR for images (fire-and-forget, non-blocking).
+    # _throttled_ocr_background acquires the global _OCR_SEMAPHORE (max 2 concurrent)
+    # so simultaneous uploads don't saturate the CPU with unbounded tesseract processes.
     if attachment.is_image:
         _app = current_app._get_current_object()
         t = threading.Thread(
-            target=_run_ocr_background,
+            target=_throttled_ocr_background,
             args=(_app, attachment.id, filepath),
             daemon=True,
         )
@@ -366,17 +375,27 @@ def _run_ocr_background(app, attachment_id: int, filepath: str) -> None:
     - ocr_processed is set True even on failure so we never retry forever.
 
     Quality pipeline:
-    1. EXIF transpose  — corrects phone camera orientation metadata.
-    2. Grayscale       — reduces colour noise for sharper character edges.
-    3. Upscale         — images smaller than 1 000 px on the short side are
-                         enlarged so tesseract gets enough resolution.
-    4. Contrast boost  — helps faded thermal-paper receipts.
-    5. OSD rotation    — asks tesseract to detect text orientation and rotates
-                         the image to upright before the main OCR pass.
-    6. OCR (LSTM+PSM6) — single uniform block mode; LSTM-only engine for best
-                         accuracy on printed text.
+    1. EXIF transpose          — corrects phone camera orientation metadata.
+    2. Grayscale               — removes colour noise.
+    3. Upscale                 — brings short side to 1 500 px for ~300 DPI.
+    4. Local illumination fix  — divides each pixel by a heavily-blurred
+                                 background estimate; cancels shadows, uneven
+                                 flash, and paper gradients on receipts.
+    5. Auto-contrast stretch   — spreads the normalised histogram to 0–255.
+    6. Median denoise          — removes camera sensor salt-and-pepper noise.
+    7. Unsharp mask            — sharpens character edges without amplifying
+                                 noise.
+    8. Histogram binarisation  — converts to pure B/W; threshold chosen at
+                                 the 55th percentile so light receipt paper
+                                 maps to white and dark text maps to black.
+    9. OSD rotation            — tesseract detects and corrects orientation.
+   10. Confidence-filtered OCR — runs PSM 4 (single-column receipts) then
+                                 falls back to PSM 6; words below 40%
+                                 confidence are discarded so camera-noise
+                                 artefacts never reach the stored text.
     """
     OCR_TEXT_MAX_CHARS = 10_000
+    MIN_OCR_CONFIDENCE = 40   # discard tesseract words below this threshold
     _CONTROL_CHARS = dict.fromkeys(range(32), None)
     _CONTROL_CHARS.pop(9)   # keep tab
     _CONTROL_CHARS.pop(10)  # keep newline
@@ -385,8 +404,9 @@ def _run_ocr_background(app, attachment_id: int, filepath: str) -> None:
 
     ocr_text = None
     try:
-        from PIL import Image, ImageOps, ImageEnhance
+        from PIL import Image, ImageOps, ImageFilter
         import pytesseract
+        import numpy as np
 
         img = Image.open(filepath)
 
@@ -398,11 +418,12 @@ def _run_ocr_background(app, attachment_id: int, filepath: str) -> None:
         if img.mode not in ('RGB', 'L'):
             img = img.convert('RGB')
 
-        # 3. Convert to grayscale for OCR
+        # 3. Convert to grayscale
         gray = img.convert('L')
 
-        # 4. Upscale very small images — tesseract needs ~300 DPI equivalent
-        MIN_SHORT_SIDE = 1000
+        # 4. Upscale very small images — tesseract needs ~300 DPI equivalent.
+        #    1 500 px on the short side gives good accuracy for phone shots.
+        MIN_SHORT_SIDE = 1500
         w, h = gray.size
         if min(w, h) < MIN_SHORT_SIDE:
             scale = MIN_SHORT_SIDE / min(w, h)
@@ -411,20 +432,62 @@ def _run_ocr_background(app, attachment_id: int, filepath: str) -> None:
                 Image.LANCZOS,
             )
 
-        # 5. Boost contrast — helps faded thermal-paper receipts
-        gray = ImageEnhance.Contrast(gray).enhance(1.5)
+        # 5. Local illumination normalisation — the most impactful step for
+        #    phone photos of receipts.  A heavy Gaussian blur (radius 25) gives
+        #    a smooth background-illumination estimate; dividing each pixel by
+        #    that estimate then scaling to 128 cancels shadows, flash gradients,
+        #    and paper curvature so the text contrast is equalised across the
+        #    whole image.
+        gray_arr = np.array(gray, dtype=np.float32)
+        bg_arr = np.array(
+            gray.filter(ImageFilter.GaussianBlur(radius=25)),
+            dtype=np.float32,
+        )
+        normalized_arr = np.clip(
+            gray_arr / (bg_arr + 1.0) * 128.0, 0, 255
+        ).astype(np.uint8)
+        gray = Image.fromarray(normalized_arr)
 
-        # 6. Orientation & Script Detection — rotate image to upright.
-        #    OSD can fail on low-text images; we ignore errors and continue.
+        # 6. Auto-contrast stretch — spreads the normalised pixel values to
+        #    the full 0–255 range; 1% clip discards extreme outliers.
+        gray = ImageOps.autocontrast(gray, cutoff=1)
+
+        # 7. Median filter — removes salt-and-pepper noise without blurring
+        #    the character strokes.
+        gray = gray.filter(ImageFilter.MedianFilter(size=3))
+
+        # 8. Unsharp mask — make character edges crisp before binarisation.
+        gray = gray.filter(ImageFilter.UnsharpMask(radius=1.5, percent=200, threshold=3))
+
+        # 9. Histogram-based binarisation — compute the 55th-percentile
+        #    brightness value and use it as the black/white threshold.
+        #    The majority of a receipt is bright paper (white) and the
+        #    minority is dark text (black) so this percentile separates them
+        #    cleanly while clamped to [80, 220] for safety.
+        hist = gray.histogram()  # 256-bucket frequency list
+        total = sum(hist)
+        target = total * 0.55
+        cumsum, threshold = 0, 128
+        for i, count in enumerate(hist):
+            cumsum += count
+            if cumsum >= target:
+                threshold = i
+                break
+        threshold = max(80, min(220, threshold))
+        binary = gray.point(lambda p: 255 if p > threshold else 0)
+
+        # 10. OSD rotation — detect and correct text orientation.
+        #     Run on the binarised image for better OSD accuracy.
+        #     OSD can fail on low-text or highly-stylised images; ignore errors.
         try:
             osd = pytesseract.image_to_osd(
-                gray,
+                binary,
                 output_type=pytesseract.Output.DICT,
                 config='--psm 0',
             )
             rotate_angle = osd.get('rotate', 0)
             if rotate_angle:
-                gray = gray.rotate(rotate_angle, expand=True)
+                binary = binary.rotate(rotate_angle, expand=True)
                 app.logger.debug(
                     'OCR attachment %s: rotated %d° to correct orientation',
                     attachment_id, rotate_angle,
@@ -432,14 +495,49 @@ def _run_ocr_background(app, attachment_id: int, filepath: str) -> None:
         except Exception:
             pass  # OSD unavailable or too little text — continue without rotation
 
-        # 7. Run OCR: LSTM engine (oem 1) + single uniform block (psm 6)
-        raw = pytesseract.image_to_string(
-            gray,
-            lang='eng+ron+spa',
-            config='--oem 1 --psm 6',
-        )
+        # 11. Confidence-filtered OCR via image_to_data.
+        #     image_to_data returns per-word bounding boxes and confidence
+        #     scores (0–100).  We drop any word with confidence < MIN_OCR_CONFIDENCE
+        #     to eliminate camera-noise artefacts, then re-assemble the output
+        #     line-by-line preserving the original block/paragraph/line structure.
+        def _ocr_filtered(image, psm):
+            data = pytesseract.image_to_data(
+                image,
+                lang='eng+ron+spa',
+                config=f'--oem 1 --psm {psm} --dpi 300',
+                output_type=pytesseract.Output.DICT,
+            )
+            lines: dict = {}
+            for i in range(len(data['text'])):
+                word = (data['text'][i] or '').strip()
+                conf = int(data['conf'][i])
+                if not word or conf < 0:
+                    continue
+                key = (data['block_num'][i], data['par_num'][i], data['line_num'][i])
+                if key not in lines:
+                    lines[key] = []
+                if conf >= MIN_OCR_CONFIDENCE:
+                    lines[key].append(word)
+                # Low-confidence words are silently discarded
+            text_lines = [
+                ' '.join(words)
+                for key in sorted(lines)
+                for words in [lines[key]]
+                if words
+            ]
+            return '\n'.join(text_lines)
+
+        # PSM 4 = single column of variable-size text — ideal for receipts.
+        # Fall back to PSM 6 (uniform block) if PSM 4 yields very little.
+        raw = _ocr_filtered(binary, psm=4)
+        if len(raw.split()) < 5:
+            raw = _ocr_filtered(binary, psm=6)
+
         cleaned = raw.strip().translate(_STRIP_TABLE)
+        # Collapse 3+ consecutive blank lines into a single blank line
+        cleaned = _re.sub(r'\n{3,}', '\n\n', cleaned)
         ocr_text = cleaned[:OCR_TEXT_MAX_CHARS] or None
+
     except Exception:
         app.logger.warning(
             'OCR failed for attachment %s', attachment_id, exc_info=True
@@ -461,6 +559,18 @@ def _run_ocr_background(app, attachment_id: int, filepath: str) -> None:
             # Always release the scoped session back to the pool when the
             # background thread is done — prevents connection leaks.
             db.session.remove()
+
+
+def _throttled_ocr_background(app, attachment_id: int, filepath: str) -> None:
+    """Acquire the global OCR semaphore, then delegate to _run_ocr_background.
+
+    Ensures at most _OCR_CONCURRENCY (2) scans run simultaneously across all
+    code paths (upload, retry, startup backfill, admin backfill).  Once a slot
+    is released, the next queued thread proceeds automatically — giving the
+    "2 at a time, then the next 2, …" rolling-window behaviour.
+    """
+    with _OCR_SEMAPHORE:
+        _run_ocr_background(app, attachment_id, filepath)
 
 
 @attachments_bp.route('/<int:attachment_id>', methods=['GET'])
@@ -544,10 +654,12 @@ def retry_ocr(current_user, attachment_id):
         current_app.logger.error('OCR retry: DB reset failed for attachment %s', attachment_id, exc_info=True)
         return jsonify({'error': 'Failed to reset OCR state. Please try again.'}), 500
 
-    # Re-enqueue background OCR (fire-and-forget, non-blocking)
+    # Re-enqueue background OCR (fire-and-forget, non-blocking).
+    # Goes through _throttled_ocr_background so retries compete for the same
+    # global semaphore slot as uploads and backfills.
     _app = current_app._get_current_object()
     t = threading.Thread(
-        target=_run_ocr_background,
+        target=_throttled_ocr_background,
         args=(_app, attachment.id, attachment.filepath),
         daemon=True,
     )

@@ -203,6 +203,8 @@ export const translations = {
       backToVehicle: 'Back to Vehicle',
       expensesManager: 'Expenses Manager',
       selectYear: 'Select Year',
+      fullYear: 'Full Year',
+      clickMonthHint: 'Tap a month to filter',
     },
     
     // Timeline Page
@@ -2615,6 +2617,8 @@ export const translations = {
       backToVehicle: 'Înapoi la Vehicul',
       expensesManager: 'Manager Cheltuieli',
       selectYear: 'Selectează Anul',
+      fullYear: 'An Întreg',
+      clickMonthHint: 'Apasă o lună pentru filtrare',
     },
     
     // Timeline Page
@@ -5043,6 +5047,8 @@ export const translations = {
       backToVehicle: 'Volver al Vehículo',
       expensesManager: 'Gestor de Gastos',
       selectYear: 'Seleccionar Año',
+      fullYear: 'Año Completo',
+      clickMonthHint: 'Toca un mes para filtrar',
     },
     
     // Timeline Page

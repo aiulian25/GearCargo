@@ -31,6 +31,7 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 - Drag-and-drop vehicle reordering on dashboard
 - **Clickable stat cards** — tap any dashboard card (fuel cost, service, tax, insurance, parking, reminders) to navigate directly to the relevant expense tab
 - **YTD expense cards** — Parking, Tax, and Insurance stat cards show year-to-date totals at a glance
+- **Interactive expense charts** — click any month bar in the Expenses bar chart to instantly filter the donut chart to that month's category breakdown; click again or tap "Full Year" to reset
 
 ### ⛽ Fuel Tracking
 - Log fuel entries with automatic consumption calculation
@@ -90,7 +91,7 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 ### 🤖 AI-Powered Features (Optional, via Ollama)
 - **Automatic nightly maintenance predictions** — nightly scheduler analyses each vehicle's fuel, service, and repair history and generates multilingual prediction alerts (EN/RO/ES)
 - **Manual prediction trigger** — request an immediate AI analysis for any vehicle via the API
-- **OCR receipt scanning** — photos of receipts are automatically scanned (pytesseract) and parsed by Ollama into structured data (date, amount, vendor, line items) to pre-fill expense forms
+- **OCR receipt scanning** — photos of receipts are automatically scanned (pytesseract) using an 11-step quality pipeline (local illumination normalisation, adaptive binarisation, confidence-filtered word extraction) and parsed by Ollama into structured data (date, amount, vendor, line items) to pre-fill expense forms; max 2 concurrent scans to protect server CPU
 - **Fuel anomaly detection** — after each fuel entry, Ollama checks the last 20 entries for suspicious consumption spikes or data-entry errors
 - **AI reminder suggestions** — request 3 AI-generated service reminder suggestions per vehicle based on its history
 - **Per-task model configuration** — assign different Ollama models to different tasks (`OLLAMA_MODEL_PREDICT`, `OLLAMA_MODEL_OCR`, `OLLAMA_MODEL_ANOMALY`, `OLLAMA_MODEL_REMINDER`) for optimal speed/quality trade-offs
@@ -106,6 +107,7 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 - **AI data extraction** — send OCR text to Ollama to parse structured fields and pre-fill the parent expense form with one tap
 - **OCR badge on thumbnails** — attachment cards display a badge when text has been successfully extracted
 - **Re-scan button** — retry OCR for blurry or rotated images via the attachment viewer
+- **OCR concurrency limit** — at most 2 OCR scans run simultaneously (upload, retry, startup backfill, and admin backfill all share one global semaphore); additional scans queue and run automatically when a slot frees up
 
 ### ✅ To-Do Lists
 - Vehicle-specific task lists
@@ -762,7 +764,7 @@ pytest tests/test_backup_external_destinations.py -q
 | **Email** | Flask-Mail | Transactional emails |
 | **PDF** | ReportLab | Report generation |
 | **Security** | Flask-Talisman | Security headers |
-| **OCR** | pytesseract + Pillow | Receipt text extraction |
+| **OCR** | pytesseract + Pillow + NumPy | Receipt text extraction with illumination-normalised preprocessing |
 | **GeoIP** | geoip2 + GeoLite2 | Suspicious-login country detection |
 
 ### Frontend
