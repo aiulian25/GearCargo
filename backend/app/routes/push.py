@@ -243,7 +243,7 @@ def test_notification(current_user):
     ).all()
     
     if not subscriptions:
-        return jsonify({'error': 'No active subscriptions found'}), 404
+        return jsonify({'error': 'No active push subscriptions found. Please enable notifications first.'}), 422
     
     vapid_private = current_app.config.get('VAPID_PRIVATE_KEY')
     vapid_subject = current_app.config.get('VAPID_SUBJECT', 'mailto:admin@gearcargo.local')
