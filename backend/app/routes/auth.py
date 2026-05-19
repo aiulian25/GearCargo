@@ -4,6 +4,8 @@ GearCargo - Authentication Routes
 
 import io
 import re
+import ast
+import json
 import base64
 import pyotp
 import qrcode
@@ -589,25 +591,40 @@ def invalidate_user_sessions(user_id):
             current_app.logger.error(f"Failed to invalidate sessions: {e}")
 
 
-def create_session(user_id, token_jti):
-    """Create a new session in Redis."""
+def create_session(user_id, token_jti, absolute_expires_at=None):
+    """Create a new session in Redis.
+
+    absolute_expires_at: timezone-aware UTC datetime for the hard session wall
+    (48 h from initial login, non-sliding).  When None (initial login) it
+    defaults to 48 hours from now.  The Redis TTL is set to the remaining
+    seconds until that wall so the key self-destructs at the right moment.
+    """
     if redis_client:
         try:
-            # Store session with TTL matching refresh token expiry
-            refresh_expires = current_app.config.get('JWT_REFRESH_TOKEN_EXPIRES')
-            if isinstance(refresh_expires, timedelta):
-                ttl = int(refresh_expires.total_seconds())
-            else:
-                ttl = 30 * 24 * 60 * 60  # 30 days default
-            
+            now = datetime.now(timezone.utc)
+            if absolute_expires_at is None:
+                # Initial login — derive from config TTL (default 48 h)
+                refresh_expires = current_app.config.get('JWT_REFRESH_TOKEN_EXPIRES')
+                if isinstance(refresh_expires, timedelta):
+                    absolute_expires_at = now + refresh_expires
+                else:
+                    absolute_expires_at = now + timedelta(hours=48)
+
+            # TTL = remaining seconds until the absolute wall
+            ttl = max(1, int((absolute_expires_at - now).total_seconds()))
+
             session_key = f'session:{user_id}:{token_jti}'
             session_data = {
-                'created_at': datetime.now(timezone.utc).isoformat(),
+                'created_at': now.isoformat(),
+                'absolute_expires_at': absolute_expires_at.isoformat(),
                 'user_agent': request.headers.get('User-Agent', 'unknown')[:200],
-                'ip': request.remote_addr or 'unknown'
+                'ip': request.remote_addr or 'unknown',
             }
-            redis_client.setex(session_key, ttl, str(session_data))
-            current_app.logger.info(f"Created session {token_jti} for user {user_id}")
+            redis_client.setex(session_key, ttl, json.dumps(session_data))
+            current_app.logger.info(
+                f"Created session {token_jti} for user {user_id}, "
+                f"absolute expiry: {absolute_expires_at.isoformat()}"
+            )
             return True
         except Exception as e:
             current_app.logger.error(f"Failed to create session: {e}")
@@ -630,6 +647,31 @@ def validate_session(user_id, token_jti):
     # If no Redis configured, deny by default for security
     current_app.logger.warning("Redis not available for session validation")
     return True  # Allow if Redis not configured (backwards compatibility)
+
+
+def get_session_data(user_id, token_jti):
+    """Retrieve and parse session data from Redis. Returns dict or None.
+
+    New sessions are stored as JSON.  Old sessions (pre-48h enforcement)
+    were stored as Python dict strings — those are parsed via ast.literal_eval
+    for backward compatibility.
+    """
+    if not redis_client:
+        return None
+    try:
+        session_key = f'session:{user_id}:{token_jti}'
+        raw = redis_client.get(session_key)
+        if not raw:
+            return None
+        if isinstance(raw, bytes):
+            raw = raw.decode('utf-8', errors='replace')
+        try:
+            return json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            return ast.literal_eval(raw)
+    except Exception as e:
+        current_app.logger.error(f"Failed to get session data for {token_jti}: {e}")
+        return None
 
 
 # ============================================================
@@ -944,8 +986,12 @@ def admin_required(f):
     return decorated
 
 
-def generate_tokens(user, invalidate_existing=True):
-    """Generate access and refresh tokens with session tracking."""
+def generate_tokens(user, invalidate_existing=True, absolute_expires_at=None):
+    """Generate access and refresh tokens with session tracking.
+
+    absolute_expires_at: when provided (refresh path) the new session inherits
+    the original login's absolute wall so it cannot be refreshed past 48 h.
+    """
     # Generate unique session ID (JTI - JWT ID)
     token_jti = secrets.token_urlsafe(16)
     
@@ -990,8 +1036,9 @@ def generate_tokens(user, invalidate_existing=True):
         algorithm='HS256'
     )
     
-    # Create session in Redis
-    create_session(user.id, token_jti)
+    # Create session in Redis, propagating the absolute expiry from the
+    # original login (non-sliding 48 h enforcement).
+    create_session(user.id, token_jti, absolute_expires_at=absolute_expires_at)
     
     return access_token, refresh_token
 
@@ -1560,9 +1607,27 @@ def refresh_token():
         
         if not validate_session(user.id, token_jti):
             return jsonify({'error': 'Session expired. Please login again.', 'code': 'SESSION_EXPIRED'}), 401
-        
+
+        # Enforce the absolute 48-hour session wall.
+        # Read the original session's absolute_expires_at so it is propagated
+        # into the new session (the window does NOT slide on each refresh).
+        absolute_expires_at = None
+        session_data = get_session_data(user.id, token_jti)
+        if session_data and session_data.get('absolute_expires_at'):
+            try:
+                absolute_expires_at = datetime.fromisoformat(session_data['absolute_expires_at'])
+                if absolute_expires_at <= datetime.now(timezone.utc):
+                    return jsonify({
+                        'error': 'Session expired after 48 hours. Please login again.',
+                        'code': 'SESSION_EXPIRED'
+                    }), 401
+            except (ValueError, TypeError):
+                # Old session without absolute_expires_at — allow it this once;
+                # the new session will set the wall going forward.
+                absolute_expires_at = None
+
         # Generate new tokens but don't invalidate existing session (same session continues)
-        access_token, new_refresh = generate_tokens(user, invalidate_existing=False)
+        access_token, new_refresh = generate_tokens(user, invalidate_existing=False, absolute_expires_at=absolute_expires_at)
 
         # Deliver via cookies (S05) — also echo in JSON body for non-browser clients.
         resp = jsonify({'message': 'Token refreshed'})

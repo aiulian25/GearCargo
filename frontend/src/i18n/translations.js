@@ -1563,7 +1563,8 @@ export const translations = {
       welcomeBack: 'Welcome back!',
       loginFailed: 'Login failed',
       invalidCode: 'Invalid code',
-      // Registration
+      sessionExpired: 'Session expired',
+      sessionExpiredDesc: 'You have been automatically logged out after 48 hours for security. Please login again.',
       createAccount: 'Create Account',
       startTracking: 'Start managing your vehicles today',
       accountCreated: 'Account created successfully!',
@@ -3993,7 +3994,8 @@ export const translations = {
       welcomeBack: 'Bine ai revenit!',
       loginFailed: 'Autentificare eșuată',
       invalidCode: 'Cod invalid',
-      // Registration
+      sessionExpired: 'Sesiune expirată',
+      sessionExpiredDesc: 'Ai fost deconectat automat după 48 de ore din motive de securitate. Te rugăm să te autentifici din nou.',
       createAccount: 'Crează Cont',
       startTracking: 'Începe să îți gestionezi vehiculele astăzi',
       accountCreated: 'Contul a fost creat cu succes!',
@@ -6423,7 +6425,8 @@ export const translations = {
       welcomeBack: '¡Bienvenido de nuevo!',
       loginFailed: 'Error al iniciar sesión',
       invalidCode: 'Código inválido',
-      // Registration
+      sessionExpired: 'Sesión expirada',
+      sessionExpiredDesc: 'Has sido desconectado automáticamente después de 48 horas por seguridad. Por favor, inicia sesión de nuevo.',
       createAccount: 'Crear Cuenta',
       startTracking: 'Comienza a gestionar tus vehículos hoy',
       accountCreated: '¡Cuenta creada exitosamente!',

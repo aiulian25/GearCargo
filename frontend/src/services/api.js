@@ -1,4 +1,5 @@
 import axios from 'axios'
+import toast from 'react-hot-toast'
 
 const api = axios.create({
   baseURL: '/api',
@@ -35,8 +36,11 @@ api.interceptors.response.use(
       // attempting background sync (they check this flag, not the cookie).
       localStorage.removeItem('auth_session')
       if (!isAuthPage) {
-        alert(error.response?.data?.error || 'Your session has expired. Please login again.')
-        window.location.href = '/login'
+        toast.error(error.response?.data?.error || 'Your session has expired. Please login again.', {
+          duration: 4000,
+          id: 'session-expired',
+        })
+        setTimeout(() => { window.location.href = '/login' }, 2000)
       }
       return Promise.reject(error)
     }
@@ -62,8 +66,11 @@ api.interceptors.response.use(
         if (refreshErrorCode === 'SESSION_EXPIRED' || refreshErrorCode === 'SESSION_INVALID') {
           localStorage.removeItem('auth_session')
           if (!isAuthPage) {
-            alert(refreshError.response?.data?.error || 'Your session has expired. Please login again.')
-            window.location.href = '/login'
+            toast.error(refreshError.response?.data?.error || 'Your session has expired. Please login again.', {
+              duration: 4000,
+              id: 'session-expired',
+            })
+            setTimeout(() => { window.location.href = '/login' }, 2000)
           }
           return Promise.reject(refreshError)
         }
