@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, current_app
 from pywebpush import webpush, WebPushException
 import json
+import requests.exceptions
 
 from app import db
 from app.models import PushSubscription, NotificationLog
@@ -245,11 +246,11 @@ def test_notification(current_user):
         return jsonify({'error': 'No active subscriptions found'}), 404
     
     vapid_private = current_app.config.get('VAPID_PRIVATE_KEY')
-    vapid_email = current_app.config.get('VAPID_EMAIL', 'admin@gearcargo.local')
-    
+    vapid_subject = current_app.config.get('VAPID_SUBJECT', 'mailto:admin@gearcargo.local')
+
     if not vapid_private:
         return jsonify({'error': 'Push notifications not configured'}), 503
-    
+
     notification_data = {
         'title': data.get('title', 'GearCargo Test'),
         'body': data.get('body', 'This is a test notification'),
@@ -261,10 +262,10 @@ def test_notification(current_user):
             'type': 'test'
         }
     }
-    
+
     sent = 0
     failed = 0
-    
+
     for sub in subscriptions:
         try:
             webpush(
@@ -272,19 +273,33 @@ def test_notification(current_user):
                 data=json.dumps(notification_data),
                 vapid_private_key=_vapid_privkey_to_pem(vapid_private),
                 vapid_claims={
-                    'sub': f'mailto:{vapid_email}'
-                }
+                    'sub': vapid_subject
+                },
+                timeout=10,
             )
             sub.mark_used()
             sent += 1
-            
+
         except WebPushException as e:
+            current_app.logger.warning(
+                '[Push] WebPushException for sub %s: %s (HTTP %s)',
+                sub.id, e,
+                e.response.status_code if e.response else 'N/A',
+            )
             sub.mark_error(str(e))
             failed += 1
-            
-            # Remove subscription if it's gone
+
+            # Remove subscription if the push service says it's gone
             if e.response and e.response.status_code in [404, 410]:
                 db.session.delete(sub)
+
+        except (requests.exceptions.RequestException, Exception) as e:
+            current_app.logger.error(
+                '[Push] Unexpected error sending to sub %s: %s: %s',
+                sub.id, type(e).__name__, e,
+            )
+            sub.mark_error(f'{type(e).__name__}: {e}')
+            failed += 1
     
     db.session.commit()
     
@@ -329,11 +344,11 @@ def send_push_to_user(user_id, title, body, data=None, tag=None):
         return 0
     
     vapid_private = current_app.config.get('VAPID_PRIVATE_KEY')
-    vapid_email = current_app.config.get('VAPID_EMAIL', 'admin@gearcargo.local')
-    
+    vapid_subject = current_app.config.get('VAPID_SUBJECT', 'mailto:admin@gearcargo.local')
+
     if not vapid_private:
         return 0
-    
+
     notification_data = {
         'title': title,
         'body': body,
@@ -342,9 +357,9 @@ def send_push_to_user(user_id, title, body, data=None, tag=None):
         'tag': tag or 'gearcargo',
         'data': data or {}
     }
-    
+
     sent = 0
-    
+
     for sub in subscriptions:
         try:
             webpush(
@@ -352,12 +367,13 @@ def send_push_to_user(user_id, title, body, data=None, tag=None):
                 data=json.dumps(notification_data),
                 vapid_private_key=_vapid_privkey_to_pem(vapid_private),
                 vapid_claims={
-                    'sub': f'mailto:{vapid_email}'
-                }
+                    'sub': vapid_subject
+                },
+                timeout=10,
             )
             sub.mark_used()
             sent += 1
-            
+
             # Log notification
             log = NotificationLog(
                 user_id=user_id,
@@ -371,11 +387,23 @@ def send_push_to_user(user_id, title, body, data=None, tag=None):
                 sent_at=datetime.now(timezone.utc)
             )
             db.session.add(log)
-            
+
         except WebPushException as e:
+            current_app.logger.warning(
+                '[Push] WebPushException for sub %s user %s: %s (HTTP %s)',
+                sub.id, user_id, e,
+                e.response.status_code if e.response else 'N/A',
+            )
             sub.mark_error(str(e))
             if e.response and e.response.status_code in [404, 410]:
                 db.session.delete(sub)
-    
+
+        except (requests.exceptions.RequestException, Exception) as e:
+            current_app.logger.error(
+                '[Push] Unexpected error sending to sub %s user %s: %s: %s',
+                sub.id, user_id, type(e).__name__, e,
+            )
+            sub.mark_error(f'{type(e).__name__}: {e}')
+
     db.session.commit()
     return sent
