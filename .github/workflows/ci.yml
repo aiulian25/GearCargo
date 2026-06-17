@@ -23,17 +23,24 @@ jobs:
       run:
         working-directory: backend
     env:
-      # SQLite stands in for Postgres for the migration/boot/test smoke.
-      DATABASE_URL: sqlite:///${{ runner.temp }}/gearcargo-ci.db
-      # Writable data root under the runner temp dir — no privileged setup,
-      # no world-writable permissions, no container /app path.
-      VOLUMES_PATH: ${{ runner.temp }}/gc-volumes
-      UPLOAD_FOLDER: ${{ runner.temp }}/gc-volumes/attachments
-      BACKUP_FOLDER: ${{ runner.temp }}/gc-volumes/backups
       RATELIMIT_ENABLED: 'false'
       FLASK_APP: app:create_app
     steps:
       - uses: actions/checkout@v4
+
+      - name: Configure CI data paths
+        # `runner.temp` isn't available in job-level env:, so resolve the
+        # writable data root from $RUNNER_TEMP here and export for later steps.
+        # SQLite stands in for Postgres for the migration/boot/test smoke; the
+        # data root lives under the runner temp dir — no privileged setup, no
+        # world-writable permissions, no container /app path.
+        run: |
+          {
+            echo "DATABASE_URL=sqlite:///$RUNNER_TEMP/gearcargo-ci.db"
+            echo "VOLUMES_PATH=$RUNNER_TEMP/gc-volumes"
+            echo "UPLOAD_FOLDER=$RUNNER_TEMP/gc-volumes/attachments"
+            echo "BACKUP_FOLDER=$RUNNER_TEMP/gc-volumes/backups"
+          } >> "$GITHUB_ENV"
 
       - uses: actions/setup-python@v5
         with:
