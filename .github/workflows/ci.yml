@@ -42,7 +42,7 @@ jobs:
             echo "BACKUP_FOLDER=$RUNNER_TEMP/gc-volumes/backups"
           } >> "$GITHUB_ENV"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           cache: 'pip'
