@@ -44,7 +44,7 @@ Flask-WTF~=1.2
 Flask-Compress~=1.14
 
 # Email
-Flask-Mail~=0.9
+Flask-Mail~=0.10
 
 # Push Notifications
 pywebpush~=1.14
