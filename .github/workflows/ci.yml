@@ -19,6 +19,23 @@ jobs:
   backend:
     name: Backend — migrations, boot, tests
     runs-on: ubuntu-latest
+    # Run migrations + boot against Postgres (the production engine) — the
+    # migrations use Postgres DDL (e.g. ADD COLUMN IF NOT EXISTS), so SQLite
+    # can't validate them. Ephemeral, throwaway service credentials.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: gearcargo
+          POSTGRES_PASSWORD: gearcargo_ci
+          POSTGRES_DB: gearcargo_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gearcargo"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     defaults:
       run:
         working-directory: backend
@@ -31,12 +48,11 @@ jobs:
       - name: Configure CI data paths
         # `runner.temp` isn't available in job-level env:, so resolve the
         # writable data root from $RUNNER_TEMP here and export for later steps.
-        # SQLite stands in for Postgres for the migration/boot/test smoke; the
-        # data root lives under the runner temp dir — no privileged setup, no
-        # world-writable permissions, no container /app path.
+        # Migrations/boot use the Postgres service above; pytest uses its own
+        # in-memory SQLite via TestingConfig (tables via create_all, no DDL).
         run: |
           {
-            echo "DATABASE_URL=sqlite:///$RUNNER_TEMP/gearcargo-ci.db"
+            echo "DATABASE_URL=postgresql://gearcargo:gearcargo_ci@localhost:5432/gearcargo_ci"
             echo "VOLUMES_PATH=$RUNNER_TEMP/gc-volumes"
             echo "UPLOAD_FOLDER=$RUNNER_TEMP/gc-volumes/attachments"
             echo "BACKUP_FOLDER=$RUNNER_TEMP/gc-volumes/backups"
