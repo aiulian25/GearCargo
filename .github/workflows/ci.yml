@@ -26,7 +26,7 @@ jobs:
       RATELIMIT_ENABLED: 'false'
       FLASK_APP: app:create_app
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Configure CI data paths
         # `runner.temp` isn't available in job-level env:, so resolve the
@@ -96,7 +96,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-node@v4
         with:
