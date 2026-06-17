@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from flask import current_app
 from typing import Optional, Dict, List, Any, Tuple
 import logging
+import ipaddress
 from urllib.parse import urlparse
 import caldav
 from icalendar import Calendar, Event, Alarm
@@ -170,26 +171,45 @@ def _ensure_encrypted(value: str) -> str:
     return encrypt_field(value)  # plaintext → encrypt
 
 
-def _is_allowed_caldav_url(url: str) -> bool:
-    """Validate CalDAV URL scheme.
+def _host_is_private_or_local(host: str) -> bool:
+    """True for loopback/LAN hosts where plaintext http is acceptable (the
+    traffic never leaves the local network): localhost, RFC-1918 / loopback /
+    link-local IP literals, and the usual local TLDs."""
+    h = (host or '').lower().rstrip('.')
+    if not h:
+        return False
+    if h == 'localhost' or h.endswith(('.local', '.lan', '.internal', '.home')):
+        return True
+    try:
+        ip = ipaddress.ip_address(h)
+        return ip.is_private or ip.is_loopback or ip.is_link_local
+    except ValueError:
+        return False
 
-    GearCargo is a self-hosted application and users frequently run CalDAV
-    servers (Nextcloud, Radicale, Baikal) on their local network. Blocking
-    private/LAN IP ranges would prevent all such setups, so we allow them.
-    We still reject non-HTTP(S) schemes to prevent protocol-level abuse.
+
+def _is_allowed_caldav_url(url: str) -> bool:
+    """Validate a CalDAV URL.
+
+    GearCargo is self-hosted and users frequently run CalDAV servers
+    (Nextcloud, Radicale, Baikal) on their local network, so we allow private/
+    LAN hosts. But CalDAV carries credentials, so we require HTTPS for any
+    PUBLIC host — plaintext http is only accepted for loopback/LAN hosts where
+    the traffic stays on the local network. Non-HTTP(S) schemes are rejected.
     """
     if not url:
         return False
 
     parsed = urlparse(url)
-    if parsed.scheme not in ('http', 'https'):
-        return False
-
     host = (parsed.hostname or '').lower()
     if not host:
         return False
 
-    return True
+    if parsed.scheme == 'https':
+        return True
+    if parsed.scheme == 'http':
+        # Plaintext only for local/LAN hosts; public http would leak credentials.
+        return _host_is_private_or_local(host)
+    return False
 
 
 def get_user_calendar_sources(user, include_secrets: bool = False) -> List[Dict[str, Any]]:

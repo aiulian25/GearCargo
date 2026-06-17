@@ -87,7 +87,7 @@ def test_classifier_passes_tight_options(monkeypatch):
     opts = captured.get('options', {})
     assert opts.get('temperature') == 0       # deterministic
     assert opts.get('num_predict') == 16      # tight output cap (perf)
-    assert captured.get('timeout') == 10      # short timeout
+    assert captured.get('timeout') == 15      # CHAT_CLASSIFIER_TIMEOUT default (timeout invariant)
 
 
 def test_cache_hit_short_circuits(monkeypatch):

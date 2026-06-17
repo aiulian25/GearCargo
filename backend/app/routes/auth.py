@@ -278,7 +278,9 @@ def _db_is_account_locked(email):
     try:
         user = User.query.filter_by(email=email.lower()).first()
         if user and user.locked_until:
-            now = datetime.now(timezone.utc)
+            # Naive UTC: locked_until is read back tz-naive from the DB, so
+            # compare against naive now (mixing aware/naive raises TypeError).
+            now = _utcnow_naive()
             if user.locked_until > now:
                 remaining = int((user.locked_until - now).total_seconds())
                 return True, remaining
@@ -299,7 +301,9 @@ def _db_record_failed_login(email):
         if not user:
             return False, 0, 0
 
-        now = datetime.now(timezone.utc)
+        # Naive UTC throughout so the value we store matches what we read back
+        # for comparison (the column is tz-naive).
+        now = _utcnow_naive()
         # If a previous lock expired, reset the counter first
         if user.locked_until and user.locked_until <= now:
             user.locked_until = None

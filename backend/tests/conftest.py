@@ -49,6 +49,10 @@ def client(app):
 
 @pytest.fixture()
 def user(app):
+    # Keep the app context open for the whole test (yield, not return): the
+    # User stays attached to a live session, so accessing user.id / attributes
+    # in later app contexts doesn't raise "weakly-referenced object no longer
+    # exists" (expire-on-commit would otherwise try to reload via a dead session).
     with app.app_context():
         user = User(
             username="testuser",
@@ -60,7 +64,7 @@ def user(app):
         db.session.add(user)
         db.session.commit()
         db.session.refresh(user)
-        return user
+        yield user
 
 
 @pytest.fixture()
@@ -73,6 +77,13 @@ def auth_headers(app):
             "exp": datetime.utcnow() + timedelta(hours=1),
         }
         token = jwt.encode(payload, app.config["JWT_SECRET_KEY"], algorithm="HS256")
+        # Auth now requires a real server-side session (48h absolute wall +
+        # single-device enforcement): token_required → validate_session checks
+        # Redis (authoritative when present) then the user_sessions DB mirror.
+        # Register the session the same way login does so the token is accepted.
+        from app.routes.auth import create_session
+        with app.test_request_context():
+            create_session(user_id, jti)
         return {"Authorization": f"Bearer {token}"}
 
     return _build

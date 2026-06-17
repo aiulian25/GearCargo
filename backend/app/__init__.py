@@ -189,6 +189,22 @@ def create_app(config_class=None):
         storage_uri=app.config.get('RATELIMIT_STORAGE_URL', app.config.get('REDIS_URL', 'memory://')),
         enabled=app.config.get('RATELIMIT_ENABLED', True)
     )
+
+    def _rate_limit(endpoint, *limit_args, **limit_kwargs):
+        """Wrap a view function with a per-endpoint Flask-Limiter limit.
+
+        No-op when the endpoint isn't registered, or when rate limiting is
+        disabled (e.g. tests): skipping the wrap when disabled is behaviourally
+        identical (the limiter wouldn't enforce anything) and avoids Flask-Limiter
+        retaining a weakref to a per-test app's limiter, which otherwise raises
+        'weakly-referenced object no longer exists' across app instances.
+        """
+        if not app.config.get('RATELIMIT_ENABLED', True):
+            return
+        if endpoint in app.view_functions:
+            app.view_functions[endpoint] = limiter.limit(*limit_args, **limit_kwargs)(
+                app.view_functions[endpoint]
+            )
     
     # I15: Initialize Redis client for token blacklisting and check connectivity.
     # The result is stored in _redis_available so the /health endpoint can report
@@ -418,10 +434,9 @@ def create_app(config_class=None):
     # Applied post-registration so auth.register exists in app.view_functions.
     # Flask-Limiter's before_request hook enforces this limit before the view
     # function runs; Redis unavailability is handled internally (fail-open + log).
-    app.view_functions['auth.register'] = limiter.limit(
+    _rate_limit('auth.register',
         '5 per hour; 20 per day',
-        error_message='Too many registration attempts. Please try again later.',
-    )(app.view_functions['auth.register'])
+        error_message='Too many registration attempts. Please try again later.')
 
     # S16: Apply a dedicated per-IP rate limit to the security-question lookup
     # endpoint. The global default (100/hour) is far too permissive — an attacker
@@ -430,10 +445,9 @@ def create_app(config_class=None):
     # attack chain. 20 requests/hour is more than enough for any legitimate user
     # (a single recovery flow needs 1-2 requests) while making bulk enumeration
     # impractical. Applied after blueprint registration so the view function exists.
-    app.view_functions['auth.get_recovery_questions'] = limiter.limit(
+    _rate_limit('auth.get_recovery_questions',
         '20 per hour',
-        error_message='Too many requests. Please try again later.',
-    )(app.view_functions['auth.get_recovery_questions'])
+        error_message='Too many requests. Please try again later.')
 
     # S23: Apply a dedicated per-IP rate limit to the public password-check
     # endpoint.  Without this only the global 100/hour default applies, letting
@@ -441,10 +455,9 @@ def create_app(config_class=None):
     # test common passwords at scale.  30 per hour is generous for genuine use
     # (password-strength feedback during registration fires once per final
     # submission, not on every keystroke) while making bulk API abuse impractical.
-    app.view_functions['auth.check_password_public'] = limiter.limit(
+    _rate_limit('auth.check_password_public',
         '30 per hour',
-        error_message='Too many requests. Please try again later.',
-    )(app.view_functions['auth.check_password_public'])
+        error_message='Too many requests. Please try again later.')
 
     # ---------------------------------------------------------------------------
     # S24: AI endpoint rate limits — per authenticated user, not per IP.
@@ -493,69 +506,53 @@ def create_app(config_class=None):
     #   /attachments/<id>/parse-ocr     — 5/hour/user
 
     for _prediction_endpoint in ('predictions.generate_predictions', 'predictions.refresh_predictions'):
-        if _prediction_endpoint in app.view_functions:
-            app.view_functions[_prediction_endpoint] = limiter.limit(
-                '10 per hour',
-                key_func=_ai_rate_key,
-                error_message='Too many AI requests. Please wait before generating more predictions.',
-            )(app.view_functions[_prediction_endpoint])
-
-    # OCR AI parsing — 5/hour/user.
-    if 'attachments.parse_ocr_with_ai' in app.view_functions:
-        app.view_functions['attachments.parse_ocr_with_ai'] = limiter.limit(
-            '5 per hour',
-            key_func=_ai_rate_key,
-            error_message='Too many AI extraction requests. Please wait before trying again.',
-        )(app.view_functions['attachments.parse_ocr_with_ai'])
-
-    # OCR retry — 10/hour/user (re-runs tesseract, which is CPU-intensive).
-    if 'attachments.retry_ocr' in app.view_functions:
-        app.view_functions['attachments.retry_ocr'] = limiter.limit(
+        _rate_limit(_prediction_endpoint,
             '10 per hour',
             key_func=_ai_rate_key,
-            error_message='Too many OCR retry requests. Please wait before trying again.',
-        )(app.view_functions['attachments.retry_ocr'])
+            error_message='Too many AI requests. Please wait before generating more predictions.')
+
+    # OCR AI parsing — 5/hour/user.
+    _rate_limit('attachments.parse_ocr_with_ai',
+        '5 per hour',
+        key_func=_ai_rate_key,
+        error_message='Too many AI extraction requests. Please wait before trying again.')
+
+    # OCR retry — 10/hour/user (re-runs tesseract, which is CPU-intensive).
+    _rate_limit('attachments.retry_ocr',
+        '10 per hour',
+        key_func=_ai_rate_key,
+        error_message='Too many OCR retry requests. Please wait before trying again.')
 
     # AI reminder suggestions — 3/hour/user.
-    if 'vehicles.suggest_reminder' in app.view_functions:
-        app.view_functions['vehicles.suggest_reminder'] = limiter.limit(
-            '3 per hour',
-            key_func=_ai_rate_key,
-            error_message='Too many AI suggestion requests. Please wait before trying again.',
-        )(app.view_functions['vehicles.suggest_reminder'])
+    _rate_limit('vehicles.suggest_reminder',
+        '3 per hour',
+        key_func=_ai_rate_key,
+        error_message='Too many AI suggestion requests. Please wait before trying again.')
 
     # AI vehicle chat — per-user, generous + env-configurable (CHAT_RATE_LIMIT).
     # Default '15 per minute; 100 per hour' lets a real conversation flow while
     # the per-minute burst still bounds abuse (each chat = up to two remote model
-    # calls; see §14.3). The `if` guard makes this a no-op until the endpoint exists.
-    if 'vehicles.vehicle_chat' in app.view_functions:
-        app.view_functions['vehicles.vehicle_chat'] = limiter.limit(
-            app.config.get('CHAT_RATE_LIMIT', '15 per minute; 100 per hour'),
-            key_func=_ai_rate_key,
-            error_message='Too many chat requests. Please wait before sending more messages.',
-        )(app.view_functions['vehicles.vehicle_chat'])
+    # calls; see §14.3). No-op until the endpoint exists / when rate limiting is off.
+    _rate_limit('vehicles.vehicle_chat',
+        app.config.get('CHAT_RATE_LIMIT', '15 per minute; 100 per hour'),
+        key_func=_ai_rate_key,
+        error_message='Too many chat requests. Please wait before sending more messages.')
 
     # Global search — 30/minute/user (generous for real-time debounced queries).
-    if 'search.global_search' in app.view_functions:
-        app.view_functions['search.global_search'] = limiter.limit(
-            '30 per minute',
-            key_func=_ai_rate_key,
-            error_message='Too many search requests. Please slow down.',
-        )(app.view_functions['search.global_search'])
+    _rate_limit('search.global_search',
+        '30 per minute',
+        key_func=_ai_rate_key,
+        error_message='Too many search requests. Please slow down.')
 
     # F05: per-IP limits on the PUBLIC (unauthenticated) shared-report endpoints.
     # The 256-bit token makes enumeration infeasible; these limits bound DoS /
     # scraping and the cost of the heavier PDF path.
-    if 'reports.view_shared_report' in app.view_functions:
-        app.view_functions['reports.view_shared_report'] = limiter.limit(
-            '120 per hour',
-            error_message='Too many requests. Please try again later.',
-        )(app.view_functions['reports.view_shared_report'])
-    if 'reports.download_shared_report_pdf' in app.view_functions:
-        app.view_functions['reports.download_shared_report_pdf'] = limiter.limit(
-            '20 per hour',
-            error_message='Too many requests. Please try again later.',
-        )(app.view_functions['reports.download_shared_report_pdf'])
+    _rate_limit('reports.view_shared_report',
+        '120 per hour',
+        error_message='Too many requests. Please try again later.')
+    _rate_limit('reports.download_shared_report_pdf',
+        '20 per hour',
+        error_message='Too many requests. Please try again later.')
 
     from app.routes.widget import widget_bp
     limiter.exempt(widget_bp)
