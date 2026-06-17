@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { vehicleApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { useAuth } from '../../contexts/AuthContext'
+import { useConfirm } from '../../components/ui/ConfirmDialog'
 import { formatDate } from '../../utils/dateFormat'
 import { formatFuelEconomy } from '../../utils/fuelEconomy'
 
@@ -149,12 +150,18 @@ const Icons = {
       <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
     </svg>
   ),
+  ai: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"/><path d="M19 14l.8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8L19 14z"/>
+    </svg>
+  ),
 }
 
 export default function VehicleDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { t } = useTranslation()
+  const confirm = useConfirm()
   const { currency } = useCurrency()
   const { user } = useAuth()
   const [vehicle, setVehicle] = useState(null)
@@ -197,7 +204,14 @@ export default function VehicleDetail() {
   }, [id, navigate])
   
   const handleDelete = async () => {
-    if (window.confirm(t('vehicleDetail.deleteConfirm') || 'Delete this vehicle and all its data?')) {
+    const name = vehicle?.name || `${vehicle?.make || ''} ${vehicle?.model || ''}`.trim()
+    const ok = await confirm({
+      title: t('confirm.deleteVehicleTitle') || 'Delete vehicle?',
+      message: (t('confirm.deleteVehicleMessage') || 'Permanently delete “{name}” and all its data (fuel, services, repairs, taxes, insurance, attachments). This cannot be undone.').replace('{name}', name),
+      confirmLabel: t('common.delete') || 'Delete',
+      destructive: true,
+    })
+    if (ok) {
       try {
         await vehicleApi.delete(id)
         navigate('/vehicles')
@@ -206,13 +220,23 @@ export default function VehicleDetail() {
       }
     }
   }
-  
+
   const handleArchive = async () => {
-    const confirmMessage = vehicle.archived 
-      ? (t('archive.restoreConfirm') || 'Restore this vehicle from archive?')
-      : (t('archive.archiveConfirm') || 'Archive this vehicle? It will be hidden from your dashboard.')
-    
-    if (window.confirm(confirmMessage)) {
+    const name = vehicle?.name || `${vehicle?.make || ''} ${vehicle?.model || ''}`.trim()
+    const ok = await confirm(vehicle.archived
+      ? {
+          title: t('confirm.restoreVehicleTitle') || 'Restore vehicle?',
+          message: (t('confirm.restoreVehicleMessage') || 'Restore “{name}” from the archive?').replace('{name}', name),
+          confirmLabel: t('archive.restore') || 'Restore',
+          destructive: false,
+        }
+      : {
+          title: t('confirm.archiveVehicleTitle') || 'Archive vehicle?',
+          message: (t('confirm.archiveVehicleMessage') || 'Archive “{name}”? It will be hidden from your dashboard but its data is kept.').replace('{name}', name),
+          confirmLabel: t('archive.archive') || 'Archive',
+          destructive: false,
+        })
+    if (ok) {
       try {
         if (vehicle.archived) {
           await vehicleApi.unarchive(id)
@@ -415,6 +439,8 @@ export default function VehicleDetail() {
     { id: 'charts', label: t('vehicleDetail.charts') || 'Charts', icon: Icons.chart, to: `/vehicles/${id}/charts` },
     { id: 'alerts', label: t('vehicleDetail.predictionAlerts') || 'Prediction Alerts', icon: Icons.alert, to: `/vehicles/${id}/alerts` },
     { id: 'health', label: t('vehicleDetail.vehicleHealth') || 'Vehicle Health', icon: Icons.heart, to: `/vehicles/${id}/health` },
+    { id: 'consumables', label: t('vehicleDetail.consumables') || 'Consumables', icon: Icons.gauge, to: `/vehicles/${id}/consumables` },
+    { id: 'assistant', label: t('vehicleDetail.assistant') || 'Assistant', icon: Icons.ai, to: `/vehicles/${id}/chat` },
   ]
   
   const addButtons = [
@@ -424,6 +450,7 @@ export default function VehicleDetail() {
     { id: 'addTax', label: t('vehicleDetail.addTax') || 'Add Tax', icon: Icons.receipt, to: `/vehicles/${id}/tax/add`, color: 'bg-rose-500' },
     { id: 'addParking', label: t('vehicleDetail.addParking') || 'Add Parking', icon: Icons.parking, to: `/vehicles/${id}/parking/add`, color: 'bg-purple-500' },
     { id: 'addRepair', label: t('vehicleDetail.addRepair') || 'Add Repair', icon: Icons.tools, to: `/vehicles/${id}/repair/add`, color: 'bg-red-500' },
+    { id: 'addConsumable', label: t('vehicleDetail.addConsumable') || 'Add Consumable', icon: Icons.gauge, to: `/vehicles/${id}/consumable/add`, color: 'bg-cyan-500' },
     { id: 'addReminder', label: t('vehicleDetail.addReminder') || 'Add Reminder', icon: Icons.bell, to: `/vehicles/${id}/reminder/add`, color: 'bg-green-500' },
     { id: 'addTodo', label: t('vehicleDetail.addTodo') || 'Add Todo', icon: Icons.checkSquare, to: `/vehicles/${id}/todo/add`, color: 'bg-indigo-500' },
   ]

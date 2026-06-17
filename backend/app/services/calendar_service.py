@@ -10,9 +10,6 @@ import logging
 from urllib.parse import urlparse
 import caldav
 from icalendar import Calendar, Event, Alarm
-from cryptography.fernet import Fernet
-import base64
-import hashlib
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -119,63 +116,58 @@ CALENDAR_PROVIDERS = {
 # ENCRYPTION HELPERS
 # ============================================================
 
-def get_encryption_key() -> bytes:
-    """Derive a symmetric key for credential encryption."""
-    key_seed = current_app.config.get('ENCRYPTION_KEY') or current_app.config.get('SECRET_KEY')
-    if not key_seed or key_seed in ('', 'dev-secret-key-change-in-production'):
-        raise RuntimeError('ENCRYPTION_KEY or SECRET_KEY must be set for credential encryption')
-    return base64.urlsafe_b64encode(hashlib.sha256(str(key_seed).encode()).digest())
-
-
 def encrypt_password(password: str) -> str:
-    """Encrypt a password for storage."""
+    """Encrypt a CalDAV credential for storage.
+
+    S06: delegates to the shared field-encryption module so CalDAV credentials
+    use the same versioned, rotatable HKDF scheme as all other PII. Previously
+    this had its own duplicate SHA-256→Fernet derivation.
+    """
     if not password:
         return ''
-    fernet = Fernet(get_encryption_key())
-    return fernet.encrypt(password.encode()).decode()
+    from app.utils.encryption import encrypt_field
+    return encrypt_field(password)
 
 
 def decrypt_password(encrypted: str) -> str:
-    """Decrypt a stored password.
+    """Decrypt a stored CalDAV credential.
 
-    Falls back to treating the value as plaintext for legacy rows that were
-    written before field-level encryption was introduced (S04).  The caller
-    will receive the raw credential so CalDAV auth continues to work; the
-    value is automatically re-encrypted the next time the user saves their
-    calendar settings.
+    Handles current (v2 HKDF), legacy (pre-S06 SHA-256) and rotation keys via the
+    shared module. Falls back to treating the value as plaintext for very old rows
+    written before any field-level encryption existed, so CalDAV auth keeps
+    working; such values are re-encrypted on the next save via _ensure_encrypted.
     """
     if not encrypted:
         return ''
-    try:
-        fernet = Fernet(get_encryption_key())
-        return fernet.decrypt(encrypted.encode()).decode()
-    except Exception:
-        # Not a valid Fernet token — treat as legacy plaintext credential.
-        logger.warning(
-            '[Security] CalDAV credential could not be decrypted — '
-            'treating as legacy plaintext. Re-save calendar settings to encrypt.'
-        )
-        return encrypted
+    from app.utils.encryption import decrypt_field
+    result = decrypt_field(encrypted)
+    if result:
+        return result
+    # decrypt_field returned '' for non-empty input → not a known ciphertext.
+    # Treat as legacy plaintext credential (pre-encryption era).
+    logger.warning(
+        '[Security] CalDAV credential could not be decrypted — '
+        'treating as legacy plaintext. Re-save calendar settings to encrypt.'
+    )
+    return encrypted
 
 
 def _ensure_encrypted(value: str) -> str:
-    """Return *value* encrypted with the current key.
+    """Return *value* stored as current-scheme ciphertext.
 
-    If *value* is already a valid Fernet token for the current key it is
-    returned unchanged (idempotent).  If it is plaintext — e.g., a row
-    written before encryption was enforced — it is encrypted and the
-    ciphertext is returned.  This acts as a one-shot, transparent migration:
-    plaintext values are upgraded on the next write without requiring a
-    separate migration script.
+    Idempotent for values already in the current (v2) scheme. Legacy ciphertext
+    is upgraded to v2; plaintext is encrypted. Acts as a transparent on-write
+    migration so values are upgraded without a separate script.
     """
     if not value:
         return ''
-    try:
-        Fernet(get_encryption_key()).decrypt(value.encode())
-        return value  # already a valid ciphertext for this key
-    except Exception:
-        logger.warning('[Security] Re-encrypting legacy plaintext CalDAV credential')
-        return encrypt_password(value)
+    from app.utils.encryption import decrypt_field, encrypt_field, is_versioned
+    decrypted = decrypt_field(value)
+    if decrypted and is_versioned(value):
+        return value  # already current-scheme ciphertext — leave unchanged
+    if decrypted:
+        return encrypt_field(decrypted)  # legacy ciphertext → upgrade to v2
+    return encrypt_field(value)  # plaintext → encrypt
 
 
 def _is_allowed_caldav_url(url: str) -> bool:

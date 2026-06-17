@@ -244,7 +244,7 @@ export default function AddVehicle() {
                 {t('vehicles.year')}
               </label>
               <input
-                type="number"
+                type="number" inputMode="decimal"
                 {...register('year', { 
                   min: { value: 1900, message: t('vehicles.invalidYear') },
                   max: { value: new Date().getFullYear() + 1, message: t('vehicles.invalidYear') }
@@ -312,7 +312,7 @@ export default function AddVehicle() {
                 {t('vehicles.currentMileage')} ({distanceUnit === 'miles' ? (t('vehicles.miles') || 'miles') : 'km'})
               </label>
               <input
-                type="number"
+                type="number" inputMode="decimal"
                 {...register('current_mileage', { min: 0 })}
                 className="input"
                 placeholder="0"
@@ -324,7 +324,7 @@ export default function AddVehicle() {
                 {t('vehicles.tankCapacity')}
               </label>
               <input
-                type="number"
+                type="number" inputMode="decimal"
                 step="0.1"
                 {...register('tank_capacity', { min: 0 })}
                 className="input"
@@ -351,7 +351,7 @@ export default function AddVehicle() {
               {t('vehicles.engineSize')}
             </label>
             <input
-              type="number"
+              type="number" inputMode="decimal"
               {...register('engine_cc', { min: 0 })}
               className="input"
               placeholder={t('vehicles.engineSizePlaceholder')}
@@ -386,7 +386,7 @@ export default function AddVehicle() {
                     {t('vehicles.height')}
                   </label>
                   <input
-                    type="number"
+                    type="number" inputMode="decimal"
                     {...register('vehicle_height_cm', { min: 0 })}
                     className="input"
                     placeholder={t('vehicles.heightPlaceholder')}
@@ -398,7 +398,7 @@ export default function AddVehicle() {
                     {t('vehicles.width')}
                   </label>
                   <input
-                    type="number"
+                    type="number" inputMode="decimal"
                     {...register('vehicle_width_cm', { min: 0 })}
                     className="input"
                     placeholder={t('vehicles.widthPlaceholder')}
@@ -411,7 +411,7 @@ export default function AddVehicle() {
                   {t('vehicles.weight')}
                 </label>
                 <input
-                  type="number"
+                  type="number" inputMode="decimal"
                   {...register('vehicle_weight_kg', { min: 0 })}
                   className="input"
                   placeholder={t('vehicles.weightPlaceholder')}

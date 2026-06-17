@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useLanguage, useTranslation } from '../../contexts/LanguageContext'
 import { backupApi, vehicleApi, authApi, calendarApi, reportsApi, attachmentApi } from '../../services/api'
 import { usePushNotifications } from '../../hooks/usePushNotifications'
+import { useConfirm } from '../../components/ui/ConfirmDialog'
 import UserManagement from '../../components/admin/UserManagement'
 import SystemLogs from '../../components/admin/SystemLogs'
 import MaintenanceCleanup from '../../components/admin/MaintenanceCleanup'
@@ -17,6 +18,8 @@ import BackupSettings from '../../components/settings/BackupSettings'
 import IntegrationSettings from '../../components/settings/IntegrationSettings'
 import PrivacyPolicy from '../../components/settings/PrivacyPolicy'
 import TermsOfService from '../../components/settings/TermsOfService'
+import SyncIndicator from '../../components/PWA/SyncIndicator'
+import PushPrimingModal from '../../components/PWA/PushPrimingModal'
 import toast from 'react-hot-toast'
 
 // SVG Icons for Settings
@@ -174,6 +177,7 @@ export default function Settings() {
   const { user, logout, refreshUser } = useAuth()
   const { language, setLanguage, currency, languageNames, supportedLanguages } = useLanguage()
   const { t } = useTranslation()
+  const confirm = useConfirm()
   
   // Push notifications hook
   const {
@@ -181,9 +185,16 @@ export default function Settings() {
     isSubscribed: pushSubscribed,
     loading: pushLoading,
     toggle: togglePush,
+    subscribe: subscribePush,
+    resubscribe: resubscribePush,
     isDenied: pushDenied,
+    isGranted: pushGranted,
+    isDefault: pushDefault,
     sendTestNotification,
   } = usePushNotifications()
+
+  // Permission-priming modal — shown before the browser prompt the first time.
+  const [showPushPriming, setShowPushPriming] = useState(false)
   
   const [show2FASetup, setShow2FASetup] = useState(false)
   const [showSecurityQuestionsSetup, setShowSecurityQuestionsSetup] = useState(false)
@@ -262,7 +273,12 @@ export default function Settings() {
   const [reportPreview, setReportPreview] = useState(null)
   const [reportLoading, setReportLoading] = useState(false)
   const [reportGenerating, setReportGenerating] = useState(false)
-  
+  // F05 — shareable report links
+  const [shareLinks, setShareLinks] = useState([])
+  const [shareCreating, setShareCreating] = useState(false)
+  const [shareExpiryDays, setShareExpiryDays] = useState(7)
+  const [createdShare, setCreatedShare] = useState(null)
+
   // Expiring attachments state
   const [expiringAttachments, setExpiringAttachments] = useState({
     expiring_soon: [],
@@ -465,8 +481,16 @@ export default function Settings() {
   }
   
   const handleDeleteArchivedVehicle = async (vehicleId) => {
-    if (!window.confirm(t('archive.deleteConfirm') || 'Permanently delete this vehicle and all its data? This cannot be undone.')) return
-    
+    const v = archivedVehicles.find((x) => x.id === vehicleId)
+    const name = v?.name || `${v?.make || ''} ${v?.model || ''}`.trim()
+    const ok = await confirm({
+      title: t('confirm.deleteVehicleTitle') || 'Delete vehicle?',
+      message: (t('confirm.deleteVehicleMessage') || 'Permanently delete “{name}” and all its data (fuel, services, repairs, taxes, insurance, attachments). This cannot be undone.').replace('{name}', name),
+      confirmLabel: t('common.delete') || 'Delete',
+      destructive: true,
+    })
+    if (!ok) return
+
     try {
       await vehicleApi.hardDelete(vehicleId)
       setArchivedVehicles(prev => prev.filter(v => v.id !== vehicleId))
@@ -482,21 +506,52 @@ export default function Settings() {
       toast.error(t('settings.pushNotSupported') || 'Push notifications are not supported in this browser')
       return
     }
-    
+
     if (pushDenied) {
       toast.error(t('settings.pushDenied') || 'Push notifications are blocked. Please enable them in your browser settings.')
       return
     }
-    
+
+    // Enabling for the first time (OS permission still "default"): prime the
+    // user with the value proposition BEFORE triggering the one-shot prompt.
+    if (!pushSubscribed && pushDefault) {
+      setShowPushPriming(true)
+      return
+    }
+
+    // Already granted, or turning off — act immediately.
     const success = await togglePush()
     if (success) {
       toast.success(
-        pushSubscribed 
+        pushSubscribed
           ? (t('settings.pushDisabled') || 'Push notifications disabled')
           : (t('settings.pushEnabled') || 'Push notifications enabled')
       )
     } else {
       toast.error(t('settings.pushFailed') || 'Failed to update push notification settings')
+    }
+  }
+
+  // User confirmed the priming modal → now trigger the real browser prompt.
+  const handlePushPrimingConfirm = async () => {
+    setShowPushPriming(false)
+    const success = await subscribePush()
+    if (success) {
+      toast.success(t('settings.pushEnabled') || 'Push notifications enabled')
+    } else if (Notification.permission === 'denied') {
+      toast.error(t('settings.pushDenied') || 'Push notifications are blocked. Please enable them in your browser settings.')
+    } else {
+      toast.error(t('settings.pushFailed') || 'Failed to update push notification settings')
+    }
+  }
+
+  // Recover a stale/expired subscription without toggling off first.
+  const handleResubscribe = async () => {
+    const success = await resubscribePush()
+    if (success) {
+      toast.success(t('settings.pushResubscribed') || 'Notifications re-subscribed')
+    } else {
+      toast.error(t('settings.pushResubscribeFailed') || 'Failed to re-subscribe')
     }
   }
   
@@ -872,6 +927,65 @@ export default function Settings() {
     }
   }
   
+  // F05 — shareable report link handlers
+  const loadShares = async () => {
+    try {
+      const r = await reportsApi.listShares()
+      setShareLinks(r.data?.shares || [])
+    } catch (error) {
+      console.error('Failed to load share links:', error)
+    }
+  }
+
+  const handleCreateShare = async () => {
+    if (shareCreating) return
+    setShareCreating(true)
+    setCreatedShare(null)
+    try {
+      const res = await reportsApi.createShare({
+        vehicle_ids: reportSettings.vehicleId === 'all' ? 'all' : [parseInt(reportSettings.vehicleId)],
+        period: reportSettings.period,
+        year: reportSettings.year,
+        month: reportSettings.month,
+        expires_in_days: shareExpiryDays,
+      })
+      setCreatedShare(res.data)
+      await loadShares()
+      toast.success(t('reportShare.created') || 'Share link created')
+    } catch (error) {
+      toast.error(error.response?.data?.error || t('reportShare.createFailed') || 'Failed to create share link')
+    } finally {
+      setShareCreating(false)
+    }
+  }
+
+  const handleRevokeShare = async (id) => {
+    if (!window.confirm(t('reportShare.revokeConfirm') || 'Revoke this link? Anyone using it will immediately lose access.')) return
+    try {
+      await reportsApi.revokeShare(id)
+      if (createdShare?.id === id) setCreatedShare(null)
+      await loadShares()
+      toast.success(t('reportShare.revoked') || 'Link revoked')
+    } catch (error) {
+      toast.error(t('common.error') || 'Error')
+    }
+  }
+
+  const copyShareLink = async (url) => {
+    try {
+      await navigator.clipboard.writeText(url)
+      toast.success(t('reportShare.copied') || 'Link copied')
+    } catch {
+      toast.error(t('reportShare.copyFailed') || 'Could not copy link')
+    }
+  }
+
+  // Load existing share links when the Reports section is opened.
+  useEffect(() => {
+    if (showReportsSection) loadShares()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showReportsSection])
+
   const handleLogout = () => {
     if (window.confirm('Are you sure you want to logout?')) {
       logout()
@@ -1141,10 +1255,20 @@ export default function Settings() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {pushSubscribed && pushGranted && (
+                <button
+                  onClick={handleResubscribe}
+                  disabled={pushLoading}
+                  className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-accent)] hover:underline disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] rounded"
+                  title={t('settings.pushResubscribeHint') || 'Refresh your subscription if notifications stop arriving'}
+                >
+                  {t('settings.pushResubscribe') || 'Re-subscribe'}
+                </button>
+              )}
               {pushSubscribed && (
                 <button
                   onClick={handleTestNotification}
-                  className="text-xs text-[var(--color-accent)] hover:underline"
+                  className="text-xs text-[var(--color-accent)] hover:underline focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] rounded"
                 >
                   {t('settings.test') || 'Test'}
                 </button>
@@ -1967,6 +2091,100 @@ export default function Settings() {
                     {t('settings.noVehiclesForReport') || 'Add vehicles to generate reports'}
                   </p>
                 )}
+
+                {/* F05 — Shareable read-only link */}
+                {reportVehicles.length > 0 && (
+                  <div className="pt-4 mt-2 border-t border-[var(--color-border)] space-y-3">
+                    <div>
+                      <p className="text-sm font-medium">{t('reportShare.title') || 'Share a read-only link'}</p>
+                      <p className="text-2xs text-[var(--color-text-muted)] mt-0.5">
+                        {t('reportShare.desc') || 'Anyone with the link can view this report (no login). The link expires and can be revoked.'}
+                      </p>
+                    </div>
+
+                    <div className="flex items-end gap-2">
+                      <div className="flex-1">
+                        <label className="block text-2xs text-[var(--color-text-muted)] mb-1" htmlFor="shareExpiry">
+                          {t('reportShare.expiresIn') || 'Expires in'}
+                        </label>
+                        <select
+                          id="shareExpiry"
+                          value={shareExpiryDays}
+                          onChange={(e) => setShareExpiryDays(parseInt(e.target.value))}
+                          className="w-full px-3 py-2 rounded-lg bg-[var(--color-bg-secondary)] border border-[var(--color-border)] text-sm"
+                        >
+                          <option value={1}>{t('reportShare.days1') || '1 day'}</option>
+                          <option value={7}>{t('reportShare.days7') || '7 days'}</option>
+                          <option value={30}>{t('reportShare.days30') || '30 days'}</option>
+                          <option value={90}>{t('reportShare.days90') || '90 days'}</option>
+                        </select>
+                      </div>
+                      <button
+                        onClick={handleCreateShare}
+                        disabled={shareCreating}
+                        className="px-4 py-2 rounded-lg bg-[var(--color-bg-tertiary)] text-sm font-medium hover:opacity-90 disabled:opacity-50 whitespace-nowrap"
+                      >
+                        {shareCreating ? (t('reportShare.creating') || 'Creating…') : (t('reportShare.createButton') || 'Create link')}
+                      </button>
+                    </div>
+
+                    {/* Freshly-created link — shown ONCE */}
+                    {createdShare?.url && (
+                      <div className="p-3 rounded-lg bg-[var(--color-accent)]/10 border border-[var(--color-accent)]/20 space-y-2">
+                        <p className="text-2xs text-[var(--color-text-secondary)]">
+                          {t('reportShare.copyNow') || 'Copy this link now — it will not be shown again.'}
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <input
+                            readOnly
+                            value={createdShare.url}
+                            onFocus={(e) => e.target.select()}
+                            className="flex-1 min-w-0 px-2 py-1.5 rounded bg-[var(--color-bg-secondary)] border border-[var(--color-border)] text-2xs"
+                          />
+                          <button
+                            onClick={() => copyShareLink(createdShare.url)}
+                            className="px-3 py-1.5 rounded bg-[var(--color-accent)] text-white text-xs font-medium whitespace-nowrap"
+                          >
+                            {t('reportShare.copy') || 'Copy'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Existing links */}
+                    {shareLinks.length > 0 && (
+                      <ul className="space-y-2">
+                        {shareLinks.map((s) => (
+                          <li key={s.id} className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-[var(--color-bg-secondary)]">
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium truncate">
+                                {s.label || `${s.token_prefix}…`}
+                                <span className={`ml-2 text-2xs px-1.5 py-0.5 rounded-full ${
+                                  s.status === 'active' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                                  : s.status === 'expired' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                                  : 'bg-red-500/10 text-red-600 dark:text-red-400'
+                                }`}>
+                                  {t(`reportShare.status_${s.status}`) || s.status}
+                                </span>
+                              </p>
+                              <p className="text-2xs text-[var(--color-text-muted)] truncate">
+                                {(t('reportShare.views') || '{n} views').replace('{n}', String(s.access_count || 0))}
+                              </p>
+                            </div>
+                            {s.status !== 'revoked' && (
+                              <button
+                                onClick={() => handleRevokeShare(s.id)}
+                                className="px-2.5 py-1 rounded text-xs text-red-500 hover:bg-red-500/10 whitespace-nowrap shrink-0"
+                              >
+                                {t('reportShare.revoke') || 'Revoke'}
+                              </button>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -2074,7 +2292,12 @@ export default function Settings() {
           </div>
         )}
       </div>
-      
+
+      {/* Sync & Offline status — pending writes, last sync, failures + retry */}
+      <div className="mb-4">
+        <SyncIndicator variant="card" />
+      </div>
+
       {/* Integrations */}
       <div className="card mb-4">
         <button
@@ -2462,6 +2685,13 @@ export default function Settings() {
       <TermsOfService
         isOpen={showTermsOfService}
         onClose={() => setShowTermsOfService(false)}
+      />
+
+      {/* Push permission priming — shown before the browser prompt */}
+      <PushPrimingModal
+        isOpen={showPushPriming}
+        onConfirm={handlePushPrimingConfirm}
+        onClose={() => setShowPushPriming(false)}
       />
     </div>
   )

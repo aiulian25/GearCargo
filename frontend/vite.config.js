@@ -82,13 +82,38 @@ export default defineConfig({
             icons: [{ src: '/icons/fuel-96.png', sizes: '96x96' }]
           },
           {
+            name: 'Add Expense',
+            short_name: 'Expense',
+            description: 'Log a service or expense',
+            url: '/services/add'
+          },
+          {
             name: 'My Vehicles',
             short_name: 'Vehicles',
             description: 'View your vehicles',
             url: '/vehicles',
             icons: [{ src: '/icons/vehicle-96.png', sizes: '96x96' }]
           }
-        ]
+        ],
+        // Web Share Target — lets the OS share sheet send a receipt image
+        // straight into the OCR upload flow. The SW intercepts this POST,
+        // stashes the file and redirects into the SPA (see src/sw.js).
+        share_target: {
+          action: '/share-target',
+          method: 'POST',
+          enctype: 'multipart/form-data',
+          params: {
+            title: 'title',
+            text: 'text',
+            url: 'url',
+            files: [
+              {
+                name: 'receipt',
+                accept: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/*']
+              }
+            ]
+          }
+        }
       },
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],

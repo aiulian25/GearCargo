@@ -103,6 +103,9 @@ export const vehicleApi = {
   archive: (id) => api.post(`/vehicles/${id}/archive`),
   unarchive: (id) => api.post(`/vehicles/${id}/unarchive`),
   getStats: (id) => api.get(`/vehicles/${id}/stats`),
+  getCostAnalytics: (id) => api.get(`/vehicles/${id}/cost-analytics`),
+  // F06 — natural-language vehicle chat (single-turn, AI/Ollama)
+  chat: (id, question, locale) => api.post(`/vehicles/${id}/chat`, { question, locale }),
   getHealth: (id) => api.get(`/vehicles/${id}/health`),
   completeHealthAction: (id, data) => api.post(`/vehicles/${id}/health/actions/complete`, data),
   getManual: (id) => api.get(`/vehicles/${id}/manual`),
@@ -166,6 +169,14 @@ export const repairApi = {
   delete: (id) => api.delete(`/repairs/${id}`),
 }
 
+export const consumableApi = {
+  getByVehicle: (vehicleId, page = 1) => api.get(`/consumables?vehicle_id=${vehicleId}&page=${page}`),
+  get: (id) => api.get(`/consumables/${id}`),
+  create: (data) => api.post('/consumables', data),
+  update: (id, data) => api.put(`/consumables/${id}`, data),
+  delete: (id) => api.delete(`/consumables/${id}`),
+}
+
 export const reminderApi = {
   getAll: (options = {}) => {
     const { vehicleId, status, page = 1 } = options
@@ -183,6 +194,11 @@ export const reminderApi = {
   getUpcoming: (days = 7) => api.get(`/reminders/upcoming?days=${days}`),
   getOverdue: () => api.get('/reminders/overdue'),
   getStats: () => api.get('/reminders/stats'),
+}
+
+// Public, non-sensitive branding config (app + assistant name).
+export const configApi = {
+  get: () => api.get('/config'),
 }
 
 export const pushApi = {
@@ -276,6 +292,18 @@ export const backupApi = {
   
   // Import data from file
   import: (formData) => api.post('/backup/import', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
+
+  // F01 — Export one entry type as CSV (blob download)
+  exportCsv: (type, vehicleId = null) =>
+    api.get('/backup/export/csv', {
+      params: vehicleId ? { type, vehicle_id: vehicleId } : { type },
+      responseType: 'blob',
+    }),
+
+  // F01 — Import entries from a CSV file (multipart: file, type, merge_mode)
+  importCsv: (formData) => api.post('/backup/import/csv', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
   
@@ -525,6 +553,15 @@ export const reportsApi = {
   
   // Generate and download PDF report
   generate: (data) => api.post('/reports/generate', data, { responseType: 'blob' }),
+
+  // F05 — shareable read-only report links (signed, expiring, revocable)
+  createShare: (data) => api.post('/reports/shares', data),
+  listShares: () => api.get('/reports/shares'),
+  revokeShare: (id) => api.delete(`/reports/shares/${id}`),
+  // Public (no auth) — fetch a shared report by its token
+  getSharedReport: (token) => api.get(`/reports/shared/${encodeURIComponent(token)}`),
+  // Public PDF download URL for a shared report token
+  sharedPdfUrl: (token) => `/api/reports/shared/${encodeURIComponent(token)}/pdf`,
 }
 
 // Admin API (requires admin role)

@@ -81,7 +81,11 @@ export default function AiStatusPanel() {
   const [loading, setLoading] = useState(true)
   const [showModels, setShowModels] = useState(false)
   // Per-task model assignment state
-  const [taskModels, setTaskModels] = useState({ global: '', predict: '', ocr: '', anomaly: '', reminder: '' })
+  const [taskModels, setTaskModels] = useState({ global: '', predict: '', ocr: '', anomaly: '', reminder: '', classifier: '' })
+  // Chat Layer 2 classifier master toggle
+  const [classifierEnabled, setClassifierEnabled] = useState(true)
+  // Optional Layer 3 phase-2 answer classifier toggle
+  const [outputClassifierEnabled, setOutputClassifierEnabled] = useState(false)
   const [savingModels, setSavingModels] = useState(false)
   const [modelSaveMsg, setModelSaveMsg] = useState(null)  // { ok: bool, text: string }
   // AI cache flush state
@@ -96,12 +100,15 @@ export default function AiStatusPanel() {
       // Pre-populate task model selectors from API response
       const tm = res.data?.task_models || {}
       setTaskModels({
-        global:   tm.global   || '',
-        predict:  tm.predict  || '',
-        ocr:      tm.ocr      || '',
-        anomaly:  tm.anomaly  || '',
-        reminder: tm.reminder || '',
+        global:     tm.global     || '',
+        predict:    tm.predict    || '',
+        ocr:        tm.ocr        || '',
+        anomaly:    tm.anomaly    || '',
+        reminder:   tm.reminder   || '',
+        classifier: tm.classifier || '',
       })
+      setClassifierEnabled(res.data?.chat_classifier_enabled !== false)
+      setOutputClassifierEnabled(res.data?.chat_output_classifier_enabled === true)
     } catch (err) {
       console.error('Failed to load AI settings', err)
     } finally {
@@ -130,7 +137,11 @@ export default function AiStatusPanel() {
     setSavingModels(true)
     setModelSaveMsg(null)
     try {
-      await adminApi.updateSettings({ task_models: taskModels })
+      await adminApi.updateSettings({
+        task_models: taskModels,
+        chat_classifier_enabled: classifierEnabled,
+        chat_output_classifier_enabled: outputClassifierEnabled,
+      })
       setModelSaveMsg({ ok: true, text: t('aiPredictions.modelsSaved') || 'Model settings saved' })
     } catch (err) {
       setModelSaveMsg({ ok: false, text: t('aiPredictions.modelsSaveError') || 'Failed to save model settings' })
@@ -419,6 +430,7 @@ export default function AiStatusPanel() {
             { key: 'ocr',      label: t('aiPredictions.modelOcr')      || 'Receipt OCR' },
             { key: 'anomaly',  label: t('aiPredictions.modelAnomaly')  || 'Fuel Anomaly Detection' },
             { key: 'reminder', label: t('aiPredictions.modelReminder') || 'Reminder Drafting' },
+            { key: 'classifier', label: t('aiPredictions.modelClassifier') || 'Chat Safety Classifier' },
           ].map(({ key, label }) => (
             <div key={key} className={`flex flex-col gap-1 ${key === 'global' ? 'pb-3 mb-1 border-b border-[var(--color-border)]' : ''}`}>
               <label className="text-xs font-medium text-[var(--color-text)]">
@@ -426,6 +438,11 @@ export default function AiStatusPanel() {
                 {key === 'global' && (
                   <span className="ml-2 text-2xs font-normal text-[var(--color-text-muted)]">
                     {t('aiPredictions.modelGlobalHint') || '— used when no task-specific model is set'}
+                  </span>
+                )}
+                {key === 'classifier' && (
+                  <span className="ml-2 text-2xs font-normal text-[var(--color-text-muted)]">
+                    {t('aiPredictions.modelClassifierHint') || '— small/fast model that blocks off-topic chat'}
                   </span>
                 )}
               </label>
@@ -441,6 +458,42 @@ export default function AiStatusPanel() {
               </select>
             </div>
           ))}
+
+          {/* Chat Layer 2 classifier master toggle */}
+          <label className="flex items-start gap-2 pt-3 mt-1 border-t border-[var(--color-border)] cursor-pointer">
+            <input
+              type="checkbox"
+              checked={classifierEnabled}
+              onChange={e => setClassifierEnabled(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-[var(--color-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+            />
+            <span className="flex flex-col">
+              <span className="text-xs font-medium text-[var(--color-text)]">
+                {t('aiPredictions.classifierEnabled') || 'Enable chat safety classifier'}
+              </span>
+              <span className="text-2xs text-[var(--color-text-muted)]">
+                {t('aiPredictions.classifierEnabledHint') || 'Pre-screens chat questions and blocks off-topic ones before the main model. Falls back safely if unavailable.'}
+              </span>
+            </span>
+          </label>
+
+          {/* Optional Layer 3 phase-2 answer classifier (default off) */}
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={outputClassifierEnabled}
+              onChange={e => setOutputClassifierEnabled(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-[var(--color-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+            />
+            <span className="flex flex-col">
+              <span className="text-xs font-medium text-[var(--color-text)]">
+                {t('aiPredictions.outputClassifierEnabled') || 'Also re-check the AI answer (slower)'}
+              </span>
+              <span className="text-2xs text-[var(--color-text-muted)]">
+                {t('aiPredictions.outputClassifierEnabledHint') || 'Runs a second safety check over the generated answer. Stronger, but adds one extra model call per reply.'}
+              </span>
+            </span>
+          </label>
 
           {modelSaveMsg && (
             <p className={`text-xs ${modelSaveMsg.ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>

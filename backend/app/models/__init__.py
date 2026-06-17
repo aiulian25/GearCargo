@@ -10,6 +10,7 @@ from app.models.service import ServiceEntry
 from app.models.repair import RepairEntry
 from app.models.tax import TaxEntry
 from app.models.parking import ParkingEntry
+from app.models.consumable import ConsumableEntry
 from app.models.reminder import Reminder
 from app.models.prediction import PredictionAlert
 from app.models.attachment import Attachment
@@ -21,6 +22,8 @@ from app.models.activity_log import ActivityLog
 from app.models.blocked_entity import BlockedIP, BlockedDevice
 from app.models.email_consent_log import EmailConsentLog
 from app.models.app_setting import AppSetting
+from app.models.user_session import UserSession
+from app.models.report_share import ReportShare
 
 __all__ = [
     'User',
@@ -31,6 +34,7 @@ __all__ = [
     'RepairEntry',
     'TaxEntry',
     'ParkingEntry',
+    'ConsumableEntry',
     'Reminder',
     'PredictionAlert',
     'Attachment',
@@ -45,4 +49,6 @@ __all__ = [
     'BlockedDevice',
     'EmailConsentLog',
     'AppSetting',
+    'UserSession',
+    'ReportShare',
 ]

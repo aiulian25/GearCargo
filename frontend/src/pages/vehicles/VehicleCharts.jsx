@@ -119,17 +119,78 @@ const DonutChart = ({ data, total, centerLabel, totalLabel = 'Total' }) => {
   )
 }
 
+// Lightweight responsive SVG line chart (no chart library).
+// points: [{ label, value(number|null) }]. Null values break the line so months
+// without data (e.g. no odometer reading) are not drawn as zero.
+const LineChart = ({ points, formatValue, ariaLabel, color = 'var(--color-accent)' }) => {
+  const W = 320, H = 110, PX = 8, PY = 14
+  const n = points.length
+  const valid = points.map(p => p.value).filter(v => v != null)
+  if (valid.length < 2) return null
+  const min = Math.min(...valid)
+  const max = Math.max(...valid)
+  const range = (max - min) || 1
+  const xAt = (i) => PX + (n === 1 ? 0 : (i / (n - 1)) * (W - 2 * PX))
+  const yAt = (v) => (H - PY) - ((v - min) / range) * (H - 2 * PY)
+
+  // Build path segments, breaking where value is null.
+  const segments = []
+  let cur = []
+  points.forEach((p, i) => {
+    if (p.value == null) { if (cur.length) { segments.push(cur); cur = [] } }
+    else cur.push(`${xAt(i).toFixed(1)},${yAt(p.value).toFixed(1)}`)
+  })
+  if (cur.length) segments.push(cur)
+
+  // Sparse x labels: first, middle, last.
+  const labelIdx = new Set([0, Math.floor((n - 1) / 2), n - 1])
+
+  return (
+    <div className="w-full">
+      <svg viewBox={`0 0 ${W} ${H + 16}`} className="w-full h-auto" role="img" aria-label={ariaLabel} preserveAspectRatio="none">
+        {segments.map((seg, si) => (
+          <polyline key={si} points={seg.join(' ')} fill="none" stroke={color} strokeWidth="2"
+            strokeLinejoin="round" strokeLinecap="round" />
+        ))}
+        {points.map((p, i) => p.value != null && (
+          <circle key={i} cx={xAt(i)} cy={yAt(p.value)} r="2.5" fill={color} />
+        ))}
+        {points.map((p, i) => labelIdx.has(i) && (
+          <text key={`l${i}`} x={xAt(i)} y={H + 10} textAnchor="middle"
+            className="fill-[var(--color-text-muted)]" style={{ fontSize: '9px' }}>{p.label}</text>
+        ))}
+      </svg>
+    </div>
+  )
+}
+
+// Small up/down/flat trend pill for the forecast card.
+const TrendBadge = ({ trend, t }) => {
+  const map = {
+    up: { arrow: '↑', cls: 'text-red-500 bg-red-500/10', label: t('charts.trendUp') || 'Rising' },
+    down: { arrow: '↓', cls: 'text-emerald-500 bg-emerald-500/10', label: t('charts.trendDown') || 'Falling' },
+    flat: { arrow: '→', cls: 'text-[var(--color-text-secondary)] bg-[var(--color-bg-tertiary)]', label: t('charts.trendFlat') || 'Stable' },
+  }
+  const s = map[trend] || map.flat
+  return (
+    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${s.cls}`}>
+      <span aria-hidden="true">{s.arrow}</span>{s.label}
+    </span>
+  )
+}
+
 export default function VehicleCharts() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { t } = useTranslation()
-  const { currency } = useCurrency()
-  
+  const { currency, language } = useCurrency()
+
   const [vehicle, setVehicle] = useState(null)
   const [timeline, setTimeline] = useState([])
+  const [analytics, setAnalytics] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
-  
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -147,9 +208,34 @@ export default function VehicleCharts() {
         setIsLoading(false)
       }
     }
-    
+
     fetchData()
   }, [id, navigate])
+
+  // Cost-trend / forecast analytics — fetched independently so a failure here
+  // never breaks the rest of the Charts page (graceful degradation).
+  useEffect(() => {
+    let active = true
+    vehicleApi.getCostAnalytics(id)
+      .then((res) => { if (active) setAnalytics(res.data) })
+      .catch((err) => { console.error('Failed to load cost analytics:', err) })
+    return () => { active = false }
+  }, [id])
+
+  // Short, locale-aware month label from a 'YYYY-MM' key (numeric construction
+  // avoids the date-only-string UTC parsing bug noted elsewhere in this file).
+  const monthShort = (ym) => {
+    const [y, m] = ym.split('-').map(Number)
+    try {
+      return new Date(y, m - 1, 1).toLocaleDateString(language || 'en', { month: 'short' })
+    } catch {
+      return ym
+    }
+  }
+
+  // Per-distance values are small (e.g. 0.15) so they need decimals, unlike the
+  // whole-currency formatCurrency used elsewhere on this page.
+  const formatPerDistance = (v) => `${currency.symbol}${Number(v).toFixed(2)}`
   
   const formatCurrency = (amount) => {
     if (!amount && amount !== 0) return `${currency.symbol}0`
@@ -284,6 +370,75 @@ export default function VehicleCharts() {
       
       {/* Content */}
       <div className="p-4 space-y-6">
+        {/* Cost-per-distance trend + 12-month forecast (deterministic analytics).
+            Shown above the year-scoped charts and independent of the year selector. */}
+        {analytics && analytics.series?.some((s) => s.cost > 0) && (() => {
+          const unit = analytics.distance_unit === 'miles' ? (t('common.miles') || 'mi') : (t('common.km') || 'km')
+          const hasCpd = analytics.series.some((s) => s.cost_per_distance != null)
+          const cpdPoints = analytics.series.map((s) => ({ label: monthShort(s.month), value: s.cost_per_distance }))
+          return (
+            <>
+              {/* Cost per distance */}
+              <div className="bg-[var(--color-bg-secondary)] rounded-2xl p-6">
+                <div className="flex items-start justify-between gap-3 mb-1">
+                  <h2 className="text-sm font-medium text-[var(--color-text-secondary)]">
+                    {(t('charts.costPerDistance') || 'Cost per {unit}').replace('{unit}', unit)}
+                  </h2>
+                  {analytics.cost_per_distance_lifetime != null && (
+                    <span className="text-lg font-bold whitespace-nowrap shrink-0">
+                      {formatPerDistance(analytics.cost_per_distance_lifetime)}
+                      <span className="text-xs text-[var(--color-text-secondary)] font-normal">/{unit}</span>
+                    </span>
+                  )}
+                </div>
+                <p className="text-2xs text-[var(--color-text-muted)] mb-4">
+                  {t('charts.costPerDistanceDesc') || 'Lifetime average and recent monthly trend'}
+                </p>
+                {hasCpd ? (
+                  <LineChart
+                    points={cpdPoints}
+                    ariaLabel={(t('charts.costPerDistance') || 'Cost per {unit}').replace('{unit}', unit)}
+                  />
+                ) : (
+                  <p className="text-xs text-[var(--color-text-muted)]">
+                    {t('charts.costPerDistanceNoOdo') || 'Add odometer readings to your entries to see cost per distance over time.'}
+                  </p>
+                )}
+              </div>
+
+              {/* 12-month forecast */}
+              {analytics.forecast && (
+                <div className="bg-[var(--color-bg-secondary)] rounded-2xl p-6">
+                  <h2 className="text-sm font-medium text-[var(--color-text-secondary)] mb-1">
+                    {t('charts.forecastTitle') || 'Predicted next 12 months'}
+                  </h2>
+                  <p className="text-2xs text-[var(--color-text-muted)] mb-4">
+                    {(t('charts.forecastDesc') || 'Estimated from {n} months of history')
+                      .replace('{n}', String(analytics.forecast.months_of_history))}
+                  </p>
+                  <div className="flex items-end justify-between gap-3 mb-4 flex-wrap">
+                    <div>
+                      <p className="text-3xl font-bold">{formatCurrency(analytics.forecast.projected_next_12_total)}</p>
+                      <p className="text-xs text-[var(--color-text-secondary)]">
+                        {(t('charts.forecastAvg') || '~{v}/month').replace('{v}', formatCurrency(analytics.forecast.avg_monthly))}
+                      </p>
+                    </div>
+                    <TrendBadge trend={analytics.forecast.trend} t={t} />
+                  </div>
+                  <LineChart
+                    points={analytics.forecast.monthly.map((mo) => ({ label: monthShort(mo.month), value: mo.projected_cost }))}
+                    ariaLabel={t('charts.forecastTitle') || 'Predicted next 12 months'}
+                    color="#22c55e"
+                  />
+                  <p className="text-2xs text-[var(--color-text-muted)] mt-3">
+                    {t('charts.forecastDisclaimer') || 'Estimate based on past spending — actual costs may vary.'}
+                  </p>
+                </div>
+              )}
+            </>
+          )
+        })()}
+
         {/* I17: Two distinct empty states.
             Case 1 — no entries at all: chartData is null.
             Case 2 — entries exist in other years but not the selected year:

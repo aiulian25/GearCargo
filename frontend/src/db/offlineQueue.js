@@ -4,6 +4,7 @@
  */
 
 import db from './database'
+import { registerBackgroundSync } from '../utils/pwaSync'
 
 // Operation types
 export const OperationType = {
@@ -47,10 +48,14 @@ export async function queueOperation(operation, entity, entityId, data) {
   
   const id = await db.offlineQueue.add(item)
   console.log(`[OfflineQueue] Added ${operation} ${entity} to queue (id: ${id})`)
-  
+
   // Notify service worker about new queued item
   notifyServiceWorker('QUEUE_UPDATED', { count: await getQueueCount() })
-  
+
+  // Ask the browser to flush this queue via Background Sync the moment
+  // connectivity returns (best-effort; the `online` listener covers the rest).
+  registerBackgroundSync()
+
   return id
 }
 

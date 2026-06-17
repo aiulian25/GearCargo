@@ -15,6 +15,7 @@ import { CacheFirst, NetworkFirst, StaleWhileRevalidate, NetworkOnly } from 'wor
 import { ExpirationPlugin } from 'workbox-expiration'
 import { CacheableResponsePlugin } from 'workbox-cacheable-response'
 import { BackgroundSyncPlugin } from 'workbox-background-sync'
+import { FLUSH_QUEUE_SYNC_TAG, REMINDER_REFRESH_TAG } from './utils/syncTags'
 
 // ============================================================
 // BACKGROUND SYNC CONFIGURATION
@@ -142,9 +143,24 @@ registerRoute(
   })
 )
 
-// Cache API GET calls with NetworkFirst strategy (for reading data)
+// Endpoints whose GET responses must NEVER be cached on disk:
+// - identity/session (stale identity is dangerous; the app caches the user in
+//   Dexie instead), admin data, CSRF tokens, backup downloads (large/sensitive
+//   blobs), and push subscription info. These pass through to the network and
+//   simply fail when offline, which is correct for auth/admin surfaces.
+const API_CACHE_DENYLIST = ['/api/auth/', '/api/admin/', '/api/csrf-token', '/api/backup/', '/api/push/']
+
+function isCacheableApiGet(url, request) {
+  if (request.method !== 'GET' || !url.pathname.startsWith('/api/')) return false
+  return !API_CACHE_DENYLIST.some((prefix) => url.pathname.startsWith(prefix))
+}
+
+// Cache data-read API GETs with NetworkFirst (network wins; falls back to the
+// last-good cached copy when offline). The `api-cache` is purged on login AND
+// logout (see clearApiCache / CLEAR_API_CACHE) so one user's data is never
+// served to another account or after sign-out on a shared device.
 registerRoute(
-  ({ url, request }) => url.pathname.startsWith('/api/') && request.method === 'GET',
+  ({ url, request }) => isCacheableApiGet(url, request),
   new NetworkFirst({
     cacheName: 'api-cache',
     plugins: [
@@ -164,6 +180,16 @@ registerRoute(
 // BACKGROUND SYNC FOR API MUTATIONS (POST, PUT, DELETE)
 // Queue failed requests when offline and retry when back online
 // ============================================================
+
+// §14.7 — the AI vehicle chat is request/response and must NEVER be queued or
+// replayed offline: a replayed question would run remote inference later with no
+// UI to show the answer (wasted + confusing). Match it FIRST as plain NetworkOnly
+// (no background sync) so it fails fast offline instead of being queued.
+registerRoute(
+  ({ url, request }) => request.method === 'POST' && /^\/api\/vehicles\/\d+\/chat$/.test(url.pathname),
+  new NetworkOnly(),
+  'POST'
+)
 
 // Handle POST requests with background sync
 registerRoute(
@@ -212,6 +238,40 @@ registerRoute(
 )
 
 // ============================================================
+// WEB SHARE TARGET — receive a shared receipt image
+// ============================================================
+// The manifest share_target posts the shared file here (multipart/form-data).
+// We stash it in a dedicated cache under a fixed key and 303-redirect into the
+// SPA; the /share-target React route then reads it, uploads it to the chosen
+// vehicle and runs OCR. The file stays on-device and the page deletes it right
+// after reading (privacy — no shared receipt lingers in storage).
+const SHARE_TARGET_CACHE = 'share-target-cache'
+const SHARED_FILE_KEY = '/__shared_receipt'
+
+registerRoute(
+  ({ url, request }) => url.pathname === '/share-target' && request.method === 'POST',
+  async ({ request }) => {
+    try {
+      const formData = await request.formData()
+      const file = formData.get('receipt')
+      if (file && typeof file !== 'string' && file.size > 0) {
+        const cache = await caches.open(SHARE_TARGET_CACHE)
+        const headers = new Headers({
+          'content-type': file.type || 'application/octet-stream',
+          'x-shared-filename': encodeURIComponent(file.name || 'receipt.jpg'),
+        })
+        await cache.put(SHARED_FILE_KEY, new Response(file, { headers }))
+      }
+    } catch (error) {
+      log('Share target handling failed:', error)
+    }
+    // Redirect to a GET navigation so the SPA fallback serves the app shell.
+    return Response.redirect('/share-target', 303)
+  },
+  'POST'
+)
+
+// ============================================================
 // OFFLINE FALLBACK
 // ============================================================
 // I16: offline.html is included in self.__WB_MANIFEST via globPatterns (*.html).
@@ -238,7 +298,13 @@ self.addEventListener('message', async (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting()
   }
-  
+
+  // Purge cached API responses (called on login/logout so authenticated data
+  // is never served across accounts or after sign-out on a shared device).
+  if (event.data && event.data.type === 'CLEAR_API_CACHE') {
+    event.waitUntil(caches.delete('api-cache'))
+  }
+
   // Handle request to get pending sync count
   if (event.data && event.data.type === 'GET_PENDING_SYNC_COUNT') {
     try {
@@ -330,12 +396,118 @@ self.addEventListener('notificationclick', (event) => {
 })
 
 // ============================================================
-// SYNC EVENT (Fallback for browsers that support it)
+// PUSH SUBSCRIPTION LIFECYCLE
 // ============================================================
 
+// Decode a base64url VAPID key into the Uint8Array applicationServerKey expects.
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const rawData = atob(base64)
+  const outputArray = new Uint8Array(rawData.length)
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i)
+  }
+  return outputArray
+}
+
+// The browser rotates/expires push subscriptions periodically. Without handling
+// this event the user silently stops receiving notifications. Re-subscribe with
+// the current VAPID key and re-register with the server (the httpOnly auth
+// cookie rides along automatically; if the session is gone the POST 401s and we
+// simply give up until the user opens the app again).
+async function resubscribeToPush() {
+  try {
+    const response = await fetch('/api/push/vapid-key', { credentials: 'include' })
+    if (!response.ok) return
+    const { public_key: vapidPublicKey } = await response.json()
+    if (!vapidPublicKey) return
+
+    const newSubscription = await self.registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+    })
+
+    // Best-effort device hints (no PII beyond the UA string the server already sees).
+    const ua = self.navigator?.userAgent || ''
+    let deviceType = 'desktop'
+    if (/Mobile|Android|iPhone|iPad/.test(ua)) deviceType = /iPad/.test(ua) ? 'tablet' : 'mobile'
+
+    await fetch('/api/push/subscribe', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        subscription: newSubscription.toJSON(),
+        device_type: deviceType,
+      }),
+    })
+    log('Push subscription renewed after pushsubscriptionchange')
+  } catch (error) {
+    console.error('Failed to renew push subscription:', error)
+  }
+}
+
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil(resubscribeToPush())
+})
+
+// ============================================================
+// BACKGROUND SYNC — flush the offline write queue on reconnect
+// ============================================================
+
+// Ask any live client (window) to run the authoritative Dexie queue flush
+// (syncService.processOfflineQueue) so conflict detection + temp-id remapping
+// stay in one place. If no client is alive (app fully closed) the flush is
+// deferred to next app open, which is wired via the `online` listener.
+async function notifyClientsToSync() {
+  const clients = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' })
+  for (const client of clients) {
+    client.postMessage({ type: 'SYNC_NOW' })
+  }
+}
+
 self.addEventListener('sync', (event) => {
+  // Workbox replays its own background-sync queue automatically via the plugin.
   if (event.tag === 'workbox-background-sync:gearcargo-sync-queue') {
     log('Background sync triggered for gearcargo-sync-queue')
+  }
+
+  // Our explicit tag: wake clients to flush the Dexie offline queue.
+  if (event.tag === FLUSH_QUEUE_SYNC_TAG) {
+    event.waitUntil(notifyClientsToSync())
+  }
+})
+
+// ============================================================
+// PERIODIC BACKGROUND SYNC — keep reminders fresh while closed
+// ============================================================
+
+// Read-only: warm the reminders endpoint so the api-cache holds a fresh copy
+// for the next (possibly offline) open. No writes, no conflict surface. The
+// httpOnly auth cookie is sent automatically; if the session has expired the
+// fetch simply fails and we leave the previous cache untouched.
+async function refreshRemindersCache() {
+  try {
+    const url = '/api/reminders'
+    const response = await fetch(url, { credentials: 'include' })
+    if (response && response.ok) {
+      const cache = await caches.open('api-cache')
+      await cache.put(url, response.clone())
+      const clients = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' })
+      for (const client of clients) {
+        client.postMessage({ type: 'REMINDERS_REFRESHED' })
+      }
+    }
+  } catch (error) {
+    // Offline or session expired — best-effort, keep the existing cache.
+    log('Periodic reminder refresh skipped:', error)
+  }
+}
+
+self.addEventListener('periodicsync', (event) => {
+  if (event.tag === REMINDER_REFRESH_TAG) {
+    event.waitUntil(refreshRemindersCache())
   }
 })
 

@@ -30,6 +30,7 @@ Security
 import ipaddress
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlparse
@@ -92,6 +93,14 @@ def validate_ollama_url(url: str) -> str:
     * IP literals in link-local (169.254.0.0/16), cloud shared-space
       (100.64.0.0/10), multicast, reserved, or unspecified ranges — these
       cover every known cloud metadata endpoint
+
+    Transport (§14.2)
+    -----------------
+    This guards the URL (scheme/host/SSRF) but cannot enforce transport security.
+    Ollama has no auth by default and the prompt carries user data, so for a
+    REMOTE Ollama use **https + a private network** (VPN/WireGuard/VLAN) or a
+    TLS reverse proxy with auth, and never expose port 11434 publicly. Startup
+    logs a warning if the URL is plain http to a public IP.
 
     Parameters
     ----------
@@ -374,12 +383,68 @@ def resolve_model(task_key: str, config: Any) -> str:
 # Ollama HTTP call
 # ---------------------------------------------------------------------------
 
+# Default connect timeout (seconds) for the backend→Ollama hop. Kept short so a
+# dead/unrouteable remote machine fails in seconds instead of holding a sync
+# gunicorn worker for the full read window (§14.3).
+_DEFAULT_CONNECT_TIMEOUT = 5
+
+# §14.5 — keep-alive HTTP session for the (often remote/https) Ollama hop, so we
+# skip repeated TCP/TLS setup on every cross-machine call. Lazily created and
+# keyed by PID: with gunicorn preload_app=True the app is forked into workers,
+# and a Session/socket pool created in the master must NOT be shared across
+# forked processes — re-creating per PID gives each worker its own pool.
+_session = None
+_session_pid = None
+
+
+def _get_session():
+    """Return a per-process keep-alive requests Session (fork-safe)."""
+    global _session, _session_pid
+    pid = os.getpid()
+    if _session is None or _session_pid != pid:
+        _session = requests.Session()
+        _session_pid = pid
+    return _session
+
+
+def _ollama_post(url: str, payload: dict, connect_timeout: float, read_timeout: float):
+    """POST to Ollama with a (connect, read) timeout and bounded retry (§14.3/14.5).
+
+    - **Connect** errors (dead/unrouteable remote, incl. ConnectTimeout) are
+      retried **once**, then trip the circuit breaker (`ollama_record_failure`).
+    - **Read** timeouts are **never retried** and do **not** trip the breaker —
+      the remote is reachable but slow (retrying just doubles the worker hold).
+    Returns the ``requests.Response`` (caller inspects status); raises
+    ``OllamaError`` on network failure.
+    """
+    attempts = 0
+    while True:
+        attempts += 1
+        try:
+            return _get_session().post(url, json=payload, timeout=(connect_timeout, read_timeout))
+        except requests.ReadTimeout as exc:
+            # Reachable but slow — do not retry, do not trip the breaker.
+            raise OllamaError(f'Ollama read timed out after {read_timeout}s: {exc}') from exc
+        except requests.ConnectionError as exc:
+            # Connect-level failure (includes ConnectTimeout). Retry once.
+            if attempts < 2:
+                logger.debug('Ollama connect error (attempt %d) — retrying once: %s', attempts, exc)
+                continue
+            ollama_record_failure()
+            raise OllamaError(f'Ollama connection error: {exc}') from exc
+        except requests.RequestException as exc:
+            ollama_record_failure()
+            raise OllamaError(f'Ollama request error: {exc}') from exc
+
+
 def chat(
     base_url: str,
     model: str,
     prompt: str,
     schema: dict | None = None,
     timeout: int = 120,
+    options: dict | None = None,
+    connect_timeout: float = _DEFAULT_CONNECT_TIMEOUT,
 ) -> dict[str, Any]:
     """Call Ollama and return a parsed dict.
 
@@ -394,7 +459,15 @@ def chat(
     schema : dict | None
         Optional JSON-Schema dict for structured output enforcement.
     timeout : int
-        HTTP timeout in seconds.
+        **Read** timeout in seconds (how long to wait for the model's response).
+    options : dict | None
+        Optional Ollama generation options (e.g. ``{'temperature': 0.3}``).
+        Lower temperature makes the model less likely to "creatively" escape
+        guardrails. Applied to both the /api/chat and /api/generate paths.
+    connect_timeout : float
+        **Connect** timeout in seconds for the (often remote) Ollama hop. Kept
+        short so a dead/unrouteable remote fails fast instead of holding a sync
+        worker for the whole read window (§14.3).
 
     Returns
     -------
@@ -424,53 +497,44 @@ def chat(
             'stream': False,
             'format': schema,
         }
-        try:
-            resp = requests.post(
-                f'{base_url}/api/chat',
-                json=payload,
-                timeout=timeout,
+        if options:
+            payload['options'] = options
+        # _ollama_post handles connect/read timeouts, the single connect-retry,
+        # and breaker-on-connect-failure; it raises OllamaError on network error.
+        resp = _ollama_post(f'{base_url}/api/chat', payload, connect_timeout, timeout)
+        # We got an HTTP response → the remote is reachable; heal the breaker.
+        ollama_record_success()
+        if resp.status_code == 200:
+            content = resp.json().get('message', {}).get('content', '{}')
+            try:
+                return json.loads(content) if isinstance(content, str) else content
+            except (json.JSONDecodeError, ValueError):
+                logger.warning('Ollama chat response was not valid JSON despite schema; falling back')
+        elif resp.status_code == 404:
+            logger.debug('Ollama /api/chat returned 404; falling back to /api/generate')
+        else:
+            raise OllamaError(
+                f'Ollama /api/chat returned HTTP {resp.status_code}: {resp.text[:200]}'
             )
-            if resp.status_code == 404:
-                logger.debug('Ollama /api/chat returned 404; falling back to /api/generate')
-            elif resp.status_code == 200:
-                content = resp.json().get('message', {}).get('content', '{}')
-                try:
-                    return json.loads(content) if isinstance(content, str) else content
-                except (json.JSONDecodeError, ValueError):
-                    logger.warning('Ollama chat response was not valid JSON despite schema; falling back')
-            else:
-                # HTTP error from reachable server — still reachable, clear offline marker
-                ollama_record_success()
-                raise OllamaError(
-                    f'Ollama /api/chat returned HTTP {resp.status_code}: {resp.text[:200]}'
-                )
-        except requests.RequestException as exc:
-            # Network error — Ollama is unreachable
-            ollama_record_failure()
-            raise OllamaError(f'Ollama /api/chat network error: {exc}') from exc
 
     # ------------------------------------------------------------------
     # 2. Fallback: POST /api/generate with format="json"
     # ------------------------------------------------------------------
-    try:
-        resp = requests.post(
-            f'{base_url}/api/generate',
-            json={
-                'model': model,
-                'prompt': prompt,
-                'stream': False,
-                'format': 'json',
-            },
-            timeout=timeout,
-        )
-        resp.raise_for_status()
-    except requests.RequestException as exc:
-        # Network error — Ollama is unreachable
-        ollama_record_failure()
-        raise OllamaError(f'Ollama /api/generate network error: {exc}') from exc
-
-    # Successful response from /api/generate — clear any offline marker
+    gen_payload: dict[str, Any] = {
+        'model': model,
+        'prompt': prompt,
+        'stream': False,
+        'format': 'json',
+    }
+    if options:
+        gen_payload['options'] = options
+    resp = _ollama_post(f'{base_url}/api/generate', gen_payload, connect_timeout, timeout)
+    # Reachable (any HTTP response) → heal the breaker before inspecting status.
     ollama_record_success()
+    if resp.status_code != 200:
+        raise OllamaError(
+            f'Ollama /api/generate returned HTTP {resp.status_code}: {resp.text[:200]}'
+        )
     raw = resp.json().get('response', '{}')
     try:
         return json.loads(raw) if isinstance(raw, str) else raw

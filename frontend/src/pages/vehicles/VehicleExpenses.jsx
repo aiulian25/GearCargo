@@ -4,6 +4,7 @@ import { vehicleApi, fuelApi, serviceApi, repairApi, taxApi, reminderApi, insura
 import api from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { formatDate } from '../../utils/dateFormat'
+import { Skeleton, SkeletonScreen } from '../../components/ui/Skeleton'
 import AttachmentViewer from '../../components/ui/AttachmentViewer'
 
 // Icons
@@ -1200,8 +1201,38 @@ export default function VehicleExpenses() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+      <div className="min-h-screen bg-[var(--color-bg-primary)] pb-20">
+        {/* Header placeholder */}
+        <div className="sticky top-0 z-10 bg-[var(--color-bg-primary)] border-b border-[var(--color-border)] p-4">
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-9 w-9 rounded-lg shrink-0" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-4 w-40 rounded" />
+              <Skeleton className="h-3 w-24 rounded" />
+            </div>
+          </div>
+        </div>
+        <SkeletonScreen className="p-4 space-y-4">
+          {/* Tab bar placeholder */}
+          <div className="flex gap-2 overflow-hidden">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-9 w-20 rounded-full shrink-0" />
+            ))}
+          </div>
+          {/* Summary card placeholder */}
+          <Skeleton className="h-24 w-full rounded-2xl" />
+          {/* Row placeholders */}
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="card p-4 flex items-center gap-3">
+              <Skeleton className="h-9 w-9 rounded-full shrink-0" />
+              <div className="flex-1 space-y-2 min-w-0">
+                <Skeleton className="h-3.5 w-1/2 rounded" />
+                <Skeleton className="h-3 w-1/4 rounded" />
+              </div>
+              <Skeleton className="h-4 w-14 rounded shrink-0" />
+            </div>
+          ))}
+        </SkeletonScreen>
       </div>
     )
   }

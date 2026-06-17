@@ -73,6 +73,7 @@ export default function BackupSettings() {
   const fileInputRef = useRef(null)
   const lubelogFileInputRef = useRef(null)
   const uploadInputRef = useRef(null)
+  const csvFileInputRef = useRef(null)
   
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -81,6 +82,10 @@ export default function BackupSettings() {
   const [importing, setImporting] = useState(false)
   const [importingLubelog, setImportingLubelog] = useState(false)
   const [lubelogDistanceUnit, setLubelogDistanceUnit] = useState('miles')
+  // F01 — CSV export/import (fuel/service/repair/tax/parking)
+  const [csvType, setCsvType] = useState('fuel')
+  const [csvExporting, setCsvExporting] = useState(false)
+  const [csvImporting, setCsvImporting] = useState(false)
   const [testingConnection, setTestingConnection] = useState(false)
   const [visibleApiKeyDestinations, setVisibleApiKeyDestinations] = useState({})
   const [uploading, setUploading] = useState(false)
@@ -473,6 +478,70 @@ export default function BackupSettings() {
     }
   }
   
+  // F01 — CSV export of the selected entry type
+  const handleCsvExport = async () => {
+    setCsvExporting(true)
+    try {
+      const response = await backupApi.exportCsv(csvType)
+      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `gearcargo_${csvType}_${new Date().toISOString().split('T')[0]}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success(t('backup.csvExportComplete') || 'CSV exported')
+    } catch (error) {
+      console.error('CSV export failed:', error)
+      toast.error(t('backup.csvExportFailed') || 'Failed to export CSV')
+    } finally {
+      setCsvExporting(false)
+    }
+  }
+
+  const handleCsvImportClick = () => {
+    csvFileInputRef.current?.click()
+  }
+
+  // F01 — CSV import into the selected entry type
+  const handleCsvImportFile = async (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      toast.error(t('backup.csvInvalidFile') || 'Please select a .csv file')
+      event.target.value = ''
+      return
+    }
+    if (!window.confirm(t('backup.csvImportConfirm') || 'Import these rows into your data? Duplicate entries are skipped.')) {
+      event.target.value = ''
+      return
+    }
+
+    setCsvImporting(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('type', csvType)
+      formData.append('merge_mode', 'merge')
+
+      const response = await backupApi.importCsv(formData)
+      const { created = 0, skipped = 0, error_count = 0 } = response.data || {}
+      toast.success(
+        (t('backup.csvImportSuccess') || 'Import complete')
+        + `: ${created} ${t('backup.csvCreated') || 'added'}, ${skipped} ${t('backup.csvSkipped') || 'skipped'}`
+        + (error_count ? `, ${error_count} ${t('backup.csvErrors') || 'errors'}` : '')
+      )
+      if (created > 0) setTimeout(() => window.location.reload(), 1500)
+    } catch (error) {
+      console.error('CSV import failed:', error)
+      toast.error(error.response?.data?.error || t('backup.csvImportFailed') || 'Failed to import CSV')
+    } finally {
+      setCsvImporting(false)
+      event.target.value = ''
+    }
+  }
+
   const handleLubelogImportClick = () => {
     lubelogFileInputRef.current?.click()
   }
@@ -868,6 +937,79 @@ export default function BackupSettings() {
           type="file"
           accept=".zip"
           onChange={handleLubelogImportFile}
+          className="hidden"
+        />
+      </div>
+
+      {/* F01 — CSV Export / Import */}
+      <div className="bg-[var(--color-bg-tertiary)] rounded-xl p-4">
+        <div className="flex items-center gap-3 mb-3">
+          <span className="text-[var(--color-text-muted)]">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v.75m0 0V6m0 .75h3" />
+            </svg>
+          </span>
+          <div>
+            <span className="text-sm font-medium">{t('backup.csvTitle') || 'Export / Import CSV'}</span>
+            <p className="text-2xs text-[var(--color-text-muted)]">
+              {t('backup.csvDesc') || 'Download or upload your history as a spreadsheet (CSV)'}
+            </p>
+          </div>
+        </div>
+
+        {/* Entry-type selector */}
+        <div className="mb-3">
+          <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-2">
+            {t('backup.csvType') || 'Data type'}
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {['fuel', 'service', 'repair', 'tax', 'parking'].map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setCsvType(type)}
+                className={`py-2 px-2 rounded-lg text-xs font-medium transition-all ${
+                  csvType === type
+                    ? 'bg-[var(--color-accent)] text-white'
+                    : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]/80'
+                }`}
+              >
+                {t(`backup.csvType_${type}`) || type.charAt(0).toUpperCase() + type.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={handleCsvExport}
+            disabled={csvExporting}
+            className="py-2.5 px-4 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]/80 transition-colors flex items-center justify-center gap-2"
+          >
+            {csvExporting
+              ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              : Icons.download}
+            <span>{t('backup.csvExport') || 'Export CSV'}</span>
+          </button>
+          <button
+            onClick={handleCsvImportClick}
+            disabled={csvImporting}
+            className="py-2.5 px-4 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]/80 transition-colors flex items-center justify-center gap-2"
+          >
+            {csvImporting
+              ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              : Icons.upload}
+            <span>{csvImporting ? (t('backup.importing') || 'Importing...') : (t('backup.csvImport') || 'Import CSV')}</span>
+          </button>
+        </div>
+        <p className="text-2xs text-[var(--color-text-muted)] mt-2">
+          {t('backup.csvImportHint') || 'Import accepts files exported here. Duplicate rows (same vehicle, date and amount) are skipped.'}
+        </p>
+        <input
+          ref={csvFileInputRef}
+          type="file"
+          accept=".csv"
+          onChange={handleCsvImportFile}
           className="hidden"
         />
       </div>

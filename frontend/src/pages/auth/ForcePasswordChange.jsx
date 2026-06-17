@@ -47,7 +47,7 @@ export default function ForcePasswordChange() {
   const [passwordStrength, setPasswordStrength] = useState(null)
   
   const validatePassword = async (password) => {
-    if (password.length < 8) {
+    if (password.length < 12) {
       setPasswordStrength(null)
       return
     }
@@ -62,7 +62,7 @@ export default function ForcePasswordChange() {
   const handleNewPasswordChange = (e) => {
     const value = e.target.value
     setNewPassword(value)
-    if (value.length >= 8) {
+    if (value.length >= 12) {
       validatePassword(value)
     } else {
       setPasswordStrength(null)
@@ -78,8 +78,8 @@ export default function ForcePasswordChange() {
       return
     }
     
-    if (newPassword.length < 8) {
-      setError(t('profile.passwordMinLength') || 'Password must be at least 8 characters')
+    if (newPassword.length < 12) {
+      setError(t('profile.passwordMinLength') || 'Password must be at least 12 characters')
       return
     }
     

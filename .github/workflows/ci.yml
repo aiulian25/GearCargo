@@ -1,0 +1,104 @@
+name: CI
+
+# Smoke-test CI (IMPROVEMENTS.md §5): run DB migrations, boot the app, and run
+# the backend unit tests (security-critical helpers: encryption, signed URLs,
+# SSRF guard, password hashing, account lockout), plus a frontend build smoke.
+#
+# Dependency CVE scanning (pip-audit / npm audit) lives in dependency-audit.yml.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend — migrations, boot, tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      # SQLite stands in for Postgres for the migration/boot/test smoke.
+      DATABASE_URL: sqlite:///${{ runner.temp }}/gearcargo-ci.db
+      # Writable data root under the runner temp dir — no privileged setup,
+      # no world-writable permissions, no container /app path.
+      VOLUMES_PATH: ${{ runner.temp }}/gc-volumes
+      UPLOAD_FOLDER: ${{ runner.temp }}/gc-volumes/attachments
+      BACKUP_FOLDER: ${{ runner.temp }}/gc-volumes/backups
+      RATELIMIT_ENABLED: 'false'
+      FLASK_APP: app:create_app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Generate ephemeral CI secrets
+        # Distinct, single-run secrets for the throwaway CI database — never
+        # reused, never committed.
+        run: |
+          {
+            echo "SECRET_KEY=$(python -c 'import secrets;print(secrets.token_hex(32))')"
+            echo "JWT_SECRET_KEY=$(python -c 'import secrets;print(secrets.token_hex(32))')"
+            echo "WTF_CSRF_SECRET_KEY=$(python -c 'import secrets;print(secrets.token_hex(32))')"
+            echo "ENCRYPTION_KEY=$(python -c 'import secrets;print(secrets.token_hex(32))')"
+          } >> "$GITHUB_ENV"
+
+      - name: Prepare writable data directories
+        run: mkdir -p "$UPLOAD_FOLDER" "$BACKUP_FOLDER" "$VOLUMES_PATH/logs"
+
+      - name: Run database migrations (smoke)
+        run: flask db upgrade
+
+      - name: Boot the app (smoke)
+        run: |
+          python - <<'PY'
+          from app import create_app
+          app = create_app()
+          rules = list(app.url_map.iter_rules())
+          assert rules, "no routes registered — blueprints failed to import"
+          client = app.test_client()
+          # Reachable without auth; tolerate 404 when CSRF endpoint is disabled.
+          resp = client.get('/api/csrf-token')
+          assert resp.status_code in (200, 404), resp.status_code
+          print(f"App booted OK with {len(rules)} routes; csrf-token -> {resp.status_code}")
+          PY
+
+      - name: Run unit tests
+        run: pytest -q
+
+  frontend:
+    name: Frontend — build smoke
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (smoke)
+        run: npm run build

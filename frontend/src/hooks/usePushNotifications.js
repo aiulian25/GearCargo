@@ -209,6 +209,46 @@ export function usePushNotifications() {
   }, [subscription])
 
   /**
+   * Re-subscribe — force a fresh subscription. Used to recover from a stale or
+   * expired endpoint (the toggle still shows "on" but delivery is broken).
+   * Tears down the old browser + server subscription, then subscribes anew.
+   */
+  const resubscribe = useCallback(async () => {
+    if (!isSupported) {
+      setError('Push notifications are not supported')
+      return false
+    }
+
+    setLoading(true)
+    setError(null)
+
+    try {
+      const registration = await navigator.serviceWorker.ready
+      const existing = await registration.pushManager.getSubscription()
+
+      if (existing) {
+        // Best-effort server cleanup first so we don't orphan the old record.
+        try {
+          await pushApi.unsubscribe(existing.endpoint)
+        } catch (cleanupErr) {
+          console.warn('[Push] Old subscription server cleanup failed:', cleanupErr)
+        }
+        await existing.unsubscribe()
+      }
+
+      setSubscription(null)
+      setIsSubscribed(false)
+    } catch (err) {
+      console.error('[Push] Re-subscribe teardown failed:', err)
+      // Continue to subscribe() anyway — a fresh subscribe may still succeed.
+    } finally {
+      setLoading(false)
+    }
+
+    return subscribe()
+  }, [isSupported, subscribe])
+
+  /**
    * Toggle subscription
    */
   const toggle = useCallback(async () => {
@@ -278,6 +318,7 @@ export function usePushNotifications() {
     requestPermission,
     subscribe,
     unsubscribe,
+    resubscribe,
     toggle,
     sendTestNotification,
     showLocalNotification,

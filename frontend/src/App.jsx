@@ -1,58 +1,74 @@
-import { useEffect } from 'react'
+import { useEffect, lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { Toaster } from 'react-hot-toast'
+import toast, { Toaster, useToasterStore } from 'react-hot-toast'
 import { useAuth } from './contexts/AuthContext'
 import { initializeSync } from './db'
 
-// Layouts
+// Layouts — eager: part of the app shell, needed immediately on every route.
 import AppLayout from './layouts/AppLayout'
 import AuthLayout from './layouts/AuthLayout'
 
-// PWA Components
+// PWA Components — eager: tiny, mounted globally.
 import { InstallPrompt, UpdatePrompt, PullToRefresh } from './components/PWA'
 
+// Suspense fallback for lazily-loaded route chunks.
+import PageLoader from './components/ui/PageLoader'
+
+// ---------------------------------------------------------------------------
+// Route-level code splitting (IMPROVEMENTS.md §2).
+// Every page is loaded via React.lazy() so it ships as its own chunk fetched
+// on demand, instead of being bundled into one ~1.7 MB entry. This drastically
+// cuts the initial download (the login screen no longer pulls in the entire app,
+// recharts, jspdf, etc.) — the biggest PWA first-load / Lighthouse win.
+// ---------------------------------------------------------------------------
+
 // Auth Pages
-import Login from './pages/auth/Login'
-import Register from './pages/auth/Register'
-import ForgotPassword from './pages/auth/ForgotPassword'
-import ResetPassword from './pages/auth/ResetPassword'
-import ForcePasswordChange from './pages/auth/ForcePasswordChange'
-import SetupSecurityQuestions from './pages/auth/SetupSecurityQuestions'
-import VerifyEmail from './pages/auth/VerifyEmail'
+const Login = lazy(() => import('./pages/auth/Login'))
+const Register = lazy(() => import('./pages/auth/Register'))
+const ForgotPassword = lazy(() => import('./pages/auth/ForgotPassword'))
+const ResetPassword = lazy(() => import('./pages/auth/ResetPassword'))
+const ForcePasswordChange = lazy(() => import('./pages/auth/ForcePasswordChange'))
+const SetupSecurityQuestions = lazy(() => import('./pages/auth/SetupSecurityQuestions'))
+const VerifyEmail = lazy(() => import('./pages/auth/VerifyEmail'))
 
 // Main Pages
-import Dashboard from './pages/Dashboard'
-import Vehicles from './pages/vehicles/Vehicles'
-import VehicleDetail from './pages/vehicles/VehicleDetail'
-import AddVehicle from './pages/vehicles/AddVehicle'
-import EditVehicle from './pages/vehicles/EditVehicle'
-import AddVehicleFuel from './pages/vehicles/AddVehicleFuel'
-import AddVehicleService from './pages/vehicles/AddVehicleService'
-import AddVehicleRepair from './pages/vehicles/AddVehicleRepair'
-import AddVehicleTax from './pages/vehicles/AddVehicleTax'
-import AddVehicleParking from './pages/vehicles/AddVehicleParking'
-import AddVehicleReminder from './pages/vehicles/AddVehicleReminder'
-import AddVehicleTodo from './pages/vehicles/AddVehicleTodo'
-import AddVehicleInsurance from './pages/vehicles/AddVehicleInsurance'
-import VehicleExpenses from './pages/vehicles/VehicleExpenses'
-import VehicleTimeline from './pages/vehicles/VehicleTimeline'
-import VehicleCharts from './pages/vehicles/VehicleCharts'
-import VehicleAlerts from './pages/vehicles/VehicleAlerts'
-import VehicleHealth from './pages/vehicles/VehicleHealth'
-import VehicleDocuments from './pages/vehicles/VehicleDocuments'
-import FuelEntries from './pages/fuel/FuelEntries'
-import AddFuel from './pages/fuel/AddFuel'
-import Calendar from './pages/calendar/Calendar'
-import Services from './pages/services/Services'
-import AddService from './pages/services/AddService'
-import Repairs from './pages/repairs/Repairs'
-import AddRepair from './pages/repairs/AddRepair'
-import Reminders from './pages/reminders/Reminders'
-import AddReminder from './pages/reminders/AddReminder'
-import SmartRecommendations from './pages/predictions/SmartRecommendations'
-import Settings from './pages/settings/Settings'
-import Profile from './pages/settings/Profile'
-import Share from './pages/Share'
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Vehicles = lazy(() => import('./pages/vehicles/Vehicles'))
+const VehicleDetail = lazy(() => import('./pages/vehicles/VehicleDetail'))
+const AddVehicle = lazy(() => import('./pages/vehicles/AddVehicle'))
+const EditVehicle = lazy(() => import('./pages/vehicles/EditVehicle'))
+const AddVehicleFuel = lazy(() => import('./pages/vehicles/AddVehicleFuel'))
+const AddVehicleService = lazy(() => import('./pages/vehicles/AddVehicleService'))
+const AddVehicleRepair = lazy(() => import('./pages/vehicles/AddVehicleRepair'))
+const AddVehicleTax = lazy(() => import('./pages/vehicles/AddVehicleTax'))
+const AddVehicleParking = lazy(() => import('./pages/vehicles/AddVehicleParking'))
+const AddVehicleReminder = lazy(() => import('./pages/vehicles/AddVehicleReminder'))
+const AddVehicleTodo = lazy(() => import('./pages/vehicles/AddVehicleTodo'))
+const AddVehicleInsurance = lazy(() => import('./pages/vehicles/AddVehicleInsurance'))
+const VehicleExpenses = lazy(() => import('./pages/vehicles/VehicleExpenses'))
+const VehicleTimeline = lazy(() => import('./pages/vehicles/VehicleTimeline'))
+const VehicleCharts = lazy(() => import('./pages/vehicles/VehicleCharts'))
+const VehicleAlerts = lazy(() => import('./pages/vehicles/VehicleAlerts'))
+const VehicleHealth = lazy(() => import('./pages/vehicles/VehicleHealth'))
+const VehicleDocuments = lazy(() => import('./pages/vehicles/VehicleDocuments'))
+const VehicleConsumables = lazy(() => import('./pages/vehicles/VehicleConsumables'))
+const AddVehicleConsumable = lazy(() => import('./pages/vehicles/AddVehicleConsumable'))
+const VehicleChat = lazy(() => import('./pages/vehicles/VehicleChat'))
+const FuelEntries = lazy(() => import('./pages/fuel/FuelEntries'))
+const AddFuel = lazy(() => import('./pages/fuel/AddFuel'))
+const ShareTarget = lazy(() => import('./pages/ShareTarget'))
+const Calendar = lazy(() => import('./pages/calendar/Calendar'))
+const Services = lazy(() => import('./pages/services/Services'))
+const AddService = lazy(() => import('./pages/services/AddService'))
+const Repairs = lazy(() => import('./pages/repairs/Repairs'))
+const AddRepair = lazy(() => import('./pages/repairs/AddRepair'))
+const Reminders = lazy(() => import('./pages/reminders/Reminders'))
+const AddReminder = lazy(() => import('./pages/reminders/AddReminder'))
+const SmartRecommendations = lazy(() => import('./pages/predictions/SmartRecommendations'))
+const Settings = lazy(() => import('./pages/settings/Settings'))
+const Profile = lazy(() => import('./pages/settings/Profile'))
+const Share = lazy(() => import('./pages/Share'))
+const SharedReport = lazy(() => import('./pages/SharedReport'))
 
 // Protected Route Component
 const ProtectedRoute = ({ children, allowPasswordChange = false }) => {
@@ -97,7 +113,23 @@ const PublicRoute = ({ children }) => {
   return children
 }
 
+// Cap how many toasts are visible at once so a burst of notifications can't
+// stack up and drown each other (UI/UX §2 — toast consolidation). The store
+// lists newest-first, so we keep the most recent N and dismiss the rest.
+const TOAST_LIMIT = 3
+function useToastLimit() {
+  const { toasts } = useToasterStore()
+  useEffect(() => {
+    toasts
+      .filter((tt) => tt.visible)
+      .filter((_, i) => i >= TOAST_LIMIT)
+      .forEach((tt) => toast.dismiss(tt.id))
+  }, [toasts])
+}
+
 function App() {
+  useToastLimit()
+
   // Initialize offline sync on app startup
   useEffect(() => {
     initializeSync().catch(err => {
@@ -114,22 +146,29 @@ function App() {
       
       <Toaster
         position="top-center"
+        gutter={8}
         toastOptions={{
           duration: 3000,
+          // Cap width so long (translated) messages wrap instead of overflowing.
           style: {
             background: 'var(--color-bg-card)',
             color: 'var(--color-text-primary)',
             border: '1px solid var(--color-border)',
             fontSize: '14px',
             padding: '12px 16px',
+            maxWidth: '92vw',
           },
           success: {
+            duration: 2500,
             iconTheme: {
               primary: '#22c55e',
               secondary: '#fff',
             },
           },
+          // Errors linger longer than successes so they aren't missed/drowned.
           error: {
+            duration: 5000,
+            ariaProps: { role: 'alert', 'aria-live': 'assertive' },
             iconTheme: {
               primary: '#ef4444',
               secondary: '#fff',
@@ -138,6 +177,7 @@ function App() {
         }}
       />
       
+      <Suspense fallback={<PageLoader fullscreen />}>
       <Routes>
         {/* Auth Routes - Public only */}
         <Route path="/login" element={<AuthLayout><PublicRoute><Login /></PublicRoute></AuthLayout>} />
@@ -147,6 +187,9 @@ function App() {
         
         {/* Email Verification - Accessible when logged in or logged out */}
         <Route path="/verify-email" element={<VerifyEmail />} />
+
+        {/* Public read-only shared report (F05) - no auth, accessible to anyone with the link */}
+        <Route path="/shared/report/:token" element={<SharedReport />} />
         
         {/* Force Password Change - Protected but accessible when must_change_password is true */}
         <Route path="/change-password" element={<ProtectedRoute allowPasswordChange={true}><ForcePasswordChange /></ProtectedRoute>} />
@@ -171,6 +214,9 @@ function App() {
           <Route path="vehicles/:id/reminder/add" element={<AddVehicleReminder />} />
           <Route path="vehicles/:id/todo/add" element={<AddVehicleTodo />} />
           <Route path="vehicles/:id/insurance/add" element={<AddVehicleInsurance />} />
+          <Route path="vehicles/:id/consumables" element={<VehicleConsumables />} />
+          <Route path="vehicles/:id/consumable/add" element={<AddVehicleConsumable />} />
+          <Route path="vehicles/:id/chat" element={<VehicleChat />} />
           <Route path="vehicles/:id/expenses" element={<VehicleExpenses />} />
           <Route path="vehicles/:id/timeline" element={<VehicleTimeline />} />
           <Route path="vehicles/:id/charts" element={<VehicleCharts />} />
@@ -184,6 +230,9 @@ function App() {
           {/* Fuel */}
           <Route path="fuel" element={<FuelEntries />} />
           <Route path="fuel/add" element={<AddFuel />} />
+
+          {/* Web Share Target — receipt shared from the OS share sheet */}
+          <Route path="share-target" element={<ShareTarget />} />
           
           {/* Services */}
           <Route path="services" element={<Services />} />
@@ -211,6 +260,7 @@ function App() {
         {/* Catch all */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </Suspense>
     </>
   )
 }

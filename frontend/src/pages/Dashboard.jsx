@@ -5,6 +5,8 @@ import { useCurrency, useTranslation } from '../contexts/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDate, formatDateShort } from '../utils/dateFormat'
 import WeatherAlerts, { WeatherAlertsModal } from '../components/weather/WeatherAlerts'
+import ServiceUnavailable from '../components/ui/ServiceUnavailable'
+import { useConfirm } from '../components/ui/ConfirmDialog'
 
 // Weather Icon Component - Clean SVG icons with unique IDs
 function WeatherIcon({ condition, size = 80 }) {
@@ -195,7 +197,20 @@ function WeatherIcon({ condition, size = 80 }) {
 }
 
 // Weather Widget Component - App-like design
-function WeatherWidget({ weather, airQuality, weatherTab, setWeatherTab, weatherView, setWeatherView, t, language }) {
+function WeatherWidget({ weather, airQuality, weatherTab, setWeatherTab, weatherView, setWeatherView, t, language, error, onRetry, retrying, onDismiss }) {
+  // Inline error affordance instead of a silently-empty widget on service failure.
+  if (error && !weather) {
+    return (
+      <ServiceUnavailable
+        title={t('serviceError.weatherTitle') || 'Weather unavailable'}
+        onRetry={onRetry}
+        retrying={retrying}
+        onDismiss={onDismiss}
+        className="h-full"
+      />
+    )
+  }
+
   const now = new Date()
   
   // Get day name in current language
@@ -372,7 +387,7 @@ function WeatherWidget({ weather, airQuality, weatherTab, setWeatherTab, weather
 }
 
 // Fuel Prices Widget
-function FuelPricesWidget({ fuelPrices, currency, t, onRefresh, isRefreshing, lastAutoUpdate }) {
+function FuelPricesWidget({ fuelPrices, currency, t, onRefresh, isRefreshing, lastAutoUpdate, error, onRetry, retrying, onDismiss }) {
   // Use currency from fuel prices API (based on detected country) or fallback to user's currency
   const fuelCurrency = fuelPrices?.currency || currency.symbol
 
@@ -405,7 +420,20 @@ function FuelPricesWidget({ fuelPrices, currency, t, onRefresh, isRefreshing, la
       return dateStr
     }
   }
-  
+
+  // Inline error affordance instead of a silently-empty widget on service failure.
+  if (error && !fuelPrices) {
+    return (
+      <ServiceUnavailable
+        title={t('serviceError.fuelTitle') || 'Fuel prices unavailable'}
+        onRetry={onRetry}
+        retrying={retrying}
+        onDismiss={onDismiss}
+        className="h-full"
+      />
+    )
+  }
+
   return (
     <div className="bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border)] overflow-hidden h-full">
       <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)]">
@@ -483,6 +511,7 @@ export default function Dashboard() {
   const { currency, setCurrencyFromCountry } = useCurrency()
   const { t, language } = useTranslation()
   const { user } = useAuth()
+  const confirm = useConfirm()
   const [vehicles, setVehicles] = useState([])
   const [weather, setWeather] = useState(null)
   const [fuelPrices, setFuelPrices] = useState(null)
@@ -492,6 +521,13 @@ export default function Dashboard() {
   const fuelPriceFetchedAtRef = useRef(null)
   const isRefreshingFuelRef = useRef(false)
   const [airQuality, setAirQuality] = useState(null)
+  // Per-service error/retry/dismiss state (weather widget covers weather+air quality)
+  const [weatherError, setWeatherError] = useState(false)
+  const [fuelError, setFuelError] = useState(false)
+  const [weatherDismissed, setWeatherDismissed] = useState(false)
+  const [fuelDismissed, setFuelDismissed] = useState(false)
+  const [retryingWeather, setRetryingWeather] = useState(false)
+  const [retryingFuel, setRetryingFuel] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [weatherTab, setWeatherTab] = useState('today')
   const [weatherView, setWeatherView] = useState('forecast')
@@ -666,27 +702,87 @@ export default function Dashboard() {
           console.warn('Geocoding failed:', e)
         }
         
-        const [weatherRes, fuelRes, aqRes] = await Promise.all([
+        // Set resolved location up front so retry handlers work even if every
+        // service fails on the first attempt.
+        setResolvedLocation({ countryCode, locationName, lat: userLocation.lat, lon: userLocation.lon })
+
+        // allSettled: a 503 from one service must not blank the others.
+        const [weatherRes, fuelRes, aqRes] = await Promise.allSettled([
           externalApi.getWeather(userLocation.lat, userLocation.lon, locationName),
           externalApi.getFuelPrices(countryCode, locationName, userLocation.lat, userLocation.lon),
           externalApi.getAirQuality(userLocation.lat, userLocation.lon),
         ])
-        
-        setWeather(weatherRes.data)
-        setFuelPrices(fuelRes.data)
-        setAirQuality(aqRes.data)
-        const now = Date.now()
-        fuelPriceFetchedAtRef.current = now
-        setFuelPriceFetchedAt(now)
-        setResolvedLocation({ countryCode, locationName, lat: userLocation.lat, lon: userLocation.lon })
+
+        if (weatherRes.status === 'fulfilled') {
+          setWeather(weatherRes.value.data)
+          setWeatherError(false)
+        } else {
+          console.error('Weather fetch failed:', weatherRes.reason)
+          setWeatherError(true)
+        }
+
+        // Air quality is best-effort and shares the weather widget; only treat
+        // weather itself as the widget's failure signal.
+        if (aqRes.status === 'fulfilled') setAirQuality(aqRes.value.data)
+
+        if (fuelRes.status === 'fulfilled') {
+          setFuelPrices(fuelRes.value.data)
+          setFuelError(false)
+          const now = Date.now()
+          fuelPriceFetchedAtRef.current = now
+          setFuelPriceFetchedAt(now)
+        } else {
+          console.error('Fuel price fetch failed:', fuelRes.reason)
+          setFuelError(true)
+        }
       } catch (error) {
         console.error('Failed to fetch external data:', error)
+        setWeatherError(true)
+        setFuelError(true)
       }
     }
     
     fetchExternalData()
   }, [userLocation])
-  
+
+  // Retry just the weather (+ air quality) service after a failure.
+  const retryWeather = async () => {
+    if (!resolvedLocation || retryingWeather) return
+    setRetryingWeather(true)
+    try {
+      const [w, aq] = await Promise.allSettled([
+        externalApi.getWeather(resolvedLocation.lat, resolvedLocation.lon, resolvedLocation.locationName),
+        externalApi.getAirQuality(resolvedLocation.lat, resolvedLocation.lon),
+      ])
+      if (w.status === 'fulfilled') { setWeather(w.value.data); setWeatherError(false) }
+      else setWeatherError(true)
+      if (aq.status === 'fulfilled') setAirQuality(aq.value.data)
+    } finally {
+      setRetryingWeather(false)
+    }
+  }
+
+  // Retry just the fuel-price service after a failure.
+  const retryFuel = async () => {
+    if (!resolvedLocation || retryingFuel) return
+    setRetryingFuel(true)
+    try {
+      const res = await externalApi.getFuelPrices(
+        resolvedLocation.countryCode, resolvedLocation.locationName,
+        resolvedLocation.lat, resolvedLocation.lon,
+      )
+      setFuelPrices(res.data)
+      setFuelError(false)
+      const now = Date.now()
+      fuelPriceFetchedAtRef.current = now
+      setFuelPriceFetchedAt(now)
+    } catch (e) {
+      setFuelError(true)
+    } finally {
+      setRetryingFuel(false)
+    }
+  }
+
   // Manual fuel price refresh — force bypasses cache
   const handleRefreshFuelPrices = async () => {
     if (!resolvedLocation || isRefreshingFuelRef.current) return
@@ -761,8 +857,16 @@ export default function Dashboard() {
   const handleDeleteVehicle = async (e, vehicleId) => {
     e.preventDefault()
     e.stopPropagation()
-    if (!confirm('Permanently delete this vehicle and ALL its data (fuel, services, repairs, taxes, insurance, attachments)? This cannot be undone.')) return
-    
+    const v = vehicles.find((x) => x.id === vehicleId)
+    const name = v?.name || `${v?.make || ''} ${v?.model || ''}`.trim()
+    const ok = await confirm({
+      title: t('confirm.deleteVehicleTitle') || 'Delete vehicle?',
+      message: (t('confirm.deleteVehicleMessage') || 'Permanently delete “{name}” and all its data (fuel, services, repairs, taxes, insurance, attachments). This cannot be undone.').replace('{name}', name),
+      confirmLabel: t('common.delete') || 'Delete',
+      destructive: true,
+    })
+    if (!ok) return
+
     try {
       await vehicleApi.hardDelete(vehicleId)
       setVehicles(vehicles.filter(v => v.id !== vehicleId))
@@ -991,10 +1095,19 @@ export default function Dashboard() {
             setWeatherView={setWeatherView}
             t={t}
             language={language}
+            error={weatherError && !weatherDismissed}
+            onRetry={retryWeather}
+            retrying={retryingWeather}
+            onDismiss={() => setWeatherDismissed(true)}
           />
         </div>
         <div>
-          <FuelPricesWidget fuelPrices={fuelPrices} currency={currency} t={t} onRefresh={handleRefreshFuelPrices} isRefreshing={isRefreshingFuel} lastAutoUpdate={fuelPriceFetchedAt} />
+          <FuelPricesWidget fuelPrices={fuelPrices} currency={currency} t={t} onRefresh={handleRefreshFuelPrices} isRefreshing={isRefreshingFuel} lastAutoUpdate={fuelPriceFetchedAt}
+            error={fuelError && !fuelDismissed}
+            onRetry={retryFuel}
+            retrying={retryingFuel}
+            onDismiss={() => setFuelDismissed(true)}
+          />
         </div>
       </div>
       

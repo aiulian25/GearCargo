@@ -102,6 +102,8 @@ const eventTypeConfig = {
   '2fa_enabled': { label: '2FA Enabled', color: 'text-green-500', bg: 'bg-green-500/10' },
   '2fa_disabled': { label: '2FA Disabled', color: 'text-orange-500', bg: 'bg-orange-500/10' },
   '2fa_failed': { label: '2FA Failed', color: 'text-red-500', bg: 'bg-red-500/10' },
+  ai_settings_updated: { label: 'AI Settings', color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
+  ai_cache_flushed: { label: 'AI Cache Flush', color: 'text-cyan-500', bg: 'bg-cyan-500/10' },
 }
 
 // Device type icon mapping

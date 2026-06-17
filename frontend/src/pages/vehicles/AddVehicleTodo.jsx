@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
+import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import { vehicleApi, attachmentApi } from '../../services/api'
 import { useTranslation } from '../../contexts/LanguageContext'
 import api from '../../services/api'
@@ -47,7 +48,7 @@ export default function AddVehicleTodo() {
   const [receiptFile, setReceiptFile] = useState(null)
   const [existingAttachments, setExistingAttachments] = useState([])
   
-  const { register, handleSubmit, formState: { errors }, reset } = useForm({
+  const { register, handleSubmit, formState: { errors, isDirty }, reset } = useForm({
     defaultValues: {
       title: '',
       description: '',
@@ -88,6 +89,8 @@ export default function AddVehicleTodo() {
     fetchData()
   }, [vehicleId, editId, isEditMode, navigate, reset])
   
+  useUnsavedChanges(isDirty)
+
   const onSubmit = async (data) => {
     setIsSubmitting(true)
     setError('')

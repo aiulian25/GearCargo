@@ -19,11 +19,10 @@ function PasswordStrength({ password }) {
     let score = 0
     const errors = []
     
-    // Length checks
-    if (password.length >= 8) score += 20
-    if (password.length >= 12) score += 10
+    // Length checks (S03: minimum raised to 12)
+    if (password.length >= 12) score += 20
     if (password.length >= 16) score += 10
-    else if (password.length < 8) errors.push(t('profile.passwordMinLength') || 'At least 8 characters')
+    if (password.length < 12) errors.push(t('profile.passwordMinLength') || 'At least 12 characters')
     
     // Character type checks
     if (/[A-Z]/.test(password)) score += 15
@@ -238,8 +237,8 @@ export default function ResetPassword() {
               {...register('password', { 
                 required: t('auth.passwordRequired') || 'Password is required',
                 minLength: {
-                  value: 8,
-                  message: t('auth.passwordMinLength') || 'Password must be at least 8 characters'
+                  value: 12,
+                  message: t('auth.passwordMinLength') || 'Password must be at least 12 characters'
                 }
               })}
             />

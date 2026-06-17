@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useForm, useWatch } from 'react-hook-form'
+import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import { taxApi, vehicleApi, attachmentApi, insuranceApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import ReceiptUpload from '../../components/ReceiptUpload'
@@ -55,7 +56,7 @@ export default function AddVehicleTax() {
   const [existingAttachments, setExistingAttachments] = useState([])
   const [insurancePolicies, setInsurancePolicies] = useState([])
   
-  const { register, handleSubmit, formState: { errors }, control, reset } = useForm({
+  const { register, handleSubmit, formState: { errors, isDirty }, control, reset } = useForm({
     defaultValues: {
       date: new Date().toISOString().split('T')[0],
       tax_type: '',
@@ -119,6 +120,8 @@ export default function AddVehicleTax() {
     fetchData()
   }, [vehicleId, editId, isEditMode, navigate, reset])
   
+  useUnsavedChanges(isDirty)
+
   const onSubmit = async (data) => {
     setIsSubmitting(true)
     setError('')
@@ -258,7 +261,7 @@ export default function AddVehicleTax() {
                 {t('addTax.amount') || 'Amount'} ({currency.symbol}) *
               </label>
               <input
-                type="number"
+                type="number" inputMode="decimal"
                 step="0.01"
                 {...register('amount', { 
                   required: t('addTax.amountRequired') || 'Amount is required',

@@ -2,10 +2,13 @@ import { useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { fuelApi, vehicleApi } from '../../services/api'
 import { useAuth } from '../../contexts/AuthContext'
+import { useTranslation } from '../../contexts/LanguageContext'
 import { formatDate } from '../../utils/dateFormat'
 import { formatFuelEconomy, getFuelEconomyUnit } from '../../utils/fuelEconomy'
+import EmptyState from '../../components/ui/EmptyState'
 
 export default function FuelEntries() {
+  const { t } = useTranslation()
   const [searchParams] = useSearchParams()
   const vehicleId = searchParams.get('vehicle')
   
@@ -116,18 +119,13 @@ export default function FuelEntries() {
           ))}
         </div>
       ) : entries.length === 0 ? (
-        <div className="card text-center py-12">
-          <span className="material-icons-outlined icon-xl text-[var(--color-text-muted)] mb-3">
-            local_gas_station
-          </span>
-          <h3 className="text-sm font-medium mb-1">No fuel entries</h3>
-          <p className="text-xs text-[var(--color-text-secondary)] mb-4">
-            Start tracking your fuel consumption
-          </p>
-          <Link to="/fuel/add" className="btn btn-primary">
-            Add Fuel Entry
-          </Link>
-        </div>
+        <EmptyState
+          icon="local_gas_station"
+          title={t('empty.fuelTitle') || 'No fuel entries yet'}
+          description={t('empty.fuelDesc') || 'Log your fill-ups to track consumption and spending.'}
+          actionLabel={t('empty.fuelCta') || 'Add fuel entry'}
+          actionTo="/fuel/add"
+        />
       ) : (
         <div className="space-y-2">
           {entries.map(entry => (

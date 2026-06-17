@@ -110,6 +110,16 @@ def init_scheduler(app):
         **_job_defaults
     )
 
+    # Recurring parking entry generation (permits/subscriptions) — daily at 6 AM
+    scheduler.add_job(
+        id='process_recurring_parking',
+        func=process_recurring_parking_entries,
+        trigger='cron',
+        hour=6,
+        args=[app],
+        **_job_defaults
+    )
+
     scheduler.start()
     app.logger.info('Scheduler initialized')
 
@@ -120,6 +130,12 @@ def init_scheduler(app):
         process_recurring_tax_entries(app)
     except Exception as e:
         app.logger.warning(f'Startup recurring tax run failed: {e}')
+
+    # Same self-heal/catch-up for recurring parking on startup.
+    try:
+        process_recurring_parking_entries(app)
+    except Exception as e:
+        app.logger.warning(f'Startup recurring parking run failed: {e}')
 
     # Trigger a fuel price refresh 60 seconds after startup so Redis is
     # populated for all supported countries on the first boot (and after
@@ -553,25 +569,39 @@ Provide 1-3 maintenance predictions as JSON:
 def cleanup_old_data(app):
     """Clean up old data (logs, expired sessions, etc.)."""
     with app.app_context():
-        from app.models import NotificationLog, Backup
+        from app.models import NotificationLog, Backup, UserSession
         from app import db
-        
+
         # Delete old notification logs (older than 90 days)
         cutoff = datetime.now(timezone.utc) - timedelta(days=90)
-        
+
         deleted_logs = NotificationLog.query.filter(
             NotificationLog.created_at < cutoff
         ).delete()
-        
+
         # Delete old backups based on retention settings
         # This is simplified - in production, check per-user retention
         deleted_backups = Backup.query.filter(
             Backup.created_at < cutoff,
             Backup.cloud_file_id.is_(None)  # Only local backups
         ).delete()
-        
+
+        # S01: purge expired or revoked session rows (the durable Redis-fallback
+        # table). absolute_expires_at / revoked_at are stored as naive UTC, so we
+        # compare against a naive-UTC now.
+        now_naive = datetime.utcnow()
+        deleted_sessions = UserSession.query.filter(
+            db.or_(
+                UserSession.absolute_expires_at < now_naive,
+                UserSession.revoked.is_(True),
+            )
+        ).delete(synchronize_session=False)
+
         db.session.commit()
-        app.logger.info(f'Cleanup: deleted {deleted_logs} logs, {deleted_backups} backups')
+        app.logger.info(
+            f'Cleanup: deleted {deleted_logs} logs, {deleted_backups} backups, '
+            f'{deleted_sessions} expired/revoked sessions'
+        )
 
 
 def process_scheduled_backups(app):
@@ -1092,3 +1122,125 @@ def process_recurring_tax_entries(app):
             db.session.commit()
 
         app.logger.info(f'Recurring tax processing: created {created_count} new entries')
+
+
+def _recurrence_step(recurrence_type):
+    """Map a recurrence_type string to a dateutil relativedelta step.
+
+    Shared by the recurring tax and parking generators. Defaults to monthly for
+    unknown values so a misconfigured row still advances and never loops forever.
+    """
+    from dateutil.relativedelta import relativedelta
+    return {
+        'daily': relativedelta(days=1),
+        'weekly': relativedelta(weeks=1),
+        'monthly': relativedelta(months=1),
+        'quarterly': relativedelta(months=3),
+        'semi_annual': relativedelta(months=6),
+        'annual': relativedelta(years=1),
+    }.get(recurrence_type, relativedelta(months=1))
+
+
+# Safety cap: maximum entries auto-created per recurring series per run. Protects
+# against a `daily` permit with a long gap generating hundreds of rows (and the
+# memory/DB load that implies). When the cap is hit we stop CREATING but still
+# advance next_due_date past today so the series settles and never re-triggers.
+_MAX_RECURRING_BACKFILL = 120
+
+
+def process_recurring_parking_entries(app):
+    """Auto-create new parking entries for recurring parking (permits/subscriptions)
+    whose next_due_date has passed.
+
+    Mirrors process_recurring_tax_entries: runs daily at 6 AM, backfills missed
+    periods (capped), dedups by (vehicle_id, parking_type, date), and self-heals
+    rows that are recurring but have a NULL next_due_date. Supports
+    daily/weekly/monthly/quarterly/semi_annual/annual.
+    """
+    with app.app_context():
+        from app import db
+        from app.models import ParkingEntry
+
+        today = date.today()
+        created_count = 0
+
+        # Heal recurring rows whose next_due_date was never set (e.g. created
+        # without a permit_expires date). Seed it to the first occurrence after
+        # the entry date; the main loop then backfills and advances to the future.
+        null_due = ParkingEntry.query.filter(
+            ParkingEntry.recurring == True,  # noqa: E712 (SQLAlchemy boolean filter)
+            ParkingEntry.next_due_date.is_(None),
+        ).all()
+        for entry in null_due:
+            step = _recurrence_step(entry.recurrence_type)
+            base = entry.date or today
+            entry.next_due_date = base + step
+        if null_due:
+            db.session.commit()
+
+        due_entries = ParkingEntry.query.filter(
+            ParkingEntry.recurring == True,  # noqa: E712
+            ParkingEntry.next_due_date.isnot(None),
+            ParkingEntry.next_due_date <= today,
+        ).all()
+
+        for entry in due_entries:
+            try:
+                step = _recurrence_step(entry.recurrence_type)
+                next_date = entry.next_due_date
+                generated_for_entry = 0
+
+                while next_date <= today:
+                    next_occurrence = next_date + step
+                    if generated_for_entry < _MAX_RECURRING_BACKFILL:
+                        # Dedup: one entry per (vehicle, parking_type, date).
+                        exists = ParkingEntry.query.filter(
+                            ParkingEntry.vehicle_id == entry.vehicle_id,
+                            ParkingEntry.parking_type == entry.parking_type,
+                            ParkingEntry.date == next_date,
+                            ParkingEntry.id != entry.id,
+                        ).first()
+                        if not exists:
+                            new_entry = ParkingEntry(
+                                user_id=entry.user_id,
+                                vehicle_id=entry.vehicle_id,
+                                date=next_date,
+                                amount=entry.amount,
+                                currency=entry.currency,
+                                title=entry.title,
+                                description=entry.description,
+                                notes=entry.notes,
+                                parking_type=entry.parking_type,
+                                location=entry.location,
+                                location_address=entry.location_address,
+                                duration_minutes=entry.duration_minutes,
+                                permit_number=entry.permit_number,
+                                # New occurrence is valid until the following renewal.
+                                permit_expires=next_occurrence if entry.permit_expires else None,
+                                recurring=True,
+                                recurrence_type=entry.recurrence_type,
+                                next_due_date=next_occurrence,
+                                reminder_days=entry.reminder_days,
+                            )
+                            db.session.add(new_entry)
+                            created_count += 1
+                            generated_for_entry += 1
+                    # Always advance, even past the cap, so the series reaches the future.
+                    next_date = next_occurrence
+
+                if generated_for_entry >= _MAX_RECURRING_BACKFILL:
+                    app.logger.warning(
+                        f'Recurring parking entry {entry.id} hit the backfill cap '
+                        f'({_MAX_RECURRING_BACKFILL}); older occurrences were skipped.'
+                    )
+
+                # Advance the template to its next future occurrence.
+                entry.next_due_date = next_date
+
+            except Exception as e:
+                app.logger.error(f'Failed to process recurring parking entry {entry.id}: {e}')
+
+        if created_count:
+            db.session.commit()
+
+        app.logger.info(f'Recurring parking processing: created {created_count} new entries')

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useForm, useWatch } from 'react-hook-form'
+import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import { vehicleApi, attachmentApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import api from '../../services/api'
@@ -56,7 +57,7 @@ export default function AddVehicleParking() {
   const [receiptFile, setReceiptFile] = useState(null)
   const [existingAttachments, setExistingAttachments] = useState([])
   
-  const { register, handleSubmit, formState: { errors }, control, reset } = useForm({
+  const { register, handleSubmit, formState: { errors, isDirty }, control, reset } = useForm({
     defaultValues: {
       date: new Date().toISOString().split('T')[0],
       parking_type: '',
@@ -116,6 +117,8 @@ export default function AddVehicleParking() {
     fetchData()
   }, [vehicleId, editId, isEditMode, navigate, reset])
   
+  useUnsavedChanges(isDirty)
+
   const onSubmit = async (data) => {
     setIsSubmitting(true)
     setError('')
@@ -255,7 +258,7 @@ export default function AddVehicleParking() {
                 {t('addParking.amount') || 'Amount'} ({currency.symbol}) *
               </label>
               <input
-                type="number"
+                type="number" inputMode="decimal"
                 step="0.01"
                 {...register('amount', { 
                   required: t('addParking.amountRequired') || 'Amount is required',

@@ -1,0 +1,71 @@
+name: Dependency Audit
+
+# S13 (IMPROVEMENTS.md §1.6): automated source-dependency CVE scanning.
+# Complements the image-level scanning already in the Makefile (Trivy/Grype/Syft).
+#
+# Runs on:
+#   - PRs / pushes that touch dependency manifests (fast feedback),
+#   - a weekly schedule (catches CVEs disclosed AFTER code stops changing),
+#   - manual dispatch.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/requirements.txt'
+      - 'backend/requirements-dev.txt'
+      - 'frontend/package.json'
+      - 'frontend/package-lock.json'
+      - '.github/workflows/dependency-audit.yml'
+  pull_request:
+    paths:
+      - 'backend/requirements.txt'
+      - 'backend/requirements-dev.txt'
+      - 'frontend/package.json'
+      - 'frontend/package-lock.json'
+      - '.github/workflows/dependency-audit.yml'
+  schedule:
+    - cron: '0 6 * * 1'   # Monday 06:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  python-audit:
+    name: Python (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pip-audit
+        run: python -m pip install --upgrade pip pip-audit
+      - name: Audit backend dependencies
+        # pip-audit resolves the ~= ranges and fails (exit 1) on any known CVE.
+        # For an accepted/unfixable advisory, add a documented ignore here, e.g.:
+        #   --ignore-vuln GHSA-xxxx-xxxx-xxxx  # reason + tracking link
+        run: pip-audit -r backend/requirements.txt --desc
+
+  npm-audit:
+    name: Frontend (npm audit)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies (no lifecycle scripts)
+        run: npm ci --ignore-scripts
+      - name: Audit frontend dependencies
+        # Fails only on high/critical so low-severity advisory churn does not
+        # block development; review the full report (all levels) below.
+        run: npm audit --audit-level=high
+      - name: Full advisory report (informational)
+        if: always()
+        run: npm audit || true

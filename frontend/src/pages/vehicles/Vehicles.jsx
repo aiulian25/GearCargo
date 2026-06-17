@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { vehicleApi } from '../../services/api'
+import { useTranslation } from '../../contexts/LanguageContext'
+import EmptyState from '../../components/ui/EmptyState'
 
 export default function Vehicles() {
+  const { t } = useTranslation()
   const [vehicles, setVehicles] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   
@@ -44,18 +47,13 @@ export default function Vehicles() {
       
       {/* Vehicle List */}
       {vehicles.length === 0 ? (
-        <div className="card text-center py-12">
-          <span className="material-icons-outlined icon-xl text-[var(--color-text-muted)] mb-3">
-            directions_car
-          </span>
-          <h3 className="text-sm font-medium mb-1">No vehicles yet</h3>
-          <p className="text-xs text-[var(--color-text-secondary)] mb-4">
-            Add your first vehicle to start tracking
-          </p>
-          <Link to="/vehicles/add" className="btn btn-primary">
-            Add Vehicle
-          </Link>
-        </div>
+        <EmptyState
+          icon="directions_car"
+          title={t('empty.vehiclesTitle') || 'No vehicles yet'}
+          description={t('empty.vehiclesDesc') || 'Add your first vehicle to start tracking fuel, services and costs.'}
+          actionLabel={t('empty.vehiclesCta') || 'Add your first vehicle'}
+          actionTo="/vehicles/add"
+        />
       ) : (
         <div className="space-y-3">
           {vehicles.map(vehicle => (

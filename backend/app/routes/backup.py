@@ -1269,6 +1269,90 @@ def import_data(current_user):
         return jsonify({'error': 'Import failed. Please try again later.'}), 500
 
 
+@backup_bp.route('/export/csv', methods=['GET'])
+@token_required
+def export_csv(current_user):
+    """Export one entry type (fuel/service/repair/tax/parking) as a CSV file.
+
+    F01 — GDPR-friendly, spreadsheet-openable data export. Always scoped to the
+    authenticated user's own data; optionally filtered to one vehicle via
+    ?vehicle_id=. The CSV round-trips with /import/csv.
+    """
+    from app.services.csv_io import export_entries_csv, TYPE_MODELS
+
+    entry_type = (request.args.get('type') or '').strip().lower()
+    if entry_type not in TYPE_MODELS:
+        return jsonify({'error': f'Invalid type. Use one of: {", ".join(sorted(TYPE_MODELS))}'}), 400
+
+    vehicle_id = request.args.get('vehicle_id', type=int)
+
+    try:
+        csv_text = export_entries_csv(current_user, entry_type, vehicle_id=vehicle_id)
+    except Exception as e:
+        current_app.logger.error(f'CSV export failed: {e}', exc_info=True)
+        return jsonify({'error': 'Export failed. Please try again later.'}), 500
+
+    security_audit.data_export(current_user.id, current_user.email, f'csv:{entry_type}')
+
+    # utf-8-sig (BOM) so Excel opens accented characters correctly.
+    buffer = BytesIO(csv_text.encode('utf-8-sig'))
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%d')
+    return send_file(
+        buffer,
+        mimetype='text/csv',
+        as_attachment=True,
+        download_name=f'gearcargo_{entry_type}_{stamp}.csv',
+    )
+
+
+@backup_bp.route('/import/csv', methods=['POST'])
+@token_required
+def import_csv(current_user):
+    """Import entries from a CSV file (matching the /export/csv format).
+
+    F01 — generic CSV importer. multipart form fields:
+      file        — the CSV file (required)
+      type        — fuel/service/repair/tax/parking (required)
+      merge_mode  — 'merge' (default; skip duplicates) or 'replace'
+    Returns a per-row summary so a few bad rows don't abort the whole import.
+    Rows are validated individually and vehicle_id ownership is enforced.
+    """
+    from app.services.csv_io import import_entries_csv, TYPE_MODELS
+
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+    if not file.filename.lower().endswith('.csv'):
+        return jsonify({'error': 'File must be a .csv'}), 400
+
+    entry_type = (request.form.get('type') or '').strip().lower()
+    if entry_type not in TYPE_MODELS:
+        return jsonify({'error': f'Invalid type. Use one of: {", ".join(sorted(TYPE_MODELS))}'}), 400
+
+    merge_mode = request.form.get('merge_mode', 'merge')
+
+    try:
+        # utf-8-sig strips an Excel BOM if present.
+        csv_text = file.read().decode('utf-8-sig', errors='replace')
+        summary = import_entries_csv(current_user, entry_type, csv_text, merge_mode)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        security_audit.data_import(current_user.id, current_user.email, f'csv:{entry_type}', success=False)
+        current_app.logger.error(f'CSV import failed: {e}', exc_info=True)
+        return jsonify({'error': 'Import failed. Please try again later.'}), 500
+
+    security_audit.data_import(current_user.id, current_user.email, f'csv:{entry_type}', success=True)
+    return jsonify({
+        'message': f"Imported {summary['created']} {entry_type} entries "
+                   f"({summary['skipped']} duplicate(s) skipped, {summary['error_count']} error(s)).",
+        **summary,
+    })
+
+
 @backup_bp.route('/import/lubelog', methods=['POST'])
 @token_required
 def import_lubelog(current_user):

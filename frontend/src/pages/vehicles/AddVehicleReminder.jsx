@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
+import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import { reminderApi, vehicleApi, attachmentApi } from '../../services/api'
 import { useTranslation } from '../../contexts/LanguageContext'
 import { normalizeDistanceUnit } from '../../utils/fuelEconomy'
@@ -40,7 +41,7 @@ export default function AddVehicleReminder() {
   const [receiptFile, setReceiptFile] = useState(null)
   const [existingAttachments, setExistingAttachments] = useState([])
   
-  const { register, handleSubmit, watch, formState: { errors }, reset } = useForm({
+  const { register, handleSubmit, watch, formState: { errors, isDirty }, reset } = useForm({
     defaultValues: {
       title: '',
       reminder_type: '',
@@ -89,6 +90,8 @@ export default function AddVehicleReminder() {
     fetchData()
   }, [vehicleId, editId, isEditMode, navigate, reset])
   
+  useUnsavedChanges(isDirty)
+
   const onSubmit = async (data) => {
     setIsSubmitting(true)
     setError('')
@@ -287,7 +290,7 @@ export default function AddVehicleReminder() {
                 {t('addReminder.dueMileage') || 'Due Mileage'} ({distUnit})
               </label>
               <input
-                type="number"
+                type="number" inputMode="decimal"
                 {...register('due_mileage')}
                 className="input"
                 placeholder={t('addReminder.orMileage') || 'Or at mileage'}
@@ -323,7 +326,7 @@ export default function AddVehicleReminder() {
                 {t('addReminder.repeatMileage') || 'Repeat Every'} ({distUnit})
               </label>
               <input
-                type="number"
+                type="number" inputMode="decimal"
                 {...register('repeat_mileage')}
                 className="input"
                 placeholder={t('addReminder.everyXKm') || 'e.g., 10000'}

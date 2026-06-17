@@ -1,8 +1,7 @@
-# GearCargo 🚗
+# GearCargo
 
 A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel consumption, services, repairs, insurance, taxes, and all vehicle-related expenses.
 
-![GearCargo](./frontend/public/icons/icon-192x192.png)
 
 ---
 
@@ -23,7 +22,7 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 
 ## Features
 
-### 🚗 Vehicle Management
+### Vehicle Management
 - Multiple vehicle profiles with photos and detailed specs
 - Track mileage, fuel type, engine size, transmission
 - Vehicle timeline with all activities
@@ -33,7 +32,7 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 - **YTD expense cards** — Parking, Tax, and Insurance stat cards show year-to-date totals at a glance
 - **Interactive expense charts** — click any month bar in the Expenses bar chart to instantly filter the donut chart to that month's category breakdown; click again or tap "Full Year" to reset
 
-### ⛽ Fuel Tracking
+### Fuel Tracking
 - Log fuel entries with automatic consumption calculation
 - Track fuel costs and efficiency (L/100km or MPG)
 - **Unit-aware fuel economy** — economy displayed in L/100km or MPG automatically based on per-vehicle distance/volume unit settings
@@ -42,32 +41,33 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 - Full tank vs partial fill tracking
 - Station location and address storage
 
-### 🔧 Service & Repair Logs
+### Service & Repair Logs
 - Scheduled service tracking (oil changes, filters, etc.)
 - Repair history with warranty tracking
 - **Warranty date tracking** — record warranty expiry dates for services and repairs
 - Parts and labor cost breakdown
 - Service provider/shop information
 - Mileage-based service intervals
+- **Consumables tracking** — log wear items (tyres, brake pads, battery, filters, wipers) with brand, install date/odometer, cost and quantity; mileage-based wear estimates and "due" alerts
 
-### 🛡️ Insurance Management
+### Insurance Management
 - Track multiple insurance policies per vehicle
 - Policy expiration alerts
 - Coverage details and premium tracking
 - Document attachment support
 
-### 💰 Tax & Registration
+### Tax & Registration
 - Vehicle tax payment tracking
 - Registration renewal reminders
 - Road tax calculations
 - MOT/inspection tracking
 
-### 🅿️ Parking & Tolls
+### Parking & Tolls
 - Parking expense logging
 - Toll payment tracking
 - Location-based entries
 
-### ⏰ Smart Reminders
+### Smart Reminders
 - Date-based reminders (insurance renewal, tax due)
 - Mileage-based reminders (service intervals)
 - Push notifications (browser & mobile)
@@ -75,20 +75,23 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 - Calendar integration (CalDAV - Google, Nextcloud, Baikal, Radicale)
 - Multi-language reminder translations
 
-### � Calendar & Navigation
+### Calendar & Navigation
 - Interactive calendar with all vehicle events
 - **Clickable calendar entries** — click any day entry to navigate directly to expense details
 - Color-coded entries by type (fuel, service, repair, insurance, tax, parking)
 - CalDAV sync support (Google, Nextcloud, Baikal, Radicale)
 
-### �📊 Analytics & Reports
+### Analytics & Reports
 - Cost breakdown by category (fuel, service, repairs, insurance, tax)
 - Monthly/yearly expense reports
 - PDF report generation with charts
+- Interactive expense chart with drill-down
 - Fuel efficiency trends
 - Cost per kilometer/mile analysis
+- **Shareable report links** — generate a read-only report link to share with a garage or family member; links are signed, expiring, and revocable (no account required to view)
 
-### 🤖 AI-Powered Features (Optional, via Ollama)
+### AI-Powered Features (Optional, via Ollama)
+- **Vehicle Assistant (chat)** — a per-vehicle conversational assistant that answers grounded questions about *your* data: spending totals, fuel/service/repair history ("when did I last change the brake pads, what did it cost, where?"), upcoming reminders, and cross-vehicle comparisons ("which car costs most"). Strictly scoped to vehicles and maintenance with a layered safety design — input/output guardrails and an on-topic classifier — and **fully data-isolated** (answers only ever use the signed-in owner's own data; no tools, no retrieval, no stored history). Gracefully reports when the AI service is unavailable
 - **Automatic nightly maintenance predictions** — nightly scheduler analyses each vehicle's fuel, service, and repair history and generates multilingual prediction alerts (EN/RO/ES)
 - **Manual prediction trigger** — request an immediate AI analysis for any vehicle via the API
 - **OCR receipt scanning** — photos of receipts are automatically scanned (pytesseract) using an 11-step quality pipeline (local illumination normalisation, adaptive binarisation, confidence-filtered word extraction) and parsed by Ollama into structured data (date, amount, vendor, line items) to pre-fill expense forms; max 2 concurrent scans to protect server CPU
@@ -98,7 +101,7 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 - **Smart Recommendations page** — rule-based alerts for upcoming service, insurance, and tax deadlines
 - Powered by any Ollama-compatible model (local or external); recommended: `qwen2.5` for structured JSON and multilingual output
 
-### 📎 Attachments & Documents
+### Attachments & Documents
 - Attach receipts, invoices, documents to any entry
 - Image preview and gallery view
 - PDF document support
@@ -109,12 +112,12 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 - **Re-scan button** — retry OCR for blurry or rotated images via the attachment viewer
 - **OCR concurrency limit** — at most 2 OCR scans run simultaneously (upload, retry, startup backfill, and admin backfill all share one global semaphore); additional scans queue and run automatically when a slot frees up
 
-### ✅ To-Do Lists
+### To-Do Lists
 - Vehicle-specific task lists
 - Priority levels and due dates
 - Completion tracking
 
-### 🔒 Security Features
+### Security Features
 - **Two-Factor Authentication (2FA)** - TOTP with backup codes
 - **Signed Upload URLs** - HMAC-SHA256 signed URLs for all uploaded files (photos, avatars)
 - **Account Lockout Protection** - Auto-locks after 5 failed attempts
@@ -130,7 +133,10 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 - **Security Headers** - HSTS, CSP, X-Frame-Options via Flask-Talisman
 - **Encrypted Backups** - AES encryption for backup files
 - **Activity Logging** - Comprehensive audit trail
-- **SSRF Protection** - Private/internal IP blocking on CalDAV URLs
+- **SSRF Protection** - Private/internal IP blocking on CalDAV and Ollama URLs
+- **AI Chat Guardrails** - Layered prompt hardening, input/output validation, an on-topic classifier, and strict per-user data isolation for the Vehicle Assistant
+- **Absolute Session Expiry** - Sessions expire 48h after sign-in regardless of activity
+- **Signed, Expiring Share Links** - Shareable report links use signed, time-limited, revocable tokens
 - **Startup Secret Validation** - Refuses to start in production with default/insecure secrets
 - **Calendar Feed Token Expiry** - 90-day expiration on CalDAV feed tokens
 - **Read-only Root Filesystem** - Container runs with read-only rootfs
@@ -144,7 +150,7 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
   - Automatic bounce tracking — disables email after 5 failures
   - Rate limiting on verification emails (3/hour)
 
-### 💾 Data Management
+### Data Management
 - Automatic scheduled backups
 - Manual backup/restore
 - Export to external servers (HTTPS)
@@ -157,20 +163,22 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 - **Backup deduplication** — eliminates duplicate attachment files in ZIP exports
 - **Configurable upload limit** — up to 200 MB by default (adjustable via `MAX_UPLOAD_SIZE_MB`)
 
-### 🔌 Integrations
+### Integrations
 - **Gethomepage widget** — customapi widget with vehicle stats, service records, reminders
 - API key authentication for external services
 - Widget API endpoints for third-party dashboards
 - CalDAV calendar sync (Google, Nextcloud, Baikal, Radicale)
 
-### 📱 Mobile-First PWA
-- Installable on any device (iOS, Android, Desktop)
-- Works offline with service workers
-- Push notifications
+### Mobile-First PWA
+- Installable on any device (iOS, Android, Desktop), with iOS install guidance and opaque touch icons + splash screens
+- Works offline with service workers — offline write queue with **background sync** that replays entries when connectivity returns, plus a sync status indicator
+- In-app **update prompt** when a new version is available
+- App shortcuts and **Share Target** — share a receipt photo straight into a new expense
+- Push notifications (browser & mobile) with a permission-priming flow
 - Touch-optimized compact UI
 - Dark and light themes
 
-### 🌐 Internationalization
+### Internationalization
 - Multi-language support (English, Romanian, Spanish)
 - Customizable date formats
 - Multiple currency support (EUR, GBP, USD, RON, etc.)
@@ -354,10 +362,10 @@ sudo docker compose -f docker-compose.synology.yml up -d
 |---------|---------------------|---------------------------|----------------------------|----------------------------|-------------------------------|
 | **Use Case** | Development | Full Production | Lightweight Production | Pre-built Image | Synology NAS |
 | **Image Source** | Local build | Local build | Local build | GHCR | GHCR |
-| **Debug Mode** | ✅ Enabled | ❌ Disabled | ❌ Disabled | ❌ Disabled | ❌ Disabled |
-| **Ollama AI** | Optional | Optional | ❌ Disabled | Optional | Optional |
-| **Per-task Models** | ✅ Yes | ✅ Yes | ❌ N/A | ✅ Yes | ✅ Yes |
-| **Automated Backups** | No | ✅ Yes | No | No | No |
+| **Debug Mode** | Enabled | Disabled | Disabled | Disabled | Disabled |
+| **Ollama AI** | Optional | Optional | Disabled | Optional | Optional |
+| **Per-task Models** | Yes | Yes | N/A | Yes | Yes |
+| **Automated Backups** | No | Yes | No | No | No |
 | **Resource Limits** | None | 2 CPU, 1GB | 2 CPU, 1GB | 2 CPU, 1GB | None (Synology) |
 | **Log Rotation** | No | Yes | Yes | Yes | Yes |
 | **Read-only FS** | Yes | Yes | Yes | Yes | Yes |
@@ -406,6 +414,25 @@ python3 -c "import secrets; print(secrets.token_hex(32))"
 # or
 openssl rand -hex 32
 \`\`\`
+
+> **Startup enforcement.** In any non-development environment (i.e. `FLASK_ENV`
+> is not `development`), GearCargo **refuses to start** if `SECRET_KEY`,
+> `JWT_SECRET_KEY`, `WTF_CSRF_SECRET_KEY` or `ENCRYPTION_KEY` is missing or still a
+> placeholder. This check is independent of `DEBUG`, so a stray `DEBUG=true` can
+> never bypass it. For local development only, set `FLASK_ENV=development`.
+
+> **Rotating the encryption key (S06).** `ENCRYPTION_KEY` derives the key for all
+> at-rest PII (2FA/email-OTP secrets, notification email, CalDAV credentials) via
+> HKDF, and ciphertext is versioned, so the key can be rotated without data loss:
+> 1. Generate a new key (command above).
+> 2. Redeploy with the new value in `ENCRYPTION_KEY` and the **old** value in
+>    `ENCRYPTION_KEYS_OLD` (comma-separated for multiple). New data is written
+>    under the new key; old data still decrypts under the old key — no downtime.
+> 3. Re-encrypt all existing rows under the new key:
+>    `docker compose exec gearcargo python scripts/reencrypt_pii.py --execute`
+>    (run without `--execute` first for a dry run).
+> 4. Once it reports `0` undecryptable rows, remove `ENCRYPTION_KEYS_OLD` and
+>    redeploy.
 
 #### 5. DB_PASSWORD (PostgreSQL password)
 
@@ -550,7 +577,7 @@ DEFAULT_THEME=dark
 
 GearCargo supports **two methods** for creating the initial admin user:
 
-### Method 1: Environment Variables (Automatic - Recommended) ✨
+### Method 1: Environment Variables (Automatic - Recommended)
 
 **With the pre-built image** (`docker-compose.deploy.yml`), admin creation is **fully automatic!**
 
@@ -562,12 +589,12 @@ ADMIN_PASSWORD=YourSecurePassword123!
 ```
 
 **What happens automatically on first startup:**
-1. 🗄️ Database tables are created via migrations
-2. 👤 Admin user is created if no users exist
-3. 🚀 Application starts ready to use
+1. Database tables are created via migrations
+2. Admin user is created if no users exist
+3. Application starts ready to use
 
 **Security Notes:**
-- ⚠️ **Change default password immediately after first login!**
+- **Change default password immediately after first login!**
 - Password must be at least 8 characters
 - The admin user has full admin privileges (`is_admin=true`)
 - After login, update credentials in Settings → Account
@@ -622,16 +649,16 @@ The admin user can:
 
 | Variable | Required | Description | Default |
 |----------|----------|-------------|---------|
-| \`SECRET_KEY\` | ✅ Yes | Flask secret key (64 hex chars) | - |
-| \`JWT_SECRET_KEY\` | ✅ Yes | JWT signing key (64 hex chars) | - |
-| \`DB_PASSWORD\` | ✅ Yes | PostgreSQL password | - |
-| \`REDIS_PASSWORD\` | ✅ Yes | Redis password | \`changeme\` |
-| \`APP_URL\` | ✅ Yes | Public URL of your app | \`http://localhost:5000\` |
+| \`SECRET_KEY\` | Yes | Flask secret key (64 hex chars) | - |
+| \`JWT_SECRET_KEY\` | Yes | JWT signing key (64 hex chars) | - |
+| \`DB_PASSWORD\` | Yes | PostgreSQL password | - |
+| \`REDIS_PASSWORD\` | Yes | Redis password | \`changeme\` |
+| \`APP_URL\` | Yes | Public URL of your app | \`http://localhost:5000\` |
 | \`ADMIN_DOMAIN\` | Optional | Domain reserved for admin logins | empty |
 | \`USER_DOMAIN\` | Optional | Domain reserved for non-admin logins | empty |
-| \`CORS_ORIGINS\` | ✅ Yes | Allowed origins (comma-separated) | \`http://localhost:5000\` |
-| \`WTF_CSRF_SECRET_KEY\` | ⚠️ Recommended | CSRF secret | Falls back to SECRET_KEY |
-| \`ENCRYPTION_KEY\` | ⚠️ Recommended | Data encryption key | - |
+| \`CORS_ORIGINS\` | Yes | Allowed origins (comma-separated) | \`http://localhost:5000\` |
+| \`WTF_CSRF_SECRET_KEY\` | Recommended | CSRF secret | Falls back to SECRET_KEY |
+| \`ENCRYPTION_KEY\` | Recommended | Data encryption key | - |
 | \`ADMIN_EMAIL\` | Optional | Auto-create admin email | - |
 | \`ADMIN_PASSWORD\` | Optional | Auto-create admin password | - |
 | \`MAIL_ENABLED\` | Optional | Enable email features | \`false\` |
@@ -961,16 +988,6 @@ sudo chown -R 1000:1000 ./volumes/
 
 ---
 
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch: \`git checkout -b feature/amazing-feature\`
-3. Commit changes: \`git commit -m 'Add amazing feature'\`
-4. Push to branch: \`git push origin feature/amazing-feature\`
-5. Open a Pull Request
-
----
-
 ## License
 
 **Proprietary Software - All Rights Reserved**
@@ -979,10 +996,10 @@ Copyright © 2024-2026 GearCargo. All rights reserved.
 
 This software and its source code are proprietary and confidential. Unauthorized copying, modification, distribution, or use of this software, via any medium, is strictly prohibited without prior written permission from the copyright holder.
 
-- ❌ No redistribution allowed
-- ❌ No modification for commercial use
-- ❌ No derivative works
-- ❌ No sublicensing
+- No redistribution allowed
+- No modification for commercial use
+- No derivative works
+- No sublicensing
 
 For licensing inquiries, contact: licensing@gearcargo.app
 
@@ -990,10 +1007,10 @@ For licensing inquiries, contact: licensing@gearcargo.app
 
 ## Support
 
-- 📧 Email: support@gearcargo.app
-- 🐛 Issues: [GitHub Issues](https://github.com/aiulian25/GearCargo/issues)
-- 💬 Discussions: [GitHub Discussions](https://github.com/aiulian25/GearCargo/discussions)
+- Email: support@gearcargo.app
+- Issues: [GitHub Issues](https://github.com/aiulian25/GearCargo/issues)
+- Discussions: [GitHub Discussions](https://github.com/aiulian25/GearCargo/discussions)
 
 ---
 
-Made with ❤️ for vehicle enthusiasts
+Made for vehicle enthusiasts

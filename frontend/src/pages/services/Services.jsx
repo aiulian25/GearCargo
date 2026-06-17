@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { serviceApi, vehicleApi } from '../../services/api'
+import { useTranslation } from '../../contexts/LanguageContext'
 import { formatDate } from '../../utils/dateFormat'
+import EmptyState from '../../components/ui/EmptyState'
 
 export default function Services() {
+  const { t } = useTranslation()
   const [searchParams] = useSearchParams()
   const vehicleId = searchParams.get('vehicle')
   
@@ -89,18 +92,13 @@ export default function Services() {
           ))}
         </div>
       ) : entries.length === 0 ? (
-        <div className="card text-center py-12">
-          <span className="material-icons-outlined icon-xl text-[var(--color-text-muted)] mb-3">
-            build
-          </span>
-          <h3 className="text-sm font-medium mb-1">No service entries</h3>
-          <p className="text-xs text-[var(--color-text-secondary)] mb-4">
-            Track your vehicle maintenance
-          </p>
-          <Link to="/services/add" className="btn btn-primary">
-            Add Service Entry
-          </Link>
-        </div>
+        <EmptyState
+          icon="build"
+          title={t('empty.servicesTitle') || 'No service records yet'}
+          description={t('empty.servicesDesc') || 'Keep a history of maintenance and scheduled services.'}
+          actionLabel={t('empty.servicesCta') || 'Add service entry'}
+          actionTo="/services/add"
+        />
       ) : (
         <div className="space-y-2">
           {entries.map(entry => (

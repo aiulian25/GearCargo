@@ -9,6 +9,7 @@ from app.routes.services import services_bp
 from app.routes.repairs import repairs_bp
 from app.routes.taxes import taxes_bp
 from app.routes.parking import parking_bp
+from app.routes.consumables import consumables_bp
 from app.routes.reminders import reminders_bp
 from app.routes.predictions import predictions_bp
 from app.routes.attachments import attachments_bp
@@ -31,6 +32,7 @@ __all__ = [
     'repairs_bp',
     'taxes_bp',
     'parking_bp',
+    'consumables_bp',
     'reminders_bp',
     'predictions_bp',
     'attachments_bp',
@@ -60,6 +62,7 @@ def register_blueprints(app):
         (repairs_bp, '/api/repairs'),
         (taxes_bp, '/api/taxes'),
         (parking_bp, '/api/parking'),
+        (consumables_bp, '/api/consumables'),
         (reminders_bp, '/api/reminders'),
         (predictions_bp, '/api/predictions'),
         (attachments_bp, '/api/attachments'),

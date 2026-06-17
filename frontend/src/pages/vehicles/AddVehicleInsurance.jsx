@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
+import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import { insuranceApi, vehicleApi, attachmentApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import ReceiptUpload from '../../components/ReceiptUpload'
@@ -53,7 +54,7 @@ export default function AddVehicleInsurance() {
   const today = new Date().toISOString().split('T')[0]
   const oneYearLater = new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0]
   
-  const { register, handleSubmit, formState: { errors }, reset, watch } = useForm({
+  const { register, handleSubmit, formState: { errors, isDirty }, reset, watch } = useForm({
     defaultValues: {
       provider: '',
       policy_number: '',
@@ -115,6 +116,8 @@ export default function AddVehicleInsurance() {
     fetchData()
   }, [vehicleId, editId, isEditMode, navigate, reset, today, oneYearLater])
   
+  useUnsavedChanges(isDirty)
+
   const onSubmit = async (data) => {
     setIsSubmitting(true)
     setError('')
@@ -304,7 +307,7 @@ export default function AddVehicleInsurance() {
                 {t('addInsurance.premium') || 'Premium'} ({currency.symbol}) *
               </label>
               <input
-                type="number"
+                type="number" inputMode="decimal"
                 step="0.01"
                 {...register('premium', { 
                   required: t('addInsurance.premiumRequired') || 'Premium is required',
@@ -351,7 +354,7 @@ export default function AddVehicleInsurance() {
                 {t('addInsurance.coverageAmount') || 'Coverage Amount'} ({currency.symbol})
               </label>
               <input
-                type="number"
+                type="number" inputMode="decimal"
                 step="0.01"
                 {...register('coverage_amount')}
                 className="input"
@@ -364,7 +367,7 @@ export default function AddVehicleInsurance() {
                 {t('addInsurance.deductible') || 'Deductible'} ({currency.symbol})
               </label>
               <input
-                type="number"
+                type="number" inputMode="decimal"
                 step="0.01"
                 {...register('deductible')}
                 className="input"

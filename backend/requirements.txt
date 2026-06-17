@@ -24,6 +24,11 @@ alembic~=1.13
 Flask-Session~=0.8
 redis~=5.0
 
+# Background task queue (opt-in: TASK_QUEUE_BACKEND=rq). Uses the existing Redis.
+# The default 'thread' backend does not require this package at runtime, but it
+# is bundled so enabling RQ needs no image rebuild.
+rq~=1.16
+
 # Authentication & Security
 Flask-Login~=0.6
 Flask-Bcrypt~=1.0

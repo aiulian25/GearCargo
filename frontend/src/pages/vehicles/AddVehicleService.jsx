@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useForm, useWatch } from 'react-hook-form'
+import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import { serviceApi, vehicleApi, attachmentApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { normalizeDistanceUnit } from '../../utils/fuelEconomy'
@@ -46,7 +47,7 @@ export default function AddVehicleService() {
   const [ocrTypeHint, setOcrTypeHint] = useState(false)
   const _ocrTypeTimerRef = useRef(null)
   
-  const { register, handleSubmit, control, setValue, reset } = useForm({
+  const { register, handleSubmit, control, setValue, reset, formState: { isDirty } } = useForm({
     defaultValues: {
       date: new Date().toISOString().split('T')[0],
       mileage: '',
@@ -118,6 +119,8 @@ export default function AddVehicleService() {
     fetchData()
   }, [vehicleId, editId, isEditMode, navigate, reset])
   
+  useUnsavedChanges(isDirty)
+
   const onSubmit = async (data) => {
     setIsSubmitting(true)
     setError('')
@@ -265,7 +268,7 @@ export default function AddVehicleService() {
                 {t('addService.odometer') || 'Odometer'} ({distUnit})
               </label>
               <input
-                type="number"
+                type="number" inputMode="decimal"
                 {...register('mileage')}
                 className="input"
                 placeholder="0"
@@ -364,7 +367,7 @@ export default function AddVehicleService() {
                 {t('addService.partsCost') || 'Parts Cost'} ({currency.symbol})
               </label>
               <input
-                type="number"
+                type="number" inputMode="decimal"
                 step="0.01"
                 {...register('parts_cost')}
                 className="input"
@@ -377,7 +380,7 @@ export default function AddVehicleService() {
                 {t('addService.laborCost') || 'Labor Cost'} ({currency.symbol})
               </label>
               <input
-                type="number"
+                type="number" inputMode="decimal"
                 step="0.01"
                 {...register('labor_cost')}
                 className="input"
@@ -391,7 +394,7 @@ export default function AddVehicleService() {
               {t('addService.totalCost') || 'Total Cost'} ({currency.symbol})
             </label>
             <input
-              type="number"
+              type="number" inputMode="decimal"
               step="0.01"
               {...register('total_cost')}
               className="input"

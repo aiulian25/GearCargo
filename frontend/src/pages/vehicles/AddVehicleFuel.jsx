@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
+import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import { fuelApi, vehicleApi, attachmentApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { normalizeDistanceUnit } from '../../utils/fuelEconomy'
@@ -44,7 +45,7 @@ export default function AddVehicleFuel() {
   const [existingAttachments, setExistingAttachments] = useState([])
   const [uploadedAttachmentId, setUploadedAttachmentId] = useState(null)
   
-  const { register, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm({
+  const { register, handleSubmit, watch, setValue, reset, formState: { errors, isDirty } } = useForm({
     defaultValues: {
       date: new Date().toISOString().split('T')[0],
       mileage: '',
@@ -112,6 +113,8 @@ export default function AddVehicleFuel() {
     fetchData()
   }, [vehicleId, editId, isEditMode, navigate, setValue, reset])
   
+  useUnsavedChanges(isDirty)
+
   const onSubmit = async (data) => {
     setIsSubmitting(true)
     setError('')
@@ -247,7 +250,7 @@ export default function AddVehicleFuel() {
                 {t('addFuel.odometer') || 'Odometer'} ({distUnit}) *
               </label>
               <input
-                type="number"
+                type="number" inputMode="decimal"
                 {...register('mileage', { 
                   required: t('addFuel.mileageRequired') || 'Mileage is required',
                   min: { value: 0, message: t('addFuel.invalidMileage') || 'Invalid mileage' }
@@ -274,7 +277,7 @@ export default function AddVehicleFuel() {
                 {t('addFuel.liters') || 'Liters'} *
               </label>
               <input
-                type="number"
+                type="number" inputMode="decimal"
                 step="0.01"
                 {...register('liters', { 
                   required: t('addFuel.litersRequired') || 'Liters is required',
@@ -293,7 +296,7 @@ export default function AddVehicleFuel() {
                 {t('addFuel.pricePerLiter') || 'Price/Liter'} ({currency.symbol}) *
               </label>
               <input
-                type="number"
+                type="number" inputMode="decimal"
                 step="0.001"
                 {...register('price_per_liter', { 
                   required: t('addFuel.priceRequired') || 'Price is required',
@@ -313,7 +316,7 @@ export default function AddVehicleFuel() {
               {t('addFuel.totalCost') || 'Total Cost'} ({currency.symbol})
             </label>
             <input
-              type="number"
+              type="number" inputMode="decimal"
               step="0.01"
               {...register('total_cost')}
               className="input bg-[var(--color-bg-tertiary)]"

@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import api from '../services/api'
 import { db } from '../services/db'
+import { clearApiCache } from '../utils/swCache'
 
 const AuthContext = createContext(null)
 
@@ -58,6 +59,10 @@ export function AuthProvider({ children }) {
     // We only read the user profile from the JSON response.
     const { user: userData } = response.data
 
+    // Purge any API cache left by a previous account on this device so the
+    // newly signed-in user can never read stale/foreign data offline.
+    await clearApiCache()
+
     localStorage.setItem('auth_session', '1')
     setUser(userData)
     setIsAuthenticated(true)
@@ -73,6 +78,8 @@ export function AuthProvider({ children }) {
     
     // S05 — tokens delivered via cookies only.
     const { user: userData } = response.data
+
+    await clearApiCache()
 
     localStorage.setItem('auth_session', '1')
     setUser(userData)
@@ -93,10 +100,12 @@ export function AuthProvider({ children }) {
     
     // S05 — cookies are expired by the server response; clear local state.
     localStorage.removeItem('auth_session')
-    
-    // Clear cached data
+
+    // Clear cached data — Dexie user record AND the SW API response cache, so
+    // no signed-in data lingers for the next user on a shared device.
     await db.settings.delete('user')
-    
+    await clearApiCache()
+
     setUser(null)
     setIsAuthenticated(false)
   }, [])

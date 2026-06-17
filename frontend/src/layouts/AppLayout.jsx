@@ -1,9 +1,10 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, Suspense } from 'react'
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useTranslation } from '../contexts/LanguageContext'
 import { SyncIndicator } from '../components/PWA/SyncIndicator'
 import GlobalSearch from '../components/ui/GlobalSearch'
+import PageLoader from '../components/ui/PageLoader'
 
 // SVG Icons for navigation and menus
 const Icons = {
@@ -272,7 +273,13 @@ export default function AppLayout() {
       {/* Main Content */}
       <main className="flex-1 pb-16">
         <div className="w-full max-w-2xl lg:max-w-screen-2xl 2xl:max-w-[1800px] mx-auto">
-          <Outlet />
+          {/* Suspense boundary for lazily-loaded route chunks (§2 code splitting).
+              Placed inside the layout so the header + bottom nav stay visible
+              while the next page's chunk loads — only the content area shows the
+              loader. */}
+          <Suspense fallback={<PageLoader />}>
+            <Outlet />
+          </Suspense>
         </div>
       </main>
       

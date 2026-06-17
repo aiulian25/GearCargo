@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { repairApi, vehicleApi } from '../../services/api'
+import { useTranslation } from '../../contexts/LanguageContext'
 import { formatDate } from '../../utils/dateFormat'
+import EmptyState from '../../components/ui/EmptyState'
 
 export default function Repairs() {
+  const { t } = useTranslation()
   const [searchParams] = useSearchParams()
   const vehicleId = searchParams.get('vehicle')
   
@@ -105,18 +108,13 @@ export default function Repairs() {
           ))}
         </div>
       ) : entries.length === 0 ? (
-        <div className="card text-center py-12">
-          <span className="material-icons-outlined icon-xl text-[var(--color-text-muted)] mb-3">
-            handyman
-          </span>
-          <h3 className="text-sm font-medium mb-1">No repair entries</h3>
-          <p className="text-xs text-[var(--color-text-secondary)] mb-4">
-            Track repairs and issues
-          </p>
-          <Link to="/repairs/add" className="btn btn-primary">
-            Add Repair Entry
-          </Link>
-        </div>
+        <EmptyState
+          icon="handyman"
+          title={t('empty.repairsTitle') || 'No repairs logged yet'}
+          description={t('empty.repairsDesc') || 'Track repairs, issues and their costs over time.'}
+          actionLabel={t('empty.repairsCta') || 'Add repair entry'}
+          actionTo="/repairs/add"
+        />
       ) : (
         <div className="space-y-2">
           {entries.map(entry => (

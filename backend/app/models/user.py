@@ -3,6 +3,7 @@ GearCargo - User Model
 """
 
 from datetime import datetime, timedelta, timezone
+import base64
 import hashlib
 import secrets
 from flask_login import UserMixin
@@ -12,6 +13,20 @@ from app import db, bcrypt, login_manager
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+
+def _prehash_password(password: str) -> str:
+    """Pre-hash a password to a fixed-length, ASCII, NUL-free token (S02).
+
+    bcrypt silently ignores everything past the first 72 bytes of its input, so
+    long passphrases (or multi-byte UTF-8 ones) are weaker than the user expects.
+    We SHA-256 the password first and base64-encode the digest, yielding a
+    constant 44-character ASCII string that is always well within bcrypt's limit
+    and contains no NUL byte (which would also truncate the input). This is the
+    same construction Django and Passlib use for ``bcrypt_sha256``.
+    """
+    digest = hashlib.sha256((password or '').encode('utf-8')).digest()
+    return base64.b64encode(digest).decode('ascii')
 
 
 class User(UserMixin, db.Model):
@@ -129,13 +144,47 @@ class User(UserMixin, db.Model):
         return f'<User {self.username}>'
     
     def set_password(self, password):
-        """Hash and set the password."""
-        self.password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
+        """Hash and set the password.
+
+        S02: the password is SHA-256 pre-hashed before bcrypt so bcrypt's 72-byte
+        truncation can never silently weaken a long passphrase.
+        """
+        self.password_hash = bcrypt.generate_password_hash(_prehash_password(password)).decode('utf-8')
         self.last_password_change = datetime.now(timezone.utc)
-    
+
     def check_password(self, password):
-        """Check password against hash."""
-        return bcrypt.check_password_hash(self.password_hash, password)
+        """Check a password against the stored hash.
+
+        S02: verifies against the new pre-hashed scheme first. For accounts whose
+        hash predates S02 (raw bcrypt over the password), we fall back to the
+        legacy check and, on a match, transparently upgrade the stored hash to
+        the new scheme so the 72-byte protection applies going forward.
+        """
+        if not self.password_hash:
+            return False
+
+        # New scheme: bcrypt over the SHA-256 pre-hash.
+        try:
+            if bcrypt.check_password_hash(self.password_hash, _prehash_password(password)):
+                return True
+        except Exception:
+            pass
+
+        # Legacy scheme: bcrypt over the raw password (pre-S02). Upgrade on match.
+        try:
+            if bcrypt.check_password_hash(self.password_hash, password):
+                try:
+                    self.password_hash = bcrypt.generate_password_hash(
+                        _prehash_password(password)
+                    ).decode('utf-8')
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+                return True
+        except Exception:
+            pass
+
+        return False
     
     @staticmethod
     def _hash_reset_token(raw_token: str) -> str:

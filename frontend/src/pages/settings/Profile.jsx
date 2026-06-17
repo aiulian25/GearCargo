@@ -22,11 +22,10 @@ function PasswordStrength({ password, useServerValidation = false }) {
     let score = 0
     const errors = []
     
-    // Length checks
-    if (pwd.length >= 8) score += 20
-    if (pwd.length >= 12) score += 10
+    // Length checks (S03: minimum raised to 12)
+    if (pwd.length >= 12) score += 20
     if (pwd.length >= 16) score += 10
-    else if (pwd.length < 8) errors.push(t('profile.passwordMinLength') || 'At least 8 characters')
+    if (pwd.length < 12) errors.push(t('profile.passwordMinLength') || 'At least 12 characters')
     
     // Character type checks
     if (/[A-Z]/.test(pwd)) score += 15
@@ -933,7 +932,7 @@ export default function Profile() {
                     type={showNewPassword ? 'text' : 'password'}
                     {...passwordForm.register('new_password', { 
                       required: true,
-                      minLength: { value: 8, message: t('profile.minEightChars') || 'Min 8 characters' }
+                      minLength: { value: 12, message: t('profile.minEightChars') || 'Min 12 characters' }
                     })}
                     className="input pr-10"
                     placeholder="••••••••"
@@ -1001,7 +1000,7 @@ export default function Profile() {
               <ul className="text-2xs text-[var(--color-text-muted)] space-y-1">
                 <li className="flex items-center gap-2">
                   <span className="material-icons-outlined text-xs">check_circle</span>
-                  {t('profile.reqMinLength') || 'At least 8 characters'}
+                  {t('profile.reqMinLength') || 'At least 12 characters'}
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="material-icons-outlined text-xs">check_circle</span>

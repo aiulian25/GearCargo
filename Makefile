@@ -36,3 +36,24 @@ sbom:
 	@echo "==> Generating SBOM for $(IMAGE_TAG)..."
 	syft $(IMAGE_TAG) -o spdx-json > sbom.json
 	@echo "SBOM written to sbom.json"
+
+# ============================================================
+# Source Dependency Scanning (S13 — mirrors the CI "Dependency Audit" workflow)
+# Scans the SOURCE manifests (requirements.txt / package-lock.json),
+# complementing the image-level scans above (Trivy/Grype/Syft).
+# ============================================================
+
+.PHONY: audit audit-py audit-js
+
+## Audit Python dependencies for known CVEs (needs: pip install pip-audit)
+audit-py:
+	@echo "==> pip-audit on backend/requirements.txt..."
+	pip-audit -r backend/requirements.txt --desc
+
+## Audit frontend dependencies for known CVEs (npm audit, fails on high+)
+audit-js:
+	@echo "==> npm audit (high+) on frontend..."
+	cd frontend && npm audit --audit-level=high
+
+## Audit ALL source dependencies (Python + npm)
+audit: audit-py audit-js

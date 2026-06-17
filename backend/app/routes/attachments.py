@@ -26,7 +26,15 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 # All code paths — upload, retry, startup backfill, admin backfill — share this
 # single semaphore so the ceiling is always respected, regardless of how many
 # threads are started from different call sites.
-_OCR_CONCURRENCY = 2
+#
+# S12: configurable via OCR_MAX_CONCURRENCY (default 2) so operators on small
+# boxes can lower it to 1 to keep CPU available for request handling, or raise it
+# on bigger hosts. (A dedicated task queue — see IMPROVEMENTS.md §1.5 — remains
+# the longer-term fix to fully isolate this CPU-heavy work from the web workers.)
+try:
+    _OCR_CONCURRENCY = max(1, int(os.environ.get('OCR_MAX_CONCURRENCY', '2')))
+except (TypeError, ValueError):
+    _OCR_CONCURRENCY = 2
 _OCR_SEMAPHORE = threading.Semaphore(_OCR_CONCURRENCY)
 
 # S13: Canonical extension → MIME mapping for every extension in ALLOWED_EXTENSIONS.
@@ -348,16 +356,12 @@ def upload_attachment(current_user):
             )
 
     # Start background OCR for images (fire-and-forget, non-blocking).
-    # _throttled_ocr_background acquires the global _OCR_SEMAPHORE (max 2 concurrent)
-    # so simultaneous uploads don't saturate the CPU with unbounded tesseract processes.
+    # Routed through the task queue (thread backend by default; RQ when enabled).
+    # The global _OCR_SEMAPHORE (max 2 concurrent) still bounds CPU regardless of
+    # backend, so simultaneous uploads don't saturate tesseract.
     if attachment.is_image:
-        _app = current_app._get_current_object()
-        t = threading.Thread(
-            target=_throttled_ocr_background,
-            args=(_app, attachment.id, filepath),
-            daemon=True,
-        )
-        t.start()
+        from app.services.task_queue import enqueue_task
+        enqueue_task(run_ocr_task, attachment.id, filepath, description=f'ocr:{attachment.id}')
 
     return jsonify({
         'message': 'File uploaded successfully',
@@ -573,6 +577,25 @@ def _throttled_ocr_background(app, attachment_id: int, filepath: str) -> None:
         _run_ocr_background(app, attachment_id, filepath)
 
 
+def run_ocr_task(attachment_id: int, filepath: str) -> None:
+    """Backend-agnostic OCR entry point for the task queue (thread or RQ).
+
+    Picklable, import-by-reference (module-level) and primitive args, so RQ can
+    enqueue it. Runs inside an app context regardless of backend: the thread
+    backend pushes one before calling; the RQ worker pushes one for its
+    lifetime. As a safety net it creates a short-lived app if none is active.
+    """
+    from flask import current_app, has_app_context
+
+    if has_app_context():
+        _throttled_ocr_background(current_app._get_current_object(), attachment_id, filepath)
+    else:
+        from app import create_app
+        app = create_app()
+        with app.app_context():
+            _throttled_ocr_background(app, attachment_id, filepath)
+
+
 @attachments_bp.route('/<int:attachment_id>', methods=['GET'])
 @token_required
 def get_attachment(current_user, attachment_id):
@@ -655,15 +678,10 @@ def retry_ocr(current_user, attachment_id):
         return jsonify({'error': 'Failed to reset OCR state. Please try again.'}), 500
 
     # Re-enqueue background OCR (fire-and-forget, non-blocking).
-    # Goes through _throttled_ocr_background so retries compete for the same
-    # global semaphore slot as uploads and backfills.
-    _app = current_app._get_current_object()
-    t = threading.Thread(
-        target=_throttled_ocr_background,
-        args=(_app, attachment.id, attachment.filepath),
-        daemon=True,
-    )
-    t.start()
+    # Routed through the task queue; still bounded by the global OCR semaphore so
+    # retries compete for the same slots as uploads and backfills.
+    from app.services.task_queue import enqueue_task
+    enqueue_task(run_ocr_task, attachment.id, attachment.filepath, description=f'ocr-retry:{attachment.id}')
 
     return jsonify({'message': 'OCR re-scan started', 'ocr_status': 'pending'}), 202
 

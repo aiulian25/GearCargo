@@ -9,7 +9,7 @@ from sqlalchemy import func, desc
 from app import db
 from app.models import (User, Vehicle, Entry, Backup, ActivityLog, BlockedIP, BlockedDevice,
                          NotificationLog, BackupSchedule, Todo, EmailConsentLog)
-from app.routes.auth import admin_required
+from app.routes.auth import admin_required, MIN_PASSWORD_LENGTH
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -92,7 +92,13 @@ def create_user(current_user):
     # Validate required fields
     if not data.get('email') or not data.get('password'):
         return jsonify({'error': 'Email and password are required'}), 400
-    
+
+    # S03: enforce the minimum-length policy even for admin-set temporary
+    # passwords (the user is forced to change it on first login, where the full
+    # strength policy applies). No HIBP call here so the admin UI stays snappy.
+    if len(data['password']) < MIN_PASSWORD_LENGTH:
+        return jsonify({'error': f'Password must be at least {MIN_PASSWORD_LENGTH} characters'}), 400
+
     # Check if email already exists
     if User.query.filter_by(email=data['email'].lower()).first():
         return jsonify({'error': 'Email already registered'}), 400
@@ -384,12 +390,26 @@ def get_settings(current_user):
                     or '')
 
     task_models = {
-        'global':   global_model,
-        'predict':  _task_model('predict')  or global_model,
-        'ocr':      _task_model('ocr')      or global_model,
-        'anomaly':  _task_model('anomaly')  or global_model,
-        'reminder': _task_model('reminder') or global_model,
+        'global':     global_model,
+        'predict':    _task_model('predict')    or global_model,
+        'ocr':        _task_model('ocr')        or global_model,
+        'anomaly':    _task_model('anomaly')    or global_model,
+        'reminder':   _task_model('reminder')   or global_model,
+        'classifier': _task_model('classifier') or global_model,
     }
+
+    # Chat Layer 2 classifier master toggle: AppSetting overrides the env default.
+    _cls_setting = AppSetting.get('chat_classifier_enabled')
+    chat_classifier_enabled = (
+        current_app.config.get('CHAT_CLASSIFIER_ENABLED', True)
+        if _cls_setting is None else _cls_setting == 'true'
+    )
+    # Optional Layer 3 phase-2 answer classifier (default off).
+    _out_setting = AppSetting.get('chat_output_classifier_enabled')
+    chat_output_classifier_enabled = (
+        current_app.config.get('CHAT_OUTPUT_CLASSIFIER_ENABLED', False)
+        if _out_setting is None else _out_setting == 'true'
+    )
 
     if ollama_live.get('status') == 'online':
         ollama_live['task_models'] = task_models
@@ -408,6 +428,8 @@ def get_settings(current_user):
         'ollama_live': ollama_live,
         'prediction_stats': prediction_stats,
         'task_models': task_models,
+        'chat_classifier_enabled': chat_classifier_enabled,
+        'chat_output_classifier_enabled': chat_output_classifier_enabled,
         'ai_cache': ai_cache,
         'ollama_downtime': ollama_downtime,
     })
@@ -419,7 +441,13 @@ _VALID_MODEL_RE = __import__('re').compile(r'^[a-zA-Z0-9][\w.\-:/]{0,99}$')
 @admin_bp.route('/settings', methods=['PUT'])
 @admin_required
 def update_settings(current_user):
-    """Update runtime-configurable settings (currently: per-task Ollama models)."""
+    """Update runtime-configurable settings (currently: per-task Ollama models).
+
+    Note: the Ollama *URL* is NOT configurable here — it is read only from the
+    OLLAMA_BASE_URL environment variable (operator-controlled) and every outbound
+    call is passed through validate_ollama_url() (the SSRF guard). Only validated
+    model *names* are runtime-settable, and changes are audit-logged below.
+    """
     from app.models.app_setting import AppSetting
     from app import db
 
@@ -429,22 +457,48 @@ def update_settings(current_user):
     if not isinstance(task_models, dict):
         return jsonify({'error': 'task_models must be an object'}), 400
 
-    allowed_tasks = {'global', 'predict', 'ocr', 'anomaly', 'reminder'}
+    # Optional: Layer 2 classifier master toggle.
+    if 'chat_classifier_enabled' in data:
+        AppSetting.set('chat_classifier_enabled', 'true' if data.get('chat_classifier_enabled') else 'false')
+    # Optional: Layer 3 phase-2 answer classifier toggle.
+    if 'chat_output_classifier_enabled' in data:
+        AppSetting.set('chat_output_classifier_enabled', 'true' if data.get('chat_output_classifier_enabled') else 'false')
+
+    allowed_tasks = {'global', 'predict', 'ocr', 'anomaly', 'reminder', 'classifier'}
     saved = {}
+    changes = {}  # task -> {'from': old, 'to': new} for the audit trail
     for task, model_name in task_models.items():
         if task not in allowed_tasks:
             continue
         if model_name is None or model_name == '':
             # Empty string means "reset to global default"
+            old = AppSetting.get(f'ollama_model_{task}')
             AppSetting.set(f'ollama_model_{task}', None)
             saved[task] = None
+            if old not in (None, ''):
+                changes[task] = {'from': old, 'to': None}
             continue
         if not isinstance(model_name, str) or not _VALID_MODEL_RE.match(model_name):
             return jsonify({'error': f'Invalid model name for task {task!r}'}), 400
+        old = AppSetting.get(f'ollama_model_{task}')
         AppSetting.set(f'ollama_model_{task}', model_name)
         saved[task] = model_name
+        if old != model_name:
+            changes[task] = {'from': old, 'to': model_name}
 
     db.session.commit()
+
+    # Audit-log the admin configuration change (who changed which AI models).
+    if changes:
+        ActivityLog.log(
+            event_type='ai_settings_updated',
+            event_category='admin',
+            user_id=current_user.id,
+            description=f'AI model settings updated by {current_user.email}',
+            success=True,
+            extra_data={'changes': changes},
+        )
+
     return jsonify({'saved': saved})
 
 
@@ -461,6 +515,16 @@ def flush_ai_cache(current_user):
     from app.services.ollama import ai_cache_flush, ai_cache_stats
     deleted = ai_cache_flush()
     after = ai_cache_stats()
+
+    ActivityLog.log(
+        event_type='ai_cache_flushed',
+        event_category='admin',
+        user_id=current_user.id,
+        description=f'AI response cache flushed by {current_user.email}',
+        success=True,
+        extra_data={'deleted': deleted},
+    )
+
     return jsonify({'deleted': deleted, 'remaining': after.get('keys', 0)})
 
 

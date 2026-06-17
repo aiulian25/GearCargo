@@ -34,6 +34,38 @@ redis_client = None
 # blacklisting is disabled. The app stays up (fail-open) but ops should be alerted.
 _redis_available = False
 
+# S05: known insecure code defaults (from app/config.py) plus placeholder markers
+# used across the tracked .env templates. A real secret is high-entropy hex/base64
+# and will never contain these word fragments, so substring matching is safe.
+_INSECURE_SECRET_DEFAULTS = frozenset({
+    'dev-secret-key-change-in-production',
+    'jwt-secret-change-in-production',
+    'csrf-secret-change-in-production',
+})
+_PLACEHOLDER_MARKERS = (
+    'change', 'changeme', 'change_me', 'change-this',
+    'placeholder', 'example', 'your-', 'your_', 'yourdomain', 'replace', 'insecure',
+    'generate_64', 'generate-64', 'todo',
+)
+
+
+def _is_weak_secret(value) -> bool:
+    """Return True if *value* is empty, a known default, or an obvious placeholder.
+
+    Used to refuse startup in production when secrets have not been set to real
+    values. Deliberately conservative: it only flags values that no real,
+    randomly-generated secret would ever be (empty / known default / contains a
+    template placeholder fragment), so it cannot false-positive on a genuine
+    high-entropy hex or base64 secret.
+    """
+    if not value:
+        return True
+    v = str(value).strip().lower()
+    if v in _INSECURE_SECRET_DEFAULTS:
+        return True
+    return any(marker in v for marker in _PLACEHOLDER_MARKERS)
+
+
 def create_app(config_class=None):
     """Application factory pattern."""
     global redis_client, _redis_available
@@ -47,7 +79,12 @@ def create_app(config_class=None):
     
     # Load configuration
     app.config.from_object(config_class or 'app.config.Config')
-    
+
+    # Configure general application logging: PII redaction + optional JSON
+    # output for ingestion. Does not affect the dedicated security_audit log.
+    from app.utils.logging_config import configure_logging
+    configure_logging(app)
+
     # Initialize extensions
     db.init_app(app)
     migrate.init_app(app, db)
@@ -93,35 +130,57 @@ def create_app(config_class=None):
         }
     })
     
-    # Validate critical secrets are not defaults in production
-    _insecure_defaults = {
-        'dev-secret-key-change-in-production',
-        'jwt-secret-change-in-production',
-        'csrf-secret-change-in-production',
-    }
-    if not app.config.get('DEBUG'):
-        for key in ('SECRET_KEY', 'JWT_SECRET_KEY', 'WTF_CSRF_SECRET_KEY'):
-            if app.config.get(key) in _insecure_defaults:
-                raise RuntimeError(
-                    f'{key} is using an insecure default value. '
-                    f'Set {key} environment variable to a random secret.'
+    # ------------------------------------------------------------------
+    # S05: Production secret validation — fail SAFE, independent of DEBUG.
+    #
+    # Previously enforcement was gated only on `not DEBUG`, so a misconfigured
+    # `DEBUG=true` in production could start the app with placeholder secrets.
+    # Enforcement is now gated on an explicit environment signal (FLASK_ENV) and
+    # defaults to ON: anything that is not an EXPLICIT development/testing
+    # environment is treated as production and must supply real secrets.
+    #   • Nothing set            → treated as production → enforced (fail safe).
+    #   • DEBUG=true, no FLASK_ENV → still production → enforced (closes the hole).
+    #   • FLASK_ENV=development    → enforcement skipped (local-dev convenience).
+    #   • Testing config           → enforcement skipped.
+    # For local development set FLASK_ENV=development (compose/.env already default
+    # to FLASK_ENV=production for every real deployment).
+    # ------------------------------------------------------------------
+    flask_env = os.environ.get('FLASK_ENV', 'production').strip().lower()
+    _is_development_env = flask_env in ('development', 'dev', 'local')
+    _enforce_secrets = not _is_development_env and not app.config.get('TESTING', False)
+
+    if _enforce_secrets:
+        secret_keys = ('SECRET_KEY', 'JWT_SECRET_KEY', 'WTF_CSRF_SECRET_KEY', 'ENCRYPTION_KEY')
+        weak = [k for k in secret_keys if _is_weak_secret(app.config.get(k, ''))]
+        if weak:
+            raise RuntimeError(
+                'Refusing to start: insecure, placeholder, or missing secret(s): '
+                f'{", ".join(weak)}. '
+                'Generate strong values with: '
+                'python -c "import secrets; print(secrets.token_hex(32))" '
+                'and set each as an environment variable or Docker secret. '
+                '(For local development, set FLASK_ENV=development to bypass this check.)'
+            )
+
+        # The three signing keys must each be DISTINCT — reuse weakens isolation
+        # between session signing, JWTs and CSRF tokens. Warn (do not block) so an
+        # existing deployment that reused a key is not taken offline on restart.
+        signing_values = [app.config.get(k) for k in ('SECRET_KEY', 'JWT_SECRET_KEY', 'WTF_CSRF_SECRET_KEY')]
+        if len(set(signing_values)) < len(signing_values):
+            app.logger.warning(
+                'S05: SECRET_KEY, JWT_SECRET_KEY and WTF_CSRF_SECRET_KEY should each be a '
+                'DISTINCT random value. Reusing one weakens cryptographic isolation.'
+            )
+
+        # Soft warning for short-but-real secrets (do not block running deployments).
+        for k in secret_keys:
+            v = app.config.get(k, '') or ''
+            if v and len(v) < 32 and not _is_weak_secret(v):
+                app.logger.warning(
+                    'S05: %s is shorter than 32 characters — regenerate with '
+                    'secrets.token_hex(32) for adequate entropy.', k
                 )
 
-        # I10: ENCRYPTION_KEY must be explicitly set in production.
-        # If it is absent the field-level encryption helper falls back to
-        # SECRET_KEY as the key seed, which (a) silently couples encryption
-        # material to the session secret — rotating SECRET_KEY would make all
-        # encrypted PII unreadable — and (b) gives a false sense of isolation.
-        # We refuse to start so the operator is forced to set the key before
-        # any user data is encrypted under a wrong/unknown key.
-        enc_key = app.config.get('ENCRYPTION_KEY', '')
-        if not enc_key:
-            raise RuntimeError(
-                'ENCRYPTION_KEY is not set. '
-                'Generate a key with: python -c "import secrets; print(secrets.token_hex(32))" '
-                'and set it as the ENCRYPTION_KEY environment variable.'
-            )
-    
     # Rate limiting
     limiter = Limiter(
         key_func=get_remote_address,
@@ -314,6 +373,45 @@ def create_app(config_class=None):
     from app.routes import register_blueprints
     register_blueprints(app)
 
+    # ------------------------------------------------------------------
+    # S11: Per-route upload-size ceilings (early rejection).
+    #
+    # MAX_CONTENT_LENGTH is kept high (default 200 MB) ONLY so that backup
+    # restore (/api/backup/import — a full ZIP that can legitimately contain many
+    # attachments) works. Without a per-route limit, an attacker could stream up
+    # to that ceiling at the small-upload endpoints (avatar/photo/attachment),
+    # which only accept 2–10 MB, before the in-view size check rejects it — the
+    # body is buffered first. This before_request rejects oversized uploads using
+    # the Content-Length header BEFORE the body is consumed, shrinking that DoS
+    # surface to what each route actually accepts. Keep these in sync with the
+    # MAX_FILE_SIZE constants in the respective views.
+    # ------------------------------------------------------------------
+    _MB = 1024 * 1024
+    # endpoint name -> max FILE bytes the route accepts
+    _UPLOAD_LIMITS = {
+        'attachments.upload_attachment': 10 * _MB,
+        'vehicles.upload_vehicle_photo': 10 * _MB,
+        'auth.upload_avatar':             2 * _MB,
+    }
+    # Allowance above the file limit for multipart/form-data envelope overhead
+    # (boundaries, headers, other form fields) so a legitimately-sized file is
+    # never rejected by this early check; the exact byte limit is still enforced
+    # in-view against the decoded file.
+    _UPLOAD_OVERHEAD = 1 * _MB
+
+    @app.before_request
+    def _enforce_per_route_upload_limit():
+        limit = _UPLOAD_LIMITS.get(request.endpoint)
+        if limit is None:
+            return  # not a size-restricted upload endpoint
+        content_length = request.content_length
+        if content_length is not None and content_length > limit + _UPLOAD_OVERHEAD:
+            return jsonify({
+                'error': f'File too large. Maximum size is {limit // _MB} MB.',
+            }), 413
+        # If Content-Length is absent (e.g. chunked), the global MAX_CONTENT_LENGTH
+        # and the in-view size check still bound the request.
+
     # I11: Apply a tight per-IP rate limit specifically to registration.
     # The global default (200/day) is too permissive — an attacker could create
     # thousands of accounts to exhaust vehicle_limit quotas or flood the DB.
@@ -426,11 +524,13 @@ def create_app(config_class=None):
             error_message='Too many AI suggestion requests. Please wait before trying again.',
         )(app.view_functions['vehicles.suggest_reminder'])
 
-    # AI vehicle chat — 5/hour/user.  Wired here when the endpoint is registered;
-    # the `if` guard makes this a no-op until section 3.7 is implemented.
+    # AI vehicle chat — per-user, generous + env-configurable (CHAT_RATE_LIMIT).
+    # Default '15 per minute; 100 per hour' lets a real conversation flow while
+    # the per-minute burst still bounds abuse (each chat = up to two remote model
+    # calls; see §14.3). The `if` guard makes this a no-op until the endpoint exists.
     if 'vehicles.vehicle_chat' in app.view_functions:
         app.view_functions['vehicles.vehicle_chat'] = limiter.limit(
-            '5 per hour',
+            app.config.get('CHAT_RATE_LIMIT', '15 per minute; 100 per hour'),
             key_func=_ai_rate_key,
             error_message='Too many chat requests. Please wait before sending more messages.',
         )(app.view_functions['vehicles.vehicle_chat'])
@@ -442,6 +542,20 @@ def create_app(config_class=None):
             key_func=_ai_rate_key,
             error_message='Too many search requests. Please slow down.',
         )(app.view_functions['search.global_search'])
+
+    # F05: per-IP limits on the PUBLIC (unauthenticated) shared-report endpoints.
+    # The 256-bit token makes enumeration infeasible; these limits bound DoS /
+    # scraping and the cost of the heavier PDF path.
+    if 'reports.view_shared_report' in app.view_functions:
+        app.view_functions['reports.view_shared_report'] = limiter.limit(
+            '120 per hour',
+            error_message='Too many requests. Please try again later.',
+        )(app.view_functions['reports.view_shared_report'])
+    if 'reports.download_shared_report_pdf' in app.view_functions:
+        app.view_functions['reports.download_shared_report_pdf'] = limiter.limit(
+            '20 per hour',
+            error_message='Too many requests. Please try again later.',
+        )(app.view_functions['reports.download_shared_report_pdf'])
 
     from app.routes.widget import widget_bp
     limiter.exempt(widget_bp)
@@ -457,13 +571,35 @@ def create_app(config_class=None):
     #   X-Frame-Options          — Talisman sets DENY; same iframe conflict.
     #
     # WIDGET_CORS_ORIGINS (env var, default '*') lets operators restrict which
-    # origins may call the widget API.  Use '*' for Gethomepage (server-side
-    # fetch) or a space-separated list of allowed origins for browser clients.
-    # Widget endpoints use API-key auth (not cookies), so wildcard CORS does
-    # NOT introduce CSRF risk — browsers never send cookies for cross-origin
-    # requests that use wildcard ACAO.
+    # origins may call the widget API.  Widget endpoints use API-key auth (not
+    # cookies), so even wildcard CORS does NOT introduce CSRF risk — browsers
+    # never send cookies on cross-origin requests that use a wildcard ACAO.
+    #
+    # S09: when set to an explicit allowlist (comma- or space-separated origins,
+    # e.g. "https://homepage.example.com https://nas.lan"), the middleware now
+    # ECHOES BACK the request's Origin only if it is in the allowlist — the
+    # correct CORS pattern. (Setting a multi-origin string verbatim as the ACAO
+    # header is invalid per the Fetch spec and browsers reject it.) Server-side
+    # callers like Gethomepage send no Origin header and do not enforce CORS, so
+    # they keep working regardless of the allowlist.
     _widget_strip_headers = {'Content-Security-Policy', 'X-Frame-Options'}
-    _widget_cors_origins = app.config.get('WIDGET_CORS_ORIGINS', '*')
+    _widget_cors_raw = (app.config.get('WIDGET_CORS_ORIGINS', '*') or '').strip()
+    _widget_allow_all = _widget_cors_raw == '*'
+    # Normalise the allowlist: split on commas/whitespace, drop trailing slashes,
+    # lowercase for case-insensitive scheme/host comparison.
+    _widget_allowlist = frozenset(
+        o.strip().rstrip('/').lower()
+        for o in _widget_cors_raw.replace(',', ' ').split()
+        if o.strip() and o.strip() != '*'
+    )
+    if _widget_allow_all:
+        app.logger.warning(
+            'S09: WIDGET_CORS_ORIGINS is "*" — the widget API is readable cross-origin '
+            'by any website. This is safe for server-side callers like Gethomepage '
+            '(API-key auth, no cookies), but if you call the widget API from a browser, '
+            'set WIDGET_CORS_ORIGINS to an explicit allowlist '
+            '(e.g. https://homepage.example.com) to restrict it.'
+        )
     _original_wsgi = app.wsgi_app
 
     class WidgetHeaderMiddleware:
@@ -486,21 +622,36 @@ def create_app(config_class=None):
         def __call__(self, environ, start_response):
             path = environ.get('PATH_INFO', '')
             if path.startswith('/api/widget/v1/'):
+                # Decide the Access-Control-Allow-Origin value for THIS request.
+                #   '*'                 → wildcard mode (default).
+                #   echoed Origin       → request Origin is in the allowlist.
+                #   None                → allowlist mode + Origin not allowed (or
+                #                          absent): emit no ACAO header. Server-side
+                #                          callers ignore this and still get data;
+                #                          disallowed browsers are blocked by CORS.
+                if _widget_allow_all:
+                    _acao = '*'
+                else:
+                    _req_origin = environ.get('HTTP_ORIGIN', '')
+                    _acao = _req_origin if _req_origin.strip().rstrip('/').lower() in _widget_allowlist else None
+
                 def custom_start_response(status, headers, exc_info=None):
-                    # Remove only embedding-conflicting headers and any
-                    # pre-existing ACAO header (we set our own below).
+                    # Always strip embedding-conflicting headers + any pre-existing
+                    # ACAO so the widget can be iframe-embedded; CORS headers are
+                    # added only when an origin is permitted.
                     headers = [
                         (k, v) for k, v in headers
                         if k not in _widget_strip_headers
                         and k != 'Access-Control-Allow-Origin'
                     ]
-                    headers.append(('Access-Control-Allow-Origin', _widget_cors_origins))
-                    headers.append(('Access-Control-Allow-Headers', 'X-API-Key, Content-Type'))
-                    headers.append(('Access-Control-Allow-Methods', 'GET, OPTIONS'))
-                    # Vary: Origin is required for cache-correctness whenever
-                    # the allowed origin is not the wildcard '*'.
-                    if _widget_cors_origins != '*':
-                        headers.append(('Vary', 'Origin'))
+                    if _acao is not None:
+                        headers.append(('Access-Control-Allow-Origin', _acao))
+                        headers.append(('Access-Control-Allow-Headers', 'X-API-Key, Content-Type'))
+                        headers.append(('Access-Control-Allow-Methods', 'GET, OPTIONS'))
+                        # Vary: Origin is required for cache-correctness whenever the
+                        # response varies by Origin (i.e. anything but the wildcard).
+                        if not _widget_allow_all:
+                            headers.append(('Vary', 'Origin'))
                     return start_response(status, headers, exc_info)
                 return self.wsgi(environ, custom_start_response)
             elif self._is_attachment_view(path):
@@ -572,11 +723,39 @@ def create_app(config_class=None):
             'version': '1.0.0',
             'redis_ok': _redis_available,
         }), 200
-    
+
+    @app.route('/api/config', methods=['GET'])
+    @limiter.exempt
+    def public_config():
+        """Public, non-sensitive branding config for the SPA.
+
+        Lets the frontend (e.g. the chat greeting + avatar alt) use the same
+        assistant name as the backend system prompt, so white-label instances
+        that set CHAT_ASSISTANT_NAME stay in sync. No secrets are exposed.
+        """
+        return jsonify({
+            'app_name': app.config.get('APP_NAME', 'GearCargo'),
+            'assistant_name': (
+                app.config.get('CHAT_ASSISTANT_NAME')
+                or app.config.get('APP_NAME', 'GearCargo')
+            ),
+        })
+
     @app.route('/uploads/<path:filename>')
     @limiter.exempt
     def serve_uploads(filename):
-        """Serve uploaded files with signed URL verification."""
+        """Serve user media (avatars + vehicle photos) via HMAC-signed URLs.
+
+        This is a deliberately SEPARATE store from document attachments — do not
+        repoint it at UPLOAD_FOLDER (that would break avatars/photos):
+          * Avatars & vehicle photos -> <app_root>/../uploads  (this route)
+            written by auth.py / vehicles.py, signed by User.avatar_url /
+            Vehicle.photo_url via sign_upload_url().
+          * Document attachments     -> UPLOAD_FOLDER (/app/volumes/attachments),
+            served by /api/attachments/<id>/view (S20 signed media tokens).
+        The route IS used and required; the read path matches the write path
+        (both resolve to <app_root>/../uploads).
+        """
         from app.utils import verify_upload_signature
 
         sig = request.args.get('sig', '')
@@ -586,11 +765,25 @@ def create_app(config_class=None):
         if not verify_upload_signature(original_path, exp, sig):
             return jsonify({'error': 'Forbidden'}), 403
 
+        # Attack-surface reduction: this store only ever holds images, so refuse
+        # to serve anything else even if a non-image file were somehow present.
+        ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+        if ext not in {'png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tiff'}:
+            return jsonify({'error': 'File not found'}), 404
+
+        # send_from_directory uses safe_join (rejects traversal / absolute paths).
         uploads_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'uploads')
         full_path = os.path.join(uploads_path, filename)
         if not os.path.isfile(full_path):
             return jsonify({'error': 'File not found'}), 404
-        return send_from_directory(uploads_path, filename)
+
+        response = send_from_directory(uploads_path, filename)
+        # Defense-in-depth: never let served media be MIME-sniffed or executed as
+        # active content, and keep private user media out of shared caches.
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['Content-Security-Policy'] = "default-src 'none'; sandbox"
+        response.headers['Cache-Control'] = 'private, max-age=3600'
+        return response
     
     @app.route('/sw.js')
     @limiter.exempt
@@ -737,6 +930,27 @@ def create_app(config_class=None):
                     import requests as _req
                     base_url = app.config.get('OLLAMA_BASE_URL', '')
                     validated = validate_ollama_url(base_url)
+                    # §14.2 — the prompt carries user vehicle data. Warn (once, at
+                    # startup) if it would cross the network in cleartext to a
+                    # PUBLIC IP. http to loopback/LAN/private DNS is fine; a public
+                    # IP over http is a real data-in-transit exposure.
+                    try:
+                        from urllib.parse import urlparse as _urlparse
+                        import ipaddress as _ipaddr
+                        _p = _urlparse(validated)
+                        if _p.scheme == 'http' and _p.hostname:
+                            try:
+                                if _ipaddr.ip_address(_p.hostname).is_global:
+                                    app.logger.warning(
+                                        '§14.2: OLLAMA_BASE_URL uses plain http to a public IP (%s) — '
+                                        'user data crosses the network in cleartext. Use https + a '
+                                        'private network/VPN, or firewall Ollama to the backend only.',
+                                        _p.hostname,
+                                    )
+                            except ValueError:
+                                pass  # hostname (not an IP literal) — can't classify; rely on operator + docs
+                    except Exception:
+                        pass
                     resp = _req.get(f'{validated.rstrip("/")}/api/tags', timeout=5)
                     if resp.status_code == 200:
                         ollama_record_success()
@@ -832,9 +1046,11 @@ def init_default_admin(app):
         if User.query.count() > 0:
             return
         
-        # Check minimum password length
-        if len(admin_password) < 8:
-            app.logger.warning('ADMIN_PASSWORD must be at least 8 characters. Skipping default admin creation.')
+        # Check minimum password length (S03: floor raised to 12, matching
+        # MIN_PASSWORD_LENGTH in routes/auth.py — kept as a literal here to avoid
+        # importing the routes module during app construction).
+        if len(admin_password) < 12:
+            app.logger.warning('ADMIN_PASSWORD must be at least 12 characters. Skipping default admin creation.')
             return
         
         # Create the default admin
@@ -850,7 +1066,8 @@ def init_default_admin(app):
         db.session.add(admin)
         db.session.commit()
         
-        app.logger.info(f'Default admin user created: {admin_email}')
+        from app.utils.logging_config import mask_email
+        app.logger.info(f'Default admin user created: {mask_email(admin_email)}')
         app.logger.warning('IMPORTANT: Change the admin password immediately and remove ADMIN_PASSWORD from environment!')
         
         # Send email verification if email is enabled
@@ -860,7 +1077,7 @@ def init_default_admin(app):
                 email_verification_service = EmailVerificationService()
                 token = admin.generate_verification_token()
                 email_verification_service.send_verification_email(admin, token)
-                app.logger.info(f'Verification email sent to admin: {admin_email}')
+                app.logger.info(f'Verification email sent to admin: {mask_email(admin_email)}')
             except Exception as email_error:
                 app.logger.warning(f'Could not send verification email to admin: {email_error}')
         

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from '../../contexts/LanguageContext'
 import { calendarApi, vehicleApi } from '../../services/api'
+import { Skeleton, SkeletonScreen } from '../../components/ui/Skeleton'
 import toast from 'react-hot-toast'
 
 // Entry type icons and colors
@@ -335,9 +336,13 @@ export default function Calendar() {
         {/* Calendar Days */}
         <div className="grid grid-cols-7">
           {loading ? (
-            <div className="col-span-7 py-20 flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-2 border-[var(--color-accent)] border-t-transparent"></div>
-            </div>
+            <SkeletonScreen className="col-span-7 grid grid-cols-7">
+              {Array.from({ length: 42 }).map((_, i) => (
+                <div key={i} className="aspect-square border border-[var(--color-border)] p-1">
+                  <Skeleton className="h-4 w-4 rounded" />
+                </div>
+              ))}
+            </SkeletonScreen>
           ) : (
             calendarDays.map((dayInfo, index) => {
               const entryTypes = getEntryTypesForDate(dayInfo.date)

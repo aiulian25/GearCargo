@@ -33,9 +33,10 @@ export default function UpdatePrompt() {
   } = useRegisterSW({
     onRegistered(r) {
       if (r) {
-        // Check for updates every 60 minutes
+        // Check for updates every 60 minutes. Guard against rejections (e.g.
+        // offline) so they don't surface as unhandled promise errors.
         setInterval(() => {
-          r.update()
+          r.update().catch(() => {})
         }, 60 * 60 * 1000)
       }
     },
@@ -51,7 +52,9 @@ export default function UpdatePrompt() {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && Date.now() - lastCheck > 5 * 60 * 1000) {
         lastCheck = Date.now()
-        navigator.serviceWorker?.getRegistration().then(r => r?.update())
+        navigator.serviceWorker?.getRegistration()
+          .then(r => r?.update())
+          .catch(() => {})
       }
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
@@ -76,9 +79,19 @@ export default function UpdatePrompt() {
     }
   }, [offlineReady, setOfflineReady])
 
-  const handleUpdate = () => {
-    updateServiceWorker(true)
+  const handleUpdate = async () => {
     setShowReload(false)
+    try {
+      // Posts SKIP_WAITING to the waiting worker and reloads on controllerchange.
+      await updateServiceWorker(true)
+    } catch {
+      // Fall through to the safety-net reload below.
+    }
+    // Safety net: if there is no waiting worker (or the controllerchange reload
+    // doesn't fire), force a reload so the user is never left on the stale shell
+    // with the prompt already dismissed. The normal reload unloads the page
+    // before this timer runs, so it only triggers in the stranded case.
+    setTimeout(() => window.location.reload(), 2500)
   }
 
   const handleDismissUpdate = () => {
