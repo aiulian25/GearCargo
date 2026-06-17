@@ -36,6 +36,17 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      # Redis backs sessions (and rate-limit/blacklist storage) in the default
+      # config, so the boot smoke needs it to save the session on a response.
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     defaults:
       run:
         working-directory: backend
@@ -53,6 +64,7 @@ jobs:
         run: |
           {
             echo "DATABASE_URL=postgresql://gearcargo:gearcargo_ci@localhost:5432/gearcargo_ci"
+            echo "REDIS_URL=redis://localhost:6379/0"
             echo "VOLUMES_PATH=$RUNNER_TEMP/gc-volumes"
             echo "UPLOAD_FOLDER=$RUNNER_TEMP/gc-volumes/attachments"
             echo "BACKUP_FOLDER=$RUNNER_TEMP/gc-volumes/backups"
