@@ -115,7 +115,9 @@ jobs:
           PY
 
       - name: Run unit tests
-        run: pytest -q
+        # `python -m` prepends the backend/ cwd to sys.path so `import app`
+        # resolves (the bare `pytest` console script does not).
+        run: python -m pytest -q
 
   frontend:
     name: Frontend — build smoke
