@@ -1,0 +1,5 @@
+pytest~=8.3
+
+# Dependency CVE scanning (S13) — same tool the CI "Dependency Audit" workflow uses.
+# Run locally with: make audit-py  (or: pip-audit -r backend/requirements.txt --desc)
+pip-audit~=2.7

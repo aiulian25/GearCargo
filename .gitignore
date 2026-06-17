@@ -157,9 +157,6 @@ temp/
 *.zip
 *.tar.gz
 
-# Dev requirements
-backend/requirements-dev.txt
-
 # Internal security audit
 Security.md
 
