@@ -440,7 +440,7 @@ export default function VehicleDetail() {
     { id: 'alerts', label: t('vehicleDetail.predictionAlerts') || 'Prediction Alerts', icon: Icons.alert, to: `/vehicles/${id}/alerts` },
     { id: 'health', label: t('vehicleDetail.vehicleHealth') || 'Vehicle Health', icon: Icons.heart, to: `/vehicles/${id}/health` },
     { id: 'consumables', label: t('vehicleDetail.consumables') || 'Consumables', icon: Icons.gauge, to: `/vehicles/${id}/consumables` },
-    { id: 'assistant', label: t('vehicleDetail.assistant') || 'Assistant', icon: Icons.ai, to: `/vehicles/${id}/chat` },
+    // Assistant moved to the Smart page (global entry point); see SmartRecommendations.
   ]
   
   const addButtons = [

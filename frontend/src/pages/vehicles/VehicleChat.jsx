@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { vehicleApi, configApi } from '../../services/api'
 import { useTranslation } from '../../contexts/LanguageContext'
 import { useAuth } from '../../contexts/AuthContext'
@@ -38,8 +38,23 @@ function AssistantAvatar({ decorative = true, name = ASSISTANT_NAME }) {
 export default function VehicleChat() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const { t, language } = useTranslation()
   const { user } = useAuth()
+
+  // "True back": return to wherever the user opened the assistant from
+  // (e.g. /recommendations). Falls back to in-app history, then to the
+  // vehicle overview for deep links / fresh loads with no history.
+  const goBack = useCallback(() => {
+    const from = location.state?.from
+    if (from) {
+      navigate(from)
+    } else if (window.history.state?.idx > 0) {
+      navigate(-1)
+    } else {
+      navigate(`/vehicles/${id}`)
+    }
+  }, [location.state, navigate, id])
 
   const [vehicle, setVehicle] = useState(null)
   const [messages, setMessages] = useState([]) // { role: 'user'|'assistant'|'error', text }
@@ -158,7 +173,7 @@ export default function VehicleChat() {
     <div className="flex flex-col min-h-[calc(100vh-3.5rem)] max-w-2xl mx-auto">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-[var(--color-bg-primary)] border-b border-[var(--color-border)] px-4 py-3 flex items-center gap-3">
-        <button onClick={() => navigate(`/vehicles/${id}`)} className="btn-icon shrink-0" aria-label={t('common.back') || 'Back'}>
+        <button onClick={goBack} className="btn-icon shrink-0" aria-label={t('common.back') || 'Back'}>
           {Icons.back}
         </button>
         <AssistantAvatar decorative={false} name={assistantName} />

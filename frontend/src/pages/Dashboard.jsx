@@ -1,4 +1,4 @@
-import { useState, useEffect, useId, useRef } from 'react'
+import { useState, useEffect, useId, useRef, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { vehicleApi, externalApi, insuranceApi } from '../services/api'
 import { useCurrency, useTranslation } from '../contexts/LanguageContext'
@@ -529,6 +529,12 @@ export default function Dashboard() {
   const [retryingWeather, setRetryingWeather] = useState(false)
   const [retryingFuel, setRetryingFuel] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  // Distinguish "vehicles failed to load" (5xx / network) from "genuinely no
+  // vehicles" so a transient backend hiccup never shows the onboarding screen
+  // (STARTUP_SLOWNESS_INVESTIGATION.md §4.5).
+  const [vehiclesError, setVehiclesError] = useState(false)
+  const [retryingVehicles, setRetryingVehicles] = useState(false)
+  const vehiclesRetryRef = useRef({ attempts: 0, timer: null })
   const [weatherTab, setWeatherTab] = useState('today')
   const [weatherView, setWeatherView] = useState('forecast')
   const [userLocation, setUserLocation] = useState(null)
@@ -604,20 +610,54 @@ export default function Dashboard() {
     }
   }, [user])
   
-  // Fetch vehicles
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const vehiclesRes = await vehicleApi.getAll()
-        setVehicles(vehiclesRes.data.vehicles || [])
-      } catch (error) {
-        console.error('Failed to fetch vehicles:', error)
-      } finally {
-        setIsLoading(false)
-      }
+  // Fetch vehicles. Returns true on success so the caller can schedule a
+  // backoff retry on failure. A failed load sets vehiclesError (NOT an empty
+  // list), so the render shows a "starting up / try again" state rather than
+  // the onboarding "add your first vehicle" screen.
+  const loadVehicles = useCallback(async () => {
+    try {
+      const vehiclesRes = await vehicleApi.getAll()
+      setVehicles(vehiclesRes.data.vehicles || [])
+      setVehiclesError(false)
+      vehiclesRetryRef.current.attempts = 0
+      return true
+    } catch (error) {
+      console.error('Failed to fetch vehicles:', error)
+      setVehiclesError(true)
+      return false
+    } finally {
+      setIsLoading(false)
     }
-    fetchData()
   }, [])
+
+  // Initial load + automatic exponential backoff while it keeps failing
+  // (2s, 4s, 8s, 16s, 30s, 30s…) so a backend that's still starting up
+  // recovers on its own without the user touching anything.
+  useEffect(() => {
+    let cancelled = false
+    const run = async () => {
+      const ok = await loadVehicles()
+      if (ok || cancelled) return
+      const attempt = (vehiclesRetryRef.current.attempts || 0) + 1
+      vehiclesRetryRef.current.attempts = attempt
+      if (attempt > 6) return // stop auto-retry; the manual "Try again" remains
+      const delay = Math.min(30000, 2000 * 2 ** (attempt - 1))
+      vehiclesRetryRef.current.timer = setTimeout(run, delay)
+    }
+    run()
+    return () => {
+      cancelled = true
+      if (vehiclesRetryRef.current.timer) clearTimeout(vehiclesRetryRef.current.timer)
+    }
+  }, [loadVehicles])
+
+  const handleRetryVehicles = useCallback(async () => {
+    if (vehiclesRetryRef.current.timer) clearTimeout(vehiclesRetryRef.current.timer)
+    vehiclesRetryRef.current.attempts = 0
+    setRetryingVehicles(true)
+    await loadVehicles()
+    setRetryingVehicles(false)
+  }, [loadVehicles])
   
   // Fetch insurance status for vehicles
   useEffect(() => {
@@ -1214,7 +1254,31 @@ export default function Dashboard() {
       )}
       
       {/* Vehicles Grid */}
-      {vehicles.length === 0 ? (
+      {vehiclesError && vehicles.length === 0 ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border)] text-center py-16 px-4"
+        >
+          <svg className="w-10 h-10 mx-auto mb-4 text-[var(--color-text-muted)] animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          <h3 className="text-lg font-medium mb-2">{t('dashboard.startingUpTitle')}</h3>
+          <p className="text-sm text-[var(--color-text-secondary)] mb-6 max-w-md mx-auto">
+            {t('dashboard.startingUpMessage')}
+          </p>
+          <button
+            type="button"
+            onClick={handleRetryVehicles}
+            disabled={retryingVehicles}
+            aria-busy={retryingVehicles}
+            className="btn btn-primary disabled:opacity-60 disabled:cursor-wait"
+          >
+            {t('dashboard.startingUpRetry')}
+          </button>
+        </div>
+      ) : vehicles.length === 0 ? (
         <div className="bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border)] text-center py-16">
           <span className="text-6xl mb-4 block">🚗</span>
           <h3 className="text-lg font-medium mb-2">{t('dashboard.noVehicles')}</h3>

@@ -42,8 +42,33 @@ proc_name = "gearcargo"
 # Load the Flask application once in the master process so all workers share
 # the same code-object and only ONE scheduler instance is ever started.
 # Without this, each worker calls create_app() independently and starts its
-# own scheduler — multiplying every cron/interval job by the worker count.
+# own scheduler — multiplying every cron/interval job by the worker count
+# (duplicate reminder emails, backups, predictions, etc.).
+#
+# DO NOT set this to False to "fix" slow startup. Disabling preload trades the
+# connection-sharing issue for duplicated cron jobs across workers, which is
+# worse and user-visible. The correct fix is to keep preload AND ensure each
+# worker disposes its inherited DB pool in post_fork() — see
+# STARTUP_SLOWNESS_INVESTIGATION.md §4.1/§4.3. The two are coupled: preload is
+# what makes post_fork's pool disposal necessary, and post_fork is what makes
+# preload safe.
 preload_app = True
+
+def _resolve_flask_app(server, worker):
+    """Best-effort resolution of the preloaded Flask app from inside a worker.
+
+    With preload_app=True gunicorn loads the WSGI app (our Flask app) in the
+    arbiter and workers inherit it as ``worker.app.callable`` (``server`` is the
+    arbiter and also carries it). Flask-SQLAlchemy 3.x has NO ``get_app()`` and
+    there is no application context in post_fork, so we resolve the app object
+    here to obtain one. Returns None if it cannot be found.
+    """
+    for obj in (worker, server):
+        candidate = getattr(getattr(obj, "app", None), "callable", None)
+        if candidate is not None:
+            return candidate
+    return None
+
 
 def post_fork(server, worker):
     """
@@ -59,13 +84,33 @@ def post_fork(server, worker):
     connections opened in the master must not be shared across processes or
     queries will corrupt each other's results.
     """
-    # 1. Dispose the inherited DB connection pool — each worker gets fresh
-    #    connections.  This is mandatory with preload_app=True.
+    # 1. Drop the DB connections inherited from the preload master so each
+    #    worker lazily opens its OWN — mandatory with preload_app=True.
+    #
+    #    Two details are critical (regressions here cause the post-restart
+    #    PGRES_TUPLES_OK / ResourceClosedError storms):
+    #      * FSA 3.x reaches the engine via current_app, so dispose MUST run
+    #        inside an application context — the previous bare ``db.engine``
+    #        call raised "working outside of application context" and the
+    #        ``except: pass`` swallowed it, leaving the pool shared.
+    #      * Use ``dispose(close=False)``: drop the pool's references WITHOUT
+    #        closing the inherited file descriptors — those sockets are still
+    #        in use by the master, and closing them here would corrupt it.
     try:
         from app import db
-        db.engine.dispose()
-    except Exception:
-        pass
+        flask_app = _resolve_flask_app(server, worker)
+        if flask_app is None:
+            raise RuntimeError("could not resolve the preloaded Flask app")
+        with flask_app.app_context():
+            db.engine.dispose(close=False)
+        server.log.info("post_fork[pid %s]: disposed inherited DB connection pool", worker.pid)
+    except Exception as e:
+        # Never swallow silently — a regression here re-introduces the
+        # cross-process connection-sharing outage and must be visible.
+        server.log.warning(
+            "post_fork[pid %s]: DB pool dispose failed (%s) — workers may share "
+            "the master's connections", getattr(worker, "pid", "?"), e
+        )
 
     # 2. Shut down any APScheduler state that survived the fork as a zombie.
     #    The scheduler's background thread is already dead; this clears the

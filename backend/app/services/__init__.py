@@ -123,19 +123,32 @@ def init_scheduler(app):
     scheduler.start()
     app.logger.info('Scheduler initialized')
 
-    # Run recurring tax self-heal immediately on startup so any deployment
-    # with recurring entries missing next_due_date is fixed without waiting
-    # for the 6 AM cron to fire.
-    try:
-        process_recurring_tax_entries(app)
-    except Exception as e:
-        app.logger.warning(f'Startup recurring tax run failed: {e}')
-
-    # Same self-heal/catch-up for recurring parking on startup.
-    try:
-        process_recurring_parking_entries(app)
-    except Exception as e:
-        app.logger.warning(f'Startup recurring parking run failed: {e}')
+    # Recurring tax + parking self-heal on startup (so a deployment with
+    # recurring entries missing next_due_date is fixed without waiting for the
+    # 6 AM cron). These previously ran INLINE here — i.e. synchronously during
+    # create_app() — which, under preload_app=True, made the master perform
+    # request-path DB work and hold connections at fork(), widening the window
+    # for cross-process connection sharing (STARTUP_SLOWNESS_INVESTIGATION.md
+    # §4.1/§4.2). Run them as deferred one-off jobs instead (same pattern as the
+    # fuel refresh below): they fire shortly after startup in the scheduler
+    # thread — after the workers have forked — so no DB work happens in preload.
+    _startup_selfheal_at = datetime.now(timezone.utc) + timedelta(seconds=30)
+    scheduler.add_job(
+        id='process_recurring_taxes_startup',
+        func=process_recurring_tax_entries,
+        trigger='date',
+        run_date=_startup_selfheal_at,
+        args=[app],
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        id='process_recurring_parking_startup',
+        func=process_recurring_parking_entries,
+        trigger='date',
+        run_date=_startup_selfheal_at,
+        args=[app],
+        replace_existing=True,
+    )
 
     # Trigger a fuel price refresh 60 seconds after startup so Redis is
     # populated for all supported countries on the first boot (and after

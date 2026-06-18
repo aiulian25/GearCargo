@@ -40,6 +40,14 @@ class Config:
         'postgresql://gearcargo:password@localhost:5432/gearcargo'
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    # Connection-pool hardening (STARTUP_SLOWNESS_INVESTIGATION.md §4.6):
+    #   * pool_pre_ping — validate a pooled connection before use; transparently
+    #     replaces ones dropped by a Postgres restart. KEEP True.
+    #   * pool_recycle (300s) — recycle connections older than 5 min. Do NOT
+    #     change this to "fix" the post-restart outage: that was caused by
+    #     workers SHARING the master's connections (preload + a no-op post_fork
+    #     dispose — fixed in §4.1), not by the recycle value. With §4.1 in place
+    #     the 5-minute recycle is harmless.
     SQLALCHEMY_ENGINE_OPTIONS = {
         'pool_pre_ping': True,
         'pool_recycle': 300,

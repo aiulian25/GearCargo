@@ -9,19 +9,32 @@ if [ "$(id -u)" = "0" ]; then
     chown -R gearcargo:gearcargo /app/volumes /app/uploads 2>/dev/null || true
 fi
 
-# Wait for database to be ready
-echo "Waiting for database..."
+# Wait for the database to genuinely accept QUERIES and be out of crash
+# recovery — not just accept a TCP connection. After an unclean stop Postgres
+# replays WAL on next boot; it may accept connect() while still recovering, so
+# we run `SELECT 1` and require `pg_is_in_recovery()` to be false (true only on
+# a standby/during recovery — this app runs a single primary). This prevents the
+# app from opening connections against a not-yet-ready DB (see
+# STARTUP_SLOWNESS_INVESTIGATION.md §4.4).
+echo "Waiting for database to accept queries..."
 for i in $(seq 1 30); do
     if python -c "
-import psycopg2, os
-conn = psycopg2.connect(os.environ.get('DATABASE_URL', 'postgresql://gearcargo:password@db:5432/gearcargo'))
-conn.close()
-print('ok')
+import psycopg2, os, sys
+try:
+    conn = psycopg2.connect(os.environ.get('DATABASE_URL', 'postgresql://gearcargo:password@db:5432/gearcargo'))
+    cur = conn.cursor()
+    cur.execute('SELECT 1')
+    cur.execute('SELECT pg_is_in_recovery()')
+    in_recovery = cur.fetchone()[0]
+    cur.close(); conn.close()
+    sys.exit(1 if in_recovery else 0)
+except Exception:
+    sys.exit(1)
 " 2>/dev/null; then
-        echo "Database is ready."
+        echo "Database is ready (accepting queries, not in recovery)."
         break
     fi
-    echo "  Waiting... ($i/30)"
+    echo "  Waiting for database... ($i/30)"
     sleep 2
 done
 
@@ -41,8 +54,15 @@ flask db upgrade 2>&1 || {
     flask db upgrade 2>&1 || echo "WARNING: Migration failed - tables may need manual setup"
 }
 
-# Ensure all tables AND columns exist
-echo "Ensuring all model tables and columns exist..."
+# Schema is owned by Alembic migrations (the `flask db upgrade` above). The
+# create_all() + per-column "ADD COLUMN IF NOT EXISTS" introspection below is a
+# belt-and-suspenders self-heal for a DRIFTED schema. Running it on every boot
+# spins up a second full create_app() and lengthens startup
+# (STARTUP_SLOWNESS_INVESTIGATION.md §4.4), so it is now opt-in: set
+# DB_SCHEMA_SYNC=true to run it (e.g. one-off recovery after a missed migration).
+# Default off — a healthy, migrated database needs nothing here.
+if [ "${DB_SCHEMA_SYNC:-false}" = "true" ]; then
+echo "DB_SCHEMA_SYNC=true — verifying all model tables and columns exist..."
 python << 'PYEOF'
 from app import create_app, db
 from sqlalchemy import inspect, text
@@ -93,6 +113,9 @@ with app.app_context():
 
     print('All tables and columns verified.')
 PYEOF
+else
+    echo "Skipping model-introspection schema sync (set DB_SCHEMA_SYNC=true to enable); relying on migrations."
+fi
 
 echo "Database setup complete."
 
