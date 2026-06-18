@@ -162,5 +162,10 @@ Security.md
 # Internal audit — do not commit
 FINDINGS.md
 
-# Internal planning docs — do not commit
+# Internal planning / investigation docs — never commit (kept local only).
+# README.md and DEPLOY.md are the only docs that belong in the repo.
 MARK_DONE_PLAN.md
+CHAT_HARDENING_PLAN.md
+IMPROVEMENTS.md
+*_PLAN.md
+*_INVESTIGATION.md
