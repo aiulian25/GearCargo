@@ -192,9 +192,40 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 ### Prerequisites
 - Docker & Docker Compose v2+
 - Git
-- 2GB RAM minimum (4GB recommended with Ollama)
+- 2GB RAM recommended (the single container runs the app + PostgreSQL + Redis)
 
-### Automated Setup
+### Recommended: Single Container (pre-built, no build)
+
+GearCargo ships as **one** container — `ghcr.io/aiulian25/gearcargo:latest` — that
+bundles the app, PostgreSQL 16, Redis 7 and scheduled backups. Nothing to build:
+
+```bash
+mkdir -p ~/gearcargo && cd ~/gearcargo
+
+# Compose file + env template
+curl -fsSL https://raw.githubusercontent.com/aiulian25/gearcargo/main/docker-compose.deploy.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/aiulian25/gearcargo/main/.env.single.example -o .env
+nano .env                                   # set ALL secrets (see Credential Generation)
+
+# VAPID push key as a Docker secret
+mkdir -p secrets && nano secrets/vapid_private_key
+
+docker compose up -d
+docker compose logs -f
+```
+
+Only port `5000` is published; PostgreSQL and Redis bind to `127.0.0.1` **inside**
+the container and are never network-exposed. Put a reverse proxy in front for HTTPS.
+
+> **Already running the old 4-container stack?** See
+> [Migrating to the Single Container](#migrating-to-the-single-container) — the
+> guided script backs up, migrates and verifies your data, with automatic rollback.
+
+> **Need strict app/DB/Redis isolation?** The 4-container image is still published
+> as `ghcr.io/aiulian25/gearcargo:multi`; build it locally with
+> `docker-compose.prod.yml` or pin `:multi` in a 4-service compose.
+
+### Build from source (alternative)
 
 ```bash
 # Clone the repository
@@ -418,6 +449,53 @@ see `Single-Image.md` §9. If strict isolation matters, keep the 4-container
 | **Log Rotation** | No | Yes | Yes | Yes | Yes |
 | **Read-only FS** | Yes | Yes | Yes | Yes | Yes |
 | **Best For** | Local dev | Self-hosted + AI | Minimal VPS | Quick deploy | NAS users |
+
+> **Note on image tags:** `ghcr.io/aiulian25/gearcargo:latest` is now the
+> **single-image** all-in-one build (used by `docker-compose.deploy.yml` and
+> `docker-compose.synology.yml`). The 4-container image is published as
+> `:multi`. The local-build files (`prod`, `simple`) are unaffected.
+
+---
+
+## Migrating to the Single Container
+
+If you already run the **4-container** stack and want to move to the single
+container, use the guided migration script. It is **safe and reversible** — it
+never deletes your old data, so you can roll back instantly.
+
+**What it does:**
+1. Checks your `ENCRYPTION_KEY` is present (PII is unrecoverable without it).
+2. Takes a portable backup **and** an independent raw tarball.
+3. Records your current row counts.
+4. Stops the 4-container stack (volumes are preserved).
+5. Starts the single container with a **fresh** embedded PostgreSQL at
+   `./volumes/pgdata` — your old `./volumes/db` is never touched.
+6. Restores your data and **verifies row counts match**, automatically rolling
+   back to the 4-container stack if anything fails.
+
+```bash
+cd ~/gearcargo            # the folder with your existing .env, secrets/, volumes/
+
+# Reuse your EXISTING .env — same ENCRYPTION_KEY / SECRET_KEY / JWT_SECRET_KEY!
+curl -fsSL https://raw.githubusercontent.com/aiulian25/gearcargo/main/scripts/migrate-to-single.sh -o migrate-to-single.sh
+curl -fsSL https://raw.githubusercontent.com/aiulian25/gearcargo/main/docker-compose.single.yml -o docker-compose.single.yml
+chmod +x migrate-to-single.sh
+
+./migrate-to-single.sh                 # interactive; add --yes to skip prompts
+```
+
+> ⚠️ **Reuse the same `ENCRYPTION_KEY`.** A different key makes all encrypted PII
+> permanently unrecoverable. The script refuses to run if the key is missing.
+
+**Manual rollback** (anytime — your original data dir is untouched):
+
+```bash
+docker compose -f docker-compose.single.yml down
+docker compose -f docker-compose.prod.yml up -d      # back to the 4-container stack
+```
+
+Keep the raw tarball and the old `./volumes/db` until the migrated install has run
+cleanly for several days. Full details: [DEPLOY.md §15](DEPLOY.md).
 
 ---
 

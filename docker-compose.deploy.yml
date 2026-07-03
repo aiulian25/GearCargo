@@ -1,184 +1,101 @@
-# GearCargo - Pre-built Image Deployment
-# Version: 1.0
+# GearCargo — Pre-built Single-Image deployment (RECOMMENDED)
 #
-# This configuration pulls a pre-built image from GitHub Container Registry
-# No building required - just configure and deploy!
+# Pulls the ready-made all-in-one image from GHCR — no build required. One
+# container runs PostgreSQL 16 + Redis 7 + gunicorn + scheduled backups under an
+# s6-overlay supervision tree. Only :5000 is published; the datastores bind to
+# 127.0.0.1 INSIDE the container and are never network-exposed.
 #
-# Quick Start:
-#   1. Copy .env.example to .env and configure all values
-#   2. Login to GitHub Container Registry:
-#      echo "YOUR_GITHUB_PAT" | docker login ghcr.io -u YOUR_USERNAME --password-stdin
-#   3. Deploy:
-#      docker compose -f docker-compose.deploy.yml up -d
-#   4. View logs:
-#      docker compose -f docker-compose.deploy.yml logs -f backend
+# Usage:
+#   1. cp .env.single.example .env   &&   nano .env   (set ALL secrets)
+#   2. mkdir -p secrets && nano secrets/vapid_private_key
+#   3. docker compose -f docker-compose.deploy.yml up -d
+#   4. docker compose -f docker-compose.deploy.yml logs -f
 #
-# Update to latest version:
-#   docker compose -f docker-compose.deploy.yml pull
-#   docker compose -f docker-compose.deploy.yml up -d --force-recreate
+# Update:  docker compose -f docker-compose.deploy.yml pull && \
+#          docker compose -f docker-compose.deploy.yml up -d
+#
+# Migrating from the old 4-container stack? See README "Migrating to the single
+# container" — scripts/migrate-to-single.sh does it safely with auto-rollback.
+#
+# Prefer strict app/DB/Redis isolation? The 4-container image is still published
+# as ghcr.io/aiulian25/gearcargo:multi (see docker-compose.prod.yml to build).
 
 services:
-  # ============================================================
-  # BACKEND API (Pre-built from GitHub Container Registry)
-  # ============================================================
-  backend:
+  gearcargo:
     image: ghcr.io/aiulian25/gearcargo:latest
-    container_name: gearcargo-backend
+    container_name: gearcargo
     ports:
       - "${APP_PORT:-5000}:5000"
     environment:
       - FLASK_ENV=production
-      - DATABASE_URL=postgresql://gearcargo:${DB_PASSWORD}@db:5432/gearcargo
-      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      # Embedded datastores on loopback. Point these at an external host to run
+      # in dual-mode (the embedded PG/Redis then stay dormant).
+      - DATABASE_URL=postgresql://gearcargo:${DB_PASSWORD}@127.0.0.1:5432/gearcargo
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@127.0.0.1:6379/0
+      - RATELIMIT_STORAGE_URL=redis://:${REDIS_PASSWORD}@127.0.0.1:6379/1
+      # Embedded server tuning
+      - PG_SHARED_BUFFERS=${PG_SHARED_BUFFERS:-256MB}
+      - PG_MAX_CONNECTIONS=${PG_MAX_CONNECTIONS:-100}
+      - REDIS_MAXMEMORY=${REDIS_MAXMEMORY:-128mb}
+      - GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}
+      # In-container scheduled backups
+      - BACKUP_ENABLED=${BACKUP_ENABLED:-true}
+      - BACKUP_KEEP_LAST=${BACKUP_KEEP_LAST:-7}
+
       - SECRET_KEY=${SECRET_KEY}
       - APP_URL=${APP_URL}
-      
-      # Security - JWT
+      - ADMIN_DOMAIN=${ADMIN_DOMAIN:-}
+      - USER_DOMAIN=${USER_DOMAIN:-}
+
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - JWT_ACCESS_TOKEN_EXPIRES=${JWT_ACCESS_TOKEN_EXPIRES:-3600}
       - JWT_REFRESH_TOKEN_EXPIRES=${JWT_REFRESH_TOKEN_EXPIRES:-2592000}
-      
-      # Security - CORS
+
       - CORS_ORIGINS=${CORS_ORIGINS}
       - CORS_SUPPORTS_CREDENTIALS=true
-      
-      # Security - CSRF Protection
+
       - WTF_CSRF_ENABLED=true
       - WTF_CSRF_SECRET_KEY=${WTF_CSRF_SECRET_KEY}
-      
-      # Security - Rate Limiting
+
       - RATELIMIT_ENABLED=true
       - RATELIMIT_DEFAULT=${RATELIMIT_DEFAULT:-100 per hour}
-      - RATELIMIT_STORAGE_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
-      
-      # Security - Session
-      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-true}
+
+      # HTTPS required in production (put a reverse proxy in front for TLS)
+      - SESSION_COOKIE_SECURE=true
       - SESSION_COOKIE_HTTPONLY=true
       - SESSION_COOKIE_SAMESITE=Strict
-      
-      # Encryption Key
+
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
-      
-      # Admin User (optional - for first deployment)
-      - ADMIN_EMAIL=${ADMIN_EMAIL:-}
-      - ADMIN_USERNAME=${ADMIN_USERNAME:-}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
-      
-      # Domain-based access control (SECURITY)
-      - ADMIN_DOMAIN=${ADMIN_DOMAIN:-}
-      - USER_DOMAIN=${USER_DOMAIN:-}
-      
-      # Ollama AI (optional)
+
       - OLLAMA_ENABLED=${OLLAMA_ENABLED:-false}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
-      # Global default model (used when no per-task override is set)
       - OLLAMA_MODEL=${OLLAMA_MODEL:-}
       - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-60}
-      # Per-task model overrides — leave empty to inherit OLLAMA_MODEL
       - OLLAMA_MODEL_PREDICT=${OLLAMA_MODEL_PREDICT:-}
       - OLLAMA_MODEL_OCR=${OLLAMA_MODEL_OCR:-}
       - OLLAMA_MODEL_ANOMALY=${OLLAMA_MODEL_ANOMALY:-}
       - OLLAMA_MODEL_REMINDER=${OLLAMA_MODEL_REMINDER:-}
-      
-      # Theme
+
       - DEFAULT_THEME=${DEFAULT_THEME:-dark}
-      
-      # App name (used in backup filenames)
       - APP_NAME=${APP_NAME:-GearCargo}
-      
-      # Upload limit (MB)
       - MAX_UPLOAD_SIZE_MB=${MAX_UPLOAD_SIZE_MB:-200}
-      
-      # Email (for password reset, notifications)
-      - MAIL_ENABLED=${MAIL_ENABLED:-false}
-      - MAIL_SERVER=${MAIL_SERVER:-}
+
+      - MAIL_ENABLED=${MAIL_ENABLED:-true}
+      - MAIL_SERVER=${MAIL_SERVER}
       - MAIL_PORT=${MAIL_PORT:-587}
       - MAIL_USE_TLS=${MAIL_USE_TLS:-true}
-      - MAIL_USERNAME=${MAIL_USERNAME:-}
-      - MAIL_PASSWORD=${MAIL_PASSWORD:-}
-      - MAIL_DEFAULT_SENDER=${MAIL_DEFAULT_SENDER:-}
-      
-      # Push Notifications
-      # VAPID_PUBLIC_KEY and VAPID_SUBJECT are non-sensitive — kept as env vars.
-      # VAPID_PRIVATE_KEY is mounted as a Docker secret (see 'secrets:' below)
-      # so it does NOT appear in `docker inspect` or /proc/<pid>/environ.
-      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
-      - VAPID_SUBJECT=${VAPID_SUBJECT:-}
-      
-      # Worker count — capped to prevent OOM kills on many-core hosts
-      - GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}
+      - MAIL_USERNAME=${MAIL_USERNAME}
+      - MAIL_PASSWORD=${MAIL_PASSWORD}
+      - MAIL_DEFAULT_SENDER=${MAIL_DEFAULT_SENDER}
 
-      # S10: Local GeoIP2 database (optional).
-      # Set to the container path of a MaxMind GeoLite2-City MMDB file.
-      # When unset, suspicious-login country detection is disabled but login
-      # continues normally. Download free: https://dev.maxmind.com/geoip/geolite2-free-geolocation-data
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
+      - VAPID_SUBJECT=${VAPID_SUBJECT}
+
       - GEOIP_DB_PATH=${GEOIP_DB_PATH:-}
-      # S11: Number of trusted reverse proxies in front of the app.
-      # ProxyFix peels exactly this many hops from X-Forwarded-For to set request.remote_addr.
-      #   0 — direct-bind (no proxy); 1 — one proxy (nginx/Traefik/Cloudflare); 2 — CDN + proxy.
-      # Clients cannot spoof their IP by prepending entries to the left of XFF.
       - TRUSTED_PROXY_COUNT=${TRUSTED_PROXY_COUNT:-1}
-    volumes:
-      - ./volumes/attachments:/app/volumes/attachments
-      - ./volumes/backups:/app/volumes/backups
-      - ./volumes/uploads:/app/uploads
-      - ./volumes/logs:/app/volumes/logs
-      # Optional: mount GeoLite2 database for suspicious-login detection (S10).
-      # Place GeoLite2-City.mmdb in ./volumes/geoip/ and set
-      # GEOIP_DB_PATH=/app/volumes/geoip/GeoLite2-City.mmdb in your .env file.
-      - ./volumes/geoip:/app/volumes/geoip:ro
-    user: "1000:1000"
-    read_only: true
-    tmpfs:
-      - /tmp
-      - /run
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    secrets:
-      - vapid_private_key
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    restart: always
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
-      interval: 30s
-      timeout: 10s
-      start_period: 60s
-      retries: 3
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 1G
-        reservations:
-          cpus: '0.5'
-          memory: 256M
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - gearcargo-net
 
-  # ============================================================
-  # POSTGRESQL DATABASE
-  # ============================================================
-  db:
-    image: postgres:16-alpine
-    container_name: gearcargo-db
-    environment:
-      - POSTGRES_USER=gearcargo
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
-      - POSTGRES_DB=gearcargo
-      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    # s6-overlay must start as root (PID 1) to supervise and drop each service to
+    # its own unprivileged user (postgres/redis/gearcargo).
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -189,95 +106,44 @@ services:
       - FOWNER
       - SETGID
       - SETUID
+      - KILL
     tmpfs:
+      # /run stays on the writable layer (s6 execs from /run/s6; Docker tmpfs is noexec).
       - /tmp
-      - /run/postgresql
+    secrets:
+      - vapid_private_key
     volumes:
-      - ./volumes/db:/var/lib/postgresql/data
+      # Embedded PostgreSQL data (kept separate from any 4-container ./volumes/db)
+      - ./volumes/pgdata:/var/lib/postgresql/data
+      - ./volumes/redis:/data
+      - ./volumes/attachments:/app/volumes/attachments
+      - ./volumes/backups:/app/volumes/backups
+      - ./volumes/uploads:/app/uploads
+      - ./volumes/logs:/app/volumes/logs
+      - ./volumes/geoip:/app/volumes/geoip:ro
     restart: always
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U gearcargo -d gearcargo"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 90s
+      retries: 3
     deploy:
       resources:
         limits:
-          cpus: '1'
-          memory: 512M
+          cpus: '3'
+          memory: 2G
         reservations:
-          cpus: '0.25'
-          memory: 128M
+          cpus: '0.5'
+          memory: 512M
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
-    networks:
-      - gearcargo-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
-  # ============================================================
-  # REDIS CACHE/SESSIONS
-  # ============================================================
-  redis:
-    image: redis:7-alpine
-    container_name: gearcargo-redis
-    command: >
-      redis-server
-      --appendonly yes
-      --requirepass ${REDIS_PASSWORD}
-      --maxmemory 128mb
-      --maxmemory-policy allkeys-lru
-    read_only: true
-    tmpfs:
-      - /tmp
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - DAC_OVERRIDE
-      - SETGID
-      - SETUID
-    volumes:
-      - ./volumes/redis:/data
-    restart: always
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-        reservations:
-          cpus: '0.1'
-          memory: 64M
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "5m"
-        max-file: "2"
-    networks:
-      - gearcargo-net
-
-networks:
-  gearcargo-net:
-    driver: bridge
-    name: gearcargo-network
-
-# ============================================================
-# DOCKER SECRETS
-# I06: VAPID private key stored as a file secret instead of an
-# environment variable, so it is not exposed in `docker inspect`.
-#
-# Setup: echo 'YOUR_VAPID_PRIVATE_KEY' > secrets/vapid_private_key
-#        chmod 600 secrets/vapid_private_key
-# (see secrets/vapid_private_key.example for the expected format)
-# ============================================================
 secrets:
   vapid_private_key:
     file: ./secrets/vapid_private_key

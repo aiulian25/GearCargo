@@ -2,6 +2,13 @@
 
 Complete step-by-step guide to deploy GearCargo on any Docker-capable machine — Linux servers, Synology NAS, cloud VMs, or Raspberry Pi.
 
+> **The recommended deployment is now the single all-in-one container** —
+> `ghcr.io/aiulian25/gearcargo:latest`, used by `docker-compose.deploy.yml` and
+> `docker-compose.synology.yml`. Jump to
+> [§15 Single-Image Deployment](#15-single-image--all-in-one-deployment) for the
+> quick path and migration guide. Sections 2–14 below also cover the 4-container
+> image (published as `:multi`) for those who want strict service isolation.
+
 ---
 
 ## Table of Contents

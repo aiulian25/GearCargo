@@ -46,12 +46,14 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           # Lowercase, matches the existing package ghcr.io/aiulian25/gearcargo.
+          # The 4-container image is published under `multi*` tags. The default
+          # `:latest` is now the single-image all-in-one (see publish-single).
           images: ghcr.io/${{ github.repository_owner }}/gearcargo
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,format=short
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=multi,enable={{is_default_branch}}
+            type=sha,prefix=multi-,format=short
+            type=semver,pattern=multi-{{version}}
+            type=semver,pattern=multi-{{major}}.{{minor}}
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -66,8 +68,8 @@ jobs:
           cache-to: type=gha,mode=max
 
   # Single-image / all-in-one variant (PostgreSQL 16 + Redis 7 + gunicorn + cron
-  # under s6-overlay). Published under distinct `single*` tags so existing
-  # 4-container `:latest` installs are unaffected. Same multi-arch matrix.
+  # under s6-overlay) — the DEFAULT deployment: published as `:latest` (and the
+  # explicit `:single` alias). The 4-container image lives under `:multi*`.
   publish-single:
     name: Build & push single-image (amd64 + arm64)
     runs-on: ubuntu-latest
@@ -90,9 +92,11 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository_owner }}/gearcargo
           tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=single,enable={{is_default_branch}}
-            type=sha,prefix=single-,format=short
-            type=semver,pattern=single-{{version}}
+            type=sha,format=short
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
 
       - name: Build and push (single)
         uses: docker/build-push-action@v6

@@ -1,205 +1,93 @@
-# GearCargo - Synology NAS Deployment
-# Version: 1.0
+# GearCargo — Synology NAS Deployment (Single-Image, RECOMMENDED)
 #
-# Ready-to-use for Synology DSM — no manual edits needed!
-# Differences from the standard deploy file:
-#   - user: reads PUID/PGID from .env (default 1026:100)
-#   - No deploy/resource limits (Synology kernels lack CPU CFS scheduler)
+# Ready-to-use for Synology DSM — pulls the all-in-one image from GHCR, no build.
+# Differences from docker-compose.deploy.yml:
 #   - APP_PORT defaults to 5050 (DSM uses 5000/5001)
+#   - No deploy/resource limits (Synology kernels lack the CPU CFS scheduler)
+#
+# One container runs PostgreSQL 16 + Redis 7 + gunicorn + backups under
+# s6-overlay. It starts as root (PID 1) and drops each service to its own
+# unprivileged user, fixing volume ownership automatically — so no PUID/PGID
+# juggling is needed as with the old 4-container setup.
 #
 # Quick Start:
-#   1. Copy .env.synology to .env and configure all values
-#   2. Login to GitHub Container Registry:
-#      echo "YOUR_GITHUB_PAT" | sudo docker login ghcr.io -u YOUR_USERNAME --password-stdin
-#   3. Deploy:
-#      sudo docker compose up -d
-#   4. View logs:
-#      sudo docker compose logs -f backend
+#   1. cp .env.single.example .env   &&   nano .env   (set ALL secrets, APP_PORT=5050)
+#   2. mkdir -p secrets && nano secrets/vapid_private_key
+#   3. sudo docker compose -f docker-compose.synology.yml up -d
+#   4. sudo docker compose -f docker-compose.synology.yml logs -f
+#
+# Migrating from the old 4-container stack? See README "Migrating to the single
+# container" — scripts/migrate-to-single.sh does it safely with auto-rollback.
 
 services:
-  # ============================================================
-  # BACKEND API (Pre-built from GitHub Container Registry)
-  # ============================================================
-  backend:
+  gearcargo:
     image: ghcr.io/aiulian25/gearcargo:latest
-    container_name: gearcargo-backend
+    container_name: gearcargo
     ports:
       - "${APP_PORT:-5050}:5000"
     environment:
       - FLASK_ENV=production
-      - DATABASE_URL=postgresql://gearcargo:${DB_PASSWORD}@db:5432/gearcargo
-      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - DATABASE_URL=postgresql://gearcargo:${DB_PASSWORD}@127.0.0.1:5432/gearcargo
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@127.0.0.1:6379/0
+      - RATELIMIT_STORAGE_URL=redis://:${REDIS_PASSWORD}@127.0.0.1:6379/1
+      - PG_SHARED_BUFFERS=${PG_SHARED_BUFFERS:-256MB}
+      - PG_MAX_CONNECTIONS=${PG_MAX_CONNECTIONS:-100}
+      - REDIS_MAXMEMORY=${REDIS_MAXMEMORY:-128mb}
+      - GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}
+      - BACKUP_ENABLED=${BACKUP_ENABLED:-true}
+      - BACKUP_KEEP_LAST=${BACKUP_KEEP_LAST:-7}
+
       - SECRET_KEY=${SECRET_KEY}
       - APP_URL=${APP_URL}
+      - ADMIN_DOMAIN=${ADMIN_DOMAIN:-}
+      - USER_DOMAIN=${USER_DOMAIN:-}
 
-      # Security - JWT
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - JWT_ACCESS_TOKEN_EXPIRES=${JWT_ACCESS_TOKEN_EXPIRES:-3600}
       - JWT_REFRESH_TOKEN_EXPIRES=${JWT_REFRESH_TOKEN_EXPIRES:-2592000}
 
-      # Security - CORS
       - CORS_ORIGINS=${CORS_ORIGINS}
       - CORS_SUPPORTS_CREDENTIALS=true
 
-      # Security - CSRF Protection
       - WTF_CSRF_ENABLED=true
       - WTF_CSRF_SECRET_KEY=${WTF_CSRF_SECRET_KEY}
 
-      # Security - Rate Limiting
       - RATELIMIT_ENABLED=true
       - RATELIMIT_DEFAULT=${RATELIMIT_DEFAULT:-100 per hour}
-      - RATELIMIT_STORAGE_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
 
-      # Security - Session
-      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-false}
+      - SESSION_COOKIE_SECURE=true
       - SESSION_COOKIE_HTTPONLY=true
-      - SESSION_COOKIE_SAMESITE=${SESSION_COOKIE_SAMESITE:-Lax}
+      - SESSION_COOKIE_SAMESITE=Strict
 
-      # Encryption Key
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
 
-      # Admin User (optional - for first deployment)
-      - ADMIN_EMAIL=${ADMIN_EMAIL:-}
-      - ADMIN_USERNAME=${ADMIN_USERNAME:-}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
-
-      # Domain-based access control (SECURITY)
-      - ADMIN_DOMAIN=${ADMIN_DOMAIN:-}
-      - USER_DOMAIN=${USER_DOMAIN:-}
-
-      # Ollama AI (optional)
       - OLLAMA_ENABLED=${OLLAMA_ENABLED:-false}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
-      # Global default model (used when no per-task override is set)
       - OLLAMA_MODEL=${OLLAMA_MODEL:-}
       - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-60}
-      # Per-task model overrides — leave empty to inherit OLLAMA_MODEL
       - OLLAMA_MODEL_PREDICT=${OLLAMA_MODEL_PREDICT:-}
       - OLLAMA_MODEL_OCR=${OLLAMA_MODEL_OCR:-}
       - OLLAMA_MODEL_ANOMALY=${OLLAMA_MODEL_ANOMALY:-}
       - OLLAMA_MODEL_REMINDER=${OLLAMA_MODEL_REMINDER:-}
 
-      # Theme
       - DEFAULT_THEME=${DEFAULT_THEME:-dark}
-
-      # App name (used in backup filenames)
       - APP_NAME=${APP_NAME:-GearCargo}
-
-      # Upload limit (MB)
       - MAX_UPLOAD_SIZE_MB=${MAX_UPLOAD_SIZE_MB:-200}
 
-      # Email (for password reset, notifications)
-      - MAIL_ENABLED=${MAIL_ENABLED:-false}
-      - MAIL_SERVER=${MAIL_SERVER:-}
+      - MAIL_ENABLED=${MAIL_ENABLED:-true}
+      - MAIL_SERVER=${MAIL_SERVER}
       - MAIL_PORT=${MAIL_PORT:-587}
       - MAIL_USE_TLS=${MAIL_USE_TLS:-true}
-      - MAIL_USERNAME=${MAIL_USERNAME:-}
-      - MAIL_PASSWORD=${MAIL_PASSWORD:-}
-      - MAIL_DEFAULT_SENDER=${MAIL_DEFAULT_SENDER:-}
+      - MAIL_USERNAME=${MAIL_USERNAME}
+      - MAIL_PASSWORD=${MAIL_PASSWORD}
+      - MAIL_DEFAULT_SENDER=${MAIL_DEFAULT_SENDER}
 
-      # Push Notifications
-      # VAPID_PUBLIC_KEY and VAPID_SUBJECT are non-sensitive — kept as env vars.
-      # VAPID_PRIVATE_KEY is mounted as a Docker secret (see 'secrets:' below)
-      # so it does NOT appear in `docker inspect` or /proc/<pid>/environ.
-      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
-      - VAPID_SUBJECT=${VAPID_SUBJECT:-}
-      
-      # Worker count — capped to prevent OOM kills on many-core hosts
-      - GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
+      - VAPID_SUBJECT=${VAPID_SUBJECT}
 
-      # read_only: true — explicit temp-dir anchors
-      # Python is told not to write .pyc files via PYTHONDONTWRITEBYTECODE=1 in
-      # the image, but PYTHONPYCACHEPREFIX redirects any stray cache writes that
-      # a library might trigger through importlib/pkgutil to /tmp (tmpfs).
-      # TMPDIR makes the tempfile module's default explicit: backup-restore and
-      # lubelog-import both call tempfile.TemporaryDirectory / NamedTemporaryFile.
-      # Flask-Session filesystem fallback (used when Redis is unreachable) writes
-      # to SESSION_FILE_DIR=/tmp/flask_session (set in config.py).  All of these
-      # must live inside the /tmp tmpfs declared below, NOT in the read-only rootfs.
-      - TMPDIR=/tmp
-      - PYTHONPYCACHEPREFIX=/tmp/pycache
-      # S10: Local GeoIP2 database (optional).
-      # Set to the container path of a MaxMind GeoLite2-City MMDB file.
-      # When unset, suspicious-login country detection is disabled but login
-      # continues normally. Download free: https://dev.maxmind.com/geoip/geolite2-free-geolocation-data
       - GEOIP_DB_PATH=${GEOIP_DB_PATH:-}
-      # S11: Number of trusted reverse proxies in front of the app.
-      # ProxyFix peels exactly this many hops from X-Forwarded-For to set request.remote_addr.
-      #   0 — direct-bind (no proxy); 1 — one proxy (nginx/Traefik/Cloudflare); 2 — CDN + proxy.
-      # Clients cannot spoof their IP by prepending entries to the left of XFF.
       - TRUSTED_PROXY_COUNT=${TRUSTED_PROXY_COUNT:-1}
-    secrets:
-      - vapid_private_key
-    volumes:
-      # ── write paths ──────────────────────────────────────────────────────────
-      # All runtime writes MUST target one of these bind-mounts or the /tmp tmpfs.
-      # Adding a new write path that falls outside these mounts will silently fail
-      # with "Read-only file system" because read_only: true is set below.
-      #
-      #  /app/volumes/attachments  ← user-uploaded files (attachments route)
-      #  /app/volumes/backups      ← backup archives (backup route)
-      #  /app/uploads              ← vehicle photos & avatars (vehicles route)
-      #  /app/volumes/logs         ← application log files (logging config)
-      #  /tmp                      ← tmpfile.TemporaryDirectory, NamedTemporaryFile,
-      #                               gunicorn worker heartbeat files,
-      #                               Flask-Session filesystem fallback (/tmp/flask_session),
-      #                               Python __pycache__ redirect (/tmp/pycache)
-      #
-      # /run is intentionally NOT a tmpfs: gunicorn binds on TCP (0.0.0.0:5000,
-      # no Unix socket) and sets pidfile=None, so nothing writes to /run at
-      # runtime.  Docker secrets (vapid_private_key) are bind-mounted by the
-      # Docker engine at /run/secrets/vapid_private_key; this bind-mount works
-      # correctly over the read-only root filesystem without needing /run as tmpfs.
-      - ./volumes/attachments:/app/volumes/attachments
-      - ./volumes/backups:/app/volumes/backups
-      - ./volumes/uploads:/app/uploads
-      - ./volumes/logs:/app/volumes/logs
-      # Optional: mount GeoLite2 database for suspicious-login detection (S10).
-      # Place GeoLite2-City.mmdb in ./volumes/geoip/ and set
-      # GEOIP_DB_PATH=/app/volumes/geoip/GeoLite2-City.mmdb in your .env file.
-      - ./volumes/geoip:/app/volumes/geoip:ro
-    user: "${PUID:-1026}:${PGID:-100}"
-    read_only: true
-    tmpfs:
-      # /tmp is the only tmpfs the backend needs.  See write-path notes above.
-      - /tmp
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    restart: always
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
-      interval: 30s
-      timeout: 10s
-      start_period: 60s
-      retries: 3
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - gearcargo-net
 
-  # ============================================================
-  # POSTGRESQL DATABASE
-  # ============================================================
-  db:
-    image: postgres:16-alpine
-    container_name: gearcargo-db
-    environment:
-      - POSTGRES_USER=gearcargo
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
-      - POSTGRES_DB=gearcargo
-      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -210,79 +98,33 @@ services:
       - FOWNER
       - SETGID
       - SETUID
+      - KILL
     tmpfs:
       - /tmp
-      - /run/postgresql
+    secrets:
+      - vapid_private_key
     volumes:
-      - ./volumes/db:/var/lib/postgresql/data
+      - ./volumes/pgdata:/var/lib/postgresql/data
+      - ./volumes/redis:/data
+      - ./volumes/attachments:/app/volumes/attachments
+      - ./volumes/backups:/app/volumes/backups
+      - ./volumes/uploads:/app/uploads
+      - ./volumes/logs:/app/volumes/logs
+      - ./volumes/geoip:/app/volumes/geoip:ro
     restart: always
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U gearcargo -d gearcargo"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 90s
+      retries: 3
+    # No deploy/resource limits — Synology kernels lack the CPU CFS scheduler.
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
-    networks:
-      - gearcargo-net
 
-  # ============================================================
-  # REDIS CACHE/SESSIONS
-  # ============================================================
-  redis:
-    image: redis:7-alpine
-    container_name: gearcargo-redis
-    command: >
-      redis-server
-      --appendonly yes
-      --requirepass ${REDIS_PASSWORD}
-      --maxmemory 128mb
-      --maxmemory-policy allkeys-lru
-    read_only: true
-    tmpfs:
-      - /tmp
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - DAC_OVERRIDE
-      - SETGID
-      - SETUID
-    volumes:
-      - ./volumes/redis:/data
-    restart: always
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "5m"
-        max-file: "2"
-    networks:
-      - gearcargo-net
-
-networks:
-  gearcargo-net:
-    driver: bridge
-    name: gearcargo-network
-
-# ============================================================
-# DOCKER SECRETS
-# I06: VAPID private key stored as a file secret instead of an
-# environment variable, so it is not exposed in `docker inspect`.
-#
-# Setup: echo 'YOUR_VAPID_PRIVATE_KEY' > secrets/vapid_private_key
-#        chmod 600 secrets/vapid_private_key
-# (see secrets/vapid_private_key.example for the expected format)
-# ============================================================
 secrets:
   vapid_private_key:
     file: ./secrets/vapid_private_key
