@@ -1,0 +1,9 @@
+# GearCargo single-image scheduled backups (UTC).
+# Runs as the unprivileged app user so archives are owned like the mounts.
+#   Daily  — 03:00 every day
+#   Weekly — 03:30 every Sunday
+# Retention is BACKUP_KEEP_LAST (default 7); disable via BACKUP_ENABLED=false.
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+0  3 * * *   gearcargo /etc/gearcargo/scripts/run-backup.sh daily
+30 3 * * 0   gearcargo /etc/gearcargo/scripts/run-backup.sh weekly

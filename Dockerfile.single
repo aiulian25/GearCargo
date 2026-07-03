@@ -1,0 +1,126 @@
+# GearCargo — Single-Image build (Option A: all-in-one via s6-overlay)
+#
+# One image that runs, under an s6-overlay v3 supervision tree:
+#   • PostgreSQL 16  (embedded, loopback-only)   — or external via DATABASE_URL
+#   • Redis 7        (embedded, loopback-only)    — or external via REDIS_URL
+#   • gunicorn       (Flask API + PWA, :5000, the ONLY published port)
+#   • cron           (scheduled pg_dump + media backups → mounted volume)
+#
+# Dual-mode: when DATABASE_URL / REDIS_URL point off-box the matching embedded
+# server is skipped, so the SAME image also works with an external DB/Redis.
+#
+# This file is SEPARATE from ./Dockerfile (the hardened 4-container backend
+# image). The 4-container stack is unchanged and remains the "strict isolation"
+# option — see Single-Image.md §9/§13.
+
+# ============================================================
+# STAGE 1: Build Frontend (React PWA)  — identical to ./Dockerfile
+# ============================================================
+FROM node:20-alpine AS frontend-builder
+WORKDIR /frontend
+COPY frontend/package*.json ./
+COPY frontend/package-lock.json* ./
+RUN npm install --silent
+COPY frontend/ .
+RUN npm run build
+
+# ============================================================
+# STAGE 2: All-in-one runtime
+# Pinned to bookworm so PostgreSQL 16 (from PGDG) is available on both
+# amd64 and arm64 — the migration is a 16→16 logical restore (Single-Image.md §12).
+# ============================================================
+FROM python:3.11-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    # s6-overlay behaviour: keep container env, crash the container if a oneshot
+    # (e.g. migrate) fails instead of running half-initialised, wait for readiness.
+    S6_KEEP_ENV=1 \
+    S6_BEHAVIOUR_IF_STAGE2_FAILS=2 \
+    S6_CMD_WAIT_FOR_SERVICES_MAXTIME=0 \
+    S6_VERBOSITY=1
+
+WORKDIR /app
+
+# TARGETARCH is provided by buildx (amd64 / arm64) for multi-arch builds.
+ARG TARGETARCH
+ARG S6_OVERLAY_VERSION=3.2.0.2
+
+# ------------------------------------------------------------
+# System packages: PostgreSQL 16 (PGDG), Redis, cron, OCR, s6-overlay.
+# ------------------------------------------------------------
+RUN set -eux; \
+    apt-get update && apt-get upgrade -y; \
+    apt-get install -y --no-install-recommends \
+        ca-certificates curl gnupg xz-utils \
+        gcc libpq-dev \
+        redis-server cron \
+        tesseract-ocr tesseract-ocr-eng tesseract-ocr-ron tesseract-ocr-spa; \
+    # --- PostgreSQL 16 from the official PGDG apt repository ---
+    install -d /usr/share/postgresql-common/pgdg; \
+    curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+        -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc; \
+    echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] http://apt.postgresql.org/pub/repos/apt $(. /etc/os-release; echo "$VERSION_CODENAME")-pgdg main" \
+        > /etc/apt/sources.list.d/pgdg.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends postgresql-16 postgresql-client-16; \
+    # The postgresql-16 postinst auto-creates a 'main' cluster we don't use
+    # (we manage our own PGDATA at /var/lib/postgresql/data). Drop it.
+    pg_dropcluster --stop 16 main || true; \
+    # --- s6-overlay v3 (noarch + arch-specific) ---
+    case "$TARGETARCH" in \
+        amd64) S6_ARCH=x86_64 ;; \
+        arm64) S6_ARCH=aarch64 ;; \
+        *) echo "Unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz" -o /tmp/s6-noarch.tar.xz; \
+    curl -fsSL "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_ARCH}.tar.xz" -o /tmp/s6-arch.tar.xz; \
+    tar -C / -Jxpf /tmp/s6-noarch.tar.xz; \
+    tar -C / -Jxpf /tmp/s6-arch.tar.xz; \
+    rm -f /tmp/s6-*.tar.xz; \
+    apt-get purge -y --auto-remove gnupg xz-utils; \
+    rm -rf /var/lib/apt/lists/*
+
+# ------------------------------------------------------------
+# Python dependencies (same requirements as the backend image)
+# ------------------------------------------------------------
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip uninstall -y wheel setuptools || true
+
+# ------------------------------------------------------------
+# Application code, backup script, built frontend
+# ------------------------------------------------------------
+COPY backend/ .
+COPY scripts/ /app/scripts/
+COPY --from=frontend-builder /frontend/dist /app/static
+
+# s6 service tree + service scripts (docker/rootfs → /)
+COPY docker/rootfs/ /
+
+# ------------------------------------------------------------
+# Users, directories, permissions
+# (postgres & redis users are created by their apt packages)
+# ------------------------------------------------------------
+RUN set -eux; \
+    useradd -m -u 1000 gearcargo; \
+    mkdir -p /app/volumes/attachments /app/volumes/backups/system \
+             /app/uploads /app/volumes/logs \
+             /var/lib/postgresql/data /run/gearcargo; \
+    chown -R gearcargo:gearcargo /app/volumes /app/uploads /run/gearcargo; \
+    chown postgres:postgres /var/lib/postgresql/data; \
+    chmod 700 /var/lib/postgresql/data; \
+    # Executable bits for s6 longrun 'run' scripts and our service scripts.
+    chmod +x /etc/gearcargo/scripts/*.sh; \
+    find /etc/s6-overlay/s6-rc.d -type f -name run -exec chmod +x {} +; \
+    # /etc/cron.d entry must be root-owned and not group/other-writable.
+    chown root:root /etc/cron.d/gearcargo; chmod 644 /etc/cron.d/gearcargo
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
+    CMD curl -f http://localhost:5000/health || exit 1
+
+EXPOSE 5000
+
+# s6-overlay is PID 1: reaps zombies, forwards signals, supervises the tree.
+ENTRYPOINT ["/init"]

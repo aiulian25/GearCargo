@@ -356,6 +356,54 @@ sudo docker compose -f docker-compose.synology.yml up -d
 
 ---
 
+### Option 6: Single-Image / All-in-One (`docker-compose.single.yml`)
+
+Best for: The simplest possible install — **one container** to manage instead of four.
+
+One image runs PostgreSQL 16 + Redis 7 + the app (gunicorn) + scheduled backups
+together, supervised by [s6-overlay](https://github.com/just-containers/s6-overlay).
+Only port `5000` is published; the datastores bind to `127.0.0.1` **inside** the
+container and are never network-exposed.
+
+```bash
+# 1. Configure environment (reuse your existing secrets when migrating!)
+cp .env.single.example .env
+nano .env
+
+# 2. Build + start (one container)
+docker compose -f docker-compose.single.yml up -d --build
+
+# 3. Logs
+docker compose -f docker-compose.single.yml logs -f
+```
+
+**Dual-mode:** point `DATABASE_URL` / `REDIS_URL` at an external host and the
+matching embedded server stays dormant — the same image works with an external
+database if you prefer.
+
+**Already running the 4-container stack?** Migrate safely (backup-first, verified,
+auto-rollback) — the embedded database uses a **separate** `./volumes/pgdata`, so
+your existing `./volumes/db` is never touched and rollback is instant:
+
+```bash
+scripts/migrate-to-single.sh          # interactive; add --yes for non-interactive
+```
+
+**Trade-off:** consolidating into one container reduces process isolation between
+the app, database and Redis (they share a namespace). For a single-tenant,
+self-hosted app behind a reverse proxy this is a moderate, accepted trade-off —
+see `Single-Image.md` §9. If strict isolation matters, keep the 4-container
+`docker-compose.prod.yml` (both are built from this repo).
+
+**Features:**
+- **One** container, image, and thing to update
+- Embedded PostgreSQL 16 + Redis 7 (loopback-only) or external via URL
+- Built-in daily/weekly backups (same portable format as the 4-container stack)
+- Clean PostgreSQL shutdown on `docker stop` (no WAL recovery on next boot)
+- ~2 GB RAM recommended (runs all services in one container)
+
+---
+
 ### Deployment File Comparison
 
 | Feature | `docker-compose.yml` | `docker-compose.prod.yml` | `docker-compose.simple.yml` | `docker-compose.deploy.yml` | `docker-compose.synology.yml` |

@@ -89,6 +89,7 @@ celerybeat-schedule
 !.env.example
 !.env.production
 !.env.simple
+!.env.single.example
 .venv
 env/
 venv/
