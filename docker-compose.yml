@@ -15,11 +15,9 @@
 # Update:  docker compose pull   &&   docker compose up -d
 #
 # Synology / custom port: set APP_PORT in .env (e.g. 5050) — no separate file.
-# Migrating from the old 4-container stack? See README "Migrating to the single
-# container" (scripts/migrate-to-single.sh — safe, auto-rollback).
 # Want to build locally instead of pull? Use docker-compose.single.yml.
-# Prefer strict app/DB/Redis isolation? See examples/docker-compose.4container.yml
-# (the 4-container image is published as ghcr.io/aiulian25/gearcargo:multi).
+# Migrating from an old multi-container stack? See README "Migrating to the
+# single container" (scripts/migrate-to-single.sh — safe, backup-first).
 
 services:
   gearcargo:
@@ -133,8 +131,8 @@ services:
       start_period: 90s
       retries: 3
     # No hard resource limits by default — keeps this file portable across hosts
-    # (Synology kernels lack the CPU CFS scheduler). To cap resources, copy the
-    # `deploy.resources` block from examples/docker-compose.4container.yml.
+    # (Synology kernels lack the CPU CFS scheduler). To cap resources, add a
+    # `deploy.resources.limits` block (e.g. cpus: '3', memory: 2G).
     logging:
       driver: "json-file"
       options:

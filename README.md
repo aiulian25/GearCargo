@@ -248,11 +248,10 @@ For almost everyone, **the single container is the answer** — see
 | **Standard install** (recommended) | `docker-compose.yml` — pulls the single image. Run `./setup.sh` and you're done. |
 | **Custom port / Synology NAS** | The *same* `docker-compose.yml`; just set `APP_PORT` in `.env` (e.g. `5050`). No separate file. |
 | **Build from source / develop** | `docker-compose.single.yml` — builds the single image locally (`up -d --build`). |
-| **Strict app/DB/Redis isolation** | `examples/docker-compose.4container.yml` — three separate containers with per-service hardening. The 4-container image is also published as `:multi`. |
 | **External DB/Redis (dual-mode)** | The standard compose; point `DATABASE_URL` / `REDIS_URL` at your host and the embedded servers stay dormant. |
 
-**Image tags:** `ghcr.io/aiulian25/gearcargo:latest` is the **single all-in-one**
-image (recommended). `:multi` is the 4-container image (advanced isolation).
+**Image:** `ghcr.io/aiulian25/gearcargo:latest` — the single all-in-one image
+(`:single` is an alias). That's the whole app.
 
 The single container runs PostgreSQL 16 + Redis 7 + gunicorn + scheduled backups
 under [s6-overlay](https://github.com/just-containers/s6-overlay); only the app
@@ -261,7 +260,6 @@ Clean PostgreSQL shutdown on `docker stop` (no WAL recovery on next boot).
 **~2 GB RAM recommended.**
 
 - Every environment variable is documented in **`examples/.env.reference`**.
-- Advanced compose files live in **`examples/`** (see `examples/README.md`).
 
 ## Migrating to the Single Container
 
@@ -286,22 +284,20 @@ Run it from a checkout of this repository (`scripts/migrate-to-single.sh` +
 readable.
 
 ```bash
-# from your repo checkout, pointed at your data dir:
-scripts/migrate-to-single.sh           # interactive; add --yes to skip prompts
+# from your repo checkout, pointed at your data dir. Tell it your existing compose:
+GC_PROD_COMPOSE=docker-compose.yml scripts/migrate-to-single.sh   # add --yes to skip prompts
 ```
 
-> If your old 4-container compose isn't `examples/docker-compose.4container.yml`,
-> set `GC_PROD_COMPOSE=/path/to/your-compose.yml` before running.
+> `GC_PROD_COMPOSE` must point at your **existing** multi-container compose (the
+> one currently running db/redis/backend) — GearCargo no longer ships one.
 
 > ⚠️ **Reuse the same `ENCRYPTION_KEY`.** A different key makes all encrypted PII
 > permanently unrecoverable. The script refuses to run if the key is missing.
 
-**Manual rollback** (anytime — your original data dir is untouched):
-
-```bash
-docker compose -f docker-compose.single.yml down
-docker compose -f examples/docker-compose.4container.yml up -d   # back to the 4-container stack
-```
+**Rollback (anytime — your original `./volumes/db` is never touched):**
+bring your old stack back up with your own compose
+(`docker compose -f <your-old-compose> up -d`), or restore the automatic backup
+the script wrote to `./volumes/backups/` into a fresh install.
 
 Keep the raw tarball and the old `./volumes/db` until the migrated install has run
 cleanly for several days. Full details: [DEPLOY.md §15](DEPLOY.md).
@@ -842,9 +838,8 @@ gearcargo/
 │   └── backups/              # Backup archives
 ├── docker-compose.yml         # Standard install — pulls the single image
 ├── docker-compose.single.yml  # Dev — builds the single image locally
-├── examples/                  # Advanced: 4-container compose + full .env reference
+├── examples/                  # Full .env reference (examples/.env.reference)
 ├── Dockerfile.single          # The single all-in-one image
-├── Dockerfile                 # 4-container backend image (published as :multi)
 ├── setup.sh                   # Guided installer
 ├── backup.sh                  # Backup script
 ├── restore.sh                 # Restore script

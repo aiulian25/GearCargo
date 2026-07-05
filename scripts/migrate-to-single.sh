@@ -27,9 +27,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT_DIR"
 
-# The 4-container ("prod") compose used by the OLD stack. It moved under examples/
-# in the install-simplification pass; override with GC_PROD_COMPOSE if yours differs.
-PROD_COMPOSE="${GC_PROD_COMPOSE:-examples/docker-compose.4container.yml}"
+# Your EXISTING multi-container ("prod") compose — the one currently running your
+# db/redis/backend. GearCargo no longer ships one, so point GC_PROD_COMPOSE at it:
+#   GC_PROD_COMPOSE=docker-compose.yml scripts/migrate-to-single.sh
+PROD_COMPOSE="${GC_PROD_COMPOSE:-docker-compose.prod.yml}"
 SINGLE_COMPOSE="docker-compose.single.yml"
 ENV_FILE=".env"
 
@@ -59,7 +60,7 @@ dc() { docker compose "$@"; }
 
 # --- preflight ---------------------------------------------------------------
 command -v docker >/dev/null || die "docker not found"
-[ -f "$PROD_COMPOSE" ]   || die "$PROD_COMPOSE not found — run from the repo."
+[ -f "$PROD_COMPOSE" ]   || die "Old compose '$PROD_COMPOSE' not found. Set GC_PROD_COMPOSE to your existing multi-container compose, e.g.  GC_PROD_COMPOSE=docker-compose.yml $0"
 [ -f "$SINGLE_COMPOSE" ] || die "$SINGLE_COMPOSE not found."
 [ -f "$ENV_FILE" ]       || die "$ENV_FILE not found — cannot read secrets."
 

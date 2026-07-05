@@ -2,14 +2,13 @@
 
 Complete step-by-step guide to deploy GearCargo on any Docker-capable machine — Linux servers, Synology NAS, cloud VMs, or Raspberry Pi.
 
-> **The recommended deployment is the single all-in-one container** —
+> GearCargo runs as a **single all-in-one container** —
 > `ghcr.io/aiulian25/gearcargo:latest`, used by the root `docker-compose.yml`.
 > The fastest path is the [main README "Install in 3 steps"](README.md#install-in-3-steps)
 > (`docker run --rm …/gearcargo:latest install` → `./setup.sh`). Jump to
 > [§15 Single-Image Deployment](#15-single-image--all-in-one-deployment) for the
-> detailed guide and migration. Sections 2–14 below cover the 4-container image
-> (published as `:multi`, `examples/docker-compose.4container.yml`) for those who
-> want strict service isolation.
+> detailed guide and migration. Sections 2–14 cover configuration (env, secrets,
+> reverse proxy, admin bootstrap) that applies to the single container too.
 
 ---
 
@@ -874,9 +873,10 @@ the container and are never exposed to the network.
 
 > **Trade-off:** consolidating into one container reduces process isolation
 > between the app, database and Redis. For a single-tenant, self-hosted app
-> behind a reverse proxy this is a reasonable, deliberate trade-off. If you need
-> strict service isolation, use `examples/docker-compose.4container.yml` (image
-> also published as `:multi`) — both are built from the same repository.
+> behind a reverse proxy this is a reasonable, deliberate trade-off (see
+> `SECURITY_ASSESSMENT.md` §9). If you require strict service isolation, run
+> PostgreSQL/Redis as separate containers of your own and point `DATABASE_URL` /
+> `REDIS_URL` at them (dual-mode) — the app image stays the same.
 
 ### 15.1 Fresh install
 
@@ -934,9 +934,9 @@ Run from a checkout of this repository (`scripts/migrate-to-single.sh` +
 / `SECRET_KEY` / `JWT_SECRET_KEY`):
 
 ```bash
-scripts/migrate-to-single.sh           # interactive; add --yes for non-interactive
-# If your old 4-container compose isn't examples/docker-compose.4container.yml:
-#   GC_PROD_COMPOSE=/path/to/your-compose.yml scripts/migrate-to-single.sh
+# Point GC_PROD_COMPOSE at your EXISTING multi-container compose (GearCargo no
+# longer ships one), then run:
+GC_PROD_COMPOSE=docker-compose.yml scripts/migrate-to-single.sh   # add --yes to skip prompts
 ```
 
 The script:
@@ -952,12 +952,10 @@ The script:
 > permanently unrecoverable. Keep the raw tarball and the old `./volumes/db` until
 > the migrated install has run cleanly for several days.
 
-**Manual rollback** (anytime — the old data dir is untouched):
-
-```bash
-docker compose -f docker-compose.single.yml down
-docker compose -f examples/docker-compose.4container.yml up -d
-```
+**Rollback** (anytime — the old `./volumes/db` is never touched): bring your
+previous stack back up with **your own** old compose
+(`docker compose -f <your-old-compose> up -d`), or restore the backup the script
+wrote to `./volumes/backups/` into a fresh install.
 
 ### 15.4 Backups
 

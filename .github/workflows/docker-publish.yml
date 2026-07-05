@@ -1,12 +1,12 @@
 name: Publish image
 
-# Build the app container and push it to GitHub Container Registry (GHCR) so
-# end users PULL a ready image (Synology/PC/mini-PC/server) — they never build.
-# Multi-arch (amd64 + arm64) so the same `:latest` tag works on any hardware;
-# Docker auto-selects the right arch from the manifest.
+# Build the single all-in-one image and push it to GitHub Container Registry
+# (GHCR) so end users PULL a ready image (Synology/PC/mini-PC/server) — they
+# never build. Multi-arch (amd64 + arm64) so the same `:latest` tag works on any
+# hardware; Docker auto-selects the right arch from the manifest.
 #
-# Triggers: every push to main (publishes :latest + the commit SHA), version
-# tags v* (publishes the semver tags), and manual dispatch.
+# Triggers: every push to main (publishes :latest + :single + the commit SHA),
+# version tags v* (semver tags), and manual dispatch.
 
 on:
   push:
@@ -25,7 +25,7 @@ permissions:
 
 jobs:
   publish:
-    name: Build & push (amd64 + arm64)
+    name: Build & push single image (amd64 + arm64)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,51 +45,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          # Lowercase, matches the existing package ghcr.io/aiulian25/gearcargo.
-          # The 4-container image is published under `multi*` tags. The default
-          # `:latest` is now the single-image all-in-one (see publish-single).
-          images: ghcr.io/${{ github.repository_owner }}/gearcargo
-          tags: |
-            type=raw,value=multi,enable={{is_default_branch}}
-            type=sha,prefix=multi-,format=short
-            type=semver,pattern=multi-{{version}}
-            type=semver,pattern=multi-{{major}}.{{minor}}
-
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # Single-image / all-in-one variant (PostgreSQL 16 + Redis 7 + gunicorn + cron
-  # under s6-overlay) — the DEFAULT deployment: published as `:latest` (and the
-  # explicit `:single` alias). The 4-container image lives under `:multi*`.
-  publish-single:
-    name: Build & push single-image (amd64 + arm64)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Compute image tags (single)
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
+          # Lowercase, matches the package ghcr.io/aiulian25/gearcargo.
           images: ghcr.io/${{ github.repository_owner }}/gearcargo
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
@@ -98,7 +54,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
-      - name: Build and push (single)
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -107,6 +63,5 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Separate cache scope so the two images don't evict each other.
-          cache-from: type=gha,scope=single
-          cache-to: type=gha,mode=max,scope=single
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
