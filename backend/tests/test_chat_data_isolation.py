@@ -24,7 +24,9 @@ def _capture_cache_key(monkeypatch):
 
 def test_input_classifier_cache_key_is_question_hash_only(monkeypatch):
     seen = _capture_cache_key(monkeypatch)
-    q = 'when is my next service due?'
+    # Ambiguous phrasing so the on-topic pre-filter doesn't bypass the classifier
+    # (bypassed questions never touch the cache, which is what this test checks).
+    q = 'is it due soon?'
     v._classify_question(q, 'http://x', {})
     expected = 'chatcls:' + hashlib.sha256(q.encode('utf-8')).hexdigest()
     assert seen['get'] == expected

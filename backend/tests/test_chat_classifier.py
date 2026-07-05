@@ -18,7 +18,8 @@ def test_allow_decision(monkeypatch):
     _no_cache(monkeypatch)
     monkeypatch.setattr(v, 'resolve_model', lambda *_a, **_k: 'tiny-model')
     monkeypatch.setattr(v, 'ollama_chat', lambda **_k: {'decision': 'ALLOW'})
-    assert v._classify_question('when is my next service?', 'http://x', {}) == 'ALLOW'
+    # Ambiguous phrasing (no obvious keyword) so the pre-filter doesn't bypass it.
+    assert v._classify_question('is it due soon?', 'http://x', {}) == 'ALLOW'
 
 
 def test_block_decision(monkeypatch):
@@ -83,7 +84,7 @@ def test_classifier_passes_tight_options(monkeypatch):
         return {'decision': 'ALLOW'}
     monkeypatch.setattr(v, 'ollama_chat', _capture)
 
-    v._classify_question('when is my service due?', 'http://x', {})
+    v._classify_question('is it due soon?', 'http://x', {})
     opts = captured.get('options', {})
     assert opts.get('temperature') == 0       # deterministic
     assert opts.get('num_predict') == 16      # tight output cap (perf)
@@ -96,3 +97,34 @@ def test_cache_hit_short_circuits(monkeypatch):
     # Model must NOT be called on a cache hit.
     monkeypatch.setattr(v, 'ollama_chat', lambda **_k: (_ for _ in ()).throw(AssertionError('called')))
     assert v._classify_question('cached question', 'http://x', {}) == 'BLOCK'
+
+
+def test_on_topic_question_bypasses_classifier(monkeypatch):
+    """Clearly on-topic questions skip the classifier entirely (fail open to the
+    main model) so a small classifier can never wrongly refuse them."""
+    _no_cache(monkeypatch)
+    monkeypatch.setattr(v, 'resolve_model', lambda *_a, **_k: 'tiny-model')
+    # If the classifier were consulted it would BLOCK — the bypass must win.
+    monkeypatch.setattr(v, 'ollama_chat', lambda **_k: {'decision': 'BLOCK'})
+    for q in ('what engine is my car?', 'what year was my car built?',
+              'what fuel do I use?', 'ce motor are mașina mea?',
+              '¿qué motor tiene mi coche?'):
+        assert v._classify_question(q, 'http://x', {}) is None
+
+
+def test_on_topic_matches_vehicle_make_model(monkeypatch):
+    """The vehicle's own make/model (passed as extra_terms) counts as on-topic."""
+    _no_cache(monkeypatch)
+    monkeypatch.setattr(v, 'resolve_model', lambda *_a, **_k: 'tiny-model')
+    monkeypatch.setattr(v, 'ollama_chat', lambda **_k: {'decision': 'BLOCK'})
+    assert v._classify_question('tell me about the Golf', 'http://x', {},
+                                extra_terms=('Volkswagen', 'Golf', 'Daily')) is None
+
+
+def test_looks_on_topic_helper():
+    assert v._looks_on_topic('what engine is my car?')
+    assert v._looks_on_topic('how do I log a fill-up?')
+    assert not v._looks_on_topic('write me a pasta recipe')
+    assert not v._looks_on_topic('')
+    # Short extra terms (<3 chars) are ignored to avoid spurious matches.
+    assert not v._looks_on_topic('ab cd', extra_terms=('a', 'b'))
