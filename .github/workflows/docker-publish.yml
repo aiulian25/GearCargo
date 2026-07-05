@@ -28,7 +28,7 @@ jobs:
     name: Build & push single image (amd64 + arm64)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # QEMU enables the arm64 cross-build on the amd64 runner.
       - uses: docker/setup-qemu-action@v3
