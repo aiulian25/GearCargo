@@ -2,6 +2,48 @@
 
 A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel consumption, services, repairs, insurance, taxes, and all vehicle-related expenses.
 
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/screenshots/dashboard.png" alt="Dashboard — weather, live fuel prices and your garage"><br><sub><b>Dashboard</b> — weather, live fuel prices &amp; your garage</sub></td>
+    <td width="50%" valign="top"><img src="docs/screenshots/vehicle-detail.png" alt="Vehicle overview"><br><sub><b>Vehicle overview</b></sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/screenshots/expenses.png" alt="Expenses — breakdown and charts"><br><sub><b>Expenses</b> — category breakdown &amp; charts</sub></td>
+    <td width="50%" valign="top"><img src="docs/screenshots/assistant.png" alt="AI vehicle assistant chat"><br><sub><b>AI vehicle assistant</b></sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/screenshots/recommendations.png" alt="Smart recommendations"><br><sub><b>Smart recommendations</b></sub></td>
+    <td width="50%" valign="top"><img src="docs/screenshots/vehicle-health.png" alt="Vehicle health"><br><sub><b>Vehicle health</b></sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/screenshots/consumables.png" alt="Consumables tracking"><br><sub><b>Consumables tracking</b></sub></td>
+    <td width="50%" valign="top"><img src="docs/screenshots/reminders.png" alt="Reminders"><br><sub><b>Reminders</b></sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/screenshots/calendar.png" alt="Calendar"><br><sub><b>Calendar</b></sub></td>
+    <td width="50%" valign="top"><img src="docs/screenshots/fuel-add.png" alt="Log a fuel entry"><br><sub><b>Log fuel</b></sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/screenshots/vehicle-add.png" alt="Add a vehicle"><br><sub><b>Add a vehicle</b></sub></td>
+    <td width="50%" valign="top"><img src="docs/screenshots/settings.png" alt="Settings"><br><sub><b>Settings</b></sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/screenshots/profile.png" alt="Profile"><br><sub><b>Profile</b></sub></td>
+    <td width="50%" valign="top"><img src="docs/screenshots/login.png" alt="Sign in"><br><sub><b>Sign in</b></sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/screenshots/register.png" alt="Create account"><br><sub><b>Create account</b></sub></td>
+    <td width="50%" valign="top"><img src="docs/screenshots/change-password.png" alt="Change password"><br><sub><b>Change password</b></sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/screenshots/security-questions.png" alt="Security questions"><br><sub><b>Security questions</b></sub></td>
+    <td width="50%" valign="top"></td>
+  </tr>
+</table>
+
+> Screens shown with demo data on the dark theme. A matching light theme is built in.
 
 ---
 
@@ -185,51 +227,6 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 - Multiple currency support (EUR, GBP, USD, RON, etc.)
 - Per-vehicle distance units (km/miles)
 - Volume units (liters/gallons)
-
----
-
-## Screenshots
-
-<table>
-  <tr>
-    <td width="50%" valign="top"><img src="docs/screenshots/dashboard.png" alt="Dashboard — weather, live fuel prices and your garage"><br><sub><b>Dashboard</b> — weather, live fuel prices &amp; your garage</sub></td>
-    <td width="50%" valign="top"><img src="docs/screenshots/vehicle-detail.png" alt="Vehicle overview"><br><sub><b>Vehicle overview</b></sub></td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top"><img src="docs/screenshots/expenses.png" alt="Expenses — breakdown and charts"><br><sub><b>Expenses</b> — category breakdown &amp; charts</sub></td>
-    <td width="50%" valign="top"><img src="docs/screenshots/assistant.png" alt="AI vehicle assistant chat"><br><sub><b>AI vehicle assistant</b></sub></td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top"><img src="docs/screenshots/recommendations.png" alt="Smart recommendations"><br><sub><b>Smart recommendations</b></sub></td>
-    <td width="50%" valign="top"><img src="docs/screenshots/vehicle-health.png" alt="Vehicle health"><br><sub><b>Vehicle health</b></sub></td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top"><img src="docs/screenshots/consumables.png" alt="Consumables tracking"><br><sub><b>Consumables tracking</b></sub></td>
-    <td width="50%" valign="top"><img src="docs/screenshots/reminders.png" alt="Reminders"><br><sub><b>Reminders</b></sub></td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top"><img src="docs/screenshots/calendar.png" alt="Calendar"><br><sub><b>Calendar</b></sub></td>
-    <td width="50%" valign="top"><img src="docs/screenshots/fuel-add.png" alt="Log a fuel entry"><br><sub><b>Log fuel</b></sub></td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top"><img src="docs/screenshots/vehicle-add.png" alt="Add a vehicle"><br><sub><b>Add a vehicle</b></sub></td>
-    <td width="50%" valign="top"><img src="docs/screenshots/settings.png" alt="Settings"><br><sub><b>Settings</b></sub></td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top"><img src="docs/screenshots/profile.png" alt="Profile"><br><sub><b>Profile</b></sub></td>
-    <td width="50%" valign="top"><img src="docs/screenshots/login.png" alt="Sign in"><br><sub><b>Sign in</b></sub></td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top"><img src="docs/screenshots/register.png" alt="Create account"><br><sub><b>Create account</b></sub></td>
-    <td width="50%" valign="top"><img src="docs/screenshots/change-password.png" alt="Change password"><br><sub><b>Change password</b></sub></td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top"><img src="docs/screenshots/security-questions.png" alt="Security questions"><br><sub><b>Security questions</b></sub></td>
-    <td width="50%" valign="top"></td>
-  </tr>
-</table>
-
-> Screens shown with demo data on the dark theme. A matching light theme is built in.
 
 ---
 
