@@ -694,13 +694,11 @@ Configure automatic backups in Settings > Backup:
 
 ### Manual Backup
 
-**Using the backup script:**
+**Using the CLI (inside the container):**
 ```bash
-./backup.sh daily
-# Creates: ./volumes/backups/system/daily/gearcargo_daily_YYYYMMDD_HHMMSS.tar.gz
-
-BACKUP_FREQUENCY=weekly ./backup.sh
-# Keeps the latest 3 weekly full-state archives
+# Runs the same archive builder the scheduler uses, against the embedded database.
+docker compose exec gearcargo /etc/gearcargo/scripts/run-backup.sh manual
+# Creates: ./volumes/backups/system/manual/gearcargo_manual_YYYYMMDD_HHMMSS.tar.gz
 ```
 
 **Using the web interface:**
@@ -728,16 +726,15 @@ Destination order is significant: the first enabled destination is treated as pr
 
 ### Restore from Backup
 
-**Using the restore script:**
-```bash
-./restore.sh ./volumes/backups/system/daily/gearcargo_daily_20240115_120000.tar.gz
-```
-
-**Using the web interface:**
+**Using the web interface (recommended):**
 1. Go to Settings > Backup
 2. Click "Restore"
 3. Upload your backup file
 4. Choose merge or replace mode
+
+The web restore runs inside the container against the embedded database, so no
+CLI restore script is needed. For a full deployment move, use the admin
+full-state export/import endpoints described above.
 
 ### Backup Regression Tests
 
@@ -884,9 +881,7 @@ gearcargo/
 ├── examples/                  # Full .env reference (examples/.env.reference)
 ├── Dockerfile                 # The single all-in-one image
 ├── setup.sh                   # Guided installer
-├── backup.sh                  # Backup script
-├── restore.sh                 # Restore script
-└── scripts/                   # Utility scripts
+└── scripts/                   # Utility scripts (docker-backup.sh, migration, maintenance)
 ```
 
 ---

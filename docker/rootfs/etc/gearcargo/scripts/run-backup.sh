@@ -1,8 +1,8 @@
 #!/bin/bash
 # Cron entry point for scheduled backups. Cron jobs get an empty environment, so
-# we load the credentials the scheduler wrote at boot, then hand off to the same
-# docker-backup.sh archive builder used by the 4-container `backup` service (the
-# archive format stays identical, so restore.sh / the in-app Backup page work).
+# we load the credentials the scheduler wrote at boot, then hand off to the
+# docker-backup.sh archive builder (the archive format is unchanged, so backups
+# restore through the in-app Backup page).
 set -eu
 
 envfile="/run/gearcargo/backup.env"

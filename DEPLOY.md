@@ -961,8 +961,8 @@ wrote to `./volumes/backups/` into a fresh install.
 
 Scheduled `pg_dump` + attachments/uploads archives run inside the container (daily
 03:00, weekly Sun 03:30 UTC) and land in `./volumes/backups/system/` — the same
-format as the four-container `backup` service, compatible with `restore.sh` and the
-in-app Backup page. Disable with `BACKUP_ENABLED=false`. Run one on demand:
+format as the retired four-container `backup` service, so archives restore through
+the in-app Backup page. Disable with `BACKUP_ENABLED=false`. Run one on demand:
 
 ```bash
 docker compose exec gearcargo /etc/gearcargo/scripts/run-backup.sh manual

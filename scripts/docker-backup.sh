@@ -1,15 +1,15 @@
 #!/bin/sh
 # docker-backup.sh — Containerised GearCargo backup
 #
-# Runs inside the postgres:16-alpine 'backup' service defined in
-# docker-compose.prod.yml.  Connects to the 'db' service over the
-# Docker internal network (no docker socket needed).
+# The archive builder for the single all-in-one image. Invoked by the in-image
+# scheduler (run-backup.sh), which exports DB_HOST/PGPORT/credentials so pg_dump
+# connects to the embedded PostgreSQL over the loopback interface.
 #
-# Called by crond:
+# Called by the scheduler:
 #   daily  — every day at 03:00 UTC
 #   weekly — every Sunday at 03:30 UTC
 #
-# Archive format is identical to backup.sh so restore.sh works unchanged.
+# Archive format is restored through the in-app Backup page (Settings > Backup).
 #
 # Environment variables (all have defaults):
 #   PGPASSWORD      — Postgres password              (required)
