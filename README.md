@@ -233,7 +233,7 @@ the container and are never network-exposed. Put a reverse proxy in front for HT
 ```bash
 git clone https://github.com/aiulian25/GearCargo.git && cd gearcargo
 cp .env.example .env && ./setup.sh            # or edit .env by hand
-docker compose -f docker-compose.single.yml up -d --build   # builds the single image
+docker compose -f docker-compose.dev.yml up -d --build   # builds the single image
 ```
 
 ---
@@ -247,7 +247,7 @@ For almost everyone, **the single container is the answer** — see
 |----------|-------------|
 | **Standard install** (recommended) | `docker-compose.yml` — pulls the single image. Run `./setup.sh` and you're done. |
 | **Custom port / Synology NAS** | The *same* `docker-compose.yml`; just set `APP_PORT` in `.env` (e.g. `5050`). No separate file. |
-| **Build from source / develop** | `docker-compose.single.yml` — builds the single image locally (`up -d --build`). |
+| **Build from source / develop** | `docker-compose.dev.yml` — builds the single image locally (`up -d --build`). |
 | **External DB/Redis (dual-mode)** | The standard compose; point `DATABASE_URL` / `REDIS_URL` at your host and the embedded servers stay dormant. |
 
 **Image:** `ghcr.io/aiulian25/gearcargo:latest` — the single all-in-one image
@@ -278,7 +278,7 @@ never deletes your old data, so you can roll back instantly.
    back to the 4-container stack if anything fails.
 
 Run it from a checkout of this repository (`scripts/migrate-to-single.sh` +
-`docker-compose.single.yml`), in the folder that holds your existing `.env`,
+`docker-compose.dev.yml`), in the folder that holds your existing `.env`,
 `secrets/` and `volumes/`. It **reuses your existing `.env`** — same
 `ENCRYPTION_KEY` / `SECRET_KEY` / `JWT_SECRET_KEY`, so encrypted data stays
 readable.
@@ -837,7 +837,7 @@ gearcargo/
 │   ├── attachments/          # User uploads
 │   └── backups/              # Backup archives
 ├── docker-compose.yml         # Standard install — pulls the single image
-├── docker-compose.single.yml  # Dev — builds the single image locally
+├── docker-compose.dev.yml  # Dev — builds the single image locally
 ├── examples/                  # Full .env reference (examples/.env.reference)
 ├── Dockerfile                 # The single all-in-one image
 ├── setup.sh                   # Guided installer
@@ -860,7 +860,7 @@ docker compose up -d
 ### Development (build from source)
 ```bash
 git pull
-docker compose -f docker-compose.single.yml up -d --build
+docker compose -f docker-compose.dev.yml up -d --build
 ```
 
 ---

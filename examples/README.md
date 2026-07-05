@@ -10,7 +10,7 @@ driven by **`setup.sh`**. See the main README.
 
 ### Notes
 - **Build the image yourself** instead of pulling: use the root
-  `docker-compose.single.yml` (dev / build-from-source).
+  `docker-compose.dev.yml` (dev / build-from-source).
 - **Custom port / Synology:** no separate compose — set `APP_PORT` in your `.env`.
 - **Resource limits:** the standard `docker-compose.yml` omits hard caps so it
   stays portable (Synology kernels lack the CPU CFS scheduler). Add a

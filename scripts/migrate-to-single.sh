@@ -31,7 +31,7 @@ cd "$ROOT_DIR"
 # db/redis/backend. GearCargo no longer ships one, so point GC_PROD_COMPOSE at it:
 #   GC_PROD_COMPOSE=docker-compose.yml scripts/migrate-to-single.sh
 PROD_COMPOSE="${GC_PROD_COMPOSE:-docker-compose.prod.yml}"
-SINGLE_COMPOSE="docker-compose.single.yml"
+SINGLE_COMPOSE="docker-compose.dev.yml"
 ENV_FILE=".env"
 
 ASSUME_YES=0

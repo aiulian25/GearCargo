@@ -929,7 +929,7 @@ as the transfer format, restores into a **separate** `./volumes/pgdata`, and nev
 touches your existing `./volumes/db`, so you can roll back instantly.
 
 Run from a checkout of this repository (`scripts/migrate-to-single.sh` +
-`docker-compose.single.yml`), pointed at the dir with your existing `.env`,
+`docker-compose.dev.yml`), pointed at the dir with your existing `.env`,
 `secrets/` and `volumes/`. It reuses your EXISTING `.env` (same `ENCRYPTION_KEY`
 / `SECRET_KEY` / `JWT_SECRET_KEY`):
 
@@ -965,15 +965,14 @@ format as the four-container `backup` service, compatible with `restore.sh` and 
 in-app Backup page. Disable with `BACKUP_ENABLED=false`. Run one on demand:
 
 ```bash
-docker compose -f docker-compose.single.yml exec gearcargo \
-    /etc/gearcargo/scripts/run-backup.sh manual
+docker compose exec gearcargo /etc/gearcargo/scripts/run-backup.sh manual
 ```
 
 ### 15.5 Updating
 
 ```bash
-docker compose -f docker-compose.single.yml pull      # or 'build' for a local image
-docker compose -f docker-compose.single.yml up -d
+docker compose pull      # (dev/build: docker compose -f docker-compose.dev.yml build)
+docker compose up -d
 ```
 
 PostgreSQL is pinned to **major version 16**. Do not bind-mount a data directory
