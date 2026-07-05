@@ -123,44 +123,79 @@ const DonutChart = ({ data, total, centerLabel, totalLabel = 'Total' }) => {
 // points: [{ label, value(number|null) }]. Null values break the line so months
 // without data (e.g. no odometer reading) are not drawn as zero.
 const LineChart = ({ points, formatValue, ariaLabel, color = 'var(--color-accent)' }) => {
-  const W = 320, H = 110, PX = 8, PY = 14
+  // viewBox keeps a fixed aspect ratio (NO preserveAspectRatio:none — that
+  // stretched the chart to full width AND height). The 2-column grid + page
+  // max-width now bound the width, so it renders compact and proportional.
+  const W = 340, H = 148, PL = 12, PR = 12, PT = 20, PB = 12
+  const gid = useMemo(() => 'gc-line-' + Math.random().toString(36).slice(2, 9), [])
   const n = points.length
   const valid = points.map(p => p.value).filter(v => v != null)
   if (valid.length < 2) return null
   const min = Math.min(...valid)
   const max = Math.max(...valid)
   const range = (max - min) || 1
-  const xAt = (i) => PX + (n === 1 ? 0 : (i / (n - 1)) * (W - 2 * PX))
-  const yAt = (v) => (H - PY) - ((v - min) / range) * (H - 2 * PY)
+  const xAt = (i) => PL + (n === 1 ? 0 : (i / (n - 1)) * (W - PL - PR))
+  const yAt = (v) => (H - PB) - ((v - min) / range) * (H - PT - PB)
 
-  // Build path segments, breaking where value is null.
+  // Continuous segments, breaking where value is null so gaps aren't drawn as 0.
   const segments = []
   let cur = []
   points.forEach((p, i) => {
     if (p.value == null) { if (cur.length) { segments.push(cur); cur = [] } }
-    else cur.push(`${xAt(i).toFixed(1)},${yAt(p.value).toFixed(1)}`)
+    else cur.push([xAt(i), yAt(p.value)])
   })
   if (cur.length) segments.push(cur)
 
-  // Sparse x labels: first, middle, last.
+  const areaPath = (seg) =>
+    `M ${seg.map(p => `${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' L ')} ` +
+    `L ${seg[seg.length - 1][0].toFixed(1)} ${(H - PB).toFixed(1)} ` +
+    `L ${seg[0][0].toFixed(1)} ${(H - PB).toFixed(1)} Z`
+
+  // Emphasize the most recent (last non-null) point and label it directly.
+  let lastIdx = -1
+  for (let i = n - 1; i >= 0; i--) { if (points[i].value != null) { lastIdx = i; break } }
+  const gridYs = [0, 1, 2, 3].map(g => PT + g * ((H - PT - PB) / 3))
   const labelIdx = new Set([0, Math.floor((n - 1) / 2), n - 1])
 
   return (
-    <div className="w-full">
-      <svg viewBox={`0 0 ${W} ${H + 16}`} className="w-full h-auto" role="img" aria-label={ariaLabel} preserveAspectRatio="none">
-        {segments.map((seg, si) => (
-          <polyline key={si} points={seg.join(' ')} fill="none" stroke={color} strokeWidth="2"
-            strokeLinejoin="round" strokeLinecap="round" />
-        ))}
-        {points.map((p, i) => p.value != null && (
-          <circle key={i} cx={xAt(i)} cy={yAt(p.value)} r="2.5" fill={color} />
-        ))}
-        {points.map((p, i) => labelIdx.has(i) && (
-          <text key={`l${i}`} x={xAt(i)} y={H + 10} textAnchor="middle"
-            className="fill-[var(--color-text-muted)]" style={{ fontSize: '9px' }}>{p.label}</text>
-        ))}
-      </svg>
-    </div>
+    <svg viewBox={`0 0 ${W} ${H + 14}`} className="w-full h-auto" role="img" aria-label={ariaLabel}>
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.2" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {gridYs.map((y, i) => (
+        <line key={`g${i}`} x1={PL} x2={W - PR} y1={y} y2={y}
+          stroke="var(--color-border)" strokeOpacity="0.6" strokeWidth="1" />
+      ))}
+      {segments.map((seg, si) => (
+        <path key={`a${si}`} d={areaPath(seg)} fill={`url(#${gid})`} />
+      ))}
+      {segments.map((seg, si) => (
+        <polyline key={`l${si}`} points={seg.map(p => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ')}
+          fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+      ))}
+      {points.map((p, i) => p.value != null && i !== lastIdx && (
+        <circle key={`d${i}`} cx={xAt(i)} cy={yAt(p.value)} r="2.2" fill={color} opacity="0.85" />
+      ))}
+      {lastIdx >= 0 && (
+        <g>
+          <circle cx={xAt(lastIdx)} cy={yAt(points[lastIdx].value)} r="4.2"
+            fill={color} stroke="var(--color-bg-secondary)" strokeWidth="2" />
+          {formatValue && (
+            <text x={xAt(lastIdx) - 6} y={yAt(points[lastIdx].value) - 8} textAnchor="end"
+              className="fill-[var(--color-text-primary)]" style={{ fontSize: '10px', fontWeight: 700 }}>
+              {formatValue(points[lastIdx].value)}
+            </text>
+          )}
+        </g>
+      )}
+      {points.map((p, i) => labelIdx.has(i) && (
+        <text key={`t${i}`} x={xAt(i)} y={H + 8} textAnchor="middle"
+          className="fill-[var(--color-text-muted)]" style={{ fontSize: '9px' }}>{p.label}</text>
+      ))}
+    </svg>
   )
 }
 
@@ -369,7 +404,7 @@ export default function VehicleCharts() {
       </div>
       
       {/* Content */}
-      <div className="p-4 space-y-6">
+      <div className="p-4 max-w-5xl mx-auto space-y-4">
         {/* Cost-per-distance trend + 12-month forecast (deterministic analytics).
             Shown above the year-scoped charts and independent of the year selector. */}
         {analytics && analytics.series?.some((s) => s.cost > 0) && (() => {
@@ -377,7 +412,7 @@ export default function VehicleCharts() {
           const hasCpd = analytics.series.some((s) => s.cost_per_distance != null)
           const cpdPoints = analytics.series.map((s) => ({ label: monthShort(s.month), value: s.cost_per_distance }))
           return (
-            <>
+            <div className="grid md:grid-cols-2 gap-4">
               {/* Cost per distance */}
               <div className="bg-[var(--color-bg-secondary)] rounded-2xl p-6">
                 <div className="flex items-start justify-between gap-3 mb-1">
@@ -397,6 +432,7 @@ export default function VehicleCharts() {
                 {hasCpd ? (
                   <LineChart
                     points={cpdPoints}
+                    formatValue={formatPerDistance}
                     ariaLabel={(t('charts.costPerDistance') || 'Cost per {unit}').replace('{unit}', unit)}
                   />
                 ) : (
@@ -427,6 +463,7 @@ export default function VehicleCharts() {
                   </div>
                   <LineChart
                     points={analytics.forecast.monthly.map((mo) => ({ label: monthShort(mo.month), value: mo.projected_cost }))}
+                    formatValue={formatCurrency}
                     ariaLabel={t('charts.forecastTitle') || 'Predicted next 12 months'}
                     color="#22c55e"
                   />
@@ -435,7 +472,7 @@ export default function VehicleCharts() {
                   </p>
                 </div>
               )}
-            </>
+            </div>
           )
         })()}
 
@@ -478,13 +515,15 @@ export default function VehicleCharts() {
               <p className="text-3xl font-bold">{formatCurrency(chartData.totalExpenses)}</p>
             </div>
             
+            {/* Category breakdown + monthly spend — two per row; stacks on phones */}
+            <div className="grid md:grid-cols-2 gap-4">
             {/* Category breakdown donut */}
             <div className="bg-[var(--color-bg-secondary)] rounded-2xl p-6">
               <h2 className="text-sm font-medium text-[var(--color-text-secondary)] mb-4">
                 {t('charts.byCategory') || 'By Category'}
               </h2>
-              
-              <div className="flex flex-col sm:flex-row items-center gap-6">
+
+              <div className="flex flex-col items-center gap-4">
                 <DonutChart 
                   data={chartData.donutData} 
                   total={chartData.totalExpenses}
@@ -528,7 +567,8 @@ export default function VehicleCharts() {
                 label={t('charts.amount') || 'Amount'}
               />
             </div>
-            
+            </div>
+
             {/* Stats summary */}
             <div className="bg-[var(--color-bg-secondary)] rounded-2xl p-6">
               <h2 className="text-sm font-medium text-[var(--color-text-secondary)] mb-4">

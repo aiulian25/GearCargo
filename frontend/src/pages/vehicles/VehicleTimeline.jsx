@@ -363,7 +363,7 @@ export default function VehicleTimeline() {
                           </div>
                           
                           {/* Entry card */}
-                          <div className={`bg-[var(--color-bg-secondary)] rounded-xl p-4 border-l-4 ${style.borderColor}`}>
+                          <div className="bg-[var(--color-bg-secondary)] rounded-xl p-4 border border-[var(--color-border)]">
                             <div className="flex items-start justify-between gap-2 mb-2">
                               <div className="flex-1 min-w-0">
                                 <span className={`inline-block px-2 py-0.5 rounded-full text-2xs font-medium ${style.bgColor} ${style.color} mb-1`}>
