@@ -839,7 +839,7 @@ gearcargo/
 ├── docker-compose.yml         # Standard install — pulls the single image
 ├── docker-compose.single.yml  # Dev — builds the single image locally
 ├── examples/                  # Full .env reference (examples/.env.reference)
-├── Dockerfile.single          # The single all-in-one image
+├── Dockerfile                 # The single all-in-one image
 ├── setup.sh                   # Guided installer
 ├── backup.sh                  # Backup script
 ├── restore.sh                 # Restore script

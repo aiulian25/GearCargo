@@ -20,7 +20,7 @@ services:
   gearcargo:
     build:
       context: .
-      dockerfile: Dockerfile.single
+      dockerfile: Dockerfile
     image: gearcargo:single
     container_name: gearcargo
     ports:

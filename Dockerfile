@@ -1,4 +1,4 @@
-# GearCargo — Single-Image build (Option A: all-in-one via s6-overlay)
+# GearCargo — the all-in-one image (single container via s6-overlay)
 #
 # One image that runs, under an s6-overlay v3 supervision tree:
 #   • PostgreSQL 16  (embedded, loopback-only)   — or external via DATABASE_URL
@@ -9,12 +9,10 @@
 # Dual-mode: when DATABASE_URL / REDIS_URL point off-box the matching embedded
 # server is skipped, so the SAME image also works with an external DB/Redis.
 #
-# This file is SEPARATE from ./Dockerfile (the hardened 4-container backend
-# image). The 4-container stack is unchanged and remains the "strict isolation"
-# option — see Single-Image.md §9/§13.
+# Published to GHCR as ghcr.io/aiulian25/gearcargo:latest (multi-arch).
 
 # ============================================================
-# STAGE 1: Build Frontend (React PWA)  — identical to ./Dockerfile
+# STAGE 1: Build Frontend (React PWA)
 # ============================================================
 FROM node:20-alpine AS frontend-builder
 WORKDIR /frontend
