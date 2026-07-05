@@ -8,6 +8,7 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 ## Quick Start (Recommended Method)
 
 - [Features](#features)
+- [Screenshots](#screenshots)
 - [Quick Start](#quick-start)
 - [Deployment Options](#deployment-options)
 - [Credential Generation](#credential-generation)
@@ -187,6 +188,51 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 
 ---
 
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/screenshots/dashboard.png" alt="Dashboard — weather, live fuel prices and your garage"><br><sub><b>Dashboard</b> — weather, live fuel prices &amp; your garage</sub></td>
+    <td width="50%" valign="top"><img src="docs/screenshots/vehicle-detail.png" alt="Vehicle overview"><br><sub><b>Vehicle overview</b></sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/screenshots/expenses.png" alt="Expenses — breakdown and charts"><br><sub><b>Expenses</b> — category breakdown &amp; charts</sub></td>
+    <td width="50%" valign="top"><img src="docs/screenshots/assistant.png" alt="AI vehicle assistant chat"><br><sub><b>AI vehicle assistant</b></sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/screenshots/recommendations.png" alt="Smart recommendations"><br><sub><b>Smart recommendations</b></sub></td>
+    <td width="50%" valign="top"><img src="docs/screenshots/vehicle-health.png" alt="Vehicle health"><br><sub><b>Vehicle health</b></sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/screenshots/consumables.png" alt="Consumables tracking"><br><sub><b>Consumables tracking</b></sub></td>
+    <td width="50%" valign="top"><img src="docs/screenshots/reminders.png" alt="Reminders"><br><sub><b>Reminders</b></sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/screenshots/calendar.png" alt="Calendar"><br><sub><b>Calendar</b></sub></td>
+    <td width="50%" valign="top"><img src="docs/screenshots/fuel-add.png" alt="Log a fuel entry"><br><sub><b>Log fuel</b></sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/screenshots/vehicle-add.png" alt="Add a vehicle"><br><sub><b>Add a vehicle</b></sub></td>
+    <td width="50%" valign="top"><img src="docs/screenshots/settings.png" alt="Settings"><br><sub><b>Settings</b></sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/screenshots/profile.png" alt="Profile"><br><sub><b>Profile</b></sub></td>
+    <td width="50%" valign="top"><img src="docs/screenshots/login.png" alt="Sign in"><br><sub><b>Sign in</b></sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/screenshots/register.png" alt="Create account"><br><sub><b>Create account</b></sub></td>
+    <td width="50%" valign="top"><img src="docs/screenshots/change-password.png" alt="Change password"><br><sub><b>Change password</b></sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/screenshots/security-questions.png" alt="Security questions"><br><sub><b>Security questions</b></sub></td>
+    <td width="50%" valign="top"></td>
+  </tr>
+</table>
+
+> Screens shown with demo data on the dark theme. A matching light theme is built in.
+
+---
+
 ## Quick Start (Recommended Method)
 
 ### Prerequisites
@@ -312,7 +358,7 @@ GearCargo requires several cryptographic secrets. **Never use default values in 
 
 #### 1. SECRET_KEY (Flask session encryption)
 
-\`\`\`bash
+```bash
 # Using Python
 python3 -c "import secrets; print(secrets.token_hex(32))"
 
@@ -320,31 +366,31 @@ python3 -c "import secrets; print(secrets.token_hex(32))"
 openssl rand -hex 32
 
 # Example output: a1b2c3d4e5f6...64 characters
-\`\`\`
+```
 
 #### 2. JWT_SECRET_KEY (JWT token signing)
 
-\`\`\`bash
+```bash
 python3 -c "import secrets; print(secrets.token_hex(32))"
 # or
 openssl rand -hex 32
-\`\`\`
+```
 
 #### 3. WTF_CSRF_SECRET_KEY (CSRF protection)
 
-\`\`\`bash
+```bash
 python3 -c "import secrets; print(secrets.token_hex(32))"
 # or
 openssl rand -hex 32
-\`\`\`
+```
 
 #### 4. ENCRYPTION_KEY (Data encryption at rest)
 
-\`\`\`bash
+```bash
 python3 -c "import secrets; print(secrets.token_hex(32))"
 # or
 openssl rand -hex 32
-\`\`\`
+```
 
 > **Startup enforcement.** In any non-development environment (i.e. `FLASK_ENV`
 > is not `development`), GearCargo **refuses to start** if `SECRET_KEY`,
@@ -367,27 +413,27 @@ openssl rand -hex 32
 
 #### 5. DB_PASSWORD (PostgreSQL password)
 
-\`\`\`bash
+```bash
 # Generate a strong password
 python3 -c "import secrets; print(secrets.token_urlsafe(24))"
 # or
 openssl rand -base64 24
-\`\`\`
+```
 
 #### 6. REDIS_PASSWORD (Redis authentication)
 
-\`\`\`bash
+```bash
 python3 -c "import secrets; print(secrets.token_urlsafe(24))"
 # or
 openssl rand -base64 24
-\`\`\`
+```
 
 #### 7. VAPID Keys (Push notifications)
 
 VAPID keys are required for web push notifications. Generate them using:
 
 **Method 1: Using web-push CLI (Recommended)**
-\`\`\`bash
+```bash
 # Install web-push globally
 npm install -g web-push
 
@@ -397,10 +443,10 @@ web-push generate-vapid-keys
 # Output:
 # Public Key: BNx...
 # Private Key: abc...
-\`\`\`
+```
 
 **Method 2: Using Python**
-\`\`\`bash
+```bash
 pip install py-vapid
 
 python3 -c "
@@ -420,7 +466,7 @@ pub = base64.urlsafe_b64encode(
 print('VAPID_PUBLIC_KEY=' + pub)
 print('VAPID_PRIVATE_KEY=' + priv)
 "
-\`\`\`
+```
 
 **Method 3: Online Generator**
 Visit https://vapidkeys.com/ (use only for testing)
@@ -429,7 +475,7 @@ Visit https://vapidkeys.com/ (use only for testing)
 
 ### Complete .env Example
 
-\`\`\`bash
+```bash
 # ===========================================
 # GEARCARGO ENVIRONMENT CONFIGURATION
 # ===========================================
@@ -500,7 +546,7 @@ BACKUP_KEEP_LAST=7
 
 # Theme
 DEFAULT_THEME=dark
-\`\`\`
+```
 
 ---
 
@@ -539,26 +585,26 @@ ADMIN_PASSWORD=YourSecurePassword123!
 
 ### Method 2: Self-Registration (Bootstrap Only)
 
-If no \`ADMIN_EMAIL\`/\`ADMIN_PASSWORD\` environment variables are set:
+If no `ADMIN_EMAIL`/`ADMIN_PASSWORD` environment variables are set:
 
 1. Start the containers normally
 2. Navigate to your configured **admin domain** (or http://localhost:5000 if domains are not configured)
 3. **The first user to register automatically becomes the admin**
 4. After an admin exists, public self-registration is automatically disabled
 
-**Security Note:** This method is bootstrap-only and should be completed immediately after deployment. If \`ADMIN_DOMAIN\` is configured, first registration is only accepted from that domain.
+**Security Note:** This method is bootstrap-only and should be completed immediately after deployment. If `ADMIN_DOMAIN` is configured, first registration is only accepted from that domain.
 
 ### Verifying Admin Status
 
 After creating the admin, verify in the logs:
 
-\`\`\`bash
+```bash
 docker compose logs backend | grep -i admin
 
 # Expected output:
 # Default admin user created: admin@yourdomain.com
 # IMPORTANT: Change the admin password immediately and remove ADMIN_PASSWORD from environment!
-\`\`\`
+```
 
 ### Admin Capabilities
 
@@ -580,60 +626,60 @@ The admin user can:
 
 | Variable | Required | Description | Default |
 |----------|----------|-------------|---------|
-| \`SECRET_KEY\` | Yes | Flask secret key (64 hex chars) | - |
-| \`JWT_SECRET_KEY\` | Yes | JWT signing key (64 hex chars) | - |
-| \`DB_PASSWORD\` | Yes | PostgreSQL password | - |
-| \`REDIS_PASSWORD\` | Yes | Redis password | \`changeme\` |
-| \`APP_URL\` | Yes | Public URL of your app | \`http://localhost:5000\` |
-| \`ADMIN_DOMAIN\` | Optional | Domain reserved for admin logins | empty |
-| \`USER_DOMAIN\` | Optional | Domain reserved for non-admin logins | empty |
-| \`CORS_ORIGINS\` | Yes | Allowed origins (comma-separated) | \`http://localhost:5000\` |
-| \`WTF_CSRF_SECRET_KEY\` | Recommended | CSRF secret | Falls back to SECRET_KEY |
-| \`ENCRYPTION_KEY\` | Recommended | Data encryption key | - |
-| \`ADMIN_EMAIL\` | Optional | Auto-create admin email | - |
-| \`ADMIN_PASSWORD\` | Optional | Auto-create admin password | - |
-| \`MAIL_ENABLED\` | Optional | Enable email features | \`false\` |
-| \`VAPID_PUBLIC_KEY\` | Optional | Push notification public key | - |
-| \`VAPID_PRIVATE_KEY\` | Optional | Push notification private key (prefer Docker secret) | - |
-| \`MAX_UPLOAD_SIZE_MB\` | Optional | Max file upload size in MB | \`200\` |
-| \`GUNICORN_WORKERS\` | Optional | Gunicorn worker process count | \`4\` |
-| \`TRUSTED_PROXY_COUNT\` | Optional | Trusted reverse proxy depth for real IP detection | \`1\` |
-| \`GEOIP_DB_PATH\` | Optional | Container path to GeoLite2-City.mmdb for login country detection | empty |
-| \`WIDGET_CORS_ORIGINS\` | Optional | CORS origin allowlist for widget API endpoints | \`*\` |
-| \`BACKUP_KEEP_LAST\` | Optional | Number of daily/weekly backup archives to retain | \`7\` |
+| `SECRET_KEY` | Yes | Flask secret key (64 hex chars) | - |
+| `JWT_SECRET_KEY` | Yes | JWT signing key (64 hex chars) | - |
+| `DB_PASSWORD` | Yes | PostgreSQL password | - |
+| `REDIS_PASSWORD` | Yes | Redis password | `changeme` |
+| `APP_URL` | Yes | Public URL of your app | `http://localhost:5000` |
+| `ADMIN_DOMAIN` | Optional | Domain reserved for admin logins | empty |
+| `USER_DOMAIN` | Optional | Domain reserved for non-admin logins | empty |
+| `CORS_ORIGINS` | Yes | Allowed origins (comma-separated) | `http://localhost:5000` |
+| `WTF_CSRF_SECRET_KEY` | Recommended | CSRF secret | Falls back to SECRET_KEY |
+| `ENCRYPTION_KEY` | Recommended | Data encryption key | - |
+| `ADMIN_EMAIL` | Optional | Auto-create admin email | - |
+| `ADMIN_PASSWORD` | Optional | Auto-create admin password | - |
+| `MAIL_ENABLED` | Optional | Enable email features | `false` |
+| `VAPID_PUBLIC_KEY` | Optional | Push notification public key | - |
+| `VAPID_PRIVATE_KEY` | Optional | Push notification private key (prefer Docker secret) | - |
+| `MAX_UPLOAD_SIZE_MB` | Optional | Max file upload size in MB | `200` |
+| `GUNICORN_WORKERS` | Optional | Gunicorn worker process count | `4` |
+| `TRUSTED_PROXY_COUNT` | Optional | Trusted reverse proxy depth for real IP detection | `1` |
+| `GEOIP_DB_PATH` | Optional | Container path to GeoLite2-City.mmdb for login country detection | empty |
+| `WIDGET_CORS_ORIGINS` | Optional | CORS origin allowlist for widget API endpoints | `*` |
+| `BACKUP_KEEP_LAST` | Optional | Number of daily/weekly backup archives to retain | `7` |
 
 ### Ollama AI Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| \`OLLAMA_ENABLED\` | Enable all AI features | \`false\` |
-| \`OLLAMA_BASE_URL\` | Ollama server URL | \`http://host.docker.internal:11434\` |
-| \`OLLAMA_MODEL\` | Global default model (fallback for all tasks) | empty |
-| \`OLLAMA_TIMEOUT\` | HTTP timeout in seconds | \`60\` |
-| \`OLLAMA_MODEL_PREDICT\` | Model for nightly maintenance predictions (complex JSON + multilingual) | inherits \`OLLAMA_MODEL\` |
-| \`OLLAMA_MODEL_OCR\` | Model for receipt OCR data extraction (structured fields) | inherits \`OLLAMA_MODEL\` |
-| \`OLLAMA_MODEL_ANOMALY\` | Model for fuel anomaly detection (fast classification) | inherits \`OLLAMA_MODEL\` |
-| \`OLLAMA_MODEL_REMINDER\` | Model for AI-generated reminder suggestions | inherits \`OLLAMA_MODEL\` |
+| `OLLAMA_ENABLED` | Enable all AI features | `false` |
+| `OLLAMA_BASE_URL` | Ollama server URL | `http://host.docker.internal:11434` |
+| `OLLAMA_MODEL` | Global default model (fallback for all tasks) | empty |
+| `OLLAMA_TIMEOUT` | HTTP timeout in seconds | `60` |
+| `OLLAMA_MODEL_PREDICT` | Model for nightly maintenance predictions (complex JSON + multilingual) | inherits `OLLAMA_MODEL` |
+| `OLLAMA_MODEL_OCR` | Model for receipt OCR data extraction (structured fields) | inherits `OLLAMA_MODEL` |
+| `OLLAMA_MODEL_ANOMALY` | Model for fuel anomaly detection (fast classification) | inherits `OLLAMA_MODEL` |
+| `OLLAMA_MODEL_REMINDER` | Model for AI-generated reminder suggestions | inherits `OLLAMA_MODEL` |
 
 **Recommended model split** (8 GB VRAM):
 | Task | Model | Reason |
 |------|-------|--------|
-| Predictions, OCR, Reminders | \`qwen2.5\` | Best structured JSON + EN/RO/ES multilingual output |
-| Anomaly detection | \`llama3.2\` | Fast and lightweight — speed matters on every fuel save |
+| Predictions, OCR, Reminders | `qwen2.5` | Best structured JSON + EN/RO/ES multilingual output |
+| Anomaly detection | `llama3.2` | Fast and lightweight — speed matters on every fuel save |
 
 ### JWT Token Expiration
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| \`JWT_ACCESS_TOKEN_EXPIRES\` | Access token lifetime (seconds) | \`3600\` (1 hour) |
-| \`JWT_REFRESH_TOKEN_EXPIRES\` | Refresh token lifetime (seconds) | \`2592000\` (30 days) |
+| `JWT_ACCESS_TOKEN_EXPIRES` | Access token lifetime (seconds) | `3600` (1 hour) |
+| `JWT_REFRESH_TOKEN_EXPIRES` | Refresh token lifetime (seconds) | `2592000` (30 days) |
 
 ### Rate Limiting
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| \`RATELIMIT_ENABLED\` | Enable rate limiting | \`true\` |
-| \`RATELIMIT_DEFAULT\` | Default rate limit | \`200 per day\` (dev) / \`100 per hour\` (prod) |
+| `RATELIMIT_ENABLED` | Enable rate limiting | `true` |
+| `RATELIMIT_DEFAULT` | Default rate limit | `200 per day` (dev) / `100 per hour` (prod) |
 
 ---
 
@@ -652,13 +698,13 @@ Configure automatic backups in Settings > Backup:
 ### Manual Backup
 
 **Using the backup script:**
-\`\`\`bash
+```bash
 ./backup.sh daily
 # Creates: ./volumes/backups/system/daily/gearcargo_daily_YYYYMMDD_HHMMSS.tar.gz
 
 BACKUP_FREQUENCY=weekly ./backup.sh
 # Keeps the latest 3 weekly full-state archives
-\`\`\`
+```
 
 **Using the web interface:**
 1. Go to Settings > Backup
@@ -686,9 +732,9 @@ Destination order is significant: the first enabled destination is treated as pr
 ### Restore from Backup
 
 **Using the restore script:**
-\`\`\`bash
+```bash
 ./restore.sh ./volumes/backups/system/daily/gearcargo_daily_20240115_120000.tar.gz
-\`\`\`
+```
 
 **Using the web interface:**
 1. Go to Settings > Backup
@@ -746,52 +792,52 @@ pytest tests/test_backup_external_destinations.py -q
 
 ## API Documentation
 
-Base URL: \`/api/\`
+Base URL: `/api/`
 
 ### Authentication
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| \`/api/auth/register\` | POST | Register new user |
-| \`/api/auth/login\` | POST | Login (returns JWT) |
-| \`/api/auth/logout\` | POST | Logout (blacklists token) |
-| \`/api/auth/refresh\` | POST | Refresh access token |
-| \`/api/auth/me\` | GET | Get current user |
+| `/api/auth/register` | POST | Register new user |
+| `/api/auth/login` | POST | Login (returns JWT) |
+| `/api/auth/logout` | POST | Logout (blacklists token) |
+| `/api/auth/refresh` | POST | Refresh access token |
+| `/api/auth/me` | GET | Get current user |
 
 ### Vehicles
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| \`/api/vehicles\` | GET | List user's vehicles |
-| \`/api/vehicles\` | POST | Create vehicle |
-| \`/api/vehicles/<id>\` | GET | Get vehicle details |
-| \`/api/vehicles/<id>\` | PUT | Update vehicle |
-| \`/api/vehicles/<id>\` | DELETE | Delete vehicle |
+| `/api/vehicles` | GET | List user's vehicles |
+| `/api/vehicles` | POST | Create vehicle |
+| `/api/vehicles/<id>` | GET | Get vehicle details |
+| `/api/vehicles/<id>` | PUT | Update vehicle |
+| `/api/vehicles/<id>` | DELETE | Delete vehicle |
 
 ### Entries
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| \`/api/fuel\` | GET/POST | Fuel entries |
-| \`/api/services\` | GET/POST | Service entries |
-| \`/api/repairs\` | GET/POST | Repair entries |
-| \`/api/insurance\` | GET/POST | Insurance policies |
-| \`/api/taxes\` | GET/POST | Tax entries |
-| \`/api/parking\` | GET/POST | Parking entries |
+| `/api/fuel` | GET/POST | Fuel entries |
+| `/api/services` | GET/POST | Service entries |
+| `/api/repairs` | GET/POST | Repair entries |
+| `/api/insurance` | GET/POST | Insurance policies |
+| `/api/taxes` | GET/POST | Tax entries |
+| `/api/parking` | GET/POST | Parking entries |
 
 ### Other
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| \`/api/reminders\` | GET/POST | Reminders |
-| \`/api/attachments\` | GET/POST | File attachments |
-| \`/api/attachments/<id>/ocr\` | GET | Get OCR-extracted text for an attachment |
-| \`/api/attachments/<id>/ocr/retry\` | POST | Re-trigger OCR scan for an attachment |
-| \`/api/reports/generate\` | POST | Generate PDF report |
-| \`/api/backup/export\` | POST | Export backup |
+| `/api/reminders` | GET/POST | Reminders |
+| `/api/attachments` | GET/POST | File attachments |
+| `/api/attachments/<id>/ocr` | GET | Get OCR-extracted text for an attachment |
+| `/api/attachments/<id>/ocr/retry` | POST | Re-trigger OCR scan for an attachment |
+| `/api/reports/generate` | POST | Generate PDF report |
+| `/api/backup/export` | POST | Export backup |
 
 ### AI Endpoints (requires `OLLAMA_ENABLED=true`)
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| \`/api/predictions/generate\` | POST | Manually trigger AI maintenance predictions for a vehicle |
-| \`/api/predictions/status\` | GET | Ollama connectivity status and available models |
-| \`/api/vehicles/<id>/suggest-reminder\` | POST | Get 3 AI-generated reminder suggestions |
+| `/api/predictions/generate` | POST | Manually trigger AI maintenance predictions for a vehicle |
+| `/api/predictions/status` | GET | Ollama connectivity status and available models |
+| `/api/vehicles/<id>/suggest-reminder` | POST | Get 3 AI-generated reminder suggestions |
 ### Widget API (Gethomepage)
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
@@ -809,7 +855,7 @@ Base URL: \`/api/\`
 
 ## Project Structure
 
-\`\`\`
+```
 gearcargo/
 ├── backend/
 │   ├── app/
@@ -844,7 +890,7 @@ gearcargo/
 ├── backup.sh                  # Backup script
 ├── restore.sh                 # Restore script
 └── scripts/                   # Utility scripts
-\`\`\`
+```
 
 ---
 
@@ -868,7 +914,7 @@ docker compose -f docker-compose.dev.yml up -d --build
 ## Troubleshooting
 
 ### Container won't start
-\`\`\`bash
+```bash
 # Check logs
 docker compose logs backend
 
@@ -877,28 +923,28 @@ docker compose ps
 
 # Restart all services
 docker compose down && docker compose up -d
-\`\`\`
+```
 
 ### Database connection errors
-\`\`\`bash
+```bash
 # Check if DB is healthy
 docker compose exec db pg_isready -U gearcargo
 
 # Check DB logs
 docker compose logs db
-\`\`\`
+```
 
 ### Redis connection errors
-\`\`\`bash
+```bash
 # Test Redis connection
 docker compose exec redis redis-cli -a \$REDIS_PASSWORD ping
-\`\`\`
+```
 
 ### Permission errors on volumes
-\`\`\`bash
+```bash
 # Fix ownership (use your user ID)
 sudo chown -R 1000:1000 ./volumes/
-\`\`\`
+```
 
 ---
 
