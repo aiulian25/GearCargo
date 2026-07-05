@@ -1,148 +1,105 @@
-# GearCargo - Docker Compose Configuration
-# Version: 1.0
-# 
-# Usage:
-#   Basic (no Ollama):     docker compose up -d
-#   With local Ollama:     docker compose --profile ollama-local up -d
-#   With external Ollama:  Set OLLAMA_BASE_URL in .env, then docker compose up -d
-
-#version: '3.8'
+# GearCargo — the standard deployment (single image, pre-built, no build)
+#
+# The easiest way to run GearCargo. Pulls the ready all-in-one image from GHCR —
+# one container running PostgreSQL 16 + Redis 7 + gunicorn + scheduled backups
+# under s6-overlay. Only the app port is published; PostgreSQL and Redis bind to
+# 127.0.0.1 INSIDE the container and are never network-exposed.
+#
+# Fastest path:   ./setup.sh          (generates secrets, creates dirs, starts)
+#
+# Manual:
+#   1. cp .env.example .env   &&   nano .env          (fill APP_URL + secrets)
+#   2. mkdir -p secrets && nano secrets/vapid_private_key
+#   3. docker compose up -d      &&   docker compose logs -f
+#
+# Update:  docker compose pull   &&   docker compose up -d
+#
+# Synology / custom port: set APP_PORT in .env (e.g. 5050) — no separate file.
+# Migrating from the old 4-container stack? See README "Migrating to the single
+# container" (scripts/migrate-to-single.sh — safe, auto-rollback).
+# Want to build locally instead of pull? Use docker-compose.single.yml.
+# Prefer strict app/DB/Redis isolation? See examples/docker-compose.4container.yml
+# (the 4-container image is published as ghcr.io/aiulian25/gearcargo:multi).
 
 services:
-  # ============================================================
-  # BACKEND API + STATIC FILE SERVER
-  # Serves both API endpoints and built React frontend
-  # ============================================================
-  backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: gearcargo-backend
+  gearcargo:
+    image: ghcr.io/aiulian25/gearcargo:latest
+    container_name: gearcargo
     ports:
-      - "${APP_PORT:-5000}:5000"
+      # APP_BIND_IP defaults to all interfaces. If a reverse proxy runs on THIS
+      # host, set APP_BIND_IP=127.0.0.1 in .env so the app isn't reachable in
+      # plaintext from the network (SECURITY_ASSESSMENT.md D2). setup.sh offers this.
+      - "${APP_BIND_IP:-0.0.0.0}:${APP_PORT:-5000}:5000"
     environment:
-      - FLASK_ENV=${FLASK_ENV:-production}
-      - DATABASE_URL=postgresql://gearcargo:${DB_PASSWORD}@db:5432/gearcargo
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
+      - FLASK_ENV=production
+      # Embedded datastores on loopback. Point these at an external host to run
+      # in dual-mode (the embedded PG/Redis then stay dormant).
+      - DATABASE_URL=postgresql://gearcargo:${DB_PASSWORD}@127.0.0.1:5432/gearcargo
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@127.0.0.1:6379/0
+      - RATELIMIT_STORAGE_URL=redis://:${REDIS_PASSWORD}@127.0.0.1:6379/1
+      # Embedded server tuning
+      - PG_SHARED_BUFFERS=${PG_SHARED_BUFFERS:-256MB}
+      - PG_MAX_CONNECTIONS=${PG_MAX_CONNECTIONS:-100}
+      - REDIS_MAXMEMORY=${REDIS_MAXMEMORY:-128mb}
+      - GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}
+      # In-container scheduled backups
+      - BACKUP_ENABLED=${BACKUP_ENABLED:-true}
+      - BACKUP_KEEP_LAST=${BACKUP_KEEP_LAST:-7}
+
       - SECRET_KEY=${SECRET_KEY}
-      - APP_URL=${APP_URL:-http://localhost:5000}
-      
-      # Security - JWT
+      - APP_URL=${APP_URL}
+      - ADMIN_DOMAIN=${ADMIN_DOMAIN:-}
+      - USER_DOMAIN=${USER_DOMAIN:-}
+
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - JWT_ACCESS_TOKEN_EXPIRES=${JWT_ACCESS_TOKEN_EXPIRES:-3600}
       - JWT_REFRESH_TOKEN_EXPIRES=${JWT_REFRESH_TOKEN_EXPIRES:-2592000}
-      
-      # Security - CORS (comma-separated allowed origins)
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5000}
-      - CORS_SUPPORTS_CREDENTIALS=${CORS_SUPPORTS_CREDENTIALS:-true}
-      
-      # Security - CSRF Protection
-      - WTF_CSRF_ENABLED=${WTF_CSRF_ENABLED:-true}
+
+      - CORS_ORIGINS=${CORS_ORIGINS}
+      - CORS_SUPPORTS_CREDENTIALS=true
+
+      - WTF_CSRF_ENABLED=true
       - WTF_CSRF_SECRET_KEY=${WTF_CSRF_SECRET_KEY}
-      
-      # Security - Rate Limiting
-      - RATELIMIT_ENABLED=${RATELIMIT_ENABLED:-true}
-      - RATELIMIT_DEFAULT=${RATELIMIT_DEFAULT:-200 per day}
-      - RATELIMIT_STORAGE_URL=redis://:${REDIS_PASSWORD:-changeme}@redis:6379/1
-      
-      # Security - Session
-      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-true}
-      - SESSION_COOKIE_HTTPONLY=${SESSION_COOKIE_HTTPONLY:-true}
-      - SESSION_COOKIE_SAMESITE=${SESSION_COOKIE_SAMESITE:-Lax}
-      
-      # Encryption Key (for sensitive data at rest)
+
+      - RATELIMIT_ENABLED=true
+      - RATELIMIT_DEFAULT=${RATELIMIT_DEFAULT:-100 per hour}
+
+      # HTTPS required in production (put a reverse proxy in front for TLS)
+      - SESSION_COOKIE_SECURE=true
+      - SESSION_COOKIE_HTTPONLY=true
+      - SESSION_COOKIE_SAMESITE=Strict
+
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
-      
-      # Ollama configuration (external instance)
-      - OLLAMA_ENABLED=${OLLAMA_ENABLED:-true}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      # Global default model (used when a per-task override is not set)
+
+      - OLLAMA_ENABLED=${OLLAMA_ENABLED:-false}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
       - OLLAMA_MODEL=${OLLAMA_MODEL:-}
       - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-60}
-      # Per-task model overrides — leave empty to inherit OLLAMA_MODEL
       - OLLAMA_MODEL_PREDICT=${OLLAMA_MODEL_PREDICT:-}
       - OLLAMA_MODEL_OCR=${OLLAMA_MODEL_OCR:-}
       - OLLAMA_MODEL_ANOMALY=${OLLAMA_MODEL_ANOMALY:-}
       - OLLAMA_MODEL_REMINDER=${OLLAMA_MODEL_REMINDER:-}
-      
-      # Theme
+
       - DEFAULT_THEME=${DEFAULT_THEME:-dark}
-      
-      # App name (used in backup filenames)
       - APP_NAME=${APP_NAME:-GearCargo}
-      
-      # Default Admin (optional - created on first startup if no users exist)
-      # Remove these after first deployment for security
-      - ADMIN_EMAIL=${ADMIN_EMAIL:-}
-      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
-      
-      # Domain-based access control (SECURITY)
-      - ADMIN_DOMAIN=${ADMIN_DOMAIN:-}
-      - USER_DOMAIN=${USER_DOMAIN:-}
-      
-      # Email
-      - MAIL_ENABLED=${MAIL_ENABLED:-false}
-      - MAIL_SERVER=${MAIL_SERVER:-}
+      - MAX_UPLOAD_SIZE_MB=${MAX_UPLOAD_SIZE_MB:-200}
+
+      - MAIL_ENABLED=${MAIL_ENABLED:-true}
+      - MAIL_SERVER=${MAIL_SERVER}
       - MAIL_PORT=${MAIL_PORT:-587}
       - MAIL_USE_TLS=${MAIL_USE_TLS:-true}
-      - MAIL_USERNAME=${MAIL_USERNAME:-}
-      - MAIL_PASSWORD=${MAIL_PASSWORD:-}
-      - MAIL_DEFAULT_SENDER=${MAIL_DEFAULT_SENDER:-noreply@gearcargo.local}
-      # Push Notifications (VAPID)
-      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
-      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
-      - VAPID_SUBJECT=${VAPID_SUBJECT:-mailto:admin@gearcargo.local}
-      
-      # Worker count — capped to prevent OOM kills on many-core hosts
-      - GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}
-    user: "${PUID:-1000}:${PGID:-1000}"
-    read_only: true
-    tmpfs:
-      - /tmp
-      - /run
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    volumes:
-      - ./volumes/attachments:/app/volumes/attachments
-      - ./volumes/backups:/app/volumes/backups
-      - ./volumes/uploads:/app/uploads
-      - ./volumes/logs:/app/volumes/logs
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_started
-    labels:
-      - homepage.group=Apps
-      - homepage.name=GearCargo
-      - homepage.icon=${APP_URL:-http://localhost:5000}/logo.png
-      - homepage.href=${APP_URL:-http://localhost:5000}
-      - homepage.description=Vehicle management & expense tracking
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
-      interval: 30s
-      timeout: 10s
-      start_period: 40s
-      retries: 3
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - gearcargo-net
+      - MAIL_USERNAME=${MAIL_USERNAME}
+      - MAIL_PASSWORD=${MAIL_PASSWORD}
+      - MAIL_DEFAULT_SENDER=${MAIL_DEFAULT_SENDER}
 
-  # ============================================================
-  # POSTGRESQL DATABASE
-  # ============================================================
-  db:
-    image: postgres:16-alpine
-    container_name: gearcargo-db
-    environment:
-      - POSTGRES_USER=gearcargo
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
-      - POSTGRES_DB=gearcargo
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
+      - VAPID_SUBJECT=${VAPID_SUBJECT}
+
+      - GEOIP_DB_PATH=${GEOIP_DB_PATH:-}
+      - TRUSTED_PROXY_COUNT=${TRUSTED_PROXY_COUNT:-1}
+
+    # s6-overlay must start as root (PID 1) to supervise and drop each service to
+    # its own unprivileged user (postgres/redis/gearcargo).
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -153,76 +110,39 @@ services:
       - FOWNER
       - SETGID
       - SETUID
+      - KILL
     tmpfs:
+      # /run stays on the writable layer (s6 execs from /run/s6; Docker tmpfs is noexec).
       - /tmp
-      - /run/postgresql
+    secrets:
+      - vapid_private_key
     volumes:
-      - ./volumes/db:/var/lib/postgresql/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U gearcargo"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - gearcargo-net
-
-  # ============================================================
-  # REDIS CACHE/SESSIONS
-  # ============================================================
-  redis:
-    image: redis:7-alpine
-    container_name: gearcargo-redis
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-changeme}
-    read_only: true
-    tmpfs:
-      - /tmp
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - DAC_OVERRIDE
-      - SETGID
-      - SETUID
-    volumes:
+      # Embedded PostgreSQL data (kept separate from any 4-container ./volumes/db)
+      - ./volumes/pgdata:/var/lib/postgresql/data
       - ./volumes/redis:/data
-    restart: unless-stopped
+      - ./volumes/attachments:/app/volumes/attachments
+      - ./volumes/backups:/app/volumes/backups
+      - ./volumes/uploads:/app/uploads
+      - ./volumes/logs:/app/volumes/logs
+      - ./volumes/geoip:/app/volumes/geoip:ro
+    restart: always
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - gearcargo-net
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 90s
+      retries: 3
+    # No hard resource limits by default — keeps this file portable across hosts
+    # (Synology kernels lack the CPU CFS scheduler). To cap resources, copy the
+    # `deploy.resources` block from examples/docker-compose.4container.yml.
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
-  # ============================================================
-  # OLLAMA ML SERVICE (OPTIONAL)
-  # Use: docker compose --profile ollama-local up -d
-  # Or set OLLAMA_BASE_URL in .env to use external instance
-  # ============================================================
-  ollama:
-    image: ollama/ollama:latest
-    container_name: gearcargo-ollama
-    profiles: ["ollama-local"]
-    ports:
-      - "${OLLAMA_PORT:-11434}:11434"
-    volumes:
-      - ./volumes/ollama:/root/.ollama
-    restart: unless-stopped
-    # NVIDIA GPU support
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-    networks:
-      - gearcargo-net
-
-networks:
-  gearcargo-net:
-    driver: bridge
-    name: gearcargo-network
+secrets:
+  vapid_private_key:
+    file: ./secrets/vapid_private_key

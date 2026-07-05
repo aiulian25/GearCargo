@@ -194,268 +194,74 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 - Git
 - 2GB RAM recommended (the single container runs the app + PostgreSQL + Redis)
 
-### Recommended: Single Container (pre-built, no build)
+GearCargo ships as **one** container — `ghcr.io/aiulian25/gearcargo:latest` —
+bundling the app, PostgreSQL 16, Redis 7 and scheduled backups. Nothing to build.
 
-GearCargo ships as **one** container — `ghcr.io/aiulian25/gearcargo:latest` — that
-bundles the app, PostgreSQL 16, Redis 7 and scheduled backups. Nothing to build:
+### Install in 3 steps
 
 ```bash
 mkdir -p ~/gearcargo && cd ~/gearcargo
 
-# Compose file + env template
-curl -fsSL https://raw.githubusercontent.com/aiulian25/gearcargo/main/docker-compose.deploy.yml -o docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/aiulian25/gearcargo/main/.env.single.example -o .env
-nano .env                                   # set ALL secrets (see Credential Generation)
+# 1. Get the install files straight from the image (no repo access needed)
+docker run --rm ghcr.io/aiulian25/gearcargo:latest install > gearcargo-install.sh
+sh gearcargo-install.sh          # writes docker-compose.yml, .env.example, setup.sh
 
-# VAPID push key as a Docker secret
-mkdir -p secrets && nano secrets/vapid_private_key
-
-docker compose up -d
-docker compose logs -f
-```
-
-Only port `5000` is published; PostgreSQL and Redis bind to `127.0.0.1` **inside**
-the container and are never network-exposed. Put a reverse proxy in front for HTTPS.
-
-> **Already running the old 4-container stack?** See
-> [Migrating to the Single Container](#migrating-to-the-single-container) — the
-> guided script backs up, migrates and verifies your data, with automatic rollback.
-
-> **Need strict app/DB/Redis isolation?** The 4-container image is still published
-> as `ghcr.io/aiulian25/gearcargo:multi`; build it locally with
-> `docker-compose.prod.yml` or pin `:multi` in a 4-service compose.
-
-### Build from source (alternative)
-
-```bash
-# Clone the repository
-git clone https://github.com/aiulian25/GearCargo.git
-cd gearcargo
-
-# Run the setup script (generates credentials automatically)
-chmod +x setup.sh
+# 2. One guided step: generates every secret, creates ./volumes, starts the app
 ./setup.sh
 
-# Access at http://localhost:5000
+# 3. Open the printed URL and create your admin account.
 ```
 
-The setup script will:
-1. Check prerequisites
-2. Generate all required secret keys
-3. Generate VAPID keys for push notifications
-4. Ask about Ollama AI configuration
-5. Build and start all containers
-6. Run database migrations
+`setup.sh` asks only for your URL (and whether a reverse proxy runs on this host);
+it generates all secrets **inside the image** — including a valid Fernet
+`ENCRYPTION_KEY` and VAPID push keys — so the host needs nothing but Docker.
 
----
+Only the app port is published; PostgreSQL and Redis bind to `127.0.0.1` **inside**
+the container and are never network-exposed. Put a reverse proxy in front for HTTPS
+(say "yes" to the proxy prompt to loopback-bind the port).
 
-## Deployment Options
+> **Prefer to do it by hand?** `cp .env.example .env`, fill the `REQUIRED` block
+> (see [Credential Generation](#credential-generation)), `mkdir -p secrets` and add
+> your VAPID key, then `docker compose up -d`.
+>
+> **Custom port / Synology:** set `APP_PORT` in `.env` (e.g. `5050`) — no separate file.
+>
+> **Already on the old 4-container stack?** See [Migrating to the Single Container](#migrating-to-the-single-container) — guided, verified, auto-rollback.
 
-GearCargo provides **multiple deployment configurations** for different use cases:
-
----
-
-### Option 1: Development (\`docker-compose.yml\`)
-
-Best for: Local development, testing, feature development
-
-\`\`\`bash
-# Basic startup (no AI)
-docker compose up -d --build
-
-# With local Ollama AI
-docker compose --profile ollama-local up -d --build
-
-# With external Ollama server
-# Set OLLAMA_BASE_URL in .env first, then:
-docker compose up -d --build
-\`\`\`
-
-**Features:**
-- Debug mode enabled
-- Hot-reload for development
-- Verbose logging
-- All features available
-
----
-
-### Option 2: Production with AI (\`docker-compose.prod.yml\`)
-
-Best for: Full-featured production deployment with AI predictions
-
-\`\`\`bash
-# 1. Copy and configure production environment
-cp .env.production .env
-nano .env  # Edit all required values
-
-# 2. Build the image
-docker compose -f docker-compose.prod.yml build
-
-# 3. Start services
-docker compose -f docker-compose.prod.yml up -d
-
-# 4. View logs
-docker compose -f docker-compose.prod.yml logs -f backend
-\`\`\`
-
-**Features:**
-- Production-optimized settings
-- Resource limits (CPU/memory)
-- Log rotation
-- Health checks
-- Optional Ollama AI integration
-- HTTPS-ready session cookies
-
----
-
-### Option 3: Simple Production (\`docker-compose.simple.yml\`)
-
-Best for: Lightweight production without AI features
-
-\`\`\`bash
-# 1. Copy and configure simple environment
-cp .env.simple .env
-nano .env  # Edit all required values
-
-# 2. Build the image
-docker compose -f docker-compose.simple.yml build
-
-# 3. Start services
-docker compose -f docker-compose.simple.yml up -d
-
-# 4. View logs
-docker compose -f docker-compose.simple.yml logs -f backend
-\`\`\`
-
-**Features:**
-- Minimal resource usage
-- No Ollama dependency
-- Production-hardened
-- Ideal for VPS/small servers
-
----
-
-### Option 4: Pre-built Image (`docker-compose.deploy.yml`)
-
-Best for: Quick deployment without building, CI/CD pipelines
+### Build from source (for development)
 
 ```bash
-# 1. Copy and configure environment
-cp .env.example .env
-nano .env  # Edit all required values
-
-# 2. Login to GitHub Container Registry
-echo "YOUR_GITHUB_PAT" | docker login ghcr.io -u YOUR_USERNAME --password-stdin
-
-# 3. Deploy
-docker compose -f docker-compose.deploy.yml up -d
-
-# 4. Update to latest
-docker compose -f docker-compose.deploy.yml pull
-docker compose -f docker-compose.deploy.yml up -d --force-recreate
+git clone https://github.com/aiulian25/GearCargo.git && cd gearcargo
+cp .env.example .env && ./setup.sh            # or edit .env by hand
+docker compose -f docker-compose.single.yml up -d --build   # builds the single image
 ```
-
-**Features:**
-- No build step required — pulls pre-built image from GHCR
-- Identical security hardening as production
-- Resource limits and log rotation
-- Fastest deployment method
 
 ---
 
-### Option 5: Synology NAS (`docker-compose.synology.yml`)
+## Deployment options
 
-Best for: Synology DiskStation users
+For almost everyone, **the single container is the answer** — see
+[Install in 3 steps](#install-in-3-steps). Pick another row only if it matches you:
 
-```bash
-# 1. Configure environment
-cp .env.example .env
-nano .env  # Edit all values, set APP_PORT=5050
+| Scenario | What to use |
+|----------|-------------|
+| **Standard install** (recommended) | `docker-compose.yml` — pulls the single image. Run `./setup.sh` and you're done. |
+| **Custom port / Synology NAS** | The *same* `docker-compose.yml`; just set `APP_PORT` in `.env` (e.g. `5050`). No separate file. |
+| **Build from source / develop** | `docker-compose.single.yml` — builds the single image locally (`up -d --build`). |
+| **Strict app/DB/Redis isolation** | `examples/docker-compose.4container.yml` — three separate containers with per-service hardening. The 4-container image is also published as `:multi`. |
+| **External DB/Redis (dual-mode)** | The standard compose; point `DATABASE_URL` / `REDIS_URL` at your host and the embedded servers stay dormant. |
 
-# 2. Login to GHCR
-echo "YOUR_GITHUB_PAT" | sudo docker login ghcr.io -u YOUR_USERNAME --password-stdin
+**Image tags:** `ghcr.io/aiulian25/gearcargo:latest` is the **single all-in-one**
+image (recommended). `:multi` is the 4-container image (advanced isolation).
 
-# 3. Deploy
-sudo docker compose -f docker-compose.synology.yml up -d
-```
+The single container runs PostgreSQL 16 + Redis 7 + gunicorn + scheduled backups
+under [s6-overlay](https://github.com/just-containers/s6-overlay); only the app
+port is published and the datastores bind to `127.0.0.1` **inside** the container.
+Clean PostgreSQL shutdown on `docker stop` (no WAL recovery on next boot).
+**~2 GB RAM recommended.**
 
-**Features:**
-- Defaults to port 5050 (DSM uses 5000/5001)
-- Supports PUID/PGID for NAS permissions
-- No resource limits (Synology kernels lack CPU CFS scheduler)
-- Pre-built image from GHCR
-
----
-
-### Option 6: Single-Image / All-in-One (`docker-compose.single.yml`)
-
-Best for: The simplest possible install — **one container** to manage instead of four.
-
-One image runs PostgreSQL 16 + Redis 7 + the app (gunicorn) + scheduled backups
-together, supervised by [s6-overlay](https://github.com/just-containers/s6-overlay).
-Only port `5000` is published; the datastores bind to `127.0.0.1` **inside** the
-container and are never network-exposed.
-
-```bash
-# 1. Configure environment (reuse your existing secrets when migrating!)
-cp .env.single.example .env
-nano .env
-
-# 2. Build + start (one container)
-docker compose -f docker-compose.single.yml up -d --build
-
-# 3. Logs
-docker compose -f docker-compose.single.yml logs -f
-```
-
-**Dual-mode:** point `DATABASE_URL` / `REDIS_URL` at an external host and the
-matching embedded server stays dormant — the same image works with an external
-database if you prefer.
-
-**Already running the 4-container stack?** Migrate safely (backup-first, verified,
-auto-rollback) — the embedded database uses a **separate** `./volumes/pgdata`, so
-your existing `./volumes/db` is never touched and rollback is instant:
-
-```bash
-scripts/migrate-to-single.sh          # interactive; add --yes for non-interactive
-```
-
-**Trade-off:** consolidating into one container reduces process isolation between
-the app, database and Redis (they share a namespace). For a single-tenant,
-self-hosted app behind a reverse proxy this is a moderate, accepted trade-off —
-see `Single-Image.md` §9. If strict isolation matters, keep the 4-container
-`docker-compose.prod.yml` (both are built from this repo).
-
-**Features:**
-- **One** container, image, and thing to update
-- Embedded PostgreSQL 16 + Redis 7 (loopback-only) or external via URL
-- Built-in daily/weekly backups (same portable format as the 4-container stack)
-- Clean PostgreSQL shutdown on `docker stop` (no WAL recovery on next boot)
-- ~2 GB RAM recommended (runs all services in one container)
-
----
-
-### Deployment File Comparison
-
-| Feature | `docker-compose.yml` | `docker-compose.prod.yml` | `docker-compose.simple.yml` | `docker-compose.deploy.yml` | `docker-compose.synology.yml` |
-|---------|---------------------|---------------------------|----------------------------|----------------------------|-------------------------------|
-| **Use Case** | Development | Full Production | Lightweight Production | Pre-built Image | Synology NAS |
-| **Image Source** | Local build | Local build | Local build | GHCR | GHCR |
-| **Debug Mode** | Enabled | Disabled | Disabled | Disabled | Disabled |
-| **Ollama AI** | Optional | Optional | Disabled | Optional | Optional |
-| **Per-task Models** | Yes | Yes | N/A | Yes | Yes |
-| **Automated Backups** | No | Yes | No | No | No |
-| **Resource Limits** | None | 2 CPU, 1GB | 2 CPU, 1GB | 2 CPU, 1GB | None (Synology) |
-| **Log Rotation** | No | Yes | Yes | Yes | Yes |
-| **Read-only FS** | Yes | Yes | Yes | Yes | Yes |
-| **Best For** | Local dev | Self-hosted + AI | Minimal VPS | Quick deploy | NAS users |
-
-> **Note on image tags:** `ghcr.io/aiulian25/gearcargo:latest` is now the
-> **single-image** all-in-one build (used by `docker-compose.deploy.yml` and
-> `docker-compose.synology.yml`). The 4-container image is published as
-> `:multi`. The local-build files (`prod`, `simple`) are unaffected.
-
----
+- Every environment variable is documented in **`examples/.env.reference`**.
+- Advanced compose files live in **`examples/`** (see `examples/README.md`).
 
 ## Migrating to the Single Container
 
@@ -473,16 +279,19 @@ never deletes your old data, so you can roll back instantly.
 6. Restores your data and **verifies row counts match**, automatically rolling
    back to the 4-container stack if anything fails.
 
+Run it from a checkout of this repository (`scripts/migrate-to-single.sh` +
+`docker-compose.single.yml`), in the folder that holds your existing `.env`,
+`secrets/` and `volumes/`. It **reuses your existing `.env`** — same
+`ENCRYPTION_KEY` / `SECRET_KEY` / `JWT_SECRET_KEY`, so encrypted data stays
+readable.
+
 ```bash
-cd ~/gearcargo            # the folder with your existing .env, secrets/, volumes/
-
-# Reuse your EXISTING .env — same ENCRYPTION_KEY / SECRET_KEY / JWT_SECRET_KEY!
-curl -fsSL https://raw.githubusercontent.com/aiulian25/gearcargo/main/scripts/migrate-to-single.sh -o migrate-to-single.sh
-curl -fsSL https://raw.githubusercontent.com/aiulian25/gearcargo/main/docker-compose.single.yml -o docker-compose.single.yml
-chmod +x migrate-to-single.sh
-
-./migrate-to-single.sh                 # interactive; add --yes to skip prompts
+# from your repo checkout, pointed at your data dir:
+scripts/migrate-to-single.sh           # interactive; add --yes to skip prompts
 ```
+
+> If your old 4-container compose isn't `examples/docker-compose.4container.yml`,
+> set `GC_PROD_COMPOSE=/path/to/your-compose.yml` before running.
 
 > ⚠️ **Reuse the same `ENCRYPTION_KEY`.** A different key makes all encrypted PII
 > permanently unrecoverable. The script refuses to run if the key is missing.
@@ -491,7 +300,7 @@ chmod +x migrate-to-single.sh
 
 ```bash
 docker compose -f docker-compose.single.yml down
-docker compose -f docker-compose.prod.yml up -d      # back to the 4-container stack
+docker compose -f examples/docker-compose.4container.yml up -d   # back to the 4-container stack
 ```
 
 Keep the raw tarball and the old `./volumes/db` until the migrated install has run
@@ -705,9 +514,9 @@ GearCargo supports **two methods** for creating the initial admin user:
 
 ### Method 1: Environment Variables (Automatic - Recommended)
 
-**With the pre-built image** (`docker-compose.deploy.yml`), admin creation is **fully automatic!**
+**With the pre-built image** (`docker-compose.yml`), admin creation is **fully automatic!**
 
-Configure your `.env.production` file:
+Configure your `.env` file:
 ```bash
 ADMIN_EMAIL=admin@yourdomain.com
 ADMIN_USERNAME=admin
@@ -1027,17 +836,16 @@ gearcargo/
 │   │   └── db/               # IndexedDB (Dexie)
 │   └── package.json
 ├── volumes/                   # Persistent data
-│   ├── db/                   # PostgreSQL data
+│   ├── pgdata/               # PostgreSQL data (single image)
 │   ├── redis/                # Redis data
 │   ├── attachments/          # User uploads
-│   └── backups/              # Backup files
-├── docker-compose.yml         # Development config
-├── docker-compose.prod.yml    # Production config
-├── docker-compose.simple.yml  # Simple production
-├── docker-compose.deploy.yml  # Pre-built image deploy
-├── docker-compose.synology.yml # Synology NAS deploy
-├── Dockerfile                 # Multi-stage build
-├── setup.sh                   # Setup script
+│   └── backups/              # Backup archives
+├── docker-compose.yml         # Standard install — pulls the single image
+├── docker-compose.single.yml  # Dev — builds the single image locally
+├── examples/                  # Advanced: 4-container compose + full .env reference
+├── Dockerfile.single          # The single all-in-one image
+├── Dockerfile                 # 4-container backend image (published as :multi)
+├── setup.sh                   # Guided installer
 ├── backup.sh                  # Backup script
 ├── restore.sh                 # Restore script
 └── scripts/                   # Utility scripts
@@ -1047,33 +855,18 @@ gearcargo/
 
 ## Updating
 
-### Development
-\`\`\`bash
+### Standard (pre-built single image)
+```bash
+docker compose pull
+docker compose up -d
+```
+(Synology: prefix with `sudo`.)
+
+### Development (build from source)
+```bash
 git pull
-docker compose up -d --build
-\`\`\`
-
-### Production
-\`\`\`bash
-git pull
-docker compose -f docker-compose.prod.yml build
-docker compose -f docker-compose.prod.yml up -d --force-recreate
-docker compose -f docker-compose.prod.yml logs -f backend
-\`\`\`
-
-### Pre-built Image (GHCR)
-\`\`\`bash
-# Pull latest image from GitHub Container Registry
-docker pull ghcr.io/aiulian25/gearcargo:latest
-
-# Deploy / Synology
-docker compose -f docker-compose.deploy.yml pull
-docker compose -f docker-compose.deploy.yml up -d --force-recreate
-
-# Synology NAS
-sudo docker compose -f docker-compose.synology.yml pull
-sudo docker compose -f docker-compose.synology.yml up -d --force-recreate
-\`\`\`
+docker compose -f docker-compose.single.yml up -d --build
+```
 
 ---
 

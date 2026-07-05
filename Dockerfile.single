@@ -99,6 +99,13 @@ COPY --from=frontend-builder /frontend/dist /app/static
 # s6 service tree + service scripts (docker/rootfs → /)
 COPY docker/rootfs/ /
 
+# Self-contained install assets: the exact compose + env + setup baked in, so a
+# host with only Docker (private repo, no raw-GitHub access) can bootstrap via:
+#   docker run --rm ghcr.io/aiulian25/gearcargo:latest install > gearcargo-install.sh
+COPY docker-compose.yml .env.example setup.sh /install/
+COPY docker/install/print-installer.sh /install/print-installer.sh
+COPY docker/entrypoint.sh /usr/local/bin/gearcargo-entrypoint.sh
+
 # ------------------------------------------------------------
 # Users, directories, permissions
 # (postgres & redis users are created by their apt packages)
@@ -115,12 +122,16 @@ RUN set -eux; \
     chmod +x /etc/gearcargo/scripts/*.sh; \
     find /etc/s6-overlay/s6-rc.d -type f -name run -exec chmod +x {} +; \
     # /etc/cron.d entry must be root-owned and not group/other-writable.
-    chown root:root /etc/cron.d/gearcargo; chmod 644 /etc/cron.d/gearcargo
+    chown root:root /etc/cron.d/gearcargo; chmod 644 /etc/cron.d/gearcargo; \
+    # Install helpers executable.
+    chmod +x /install/print-installer.sh /install/setup.sh /usr/local/bin/gearcargo-entrypoint.sh
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
     CMD curl -f http://localhost:5000/health || exit 1
 
 EXPOSE 5000
 
-# s6-overlay is PID 1: reaps zombies, forwards signals, supervises the tree.
-ENTRYPOINT ["/init"]
+# Thin wrapper: `install` prints the self-extracting installer; anything else
+# hands off to the s6-overlay init (PID 1), which reaps zombies, forwards
+# signals, and supervises the service tree.
+ENTRYPOINT ["/usr/local/bin/gearcargo-entrypoint.sh"]

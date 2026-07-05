@@ -27,7 +27,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT_DIR"
 
-PROD_COMPOSE="docker-compose.prod.yml"
+# The 4-container ("prod") compose used by the OLD stack. It moved under examples/
+# in the install-simplification pass; override with GC_PROD_COMPOSE if yours differs.
+PROD_COMPOSE="${GC_PROD_COMPOSE:-examples/docker-compose.4container.yml}"
 SINGLE_COMPOSE="docker-compose.single.yml"
 ENV_FILE=".env"
 

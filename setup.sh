@@ -1,228 +1,142 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# ============================================================
+# GearCargo — one-step setup (single-image, pre-built)
+# ============================================================
+# Pulls the ready image, generates all secrets for you, creates the data dirs,
+# and starts the app. Re-runnable: it never overwrites an existing .env/secrets.
+#
+# The only thing that must exist on the host is Docker. All crypto (Fernet
+# ENCRYPTION_KEY, VAPID keys, tokens) is generated INSIDE the image, so you don't
+# need python/openssl locally.
+set -euo pipefail
 
-# GearCargo Setup Script
-# This script initializes the GearCargo application
+IMAGE="ghcr.io/aiulian25/gearcargo:latest"
 
-set -e
+RED=$'\033[0;31m'; GREEN=$'\033[0;32m'; YELLOW=$'\033[1;33m'; BLUE=$'\033[0;34m'; NC=$'\033[0m'
+say()  { printf '%s\n' "$*"; }
+ok()   { printf '%s✓%s %s\n' "$GREEN" "$NC" "$*"; }
+warn() { printf '%s!%s %s\n'  "$YELLOW" "$NC" "$*"; }
+die()  { printf '%s✗ %s%s\n' "$RED" "$*" "$NC" >&2; exit 1; }
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+cd "$(dirname "$0")"
 
-echo -e "${BLUE}"
-echo "╔═══════════════════════════════════════════════════════════════╗"
-echo "║                     GearCargo Setup                           ║"
-echo "║               Vehicle Management PWA                          ║"
-echo "╚═══════════════════════════════════════════════════════════════╝"
-echo -e "${NC}"
+printf '%s\n' "${BLUE}== GearCargo setup ==${NC}"
 
-# Check prerequisites
-echo -e "${YELLOW}Checking prerequisites...${NC}"
+# ── prerequisites ───────────────────────────────────────────
+command -v docker >/dev/null 2>&1 || die "Docker is not installed."
+if docker compose version >/dev/null 2>&1; then DC="docker compose"
+elif command -v docker-compose >/dev/null 2>&1; then DC="docker-compose"
+else die "Docker Compose v2 is required."; fi
+ok "Docker + Compose present"
+[ -f docker-compose.yml ] || die "Run this from the folder containing docker-compose.yml"
+[ -f .env.example ] || die ".env.example not found next to docker-compose.yml"
+[ "$(id -u)" = "0" ] && warn "Running as root — a non-root user in the 'docker' group is recommended."
 
-# Check Docker
-if ! command -v docker &> /dev/null; then
-    echo -e "${RED}❌ Docker is not installed. Please install Docker first.${NC}"
-    exit 1
-fi
-echo -e "${GREEN}✓ Docker is installed${NC}"
+# ── pull the image (also used to generate secrets) ──────────
+say "${YELLOW}Pulling ${IMAGE} …${NC}"
+docker pull "$IMAGE" >/dev/null
+ok "Image pulled"
 
-# Check Docker Compose
-if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
-    echo -e "${RED}❌ Docker Compose is not installed. Please install Docker Compose first.${NC}"
-    exit 1
-fi
-echo -e "${GREEN}✓ Docker Compose is installed${NC}"
-
-# Check if running as root (not recommended for docker)
-if [ "$EUID" -eq 0 ]; then
-    echo -e "${YELLOW}⚠ Running as root is not recommended. Consider using a non-root user with docker group.${NC}"
-fi
-
-# Create .env file if it doesn't exist
+# ── .env + secrets (generated once, never overwritten) ──────
+mkdir -p secrets
 if [ ! -f .env ]; then
-    echo -e "${YELLOW}Creating .env file from template...${NC}"
     cp .env.example .env
-    
-    # Generate secure keys
-    echo -e "${YELLOW}Generating secure keys...${NC}"
-    
-    # Generate SECRET_KEY
-    SECRET_KEY=$(openssl rand -hex 32)
-    sed -i "s/your-super-secret-key-change-in-production-min-32-chars/$SECRET_KEY/" .env
-    
-    # Generate JWT_SECRET_KEY
-    JWT_SECRET=$(openssl rand -hex 32)
-    sed -i "s/your-jwt-secret-key-change-in-production/$JWT_SECRET/" .env
-    
-    # Generate ENCRYPTION_KEY
-    ENCRYPTION_KEY=$(openssl rand -hex 32)
-    sed -i "s/your-encryption-key-32-bytes-hex/$ENCRYPTION_KEY/" .env
-    
-    echo -e "${GREEN}✓ Generated secure keys${NC}"
-    
-    echo -e "${YELLOW}"
-    echo "╔═══════════════════════════════════════════════════════════════╗"
-    echo "║                    IMPORTANT                                  ║"
-    echo "║  Please edit the .env file to configure:                      ║"
-    echo "║  - Database password                                          ║"
-    echo "║  - SMTP settings for emails                                   ║"
-    echo "║  - VAPID keys for push notifications                          ║"
-    echo "║  - Ollama settings (if using AI features)                     ║"
-    echo "╚═══════════════════════════════════════════════════════════════╝"
-    echo -e "${NC}"
+
+    say "${YELLOW}Generating secrets inside the image …${NC}"
+    # --entrypoint python3 bypasses the s6 init so nothing else starts.
+    GEN="$(docker run --rm --entrypoint python3 "$IMAGE" -c '
+import secrets, base64
+from cryptography.fernet import Fernet
+def t(): return secrets.token_urlsafe(48)
+print("SECRET_KEY="+t())
+print("JWT_SECRET_KEY="+t())
+print("WTF_CSRF_SECRET_KEY="+t())
+print("ENCRYPTION_KEY="+Fernet.generate_key().decode())
+print("DB_PASSWORD="+secrets.token_urlsafe(24))
+print("REDIS_PASSWORD="+secrets.token_urlsafe(24))
+from py_vapid import Vapid
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+v=Vapid(); v.generate_keys()
+# P-256 keys do NOT support Raw encoding — take the raw 32-byte scalar directly.
+priv=base64.urlsafe_b64encode(v._private_key.private_numbers().private_value.to_bytes(32,"big")).rstrip(b"=").decode()
+pub=base64.urlsafe_b64encode(v._private_key.public_key().public_bytes(Encoding.X962,PublicFormat.UncompressedPoint)).rstrip(b"=").decode()
+print("VAPID_PRIVATE_KEY="+priv)
+print("VAPID_PUBLIC_KEY="+pub)
+')"
+    [ -n "$GEN" ] || die "Secret generation failed."
+
+    set_env() { # key value  → replace "key=" in .env (| delimiter; values are url-safe)
+        local k="$1" v="$2"
+        sed -i "s|^${k}=.*|${k}=${v}|" .env
+    }
+    # Split on the FIRST '=' only — a Fernet ENCRYPTION_KEY ends in '=' padding
+    # that a normal IFS='=' split would strip.
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        k="${line%%=*}"; v="${line#*=}"
+        case "$k" in
+            VAPID_PRIVATE_KEY) printf '%s' "$v" > secrets/vapid_private_key; chmod 600 secrets/vapid_private_key ;;
+            * ) set_env "$k" "$v" ;;
+        esac
+    done <<< "$GEN"
+    ok "Secrets generated (ENCRYPTION_KEY is a Fernet key; VAPID private key → secrets/vapid_private_key)"
+
+    # ── URL + port ──────────────────────────────────────────
+    printf 'App URL (how you will reach GearCargo) [http://localhost:5000]: '
+    read -r app_url || true; app_url="${app_url:-http://localhost:5000}"
+    set_env APP_URL "$app_url"
+    set_env CORS_ORIGINS "$app_url"
+
+    printf 'App port [5000] (Synology: 5050): '
+    read -r app_port || true; app_port="${app_port:-5000}"
+    set_env APP_PORT "$app_port"
+
+    # ── loopback bind (SECURITY_ASSESSMENT.md D2) ───────────
+    printf 'Is a reverse proxy (nginx/Traefik/Caddy) running on THIS machine? [y/N]: '
+    read -r proxy || true
+    case "$proxy" in
+        y|Y|yes|YES)
+            if grep -q '^# APP_BIND_IP=' .env; then sed -i 's|^# APP_BIND_IP=.*|APP_BIND_IP=127.0.0.1|' .env
+            else printf 'APP_BIND_IP=127.0.0.1\n' >> .env; fi
+            set_env TRUSTED_PROXY_COUNT 1
+            ok "Bound to 127.0.0.1 — only your proxy can reach it" ;;
+        *)
+            set_env TRUSTED_PROXY_COUNT 0
+            warn "Listening on all interfaces — make sure your firewall blocks the port from the internet, or run behind a proxy." ;;
+    esac
 else
-    echo -e "${GREEN}✓ .env file exists${NC}"
+    ok ".env already exists — keeping it (no secrets changed)"
+    [ -f secrets/vapid_private_key ] || warn "secrets/vapid_private_key is missing — push notifications will be disabled."
 fi
 
-# Create required directories
-echo -e "${YELLOW}Creating required directories...${NC}"
-mkdir -p data/postgres
-mkdir -p data/redis
-mkdir -p data/backups
-mkdir -p data/uploads
-mkdir -p logs
-echo -e "${GREEN}✓ Directories created${NC}"
+# ── data directories (Synology needs these pre-created) ─────
+mkdir -p volumes/{pgdata,redis,attachments,uploads,backups,logs,geoip}
+ok "Data directories ready under ./volumes"
 
-# Generate VAPID keys if not set
-if grep -q "VAPID_PRIVATE_KEY=$" .env 2>/dev/null || grep -q "VAPID_PRIVATE_KEY=your-vapid" .env 2>/dev/null; then
-    echo -e "${YELLOW}Generating VAPID keys for push notifications...${NC}"
-    
-    # Check if we have python and can generate keys
-    if command -v python3 &> /dev/null; then
-        # Try to generate VAPID keys using Python.
-        # py_vapid stores keys as P-256 (ECDSA / SECP256R1).  The browser's
-        # PushManager requires the public key as the 65-byte uncompressed point
-        # (0x04 || X || Y) encoded in URL-safe base64 (no padding).
-        # pywebpush accepts the private key as the raw 32-byte scalar in
-        # URL-safe base64.  We use the cryptography library's serialisation API
-        # (always available alongside py_vapid) to extract both in the correct
-        # format.  NOTE: public_bytes_raw() does NOT exist on P-256 keys in the
-        # cryptography library — using it would silently fall into the except and
-        # produce unusable random bytes.
-        VAPID_KEYS=$(python3 -c "
-try:
-    from py_vapid import Vapid
-    from cryptography.hazmat.primitives.serialization import (
-        Encoding, PublicFormat, PrivateFormat, NoEncryption
-    )
-    import base64
-    vapid = Vapid()
-    vapid.generate_keys()
-    # Private: raw 32-byte scalar → URL-safe base64
-    priv_bytes = vapid._private_key.private_bytes(
-        Encoding.Raw, PrivateFormat.Raw, NoEncryption()
-    )
-    priv = base64.urlsafe_b64encode(priv_bytes).rstrip(b'=').decode()
-    # Public: uncompressed P-256 point (65 bytes: 04 || X || Y) → URL-safe base64
-    pub_bytes = vapid._private_key.public_key().public_bytes(
-        Encoding.X962, PublicFormat.UncompressedPoint
-    )
-    pub = base64.urlsafe_b64encode(pub_bytes).rstrip(b'=').decode()
-    print(priv)
-    print(pub)
-except Exception as e:
-    import sys
-    print(f'VAPID generation failed: {e}', file=sys.stderr)
-" 2>/dev/null || echo "")
-        
-        if [ -n "$VAPID_KEYS" ]; then
-            VAPID_PRIVATE=$(echo "$VAPID_KEYS" | head -1)
-            VAPID_PUBLIC=$(echo "$VAPID_KEYS" | tail -1)
-            sed -i "s/VAPID_PRIVATE_KEY=.*/VAPID_PRIVATE_KEY=$VAPID_PRIVATE/" .env
-            sed -i "s/VAPID_PUBLIC_KEY=.*/VAPID_PUBLIC_KEY=$VAPID_PUBLIC/" .env
-            echo -e "${GREEN}✓ VAPID keys generated${NC}"
-        fi
-    fi
-fi
+# ── start ───────────────────────────────────────────────────
+say "${YELLOW}Starting GearCargo …${NC}"
+$DC up -d
 
-# Ollama configuration
-echo -e "${YELLOW}"
-echo "Ollama AI Configuration:"
-echo "  1) Don't use Ollama (disabled)"
-echo "  2) Install Ollama locally via Docker"
-echo "  3) Connect to existing Ollama instance"
-echo -e "${NC}"
+# ── wait for health ─────────────────────────────────────────
+say "${YELLOW}Waiting for the app to become healthy (first boot initializes the database) …${NC}"
+name="$($DC ps -q gearcargo 2>/dev/null | head -1)"
+healthy=0
+for _ in $(seq 1 45); do
+    st="$(docker inspect -f '{{.State.Health.Status}}' "$name" 2>/dev/null || echo starting)"
+    [ "$st" = "healthy" ] && { healthy=1; break; }
+    sleep 4
+done
 
-read -p "Select option [1-3] (default: 1): " ollama_option
-ollama_option=${ollama_option:-1}
-
-case $ollama_option in
-    2)
-        echo -e "${GREEN}✓ Ollama will be installed locally${NC}"
-        sed -i "s/OLLAMA_ENABLED=false/OLLAMA_ENABLED=true/" .env
-        sed -i "s/OLLAMA_URL=.*/OLLAMA_URL=http:\/\/ollama:11434/" .env
-        DOCKER_PROFILE="--profile ollama-local"
-        ;;
-    3)
-        read -p "Enter Ollama URL (e.g., http://192.168.1.100:11434): " ollama_url
-        if [ -n "$ollama_url" ]; then
-            sed -i "s/OLLAMA_ENABLED=false/OLLAMA_ENABLED=true/" .env
-            sed -i "s|OLLAMA_URL=.*|OLLAMA_URL=$ollama_url|" .env
-            echo -e "${GREEN}✓ Configured to use external Ollama at $ollama_url${NC}"
-        fi
-        DOCKER_PROFILE=""
-        ;;
-    *)
-        echo -e "${GREEN}✓ Ollama disabled${NC}"
-        DOCKER_PROFILE=""
-        ;;
-esac
-
-# Build and start containers
-echo -e "${YELLOW}"
-echo "╔═══════════════════════════════════════════════════════════════╗"
-echo "║                   Building Containers                         ║"
-echo "╚═══════════════════════════════════════════════════════════════╝"
-echo -e "${NC}"
-
-# Determine docker compose command
-if docker compose version &> /dev/null; then
-    DOCKER_COMPOSE="docker compose"
+port="$(grep -E '^APP_PORT=' .env | cut -d= -f2)"; port="${port:-5000}"
+if [ "$healthy" = "1" ]; then
+    printf '%s\n' "${GREEN}== GearCargo is running 🎉 ==${NC}"
+    say "Open: ${BLUE}$(grep -E '^APP_URL=' .env | cut -d= -f2-)${NC}  (local: http://localhost:${port})"
+    say "First run? Create your admin account from the login screen."
 else
-    DOCKER_COMPOSE="docker-compose"
+    warn "It didn't report healthy yet. Check logs:  $DC logs -f"
 fi
-
-echo -e "${YELLOW}Building images (this may take a few minutes)...${NC}"
-$DOCKER_COMPOSE build
-
-echo -e "${YELLOW}Starting services...${NC}"
-$DOCKER_COMPOSE $DOCKER_PROFILE up -d
-
-# Wait for services to be ready
-echo -e "${YELLOW}Waiting for services to be ready...${NC}"
-sleep 10
-
-# Check if services are running
-if $DOCKER_COMPOSE ps | grep -q "Up"; then
-    echo -e "${GREEN}✓ Services are running${NC}"
-else
-    echo -e "${RED}❌ Some services failed to start. Check logs with: docker compose logs${NC}"
-    exit 1
-fi
-
-# Run database migrations
-echo -e "${YELLOW}Running database migrations...${NC}"
-$DOCKER_COMPOSE exec -T backend flask db upgrade 2>/dev/null || echo "Migrations will run on first request"
-
-# Get the port from .env or use default
-PORT=$(grep "^PORT=" .env | cut -d= -f2)
-PORT=${PORT:-5000}
-
-echo -e "${GREEN}"
-echo "╔═══════════════════════════════════════════════════════════════╗"
-echo "║                   Setup Complete! 🎉                          ║"
-echo "╚═══════════════════════════════════════════════════════════════╝"
-echo -e "${NC}"
-
-echo -e "GearCargo is now running at: ${BLUE}http://localhost:${PORT}${NC}"
-echo ""
-echo "Useful commands:"
-echo "  • View logs:        $DOCKER_COMPOSE logs -f"
-echo "  • Stop services:    $DOCKER_COMPOSE down"
-echo "  • Restart:          $DOCKER_COMPOSE restart"
-echo "  • Update:           git pull && $DOCKER_COMPOSE build && $DOCKER_COMPOSE up -d"
-echo ""
-echo -e "${YELLOW}First time? Create an admin account at: http://localhost:${PORT}/register${NC}"
+say ""
+say "Useful commands:"
+say "  • Logs:    $DC logs -f"
+say "  • Stop:    $DC down"
+say "  • Update:  $DC pull && $DC up -d"

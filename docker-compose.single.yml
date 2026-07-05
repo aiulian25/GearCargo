@@ -1,14 +1,15 @@
-# GearCargo — Single-Image deployment (Option A, all-in-one)
+# GearCargo — DEV / build-from-source compose (single all-in-one image)
 #
-# One container runs PostgreSQL 16 + Redis 7 + gunicorn + backup-cron under an
-# s6-overlay supervision tree. Only :5000 is published; the datastores bind to
-# 127.0.0.1 INSIDE the container and are never network-exposed.
+# Use this when you're developing GearCargo or want to build the image locally
+# instead of pulling it. End users should use docker-compose.yml (pulls the
+# ready image). This builds the SAME single image (PostgreSQL 16 + Redis 7 +
+# gunicorn + backup-cron under s6-overlay); only :5000 is published and the
+# datastores bind to 127.0.0.1 inside the container.
 #
 # Usage:
-#   1. Copy .env.single.example to .env and set all secrets (reuse your EXISTING
+#   1. Copy .env.example to .env and set the secrets (reuse your EXISTING
 #      ENCRYPTION_KEY / SECRET_KEY / JWT_SECRET_KEY when migrating!).
-#   2. Build: docker compose -f docker-compose.single.yml build
-#   3. Start: docker compose -f docker-compose.single.yml up -d
+#   2. Build + start: docker compose -f docker-compose.single.yml up -d --build
 #
 # Migrating from the 4-container stack? Use scripts/migrate-to-single.sh — it
 # backs up first, loads your data into the embedded PG, verifies row counts, and

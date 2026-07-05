@@ -2,12 +2,14 @@
 
 Complete step-by-step guide to deploy GearCargo on any Docker-capable machine — Linux servers, Synology NAS, cloud VMs, or Raspberry Pi.
 
-> **The recommended deployment is now the single all-in-one container** —
-> `ghcr.io/aiulian25/gearcargo:latest`, used by `docker-compose.deploy.yml` and
-> `docker-compose.synology.yml`. Jump to
+> **The recommended deployment is the single all-in-one container** —
+> `ghcr.io/aiulian25/gearcargo:latest`, used by the root `docker-compose.yml`.
+> The fastest path is the [main README "Install in 3 steps"](README.md#install-in-3-steps)
+> (`docker run --rm …/gearcargo:latest install` → `./setup.sh`). Jump to
 > [§15 Single-Image Deployment](#15-single-image--all-in-one-deployment) for the
-> quick path and migration guide. Sections 2–14 below also cover the 4-container
-> image (published as `:multi`) for those who want strict service isolation.
+> detailed guide and migration. Sections 2–14 below cover the 4-container image
+> (published as `:multi`, `examples/docker-compose.4container.yml`) for those who
+> want strict service isolation.
 
 ---
 
@@ -59,13 +61,18 @@ If not installed, follow the official guide: https://docs.docker.com/engine/inst
 
 ## 2. Download the Compose File
 
-Create a directory for GearCargo and download the compose file:
+Create a directory for GearCargo and get the install files **straight from the
+image** — no repository access needed:
 
 ```bash
 mkdir -p ~/gearcargo && cd ~/gearcargo
 
-curl -fsSL https://raw.githubusercontent.com/aiulian25/gearcargo/main/docker-compose.deploy.yml -o docker-compose.yml
+docker run --rm ghcr.io/aiulian25/gearcargo:latest install > gearcargo-install.sh
+sh gearcargo-install.sh      # writes docker-compose.yml, .env.example, setup.sh
 ```
+
+Then run `./setup.sh` (it generates every secret and starts the app — you can
+stop here) or continue with the manual steps below for full control.
 
 > **Synology / Portainer users:** You can paste the compose file directly into the Stacks UI instead. See [Platform-Specific Notes](#13-platform-specific-notes).
 
@@ -104,11 +111,12 @@ sudo chown -R 1000:1000 volumes/attachments volumes/backups volumes/uploads volu
 
 ## 4. Configure Environment Variables
 
-Copy the template and edit it:
+Copy the template (written by the image install in §2) and edit it — or let
+`./setup.sh` fill in every secret for you:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/aiulian25/gearcargo/main/.env.production -o .env
-nano .env     # or vi, micro, etc.
+cp .env.example .env
+nano .env     # or vi, micro, etc.  (full option list: examples/.env.reference)
 ```
 
 Below are all the sections you need to configure. **At minimum, you must change all passwords and secret keys.**
@@ -668,18 +676,22 @@ If domain-based access control is enabled and you get "Access denied for this do
 
 ### Synology DSM (Container Manager / SSH)
 
-GearCargo ships a **Synology-ready compose file** and **`.env` template** — no manual edits needed. The compose file already handles the two Synology-specific issues (UID mapping and missing CPU CFS scheduler).
+On Synology the **standard single-container `docker-compose.yml` works as-is** —
+just set `APP_PORT=5050` in `.env` (DSM uses 5000/5001). The single image starts
+as root and drops each service to its own user, so it fixes volume ownership
+automatically (no PUID/PGID juggling), and it carries no hard resource limits
+(Synology kernels lack the CPU CFS scheduler).
 
 | File | Purpose |
 |------|---------|
-| `docker-compose.synology.yml` | Compose file — reads UID/GID from `.env`, no `deploy:` resource limits |
-| `.env.synology` | Pre-configured `.env` with `PUID=1026`, `APP_PORT=5050`, `SESSION_COOKIE_SECURE=false` |
+| `docker-compose.yml` | The standard single-image compose (extract via the image `install`, or copy from the repo). Set `APP_PORT=5050`. |
+| `.env` | Copy from `.env.example`; or let `setup.sh` generate all secrets. |
 
 #### Quick Path — Container Manager UI
 
 1. **Create a project** in Container Manager → Project → Create
-2. Paste the contents of `docker-compose.synology.yml`
-3. Add environment variables from `.env.synology` (fill in all `CHANGE_ME` values)
+2. Paste the contents of `docker-compose.yml`
+3. Add environment variables from your `.env` (set `APP_PORT=5050`; generate secrets — see §4)
 4. Deploy
 
 #### Full Path — SSH
@@ -706,19 +718,23 @@ GearCargo ships a **Synology-ready compose file** and **`.env` template** — no
 
 4. **Create the project directory and volumes:**
    ```bash
-   sudo mkdir -p /volume1/docker/gearcargo/volumes/{db,redis,attachments,backups,uploads,logs}
-   sudo chown -R 1026:100 /volume1/docker/gearcargo/volumes
+   sudo mkdir -p /volume1/docker/gearcargo/volumes/{pgdata,redis,attachments,backups,uploads,logs,geoip}
    ```
+   (The single container runs as root and drops each service to its own user, so
+   you don't need to pre-set ownership as with the old 4-container setup.)
 
-5. **Download the Synology compose file and `.env` template:**
+5. **Get the install files from the image** (single container; `setup.sh` creates
+   the dirs above too):
    ```bash
    cd /volume1/docker/gearcargo
-   sudo curl -fsSL https://raw.githubusercontent.com/aiulian25/gearcargo/main/docker-compose.synology.yml -o docker-compose.yml
-   sudo curl -fsSL https://raw.githubusercontent.com/aiulian25/gearcargo/main/.env.synology -o .env
+   sudo docker run --rm ghcr.io/aiulian25/gearcargo:latest install > gearcargo-install.sh
+   sudo sh gearcargo-install.sh    # writes docker-compose.yml, .env.example, setup.sh
    ```
-   > If `curl` is unavailable, download both files on your PC and upload via DSM File Station.
+   > If Docker CLI isn't handy, download the files on your PC and upload via DSM File Station.
 
-6. **Edit `.env`** — fill in all `CHANGE_ME` values. See [Section 4](#4-configure-environment-variables) for details on generating secrets. Update `APP_URL` and `CORS_ORIGINS` with your Synology's IP:
+6. **Configure `.env`** — run `sudo ./setup.sh` to generate all secrets, **or** copy
+   `.env.example` to `.env` and edit it. Set `APP_PORT=5050` (DSM uses 5000/5001) and
+   point `APP_URL` / `CORS_ORIGINS` at your Synology. See [Section 4](#4-configure-environment-variables):
    ```bash
    sudo nano .env
    ```
@@ -859,25 +875,26 @@ the container and are never exposed to the network.
 > **Trade-off:** consolidating into one container reduces process isolation
 > between the app, database and Redis. For a single-tenant, self-hosted app
 > behind a reverse proxy this is a reasonable, deliberate trade-off. If you need
-> strict service isolation, keep the four-container `docker-compose.prod.yml` —
-> both are built from the same repository.
+> strict service isolation, use `examples/docker-compose.4container.yml` (image
+> also published as `:multi`) — both are built from the same repository.
 
 ### 15.1 Fresh install
+
+The easiest path is the [README "Install in 3 steps"](README.md#install-in-3-steps)
+(`docker run --rm …/gearcargo:latest install` → `./setup.sh`). Equivalent manual steps:
 
 ```bash
 mkdir -p ~/gearcargo && cd ~/gearcargo
 
-# Compose file + env template
-curl -fsSL https://raw.githubusercontent.com/aiulian25/gearcargo/main/docker-compose.single.yml -o docker-compose.single.yml
-curl -fsSL https://raw.githubusercontent.com/aiulian25/gearcargo/main/.env.single.example -o .env
-nano .env                      # set ALL secrets (see section 4.1)
+# Get the install files from the image (no repo access needed)
+docker run --rm ghcr.io/aiulian25/gearcargo:latest install > gearcargo-install.sh
+sh gearcargo-install.sh        # writes docker-compose.yml, .env.example, setup.sh
 
-# VAPID private key as a Docker secret (see section 4.7)
-mkdir -p secrets && nano secrets/vapid_private_key
+cp .env.example .env && nano .env    # or run ./setup.sh to generate everything
+mkdir -p secrets && nano secrets/vapid_private_key   # setup.sh does this for you
 
-# Build + start (one container)
-docker compose -f docker-compose.single.yml up -d --build
-docker compose -f docker-compose.single.yml logs -f
+docker compose up -d
+docker compose logs -f
 ```
 
 Data lives under `./volumes/` exactly as in the four-container stack, plus one new
@@ -911,14 +928,15 @@ The migration is **safe and reversible** — it uses the app's own portable back
 as the transfer format, restores into a **separate** `./volumes/pgdata`, and never
 touches your existing `./volumes/db`, so you can roll back instantly.
 
-```bash
-cd ~/gearcargo            # the dir with your existing .env, secrets/, volumes/
+Run from a checkout of this repository (`scripts/migrate-to-single.sh` +
+`docker-compose.single.yml`), pointed at the dir with your existing `.env`,
+`secrets/` and `volumes/`. It reuses your EXISTING `.env` (same `ENCRYPTION_KEY`
+/ `SECRET_KEY` / `JWT_SECRET_KEY`):
 
-# Reuse your EXISTING .env (same ENCRYPTION_KEY / SECRET_KEY / JWT_SECRET_KEY!),
-# then run the guided migration:
-curl -fsSL https://raw.githubusercontent.com/aiulian25/gearcargo/main/scripts/migrate-to-single.sh -o migrate-to-single.sh
-chmod +x migrate-to-single.sh
-./migrate-to-single.sh                 # interactive; add --yes for non-interactive
+```bash
+scripts/migrate-to-single.sh           # interactive; add --yes for non-interactive
+# If your old 4-container compose isn't examples/docker-compose.4container.yml:
+#   GC_PROD_COMPOSE=/path/to/your-compose.yml scripts/migrate-to-single.sh
 ```
 
 The script:
@@ -938,7 +956,7 @@ The script:
 
 ```bash
 docker compose -f docker-compose.single.yml down
-docker compose -f docker-compose.prod.yml up -d
+docker compose -f examples/docker-compose.4container.yml up -d
 ```
 
 ### 15.4 Backups
