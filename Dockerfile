@@ -34,7 +34,7 @@ RUN npm run build
 # ============================================================
 # STAGE 2: All-in-one runtime
 # Pinned to bookworm so PostgreSQL 16 (from PGDG) is available on both
-# amd64 and arm64 — the migration is a 16→16 logical restore (Single-Image.md §12).
+# amd64 and arm64 — the migration is a 16→16 logical restore.
 # ============================================================
 FROM python:3.11-slim-bookworm
 

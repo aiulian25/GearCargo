@@ -311,10 +311,8 @@ def create_app(config_class=None):
             'img-src': ["'self'", "data:", "blob:", "https:", "http:"],
             'connect-src': [
                 "'self'", "ws:", "wss:", "http:", "https:",
-                "https://api.open-meteo.com",
                 "https://vpic.nhtsa.dot.gov",
                 "https://nominatim.openstreetmap.org",
-                "https://air-quality-api.open-meteo.com",
                 "https://api.pwnedpasswords.com",
                 "https://fonts.googleapis.com",
                 "https://fonts.gstatic.com",
@@ -341,10 +339,8 @@ def create_app(config_class=None):
             'img-src': ["'self'", "data:", "blob:", "https:"],
             'connect-src': [
                 "'self'",
-                "https://api.open-meteo.com",
                 "https://vpic.nhtsa.dot.gov",
                 "https://nominatim.openstreetmap.org",
-                "https://air-quality-api.open-meteo.com",
                 "https://api.pwnedpasswords.com",  # HIBP password breach check
                 "https://fonts.googleapis.com",
                 "https://fonts.gstatic.com"
@@ -717,7 +713,7 @@ def create_app(config_class=None):
         return jsonify({
             'status': 'healthy',
             'app': 'GearCargo',
-            'version': '1.1.0',
+            'version': '1.2.0',
             'redis_ok': _redis_available,
         }), 200
 
@@ -730,12 +726,21 @@ def create_app(config_class=None):
         assistant name as the backend system prompt, so white-label instances
         that set CHAT_ASSISTANT_NAME stay in sync. No secrets are exposed.
         """
+        # Whether the AI assistant (Ollama) is both enabled AND has a URL — the
+        # same two conditions the chat endpoint requires. Lets the SPA hide the
+        # assistant entry points when there's no AI integration, and surface them
+        # automatically once one is added (the SPA re-reads this config).
+        ai_enabled = bool(
+            app.config.get('OLLAMA_ENABLED', False)
+            and (app.config.get('OLLAMA_URL') or app.config.get('OLLAMA_BASE_URL'))
+        )
         return jsonify({
             'app_name': app.config.get('APP_NAME', 'GearCargo'),
             'assistant_name': (
                 app.config.get('CHAT_ASSISTANT_NAME')
                 or app.config.get('APP_NAME', 'GearCargo')
             ),
+            'ai_enabled': ai_enabled,
         })
 
     @app.route('/uploads/<path:filename>')

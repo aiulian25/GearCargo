@@ -109,7 +109,7 @@ export default function TermsOfService({ isOpen, onClose }) {
                 {t('terms.title')}
               </h2>
               <p className="text-sm text-[var(--color-text-muted)]">
-                {t('terms.lastUpdated')}: February 2026
+                {t('terms.lastUpdated')}: July 2026
               </p>
             </div>
           </div>
@@ -151,16 +151,16 @@ export default function TermsOfService({ isOpen, onClose }) {
             <BulletPoint>{t('terms.acceptanceItem3')}</BulletPoint>
           </TermsSection>
 
-          {/* Proprietary Software */}
-          <TermsSection icon={Icons.lock} title={t('terms.proprietaryTitle')}>
+          {/* License (MIT) */}
+          <TermsSection icon={Icons.lock} title={t('terms.licenseTitle')}>
             <div className="p-4 bg-[var(--color-bg-tertiary)] rounded-lg border border-[var(--color-border)] mb-3">
-              <p className="text-[var(--color-text)] font-medium">{t('terms.proprietaryHighlight')}</p>
+              <p className="text-[var(--color-text)] font-medium">{t('terms.licenseHighlight')}</p>
             </div>
-            <p className="mb-3">{t('terms.proprietaryDesc')}</p>
-            <BulletPoint>{t('terms.proprietaryItem1')}</BulletPoint>
-            <BulletPoint>{t('terms.proprietaryItem2')}</BulletPoint>
-            <BulletPoint>{t('terms.proprietaryItem3')}</BulletPoint>
-            <BulletPoint>{t('terms.proprietaryItem4')}</BulletPoint>
+            <p className="mb-3">{t('terms.licenseDesc')}</p>
+            <BulletPoint>{t('terms.licenseItem1')}</BulletPoint>
+            <BulletPoint>{t('terms.licenseItem2')}</BulletPoint>
+            <BulletPoint>{t('terms.licenseItem3')}</BulletPoint>
+            <BulletPoint>{t('terms.licenseItem4')}</BulletPoint>
           </TermsSection>
 
           {/* User Obligations - Security */}

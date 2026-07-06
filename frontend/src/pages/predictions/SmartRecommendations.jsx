@@ -14,16 +14,6 @@ const Icons = {
       <path d="M12 3l1.912 5.813a2 2 0 001.275 1.275L21 12l-5.813 1.912a2 2 0 00-1.275 1.275L12 21l-1.912-5.813a2 2 0 00-1.275-1.275L3 12l5.813-1.912a2 2 0 001.275-1.275L12 3z"/>
     </svg>
   ),
-  assistant: (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"/><path d="M19 14l.8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8L19 14z"/>
-    </svg>
-  ),
-  chevronDown: (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="6 9 12 15 18 9"/>
-    </svg>
-  ),
   clock: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
@@ -94,9 +84,6 @@ export default function SmartRecommendations() {
   const [recommendations, setRecommendations] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [vehicles, setVehicles] = useState([])
-  // Assistant entry (moved here from the vehicle overview page). The chat is
-  // vehicle-scoped, so for multiple vehicles we present a small picker.
-  const [assistantOpen, setAssistantOpen] = useState(false)
 
   // Mark Done state
   const [completingRec, setCompletingRec] = useState(null)
@@ -467,70 +454,6 @@ export default function SmartRecommendations() {
             {t('smartRecommendations.subtitle') || 'AI-powered insights for your vehicles'}
           </p>
         </div>
-
-        {/* Assistant entry — single vehicle links straight to its chat; multiple
-            vehicles open a picker. The chat itself is unchanged and still
-            answers cross-vehicle questions. */}
-        {vehicles.length > 0 && (
-          <div className="relative ml-auto shrink-0">
-            {vehicles.length === 1 ? (
-              <Link
-                to={`/vehicles/${vehicles[0].id}/chat`}
-                state={{ from: '/recommendations' }}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium bg-purple-500/10 text-purple-600 dark:text-purple-300 hover:bg-purple-500/20 active:scale-95 transition-all touch-manipulation"
-              >
-                {Icons.assistant}
-                <span className="hidden xs:inline">{t('smartRecommendations.assistant') || 'Assistant'}</span>
-              </Link>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setAssistantOpen((o) => !o)}
-                  aria-haspopup="menu"
-                  aria-expanded={assistantOpen}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium bg-purple-500/10 text-purple-600 dark:text-purple-300 hover:bg-purple-500/20 active:scale-95 transition-all touch-manipulation"
-                >
-                  {Icons.assistant}
-                  <span className="hidden xs:inline">{t('smartRecommendations.assistant') || 'Assistant'}</span>
-                  {Icons.chevronDown}
-                </button>
-                {assistantOpen && (
-                  <>
-                    {/* Click-away backdrop */}
-                    <button
-                      type="button"
-                      aria-hidden="true"
-                      tabIndex={-1}
-                      onClick={() => setAssistantOpen(false)}
-                      className="fixed inset-0 z-10 cursor-default"
-                    />
-                    <div
-                      role="menu"
-                      className="absolute right-0 mt-1 w-60 max-h-72 overflow-y-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-primary)] shadow-lg z-20 py-1"
-                    >
-                      <p className="px-3 py-1.5 text-2xs text-[var(--color-text-muted)]">
-                        {t('smartRecommendations.assistantPick') || 'Choose a vehicle to chat about'}
-                      </p>
-                      {vehicles.map((v) => (
-                        <Link
-                          key={v.id}
-                          to={`/vehicles/${v.id}/chat`}
-                          state={{ from: '/recommendations' }}
-                          role="menuitem"
-                          onClick={() => setAssistantOpen(false)}
-                          className="block px-3 py-2 text-sm hover:bg-[var(--color-bg-secondary)] truncate"
-                        >
-                          {v.name || [v.year, v.make, v.model].filter(Boolean).join(' ') || `#${v.id}`}
-                        </Link>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Seasonal Checklists Section */}

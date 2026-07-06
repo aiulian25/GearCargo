@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
-import { BUILD, IS_PUBLISHED_BUILD } from '../config/build'
+import { BUILD, IS_PUBLISHED_BUILD, IS_DEV_BUILD } from '../config/build'
 
 /**
  * App-update detection (PWA).
@@ -101,9 +101,32 @@ export function UpdateProvider({ children }) {
     setAvailable(false)
   }, [serverInfo])
 
+  // Open the details modal. On a dev build there is no real update to show, so
+  // we load the local /version.json and synthesise a "feature" manifest — this
+  // renders exactly what production users will see on the next update, letting
+  // us preview it from the always-clickable dev badge before pushing.
+  const openModal = useCallback(async () => {
+    if (IS_DEV_BUILD && !serverInfo) {
+      let cl = null
+      try {
+        const vr = await fetch(`/version.json?t=${Date.now()}`, { cache: 'no-store' })
+        if (vr.ok) cl = await vr.json()
+      } catch { /* changelog is optional in preview */ }
+      if (cl) setChangelog(cl)
+      setKind('feature')
+      setServerInfo({
+        version: cl?.version || 'dev',
+        git_sha: 'preview',
+        build_date: cl?.date || '',
+        patched_packages: [],
+      })
+    }
+    setOpen(true)
+  }, [serverInfo])
+
   const value = {
-    available, kind, serverInfo, changelog,
-    open, openModal: () => setOpen(true), closeModal: () => setOpen(false),
+    available, kind, serverInfo, changelog, isDev: IS_DEV_BUILD,
+    open, openModal, closeModal: () => setOpen(false),
     applyUpdate, dismiss,
   }
   return <UpdateContext.Provider value={value}>{children}</UpdateContext.Provider>

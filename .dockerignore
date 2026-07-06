@@ -47,6 +47,10 @@ docker-compose.*.yml
 *.tmp
 .cache
 
+# Frontend build output — the frontend-builder stage produces the real /app/static.
+# Excluding it here stops `COPY backend/ .` from carrying stale bundles into the image.
+backend/static
+
 # Test files
 tests
 *.test.js

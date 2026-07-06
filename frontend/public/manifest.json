@@ -117,7 +117,7 @@
       "sizes": "1400x875",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "Your garage dashboard with weather and live fuel prices"
+      "label": "Your garage dashboard with live fuel prices"
     },
     {
       "src": "/screenshots/expenses.png",

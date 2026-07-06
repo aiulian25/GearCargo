@@ -6,7 +6,7 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 
 <table>
   <tr>
-    <td width="50%" valign="top"><img src="docs/screenshots/dashboard.png" alt="Dashboard — weather, live fuel prices and your garage"><br><sub><b>Dashboard</b> — weather, live fuel prices &amp; your garage</sub></td>
+    <td width="50%" valign="top"><img src="docs/screenshots/dashboard.png" alt="Dashboard — live fuel prices and your garage"><br><sub><b>Dashboard</b> — live fuel prices &amp; your garage</sub></td>
     <td width="50%" valign="top"><img src="docs/screenshots/vehicle-detail.png" alt="Vehicle overview"><br><sub><b>Vehicle overview</b></sub></td>
   </tr>
   <tr>
@@ -942,18 +942,11 @@ sudo chown -R 1000:1000 ./volumes/
 
 ## License
 
-**Proprietary Software - All Rights Reserved**
+Released under the **MIT License** — free to use, copy, modify, merge, publish, distribute, sublicense, and sell, subject to including the copyright and permission notice.
 
-Copyright © 2024-2026 GearCargo. All rights reserved.
+Copyright © 2024-2026 GearCargo.
 
-This software and its source code are proprietary and confidential. Unauthorized copying, modification, distribution, or use of this software, via any medium, is strictly prohibited without prior written permission from the copyright holder.
-
-- No redistribution allowed
-- No modification for commercial use
-- No derivative works
-- No sublicensing
-
-For licensing inquiries, contact: licensing@gearcargo.app
+See the [LICENSE](LICENSE) file for the full text.
 
 ---
 

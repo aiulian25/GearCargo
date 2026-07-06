@@ -2,7 +2,7 @@
 # ============================================================
 # GearCargo — migrate 4-container stack → single image (Option A)
 # ============================================================
-# SAFE + REVERSIBLE (Single-Image.md §8). This script:
+# SAFE + REVERSIBLE. This script:
 #   1. Verifies your ENCRYPTION_KEY is present (PII is unrecoverable without it).
 #   2. Takes a portable backup with the app's own tool + a raw tarball.
 #   3. Records source row counts.

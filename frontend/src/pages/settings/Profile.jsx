@@ -812,7 +812,7 @@ export default function Profile() {
               </h3>
               
               <p className="text-xs text-[var(--color-text-muted)]">
-                {t('profile.locationDescription') || 'Set your location for accurate weather and fuel prices on the dashboard.'}
+                {t('profile.locationDescription') || 'Set your location for accurate fuel prices on the dashboard.'}
               </p>
               
               <div className="flex items-center justify-between">

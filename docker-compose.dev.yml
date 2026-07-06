@@ -103,7 +103,7 @@ services:
 
     # NOTE: no `user:` — s6-overlay must start as root (PID 1) to reap zombies,
     # forward signals, and drop each service to its own unprivileged user
-    # (postgres/redis/gearcargo) via s6-setuidgid. See Single-Image.md §9.
+    # (postgres/redis/gearcargo) via s6-setuidgid.
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -145,7 +145,7 @@ services:
     deploy:
       resources:
         limits:
-          # One container now runs PG + Redis + gunicorn + cron (Single-Image.md §10)
+          # One container now runs PG + Redis + gunicorn + cron
           cpus: '3'
           memory: 2G
         reservations:

@@ -1407,16 +1407,19 @@ _ON_TOPIC_TERMS = (
     'electric', 'hybrid', 'mileage', 'odometer', 'kilomet', 'year', 'make',
     'model', 'plate', 'vin', 'colour', 'color', 'transmission', 'gearbox',
     'drivetrain', 'tyre', 'tire', 'brake', 'oil', 'battery', 'wiper', 'coolant',
+    'filter', 'consumable', 'spark plug', 'timing belt', 'replace',
     'service', 'repair', 'maintenance', 'inspection', 'insurance', 'reminder',
     'cost', 'spend', 'spent', 'refuel', 'consumption', 'efficiency', 'how do i',
     'how to', 'where do i', 'how much',
     # romanian
     'mașin', 'masin', 'combustibil', 'benzin', 'motorin', 'kilometraj', 'revizie',
     'reparat', 'anvelop', 'ulei', 'asigurar', 'cheltuit', 'cum ',
+    'filtru', 'consumabil', 'bujii', 'curea', 'schimbat', 'piesă', 'piesa',
     # spanish
     'coche', 'carro', 'vehícul', 'vehicul', 'combustible', 'gasolina', 'gasóleo',
     'gasoleo', 'diésel', 'kilometraje', 'aceite', 'neumátic', 'neumatic', 'freno',
     'seguro', 'revisión', 'revision', 'reparación', 'coste', 'gast', 'cómo ', 'como ',
+    'filtro', 'consumible', 'bujía', 'bujia', 'correa', 'pieza', 'cambi',
 )
 
 
@@ -1849,7 +1852,7 @@ def get_vehicle_timeline(current_user, vehicle_id):
 
     _VALID_TYPES = {
         'all', 'fuel', 'service', 'repair', 'tax',
-        'parking', 'reminder', 'todo', 'insurance',
+        'parking', 'consumable', 'reminder', 'todo', 'insurance',
     }
     entry_type = request.args.get('type', 'all').strip().lower()
     if entry_type not in _VALID_TYPES:
@@ -1998,6 +2001,107 @@ def update_mileage(current_user, vehicle_id):
         'message_key': 'vehicles.mileageUpdated',
         'current_mileage': vehicle.current_mileage
     })
+
+
+@vehicles_bp.route('/recent-transactions', methods=['GET'])
+@token_required
+def get_recent_transactions(current_user):
+    """Most recent cost-bearing transactions across the user's whole fleet.
+
+    Merges the polymorphic Entry table (fuel / service / repair / tax / parking /
+    consumable) with insurance policies, newest-first, capped to `limit`. Every
+    item is enriched with its vehicle name so the dashboard can label and deep-link
+    each row to the vehicle timeline. Ownership is enforced by scoping to the
+    current user's vehicles — a user can never see another user's entries.
+
+    Query params:
+      limit – number of transactions to return, 1–20 (default 5)
+    """
+    limit = min(max(1, request.args.get('limit', 5, type=int)), 20)
+
+    # Map of the current user's vehicles → display name (make/model fallback).
+    # Small per-user set; also serves as the ownership allow-list for entries.
+    vehicles = Vehicle.query.filter_by(user_id=current_user.id).all()
+    if not vehicles:
+        return jsonify({'transactions': []})
+    vehicle_names = {
+        v.id: (v.name or f"{v.make or ''} {v.model or ''}".strip() or 'Vehicle')
+        for v in vehicles
+    }
+    vehicle_ids = list(vehicle_names.keys())
+
+    # Only cost-bearing entry types are "transactions" (reminders/todos excluded).
+    _TX_TYPES = ('fuel', 'service', 'repair', 'tax', 'parking', 'consumable')
+
+    # "Recent" = already happened. Exclude future-dated entries (e.g. a scheduled
+    # MOT/inspection logged for next year) — those belong in reminders/upcoming,
+    # not the recent-spending feed.
+    today = datetime.now(timezone.utc).date()
+
+    def _iso(d):
+        return d.isoformat() if d else None
+
+    items = []
+
+    # --- Entry-table transactions (single query, DB-ordered, bounded) ---
+    entries = (
+        Entry.query
+        .filter(Entry.vehicle_id.in_(vehicle_ids), Entry.type.in_(_TX_TYPES),
+                Entry.date <= today)
+        .order_by(Entry.date.desc(), Entry.id.desc())
+        .limit(limit)
+        .all()
+    )
+    for e in entries:
+        d = e.to_dict(include_attachments=False)
+        items.append({
+            'id':           d.get('id'),
+            'type':         d.get('type'),
+            'title':        d.get('title'),
+            'description':  d.get('description') or d.get('title'),
+            'cost':         d.get('cost') if d.get('cost') is not None else d.get('amount'),
+            'currency':     d.get('currency'),
+            'date':         d.get('date'),
+            'created_at':   d.get('created_at'),
+            'vehicle_id':   d.get('vehicle_id'),
+            'vehicle_name': vehicle_names.get(d.get('vehicle_id'), 'Vehicle'),
+        })
+
+    # --- Insurance (separate model) merged into the same feed ---
+    try:
+        from app.models.insurance import InsurancePolicy
+        policies = (
+            InsurancePolicy.query
+            .filter(InsurancePolicy.user_id == current_user.id,
+                    InsurancePolicy.vehicle_id.in_(vehicle_ids),
+                    InsurancePolicy.start_date <= today)
+            .order_by(InsurancePolicy.start_date.desc(), InsurancePolicy.id.desc())
+            .limit(limit)
+            .all()
+        )
+        for p in policies:
+            items.append({
+                'id':           p.id,
+                'type':         'insurance',
+                'title':        p.provider,
+                'description':  f"{p.provider} - {p.policy_number}" if p.policy_number else p.provider,
+                'cost':         float(p.premium) if p.premium is not None else None,
+                'currency':     p.currency,
+                'date':         _iso(p.start_date),
+                'created_at':   _iso(p.created_at),
+                'vehicle_id':   p.vehicle_id,
+                'vehicle_name': vehicle_names.get(p.vehicle_id, 'Vehicle'),
+            })
+    except Exception:
+        current_app.logger.exception('recent-transactions: insurance merge failed')
+
+    # Newest-first across both sources; break date ties with created_at then id.
+    items.sort(
+        key=lambda x: (x.get('date') or '', x.get('created_at') or '', x.get('id') or 0),
+        reverse=True,
+    )
+
+    return jsonify({'transactions': items[:limit]})
 
 
 @vehicles_bp.route('/summary', methods=['GET'])

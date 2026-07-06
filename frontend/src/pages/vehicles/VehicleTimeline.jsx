@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { vehicleApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { formatDateShort, formatMonthYear } from '../../utils/dateFormat'
@@ -53,6 +53,11 @@ const Icons = {
   insurance: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+    </svg>
+  ),
+  box: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 8V21H3V8M1 3h22v5H1zM10 12h4"/>
     </svg>
   ),
   filter: (
@@ -124,26 +129,43 @@ const entryTypes = {
     borderColor: 'border-indigo-500',
     editPath: 'todo'
   },
-  insurance: { 
-    icon: Icons.insurance, 
-    color: 'text-teal-500', 
+  insurance: {
+    icon: Icons.insurance,
+    color: 'text-teal-500',
     bgColor: 'bg-teal-500/10',
     borderColor: 'border-teal-500',
     editPath: 'insurance'
+  },
+  consumable: {
+    icon: Icons.box,
+    color: 'text-cyan-500',
+    bgColor: 'bg-cyan-500/10',
+    borderColor: 'border-cyan-500',
+    editPath: 'consumable'
   },
 }
 
 export default function VehicleTimeline() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { t } = useTranslation()
   const { currency } = useCurrency()
-  
+
+  // Deep-link support (from the dashboard Recent Transactions feed):
+  //   ?type=<entryType>  → pre-select that filter chip
+  //   ?focus=<entryId>   → scroll to + briefly highlight that row
+  const _VALID_FILTERS = ['all', 'fuel', 'service', 'repair', 'tax', 'parking', 'consumable', 'reminder', 'todo', 'insurance']
+  const initialType = (searchParams.get('type') || 'all').toLowerCase()
+  const focusId = searchParams.get('focus')
+
   const [vehicle, setVehicle] = useState(null)
   const [entries, setEntries] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
-  const [filter, setFilter] = useState('all')
+  const [filter, setFilter] = useState(_VALID_FILTERS.includes(initialType) ? initialType : 'all')
+  const [highlightId, setHighlightId] = useState(null)
+  const didFocusRef = useRef(false)
   const [showFilters, setShowFilters] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [hasMore, setHasMore] = useState(false)
@@ -156,6 +178,7 @@ export default function VehicleTimeline() {
     { id: 'repair', label: t('timeline.repair') || 'Repair' },
     { id: 'tax', label: t('timeline.tax') || 'Tax' },
     { id: 'parking', label: t('timeline.parking') || 'Parking' },
+    { id: 'consumable', label: t('timeline.consumable') || 'Consumable' },
     { id: 'reminder', label: t('timeline.reminder') || 'Reminder' },
     { id: 'todo', label: t('timeline.todo') || 'Todo' },
     { id: 'insurance', label: t('timeline.insurance') || 'Insurance' },
@@ -196,6 +219,25 @@ export default function VehicleTimeline() {
   useEffect(() => {
     fetchPage(1, filter, true)
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // After the first page loads, scroll to + briefly highlight the deep-linked
+  // entry (?focus=). Runs once; honours reduced-motion preferences.
+  useEffect(() => {
+    if (didFocusRef.current || !focusId || isLoading || entries.length === 0) return
+    const target = entries.find(e => String(e.id) === String(focusId))
+    if (!target) { didFocusRef.current = true; return }
+    didFocusRef.current = true
+    setHighlightId(target.id)
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`tx-${focusId}`)
+      if (el) {
+        const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+        el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' })
+      }
+    })
+    const timer = setTimeout(() => setHighlightId(null), 2600)
+    return () => clearTimeout(timer)
+  }, [focusId, isLoading, entries])
 
   // Filter change: reset and re-fetch from server
   const handleFilterChange = (newFilter) => {
@@ -356,15 +398,16 @@ export default function VehicleTimeline() {
                       const style = getEntryStyle(entry.type)
                       const editUrl = getEditUrl(entry)
                       
+                      const isHighlighted = highlightId != null && entry.id === highlightId
                       return (
-                        <div key={idx} className="relative pl-10">
+                        <div key={idx} id={`tx-${entry.id}`} className="relative pl-10 scroll-mt-24">
                           {/* Timeline dot */}
                           <div className={`absolute left-0 top-3 w-8 h-8 rounded-full ${style.bgColor} flex items-center justify-center ${style.color} z-[1]`}>
                             {style.icon}
                           </div>
-                          
+
                           {/* Entry card */}
-                          <div className="bg-[var(--color-bg-secondary)] rounded-xl p-4 border border-[var(--color-border)]">
+                          <div className={`bg-[var(--color-bg-secondary)] rounded-xl p-4 border transition-shadow duration-500 ${isHighlighted ? 'border-[var(--color-accent)] ring-2 ring-[var(--color-accent)]' : 'border-[var(--color-border)]'}`}>
                             <div className="flex items-start justify-between gap-2 mb-2">
                               <div className="flex-1 min-w-0">
                                 <span className={`inline-block px-2 py-0.5 rounded-full text-2xs font-medium ${style.bgColor} ${style.color} mb-1`}>

@@ -151,7 +151,7 @@ registerRoute(
   })
 )
 
-// Cache generic / third-party images (app icons, map tiles, weather, etc.).
+// Cache generic / third-party images (app icons, map tiles, etc.).
 // These are NOT per-user, so they are long-lived and not purged on logout.
 registerRoute(
   ({ request }) => request.destination === 'image',

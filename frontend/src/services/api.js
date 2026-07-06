@@ -111,6 +111,8 @@ export const vehicleApi = {
   getManual: (id) => api.get(`/vehicles/${id}/manual`),
   getTimeline: (id, page = 1, type = 'all', perPage = 50) =>
     api.get(`/vehicles/${id}/timeline?page=${page}&type=${type}&per_page=${perPage}`),
+  // Fleet-wide feed of the most recent cost-bearing transactions across all vehicles.
+  getRecentTransactions: (limit = 5) => api.get(`/vehicles/recent-transactions?limit=${limit}`),
   reorder: (order) => api.post('/vehicles/reorder', { order }),
   updateMileage: (id, mileage) => api.post(`/vehicles/${id}/mileage`, { mileage }),
   uploadPhoto: (id, file) => {
@@ -431,13 +433,6 @@ export const dashboardApi = {
 }
 
 export const externalApi = {
-  getWeather: (lat, lon, location) => {
-    const params = new URLSearchParams()
-    if (lat) params.append('lat', lat)
-    if (lon) params.append('lon', lon)
-    if (location) params.append('location', location)
-    return api.get(`/external/weather?${params}`)
-  },
   getFuelPrices: (country = 'UK', location = '', lat = null, lon = null, forceRefresh = false) => {
     const params = new URLSearchParams({ country })
     if (location) params.append('location', location)
@@ -445,19 +440,6 @@ export const externalApi = {
     if (lon) params.append('lon', lon)
     if (forceRefresh) params.append('force_refresh', 'true')
     return api.get(`/external/fuel-prices?${params}`)
-  },
-  getAirQuality: (lat, lon) => {
-    const params = new URLSearchParams()
-    if (lat) params.append('lat', lat)
-    if (lon) params.append('lon', lon)
-    return api.get(`/external/air-quality?${params}`)
-  },
-  getWeatherAlerts: (lat, lon, location) => {
-    const params = new URLSearchParams()
-    if (lat) params.append('lat', lat)
-    if (lon) params.append('lon', lon)
-    if (location) params.append('location', location)
-    return api.get(`/external/weather-alerts?${params}`)
   },
   getCurrencyRates: () => api.get('/external/currency-rates'),
 }

@@ -3,13 +3,13 @@ import { useTranslation } from '../../contexts/LanguageContext'
 /**
  * Inline "service unavailable / retry" affordance (IMPROVEMENTS.md §2).
  *
- * Shown in place of a widget when an optional external service (weather,
- * air quality, fuel prices, …) fails, instead of leaving a silently-empty
- * placeholder. Accessible (role="status"), dismissible, with a Retry action.
+ * Shown in place of a widget when an optional external service (fuel prices,
+ * …) fails, instead of leaving a silently-empty placeholder. Accessible
+ * (role="status"), dismissible, with a Retry action.
  * All copy is passed/looked-up via i18n — nothing hardcoded.
  *
  * Props:
- *   title     localized heading (e.g. "Weather unavailable").
+ *   title     localized heading (e.g. "Fuel prices unavailable").
  *   onRetry   handler for the Retry button (omit to hide it).
  *   retrying  shows a spinner + disables Retry while a retry is in flight.
  *   onDismiss handler for the dismiss (×) button (omit to hide it).

@@ -1,24 +1,24 @@
 {
-  "version": "1.1.0",
+  "version": "1.2.0",
   "date": "2026-07-06",
   "notes": {
     "en": [
-      { "type": "new", "title": "Smarter vehicle assistant", "desc": "Answers about your car's specs, fuel and history." },
-      { "type": "new", "title": "Redesigned charts", "desc": "Compact, mobile-first spending and forecast views." },
-      { "type": "fix", "title": "Offline entries confirm they're saved", "desc": "A clear 'will sync when back online' message instead of an error." },
-      { "type": "security", "title": "Hardened backups and dependencies", "desc": "SSRF-safe backup destinations and updated packages." }
+      { "type": "new", "title": "Recent Transactions on your dashboard", "desc": "See your latest fuel, service, tax and parking across every vehicle at a glance — tap any row to jump to it." },
+      { "type": "new", "title": "Assistant moved to the dashboard", "desc": "Open the AI assistant from the home screen with one tap (when your server has it enabled)." },
+      { "type": "new", "title": "Now open-source (MIT)", "desc": "GearCargo is released under the MIT license." },
+      { "type": "fix", "title": "Cleaner, focused dashboard", "desc": "Removed the weather widget and made sure Recent shows only spending that has already happened." }
     ],
     "ro": [
-      { "type": "new", "title": "Asistent auto mai inteligent", "desc": "Răspunde despre specificațiile, combustibilul și istoricul mașinii tale." },
-      { "type": "new", "title": "Grafice reproiectate", "desc": "Vizualizări compacte ale cheltuielilor și previziunilor, optimizate pentru mobil." },
-      { "type": "fix", "title": "Intrările offline confirmă salvarea", "desc": "Un mesaj clar „se va sincroniza când revii online” în loc de eroare." },
-      { "type": "security", "title": "Backup-uri și dependențe consolidate", "desc": "Destinații de backup protejate împotriva SSRF și pachete actualizate." }
+      { "type": "new", "title": "Tranzacții recente pe tabloul de bord", "desc": "Vezi cele mai noi cheltuieli — carburant, service, taxe și parcare — pentru toate vehiculele; atinge un rând pentru a-l deschide." },
+      { "type": "new", "title": "Asistentul a fost mutat pe tabloul de bord", "desc": "Deschide asistentul AI de pe ecranul principal cu o singură atingere (dacă serverul tău îl are activat)." },
+      { "type": "new", "title": "Acum open-source (MIT)", "desc": "GearCargo este publicat sub licența MIT." },
+      { "type": "fix", "title": "Tablou de bord mai curat și mai clar", "desc": "Am eliminat widget-ul meteo și ne-am asigurat că lista Recente afișează doar cheltuieli deja efectuate." }
     ],
     "es": [
-      { "type": "new", "title": "Asistente del vehículo más inteligente", "desc": "Responde sobre las especificaciones, el combustible y el historial de tu coche." },
-      { "type": "new", "title": "Gráficos rediseñados", "desc": "Vistas de gastos y previsiones compactas y adaptadas al móvil." },
-      { "type": "fix", "title": "Las entradas sin conexión confirman que se guardaron", "desc": "Un mensaje claro «se sincronizará al reconectar» en lugar de un error." },
-      { "type": "security", "title": "Copias de seguridad y dependencias reforzadas", "desc": "Destinos de copia protegidos contra SSRF y paquetes actualizados." }
+      { "type": "new", "title": "Transacciones recientes en tu panel", "desc": "Consulta tus últimos gastos —combustible, servicio, impuestos y aparcamiento— de todos los vehículos; toca cualquier fila para abrirla." },
+      { "type": "new", "title": "El asistente ahora en el panel", "desc": "Abre el asistente de IA desde la pantalla de inicio con un solo toque (si tu servidor lo tiene activado)." },
+      { "type": "new", "title": "Ahora de código abierto (MIT)", "desc": "GearCargo se publica bajo la licencia MIT." },
+      { "type": "fix", "title": "Panel más limpio y enfocado", "desc": "Quitamos el widget del tiempo y nos aseguramos de que Recientes muestre solo gastos ya realizados." }
     ]
   }
 }

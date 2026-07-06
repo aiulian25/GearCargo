@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BUILD } from '../../config/build'
+import { DISPLAY_VERSION } from '../../config/build'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { useLanguage, useTranslation } from '../../contexts/LanguageContext'
@@ -2621,7 +2621,7 @@ export default function Settings() {
             <div className="flex-1">
               <span className="text-sm">{t('settings.version')}</span>
             </div>
-            <span className="text-sm text-[var(--color-text-muted)] tabular-nums">{BUILD.version}</span>
+            <span className="text-sm text-[var(--color-text-muted)] tabular-nums">{DISPLAY_VERSION}</span>
           </div>
           
           <button 

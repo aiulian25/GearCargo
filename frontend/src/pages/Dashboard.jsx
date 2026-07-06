@@ -1,390 +1,12 @@
-import { useState, useEffect, useId, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { vehicleApi, externalApi, insuranceApi } from '../services/api'
+import { vehicleApi, externalApi, insuranceApi, configApi } from '../services/api'
 import { useCurrency, useTranslation } from '../contexts/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDate, formatDateShort } from '../utils/dateFormat'
-import WeatherAlerts, { WeatherAlertsModal } from '../components/weather/WeatherAlerts'
 import ServiceUnavailable from '../components/ui/ServiceUnavailable'
 import { useConfirm } from '../components/ui/ConfirmDialog'
-
-// Weather Icon Component - Clean SVG icons with unique IDs
-function WeatherIcon({ condition, size = 80 }) {
-  const id = useId().replace(/:/g, '')
-  
-  const icons = {
-    // Sunny / Clear
-    clear_day: (
-      <svg width={size} height={size} viewBox="0 0 100 100">
-        <defs>
-          <radialGradient id={`sun-${id}`} cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#FFF59D" />
-            <stop offset="60%" stopColor="#FFD54F" />
-            <stop offset="100%" stopColor="#FF8F00" />
-          </radialGradient>
-        </defs>
-        {/* Sun rays */}
-        {[0, 45, 90, 135, 180, 225, 270, 315].map((angle, i) => (
-          <line
-            key={i}
-            x1="50" y1="50"
-            x2={50 + 40 * Math.cos(angle * Math.PI / 180)}
-            y2={50 + 40 * Math.sin(angle * Math.PI / 180)}
-            stroke="#FFD54F"
-            strokeWidth="4"
-            strokeLinecap="round"
-          />
-        ))}
-        <circle cx="50" cy="50" r="22" fill={`url(#sun-${id})`} />
-      </svg>
-    ),
-
-    // Partly Cloudy
-    partly_cloudy_day: (
-      <svg width={size} height={size} viewBox="0 0 100 100">
-        <defs>
-          <radialGradient id={`sun2-${id}`} cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#FFF59D" />
-            <stop offset="100%" stopColor="#FFB300" />
-          </radialGradient>
-          <linearGradient id={`cloud1-${id}`} x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#FFFFFF" />
-            <stop offset="100%" stopColor="#E0E0E0" />
-          </linearGradient>
-        </defs>
-        {/* Sun behind */}
-        <circle cx="70" cy="28" r="16" fill={`url(#sun2-${id})`} />
-        {[0, 60, 120, 180, 240, 300].map((angle, i) => (
-          <line
-            key={i}
-            x1="70" y1="28"
-            x2={70 + 24 * Math.cos(angle * Math.PI / 180)}
-            y2={28 + 24 * Math.sin(angle * Math.PI / 180)}
-            stroke="#FFD54F"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-        ))}
-        {/* Cloud */}
-        <ellipse cx="35" cy="62" rx="22" ry="16" fill={`url(#cloud1-${id})`} />
-        <ellipse cx="52" cy="56" rx="20" ry="18" fill={`url(#cloud1-${id})`} />
-        <ellipse cx="68" cy="62" rx="16" ry="14" fill={`url(#cloud1-${id})`} />
-        <ellipse cx="50" cy="70" rx="28" ry="12" fill={`url(#cloud1-${id})`} />
-      </svg>
-    ),
-
-    // Cloudy
-    cloud: (
-      <svg width={size} height={size} viewBox="0 0 100 100">
-        <defs>
-          <linearGradient id={`cloud2-${id}`} x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#ECEFF1" />
-            <stop offset="100%" stopColor="#B0BEC5" />
-          </linearGradient>
-        </defs>
-        {/* Back cloud */}
-        <g opacity="0.5" transform="translate(-5, -12)">
-          <ellipse cx="45" cy="48" rx="18" ry="13" fill="#CFD8DC" />
-          <ellipse cx="60" cy="44" rx="16" ry="14" fill="#CFD8DC" />
-          <ellipse cx="72" cy="48" rx="14" ry="11" fill="#CFD8DC" />
-        </g>
-        {/* Front cloud */}
-        <ellipse cx="30" cy="58" rx="20" ry="14" fill={`url(#cloud2-${id})`} />
-        <ellipse cx="48" cy="52" rx="22" ry="18" fill={`url(#cloud2-${id})`} />
-        <ellipse cx="66" cy="58" rx="18" ry="14" fill={`url(#cloud2-${id})`} />
-        <ellipse cx="48" cy="66" rx="30" ry="13" fill={`url(#cloud2-${id})`} />
-      </svg>
-    ),
-
-    // Rainy
-    rainy: (
-      <svg width={size} height={size} viewBox="0 0 100 100">
-        <defs>
-          <linearGradient id={`rcloud-${id}`} x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#90A4AE" />
-            <stop offset="100%" stopColor="#546E7A" />
-          </linearGradient>
-        </defs>
-        {/* Rain cloud */}
-        <ellipse cx="30" cy="38" rx="18" ry="13" fill={`url(#rcloud-${id})`} />
-        <ellipse cx="48" cy="32" rx="20" ry="16" fill={`url(#rcloud-${id})`} />
-        <ellipse cx="66" cy="38" rx="16" ry="12" fill={`url(#rcloud-${id})`} />
-        <ellipse cx="48" cy="46" rx="28" ry="11" fill={`url(#rcloud-${id})`} />
-        {/* Rain drops */}
-        {[[28, 60], [40, 66], [52, 62], [64, 68], [36, 76], [56, 80]].map(([x, y], i) => (
-          <ellipse key={i} cx={x} cy={y} rx="2" ry="5" fill="#4FC3F7" opacity="0.8" />
-        ))}
-      </svg>
-    ),
-
-    // Thunderstorm
-    thunderstorm: (
-      <svg width={size} height={size} viewBox="0 0 100 100">
-        <defs>
-          <linearGradient id={`scloud-${id}`} x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#616161" />
-            <stop offset="100%" stopColor="#37474F" />
-          </linearGradient>
-        </defs>
-        {/* Storm cloud */}
-        <ellipse cx="30" cy="32" rx="18" ry="13" fill={`url(#scloud-${id})`} />
-        <ellipse cx="48" cy="26" rx="20" ry="16" fill={`url(#scloud-${id})`} />
-        <ellipse cx="66" cy="32" rx="16" ry="12" fill={`url(#scloud-${id})`} />
-        <ellipse cx="48" cy="40" rx="28" ry="11" fill={`url(#scloud-${id})`} />
-        {/* Lightning bolt */}
-        <polygon points="54,48 44,62 51,62 40,80 58,58 50,58 60,48" fill="#FFD600" />
-        {/* Rain drops */}
-        {[[28, 56], [68, 60], [32, 72]].map(([x, y], i) => (
-          <ellipse key={i} cx={x} cy={y} rx="2" ry="4" fill="#4FC3F7" opacity="0.6" />
-        ))}
-      </svg>
-    ),
-
-    // Snow
-    weather_snowy: (
-      <svg width={size} height={size} viewBox="0 0 100 100">
-        <defs>
-          <linearGradient id={`sncloud-${id}`} x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#ECEFF1" />
-            <stop offset="100%" stopColor="#B0BEC5" />
-          </linearGradient>
-        </defs>
-        {/* Snow cloud */}
-        <ellipse cx="30" cy="36" rx="18" ry="13" fill={`url(#sncloud-${id})`} />
-        <ellipse cx="48" cy="30" rx="20" ry="16" fill={`url(#sncloud-${id})`} />
-        <ellipse cx="66" cy="36" rx="16" ry="12" fill={`url(#sncloud-${id})`} />
-        <ellipse cx="48" cy="44" rx="28" ry="11" fill={`url(#sncloud-${id})`} />
-        {/* Snowflakes */}
-        {[[28, 58], [42, 66], [56, 60], [70, 68], [35, 76], [58, 80], [48, 86]].map(([x, y], i) => (
-          <circle key={i} cx={x} cy={y} r="3" fill="white" />
-        ))}
-      </svg>
-    ),
-
-    // Foggy
-    foggy: (
-      <svg width={size} height={size} viewBox="0 0 100 100">
-        {/* Fog lines */}
-        <rect x="15" y="32" width="70" height="8" rx="4" fill="#B0BEC5" opacity="0.8" />
-        <rect x="20" y="48" width="60" height="8" rx="4" fill="#CFD8DC" opacity="0.7" />
-        <rect x="25" y="64" width="50" height="8" rx="4" fill="#E0E0E0" opacity="0.6" />
-      </svg>
-    ),
-
-    // Drizzle
-    drizzle: (
-      <svg width={size} height={size} viewBox="0 0 100 100">
-        <defs>
-          <linearGradient id={`dcloud-${id}`} x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#B0BEC5" />
-            <stop offset="100%" stopColor="#78909C" />
-          </linearGradient>
-        </defs>
-        {/* Light cloud */}
-        <ellipse cx="30" cy="38" rx="16" ry="12" fill={`url(#dcloud-${id})`} />
-        <ellipse cx="46" cy="33" rx="18" ry="14" fill={`url(#dcloud-${id})`} />
-        <ellipse cx="62" cy="38" rx="14" ry="11" fill={`url(#dcloud-${id})`} />
-        <ellipse cx="46" cy="45" rx="24" ry="10" fill={`url(#dcloud-${id})`} />
-        {/* Light rain */}
-        {[[32, 58], [46, 64], [60, 60], [39, 74], [53, 78]].map(([x, y], i) => (
-          <line key={i} x1={x} y1={y} x2={x-2} y2={y+8} stroke="#81D4FA" strokeWidth="2" strokeLinecap="round" />
-        ))}
-      </svg>
-    ),
-  }
-  
-  return icons[condition] || icons.cloud
-}
-
-// Weather Widget Component - App-like design
-function WeatherWidget({ weather, airQuality, weatherTab, setWeatherTab, weatherView, setWeatherView, t, language, error, onRetry, retrying, onDismiss }) {
-  // Inline error affordance instead of a silently-empty widget on service failure.
-  if (error && !weather) {
-    return (
-      <ServiceUnavailable
-        title={t('serviceError.weatherTitle') || 'Weather unavailable'}
-        onRetry={onRetry}
-        retrying={retrying}
-        onDismiss={onDismiss}
-        className="h-full"
-      />
-    )
-  }
-
-  const now = new Date()
-  
-  // Get day name in current language
-  const dayNames = {
-    en: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
-    ro: ['Duminică', 'Luni', 'Marți', 'Miercuri', 'Joi', 'Vineri', 'Sâmbătă'],
-    es: ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'],
-  }
-  
-  const shortDayNames = {
-    en: ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'],
-    ro: ['DUM', 'LUN', 'MAR', 'MIE', 'JOI', 'VIN', 'SÂM'],
-    es: ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'],
-  }
-  
-  // Wind directions
-  const windDirections = {
-    en: { N: 'North', S: 'South', E: 'East', W: 'West', NE: 'NE', NW: 'NW', SE: 'SE', SW: 'SW' },
-    ro: { N: 'Nord', S: 'Sud', E: 'Est', W: 'Vest', NE: 'NE', NW: 'NV', SE: 'SE', SW: 'SV' },
-    es: { N: 'Norte', S: 'Sur', E: 'Este', W: 'Oeste', NE: 'NE', NW: 'NO', SE: 'SE', SW: 'SO' },
-  }
-  
-  // Weather conditions
-  const weatherConditions = {
-    en: {
-      'Clear': 'Clear', 'Sunny': 'Sunny', 'Partly Cloudy': 'Partly Cloudy', 'Cloudy': 'Cloudy',
-      'Overcast': 'Overcast', 'Rain': 'Rain', 'Light Rain': 'Light Rain', 'Heavy Rain': 'Heavy Rain',
-      'Showers': 'Showers', 'Light Showers': 'Light Showers', 'Thunderstorm': 'Thunderstorm',
-      'Snow': 'Snow', 'Light Snow': 'Light Snow', 'Heavy Snow': 'Heavy Snow', 'Fog': 'Fog',
-      'Mist': 'Mist', 'Drizzle': 'Drizzle', 'Hail': 'Hail', 'Sleet': 'Sleet', 'Windy': 'Windy',
-    },
-    ro: {
-      'Clear': 'Senin', 'Sunny': 'Însorit', 'Partly Cloudy': 'Parțial Înnorat', 'Cloudy': 'Înnorat',
-      'Overcast': 'Acoperit', 'Rain': 'Ploaie', 'Light Rain': 'Ploaie Ușoară', 'Heavy Rain': 'Ploaie Torențială',
-      'Showers': 'Averse', 'Light Showers': 'Averse Ușoare', 'Thunderstorm': 'Furtună',
-      'Snow': 'Ninsoare', 'Light Snow': 'Ninsoare Ușoară', 'Heavy Snow': 'Ninsoare Abundentă', 'Fog': 'Ceață',
-      'Mist': 'Brumă', 'Drizzle': 'Burniță', 'Hail': 'Grindină', 'Sleet': 'Lapoviță', 'Windy': 'Vânt',
-    },
-    es: {
-      'Clear': 'Despejado', 'Sunny': 'Soleado', 'Partly Cloudy': 'Parcialmente Nublado', 'Cloudy': 'Nublado',
-      'Overcast': 'Cubierto', 'Rain': 'Lluvia', 'Light Rain': 'Lluvia Ligera', 'Heavy Rain': 'Lluvia Fuerte',
-      'Showers': 'Chubascos', 'Light Showers': 'Chubascos Ligeros', 'Thunderstorm': 'Tormenta',
-      'Snow': 'Nieve', 'Light Snow': 'Nieve Ligera', 'Heavy Snow': 'Nieve Fuerte', 'Fog': 'Niebla',
-      'Mist': 'Neblina', 'Drizzle': 'Llovizna', 'Hail': 'Granizo', 'Sleet': 'Aguanieve', 'Windy': 'Ventoso',
-    },
-  }
-  
-  const dayName = dayNames[language]?.[now.getDay()] || dayNames.en[now.getDay()]
-  
-  // Function to get translated short day name from API day
-  const getTranslatedDay = (apiDay) => {
-    if (!apiDay) return '--'
-    const dayMap = {
-      'SUN': 0, 'MON': 1, 'TUE': 2, 'WED': 3, 'THU': 4, 'FRI': 5, 'SAT': 6,
-      'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6,
-    }
-    const dayIndex = dayMap[apiDay.toUpperCase().slice(0, 3)]
-    if (dayIndex !== undefined) {
-      return shortDayNames[language]?.[dayIndex] || apiDay
-    }
-    return apiDay
-  }
-  
-  // Translate wind direction
-  const getWindDirection = () => {
-    const dir = weather?.current?.wind_direction || 'E'
-    return windDirections[language]?.[dir] || windDirections.en[dir] || dir
-  }
-  
-  // Translate weather condition
-  const getWeatherCondition = () => {
-    const condition = weather?.current?.condition || 'Partly Cloudy'
-    return weatherConditions[language]?.[condition] || weatherConditions.en[condition] || condition
-  }
-  
-  // Translate "Feels like" text
-  const getFeelsLikeText = () => {
-    const feelsLikeTexts = {
-      en: 'Feels like',
-      ro: 'Se simte ca',
-      es: 'Sensación de',
-    }
-    return feelsLikeTexts[language] || feelsLikeTexts.en
-  }
-    // Get current condition for background
-  const currentCondition = weather?.current?.icon || 'partly_cloudy_day'
-  
-  return (
-    <div className="relative overflow-hidden rounded-2xl h-full min-h-[380px]" style={{
-      background: 'linear-gradient(180deg, #1a4a7a 0%, #2d6aa0 30%, #4a90c2 60%, #6ab0e0 100%)'
-    }}>
-      {/* Ambient glow effect */}
-      <div className="absolute top-10 right-10 w-40 h-40 bg-yellow-300/20 rounded-full blur-3xl" />
-      <div className="absolute bottom-20 left-10 w-32 h-32 bg-blue-400/20 rounded-full blur-2xl" />
-      
-      {/* Content */}
-      <div className="relative z-10 p-5 h-full flex flex-col">
-        {/* Top Section - City & Temperature */}
-        <div className="flex justify-between items-start mb-2">
-          <div>
-            <h2 className="text-2xl font-bold text-white drop-shadow-lg">
-              {weather?.location?.split(',')[0] || 'Loading...'}
-            </h2>
-            <p className="text-white/90 text-lg font-light mt-1">{dayName}</p>
-          </div>
-          <div className="text-right">
-            <span className="text-5xl sm:text-6xl font-extralight text-white drop-shadow-lg">
-              {weather?.current?.temperature !== undefined ? Math.round(weather.current.temperature) : '--'}
-              <span className="text-3xl align-top ml-1">°C</span>
-            </span>
-            {weather?.current?.feels_like !== undefined && (
-              <p className="text-white/70 text-sm mt-1">
-                {getFeelsLikeText()} {Math.round(weather.current.feels_like)}°C
-              </p>
-            )}
-          </div>
-        </div>
-        
-        {/* Weather Stats */}
-        <div className="flex items-center gap-4 text-white/80 text-sm mb-4">
-          <div className="flex items-center gap-1.5">
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-            </svg>
-            <span>{weather?.current?.humidity ?? '--'}%</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M14.5 17c0 1.65-1.35 3-3 3s-3-1.35-3-3c0-1.93 2.5-6 3-7 .5 1 3 5.07 3 7zm-3-14c-3.5 0-8 1.5-8 6.5 0 3.5 2.5 6.5 6 6.5h1c-.3-.6-.5-1.3-.5-2 0-2.5 3-7 3-7s3 4.5 3 7c0 .7-.2 1.4-.5 2h1c3.5 0 6-3 6-6.5C22.5 4.5 18 3 14.5 3h-3z"/>
-            </svg>
-            <span>{getWindDirection()}, {weather?.current?.wind_speed?.toFixed(0) ?? '--'} km/h</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-            </svg>
-            <span>{getWeatherCondition()}</span>
-          </div>
-        </div>
-        
-        {/* Center Weather Icon */}
-        <div className="flex-1 flex items-center justify-center -mt-4 -mb-2">
-          <div className="transform scale-110 sm:scale-125">
-            <WeatherIcon condition={currentCondition} size={120} />
-          </div>
-        </div>
-        
-        {/* Bottom Forecast Strip - Skip today, show next 6 days */}
-        <div className="mt-auto">
-          <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-            {(weather?.forecast || Array(7).fill({})).slice(1, 7).map((day, idx) => {
-              return (
-                <div 
-                  key={idx}
-                  className="flex-1 min-w-[52px] py-2.5 px-1 rounded-xl text-center transition-all bg-white/10 backdrop-blur-sm hover:bg-white/20"
-                >
-                  <p className="text-xs font-semibold text-white/90 mb-1.5">
-                    {getTranslatedDay(day.day)}
-                  </p>
-                  <div className="flex justify-center mb-1.5">
-                    <WeatherIcon condition={day.icon} size={28} />
-                  </div>
-                  <p className="text-sm font-bold text-white">
-                    {day.temp_max !== undefined ? Math.round(day.temp_max) : '--'}°C
-                  </p>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
+import ChatModal from '../components/chat/ChatModal'
 
 // Fuel Prices Widget
 function FuelPricesWidget({ fuelPrices, currency, t, onRefresh, isRefreshing, lastAutoUpdate, error, onRetry, retrying, onDismiss }) {
@@ -506,27 +128,118 @@ function FuelPricesWidget({ fuelPrices, currency, t, onRefresh, isRefreshing, la
   )
 }
 
+// Category icon + color per transaction type — mirrors the vehicle Timeline styling.
+const TX_CATEGORY = {
+  fuel:       { color: 'text-amber-500',  bg: 'bg-amber-500/10',  icon: <path d="M3 22V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v17M15 22H3M15 11h3a2 2 0 0 1 2 2v4a2 2 0 0 0 4 0V8l-4-3M6 6h6v5H6z" /> },
+  service:    { color: 'text-blue-500',   bg: 'bg-blue-500/10',   icon: <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" /> },
+  repair:     { color: 'text-red-500',    bg: 'bg-red-500/10',    icon: <path d="M3 21h4L17.5 10.5a2.12 2.12 0 0 0-3-3L4 18v3zM14.5 5.5l4 4" /> },
+  tax:        { color: 'text-rose-500',   bg: 'bg-rose-500/10',   icon: <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1-2-1zM16 8H8M16 12H8M10 16H8" /> },
+  parking:    { color: 'text-purple-500', bg: 'bg-purple-500/10', icon: <><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 17V7h4a3 3 0 0 1 0 6H9" /></> },
+  consumable: { color: 'text-cyan-500',   bg: 'bg-cyan-500/10',   icon: <><path d="M21 8V21H3V8M1 3h22v5H1zM10 12h4" /></> },
+  insurance:  { color: 'text-teal-500',   bg: 'bg-teal-500/10',   icon: <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /> },
+}
+const _DEFAULT_TX = { color: 'text-gray-500', bg: 'bg-gray-500/10', icon: <><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></> }
+// Timeline supports these as filter chips; anything else deep-links to the "all" view.
+const TIMELINE_FILTER_TYPES = new Set(['fuel', 'service', 'repair', 'tax', 'parking', 'consumable', 'insurance'])
+
+// Recent Transactions — fleet-wide feed of the latest cost-bearing entries.
+function RecentTransactions({ transactions, loading, error, t, formatCurrency }) {
+  const txLink = (tx) => {
+    const type = TIMELINE_FILTER_TYPES.has(tx.type) ? tx.type : 'all'
+    return `/vehicles/${tx.vehicle_id}/timeline?type=${type}&focus=${tx.id}`
+  }
+
+  return (
+    <div className="bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border)] overflow-hidden h-full flex flex-col">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--color-border)]">
+        <span className="text-lg" aria-hidden="true">🧾</span>
+        <h3 className="text-sm font-semibold">{t('recentTransactions.title') || 'Recent Transactions'}</h3>
+      </div>
+
+      {loading ? (
+        <div className="p-4 space-y-3">
+          {[0, 1, 2, 3, 4].map(i => <div key={i} className="skeleton h-12 rounded-lg" />)}
+        </div>
+      ) : error || !transactions?.length ? (
+        <div className="flex-1 flex flex-col items-center justify-center text-center px-4 py-10">
+          <span className="text-3xl mb-2" aria-hidden="true">🚗</span>
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            {error
+              ? (t('recentTransactions.error') || 'Could not load transactions')
+              : (t('recentTransactions.empty') || 'No transactions yet')}
+          </p>
+        </div>
+      ) : (
+        <ul className="divide-y divide-[var(--color-border)]" role="list">
+          {transactions.map((tx) => {
+            const cat = TX_CATEGORY[tx.type] || _DEFAULT_TX
+            const categoryLabel = t(`timeline.${tx.type}`) || tx.type
+            return (
+              <li key={`${tx.type}-${tx.id}`}>
+                <Link
+                  to={txLink(tx)}
+                  className="flex items-center gap-3 px-4 py-3 hover:bg-[var(--color-bg-tertiary)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-inset"
+                  aria-label={`${categoryLabel} · ${tx.vehicle_name} · ${tx.description || ''}`}
+                >
+                  <span className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${cat.bg} ${cat.color}`} aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      {cat.icon}
+                    </svg>
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
+                      {tx.description || categoryLabel}
+                    </p>
+                    <p className="text-xs text-[var(--color-text-muted)] truncate">
+                      <span className={cat.color}>{categoryLabel}</span>
+                      <span aria-hidden="true"> · </span>
+                      {tx.vehicle_name}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-sm font-semibold text-[var(--color-text-primary)] tabular-nums whitespace-nowrap">
+                      {tx.cost != null ? formatCurrency(tx.cost) : '—'}
+                    </p>
+                    {tx.date && (
+                      <p className="text-xs text-[var(--color-text-muted)] tabular-nums whitespace-nowrap">
+                        {formatDateShort(tx.date)}
+                      </p>
+                    )}
+                  </div>
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 export default function Dashboard() {
   const navigate = useNavigate()
-  const { currency, setCurrencyFromCountry } = useCurrency()
-  const { t, language } = useTranslation()
+  const { currency, setCurrencyFromCountry, formatCurrency } = useCurrency()
+  const { t } = useTranslation()
   const { user } = useAuth()
   const confirm = useConfirm()
   const [vehicles, setVehicles] = useState([])
-  const [weather, setWeather] = useState(null)
+  const [recentTx, setRecentTx] = useState([])
+  const [recentTxLoading, setRecentTxLoading] = useState(true)
+  const [recentTxError, setRecentTxError] = useState(false)
   const [fuelPrices, setFuelPrices] = useState(null)
   const [isRefreshingFuel, setIsRefreshingFuel] = useState(false)
   const [resolvedLocation, setResolvedLocation] = useState(null)
   const [fuelPriceFetchedAt, setFuelPriceFetchedAt] = useState(null)
   const fuelPriceFetchedAtRef = useRef(null)
   const isRefreshingFuelRef = useRef(false)
-  const [airQuality, setAirQuality] = useState(null)
-  // Per-service error/retry/dismiss state (weather widget covers weather+air quality)
-  const [weatherError, setWeatherError] = useState(false)
+  // Per-service error/retry/dismiss state for the fuel-price widget.
   const [fuelError, setFuelError] = useState(false)
-  const [weatherDismissed, setWeatherDismissed] = useState(false)
   const [fuelDismissed, setFuelDismissed] = useState(false)
-  const [retryingWeather, setRetryingWeather] = useState(false)
+  const [chatOpen, setChatOpen] = useState(false)
+  // The AI assistant entry only appears when the server has an Ollama
+  // integration (enabled + URL). Re-read on mount so it auto-appears once one
+  // is added later.
+  const [aiEnabled, setAiEnabled] = useState(false)
   const [retryingFuel, setRetryingFuel] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   // Distinguish "vehicles failed to load" (5xx / network) from "genuinely no
@@ -535,11 +248,8 @@ export default function Dashboard() {
   const [vehiclesError, setVehiclesError] = useState(false)
   const [retryingVehicles, setRetryingVehicles] = useState(false)
   const vehiclesRetryRef = useRef({ attempts: 0, timer: null })
-  const [weatherTab, setWeatherTab] = useState('today')
-  const [weatherView, setWeatherView] = useState('forecast')
   const [userLocation, setUserLocation] = useState(null)
-  const [weatherAlertsModalOpen, setWeatherAlertsModalOpen] = useState(false)
-  
+
   // Drag and drop state
   const [draggedVehicle, setDraggedVehicle] = useState(null)
   const [dragOverVehicle, setDragOverVehicle] = useState(null)
@@ -705,8 +415,38 @@ export default function Dashboard() {
     }
     fetchInsurance()
   }, [])
-  
-  // Fetch weather and fuel prices
+
+  // Fetch the fleet-wide recent transactions feed (5 most recent, all vehicles).
+  useEffect(() => {
+    let cancelled = false
+    const fetchRecent = async () => {
+      try {
+        const res = await vehicleApi.getRecentTransactions(5)
+        if (cancelled) return
+        setRecentTx(res.data.transactions || [])
+        setRecentTxError(false)
+      } catch (error) {
+        if (cancelled) return
+        console.error('Failed to fetch recent transactions:', error)
+        setRecentTxError(true)
+      } finally {
+        if (!cancelled) setRecentTxLoading(false)
+      }
+    }
+    fetchRecent()
+    return () => { cancelled = true }
+  }, [])
+
+  // Is the AI assistant available on this server (Ollama enabled + configured)?
+  useEffect(() => {
+    let cancelled = false
+    configApi.get()
+      .then((r) => { if (!cancelled) setAiEnabled(!!r.data?.ai_enabled) })
+      .catch(() => { if (!cancelled) setAiEnabled(false) })
+    return () => { cancelled = true }
+  }, [])
+
+  // Fetch fuel prices for the user's detected location
   useEffect(() => {
     if (!userLocation) return
     
@@ -742,65 +482,29 @@ export default function Dashboard() {
           console.warn('Geocoding failed:', e)
         }
         
-        // Set resolved location up front so retry handlers work even if every
-        // service fails on the first attempt.
+        // Set resolved location up front so retry handlers work even if the
+        // fuel-price service fails on the first attempt.
         setResolvedLocation({ countryCode, locationName, lat: userLocation.lat, lon: userLocation.lon })
 
-        // allSettled: a 503 from one service must not blank the others.
-        const [weatherRes, fuelRes, aqRes] = await Promise.allSettled([
-          externalApi.getWeather(userLocation.lat, userLocation.lon, locationName),
-          externalApi.getFuelPrices(countryCode, locationName, userLocation.lat, userLocation.lon),
-          externalApi.getAirQuality(userLocation.lat, userLocation.lon),
-        ])
-
-        if (weatherRes.status === 'fulfilled') {
-          setWeather(weatherRes.value.data)
-          setWeatherError(false)
-        } else {
-          console.error('Weather fetch failed:', weatherRes.reason)
-          setWeatherError(true)
-        }
-
-        // Air quality is best-effort and shares the weather widget; only treat
-        // weather itself as the widget's failure signal.
-        if (aqRes.status === 'fulfilled') setAirQuality(aqRes.value.data)
-
-        if (fuelRes.status === 'fulfilled') {
-          setFuelPrices(fuelRes.value.data)
+        try {
+          const fuelRes = await externalApi.getFuelPrices(countryCode, locationName, userLocation.lat, userLocation.lon)
+          setFuelPrices(fuelRes.data)
           setFuelError(false)
           const now = Date.now()
           fuelPriceFetchedAtRef.current = now
           setFuelPriceFetchedAt(now)
-        } else {
-          console.error('Fuel price fetch failed:', fuelRes.reason)
+        } catch (fuelErr) {
+          console.error('Fuel price fetch failed:', fuelErr)
           setFuelError(true)
         }
       } catch (error) {
         console.error('Failed to fetch external data:', error)
-        setWeatherError(true)
         setFuelError(true)
       }
     }
-    
+
     fetchExternalData()
   }, [userLocation])
-
-  // Retry just the weather (+ air quality) service after a failure.
-  const retryWeather = async () => {
-    if (!resolvedLocation || retryingWeather) return
-    setRetryingWeather(true)
-    try {
-      const [w, aq] = await Promise.allSettled([
-        externalApi.getWeather(resolvedLocation.lat, resolvedLocation.lon, resolvedLocation.locationName),
-        externalApi.getAirQuality(resolvedLocation.lat, resolvedLocation.lon),
-      ])
-      if (w.status === 'fulfilled') { setWeather(w.value.data); setWeatherError(false) }
-      else setWeatherError(true)
-      if (aq.status === 'fulfilled') setAirQuality(aq.value.data)
-    } finally {
-      setRetryingWeather(false)
-    }
-  }
 
   // Retry just the fuel-price service after a failure.
   const retryFuel = async () => {
@@ -1123,59 +827,48 @@ export default function Dashboard() {
   
   return (
     <div className="p-4 lg:p-6 pb-24 lg:pb-6">
-      {/* Top Widgets Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-        <div className="lg:col-span-2">
-          <WeatherWidget
-            weather={weather}
-            airQuality={airQuality}
-            weatherTab={weatherTab}
-            setWeatherTab={setWeatherTab}
-            weatherView={weatherView}
-            setWeatherView={setWeatherView}
-            t={t}
-            language={language}
-            error={weatherError && !weatherDismissed}
-            onRetry={retryWeather}
-            retrying={retryingWeather}
-            onDismiss={() => setWeatherDismissed(true)}
-          />
-        </div>
-        <div>
-          <FuelPricesWidget fuelPrices={fuelPrices} currency={currency} t={t} onRefresh={handleRefreshFuelPrices} isRefreshing={isRefreshingFuel} lastAutoUpdate={fuelPriceFetchedAt}
-            error={fuelError && !fuelDismissed}
-            onRetry={retryFuel}
-            retrying={retryingFuel}
-            onDismiss={() => setFuelDismissed(true)}
-          />
-        </div>
-      </div>
-      
-      {/* Weather Driving Alerts - only show if we have location */}
-      {userLocation && (
-        <div className="mb-6">
-          <WeatherAlerts 
-            userLocation={{
-              lat: userLocation.lat,
-              lon: userLocation.lon,
-              name: weather?.location
-            }}
-            compact={false}
-          />
-        </div>
+      {/* AI Assistant banner — only when the server has an Ollama integration */}
+      {aiEnabled && (
+      <button
+        type="button"
+        onClick={() => setChatOpen(true)}
+        className="w-full mb-4 flex items-center gap-3 text-left rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-card)] px-4 py-3 hover:border-[var(--color-accent)] hover:bg-[var(--color-bg-tertiary)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+        aria-haspopup="dialog"
+      >
+        <span className="shrink-0 w-10 h-10 rounded-lg bg-[var(--color-accent)]/10 text-[var(--color-accent)] flex items-center justify-center" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="8" width="18" height="12" rx="2" /><path d="M12 8V5M9 3h6M8 13h.01M16 13h.01M9 17h6" />
+          </svg>
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-2xs font-semibold uppercase tracking-wide text-[var(--color-accent)]">
+            {t('dashboard.assistantEyebrow') || 'AI Assistant'}
+          </span>
+          <span className="block text-sm text-[var(--color-text-primary)] truncate">
+            {t('dashboard.assistantPrompt') || 'How can I help you today?'}
+          </span>
+        </span>
+        <span className="shrink-0 inline-flex items-center gap-1 text-sm font-medium text-[var(--color-accent)]">
+          {t('dashboard.assistantCta') || 'Chat'}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </span>
+      </button>
       )}
-      
-      {/* Weather Alerts Modal for compact view */}
-      <WeatherAlertsModal 
-        isOpen={weatherAlertsModalOpen}
-        onClose={() => setWeatherAlertsModalOpen(false)}
-        userLocation={{
-          lat: userLocation?.lat,
-          lon: userLocation?.lon,
-          name: weather?.location
-        }}
-      />
-      
+
+      {aiEnabled && <ChatModal open={chatOpen} onClose={() => setChatOpen(false)} vehicles={vehicles} />}
+
+      {/* Fuel Prices Widget */}
+      <div className="mb-6 max-w-md">
+        <FuelPricesWidget fuelPrices={fuelPrices} currency={currency} t={t} onRefresh={handleRefreshFuelPrices} isRefreshing={isRefreshingFuel} lastAutoUpdate={fuelPriceFetchedAt}
+          error={fuelError && !fuelDismissed}
+          onRetry={retryFuel}
+          retrying={retryingFuel}
+          onDismiss={() => setFuelDismissed(true)}
+        />
+      </div>
+
       {/* Your Garage Section */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
@@ -1463,7 +1156,20 @@ export default function Dashboard() {
           ))}
         </div>
       )}
-      
+
+      {/* Recent Transactions — below the garage */}
+      {vehicles.length > 0 && (
+        <div className="mt-8 max-w-2xl">
+          <RecentTransactions
+            transactions={recentTx}
+            loading={recentTxLoading}
+            error={recentTxError}
+            t={t}
+            formatCurrency={formatCurrency}
+          />
+        </div>
+      )}
+
       {/* Drag Ghost for Touch Devices */}
       {touchedVehicle && dragGhostPosition && (
         <div

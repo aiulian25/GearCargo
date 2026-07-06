@@ -89,6 +89,9 @@ export const translations = {
     dashboard: {
       yourGarage: 'Your Garage',
       addVehicle: 'Add Vehicle',
+      assistantEyebrow: 'AI Assistant',
+      assistantPrompt: 'How can I help you today?',
+      assistantCta: 'Chat',
       noVehicles: 'No vehicles yet',
       addFirstVehicle: 'Add your first vehicle to start tracking',
       startingUpTitle: 'Starting up…',
@@ -214,6 +217,11 @@ export const translations = {
     },
     
     // Timeline Page
+    recentTransactions: {
+      title: 'Recent Transactions',
+      empty: 'No transactions yet',
+      error: 'Could not load transactions',
+    },
     timeline: {
       title: 'Timeline',
       entries: 'entries',
@@ -223,6 +231,7 @@ export const translations = {
       repair: 'Repair',
       tax: 'Tax',
       parking: 'Parking',
+      consumable: 'Consumable',
       reminder: 'Reminder',
       todo: 'Todo',
       insurance: 'Insurance',
@@ -565,72 +574,6 @@ export const translations = {
       markDoneCancel: 'Cancel',
     },
     
-    // Weather Alerts
-    weatherAlerts: {
-      title: 'Weather Driving Alerts',
-      fetchError: 'Failed to load weather alerts',
-      allClear: 'Good Driving Conditions',
-      noActiveAlerts: 'No weather alerts for your area',
-      activeAlerts: 'Weather Alerts',
-      safetyScore: 'Safety',
-      dismissAll: 'Dismiss All',
-      now: 'Now',
-      upcoming: 'Upcoming',
-      expectedAt: 'Expected at',
-      drivingTips: 'Driving Tips',
-      lastUpdated: 'Updated',
-      // Weather conditions
-      fog: 'Fog - Reduced Visibility',
-      freezingFog: 'Freezing Fog - Dangerous',
-      lightRain: 'Light Rain',
-      rain: 'Rain - Slippery Roads',
-      heavyRain: 'Heavy Rain - Poor Visibility',
-      showers: 'Rain Showers',
-      heavyShowers: 'Heavy Showers - Flooding Risk',
-      lightSnow: 'Light Snow',
-      snow: 'Snow - Drive Carefully',
-      heavySnow: 'Heavy Snow - Avoid Travel',
-      snowGrains: 'Snow Grains',
-      snowShowers: 'Snow Showers',
-      heavySnowShowers: 'Heavy Snow Showers',
-      freezingRain: 'Freezing Rain - Ice Risk',
-      heavyFreezingRain: 'Heavy Freezing Rain - Dangerous',
-      thunderstorm: 'Thunderstorm',
-      thunderstormHail: 'Thunderstorm with Hail',
-      severeThunderstorm: 'Severe Thunderstorm - Seek Shelter',
-      // Wind alerts
-      moderateWind: 'Moderate Wind',
-      strongWind: 'Strong Wind Gusts',
-      extremeWind: 'Extreme Wind - Dangerous',
-      // Visibility alerts
-      poorVisibility: 'Poor Visibility',
-      veryPoorVisibility: 'Very Poor Visibility',
-      extremelyPoorVisibility: 'Extremely Poor Visibility - Dangerous',
-      // Temperature alerts
-      freezing: 'Freezing Temperatures',
-      extremeCold: 'Extreme Cold',
-      iceRisk: 'Ice Risk on Roads',
-      extremeHeat: 'Extreme Heat',
-      // Driving tips
-      tips: {
-        avoidTravel: 'Consider avoiding travel unless necessary',
-        reduceSpeed: 'Reduce speed and maintain safe distance',
-        increaseDistance: 'Increase following distance',
-        useHeadlights: 'Use headlights even during day',
-        checkTires: 'Check tires and consider winter tires',
-        gentleBraking: 'Brake gently to avoid skidding',
-        clearWindows: 'Clear all windows and mirrors of ice/snow',
-        useFogLights: 'Use fog lights when visibility is poor',
-        avoidOvertaking: 'Avoid overtaking in poor conditions',
-        gripWheel: 'Keep firm grip on steering wheel',
-        watchHighSided: 'Watch for high-sided vehicles on highways',
-        pullOver: 'Pull over safely if conditions worsen',
-        avoidFlooded: 'Never drive through flooded roads',
-        warmUpEngine: 'Allow engine to warm up before driving',
-        checkCoolant: 'Check coolant levels in extreme heat',
-      },
-    },
-
     vehicleManual: {
       title: "Owner's Manual",
       viewManual: 'View Manual',
@@ -1031,6 +974,8 @@ export const translations = {
     update: {
       pill: 'Update',
       pillAria: 'App update available — tap for details',
+      devPill: 'dev',
+      devPillAria: 'Development build — tap to preview the update dialog',
       available: 'Update available',
       securityTitle: 'Security update installed',
       weeklyMaintenance: 'Weekly maintenance',
@@ -1053,7 +998,6 @@ export const translations = {
     serviceError: {
       title: 'Service unavailable',
       desc: 'We couldn’t load this right now.',
-      weatherTitle: 'Weather unavailable',
       fuelTitle: 'Fuel prices unavailable',
       retry: 'Retry',
       retrying: 'Retrying…',
@@ -1078,6 +1022,12 @@ export const translations = {
       suggestService: 'When is my next service due?',
       suggestFuelYear: 'How much did I spend on fuel last year?',
       suggestTotal: 'What have I spent on this vehicle in total?',
+      suggestReminders: 'What reminders are coming up?',
+      suggestInsurance: 'When does my insurance expire?',
+      suggestConsumables: 'When did I last change the filters?',
+      suggestEfficiency: 'What is my average fuel consumption?',
+      selectVehicle: 'Chat about',
+      noVehicles: 'Add a vehicle to start chatting with the assistant.',
       placeholder: 'Ask about this vehicle…',
       inputLabel: 'Ask a question',
       send: 'Send',
@@ -1154,17 +1104,6 @@ export const translations = {
       low: 'Low',
       medium: 'Medium',
       high: 'High',
-    },
-    
-    // Weather Widget
-    weather: {
-      humidity: 'Humidity',
-      wind: 'Wind',
-      forecast: 'Forecast',
-      airQuality: 'Air Quality',
-      today: 'Today',
-      tomorrow: 'Tomorrow',
-      next7Days: 'Next 7 days',
     },
     
     // Fuel Prices Widget
@@ -1991,7 +1930,7 @@ export const translations = {
       passwordVeryStrong: 'Very Strong',
       // Location Settings
       locationSettings: 'Location Settings',
-      locationDescription: 'Set your location for accurate weather and fuel prices on the dashboard.',
+      locationDescription: 'Set your location for accurate fuel prices on the dashboard.',
       autoDetectLocation: 'Auto-detect Location',
       autoDetectDescription: 'Use your device GPS for precise location',
       locationName: 'Location Name',
@@ -2147,13 +2086,13 @@ export const translations = {
       acceptanceItem2: 'You have the legal capacity to enter into this agreement',
       acceptanceItem3: 'You will comply with all applicable laws and regulations while using this service',
       
-      proprietaryTitle: 'Proprietary Software',
-      proprietaryHighlight: 'GearCargo is proprietary, closed-source software. This is NOT open-source software and is NOT licensed under MIT or any other open-source license.',
-      proprietaryDesc: 'All rights are reserved. You may not:',
-      proprietaryItem1: 'Copy, modify, distribute, or create derivative works of the software',
-      proprietaryItem2: 'Reverse engineer, decompile, or disassemble the application',
-      proprietaryItem3: 'Attempt to extract the source code or underlying algorithms',
-      proprietaryItem4: 'Sublicense, sell, resell, or transfer access to the application',
+      licenseTitle: 'Open-Source License',
+      licenseHighlight: 'GearCargo is free, open-source software released under the MIT License. You are free to use, copy, modify, and distribute it under the terms of that license.',
+      licenseDesc: 'Under the MIT License, you may:',
+      licenseItem1: 'Use the software for any purpose, including commercially',
+      licenseItem2: 'Copy, modify, and create derivative works',
+      licenseItem3: 'Distribute, sublicense, and sell copies of the software',
+      licenseItem4: 'Provided you include the original copyright and permission notice',
       
       securityTitle: 'Security Obligations',
       securityDesc: 'You are responsible for maintaining the security of your account:',
@@ -2740,6 +2679,9 @@ export const translations = {
     dashboard: {
       yourGarage: 'Garajul Tău',
       addVehicle: 'Adaugă Vehicul',
+      assistantEyebrow: 'Asistent AI',
+      assistantPrompt: 'Cu ce te pot ajuta azi?',
+      assistantCta: 'Chat',
       noVehicles: 'Niciun vehicul încă',
       addFirstVehicle: 'Adaugă primul tău vehicul pentru a începe urmărirea',
       startingUpTitle: 'Se pornește…',
@@ -2867,6 +2809,11 @@ export const translations = {
     },
     
     // Timeline Page
+    recentTransactions: {
+      title: 'Tranzacții Recente',
+      empty: 'Nicio tranzacție încă',
+      error: 'Tranzacțiile nu au putut fi încărcate',
+    },
     timeline: {
       title: 'Cronologie',
       entries: 'înregistrări',
@@ -2876,6 +2823,7 @@ export const translations = {
       repair: 'Reparație',
       tax: 'Taxă',
       parking: 'Parcare',
+      consumable: 'Consumabil',
       reminder: 'Memento',
       todo: 'Sarcină',
       insurance: 'Asigurare',
@@ -3219,72 +3167,6 @@ export const translations = {
       markDoneCancel: 'Anulează',
     },
     
-    // Weather Alerts
-    weatherAlerts: {
-      title: 'Alerte Meteo pentru Șoferi',
-      fetchError: 'Nu s-au putut încărca alertele meteo',
-      allClear: 'Condiții Bune de Conducere',
-      noActiveAlerts: 'Nicio alertă meteo pentru zona ta',
-      activeAlerts: 'Alerte Meteo',
-      safetyScore: 'Siguranță',
-      dismissAll: 'Respinge Tot',
-      now: 'Acum',
-      upcoming: 'În curând',
-      expectedAt: 'Așteptat la',
-      drivingTips: 'Sfaturi pentru Conducere',
-      lastUpdated: 'Actualizat',
-      // Weather conditions
-      fog: 'Ceață - Vizibilitate Redusă',
-      freezingFog: 'Ceață cu Îngheț - Periculos',
-      lightRain: 'Ploaie Ușoară',
-      rain: 'Ploaie - Drumuri Alunecoase',
-      heavyRain: 'Ploaie Torențială - Vizibilitate Scăzută',
-      showers: 'Averse de Ploaie',
-      heavyShowers: 'Averse Puternice - Risc de Inundații',
-      lightSnow: 'Ninsoare Ușoară',
-      snow: 'Ninsoare - Conduceți cu Atenție',
-      heavySnow: 'Ninsoare Abundentă - Evitați Călătoriile',
-      snowGrains: 'Grăunți de Zăpadă',
-      snowShowers: 'Averse de Zăpadă',
-      heavySnowShowers: 'Averse Puternice de Zăpadă',
-      freezingRain: 'Ploaie Înghețată - Risc de Polei',
-      heavyFreezingRain: 'Ploaie Înghețată Puternică - Periculos',
-      thunderstorm: 'Furtună cu Tunete',
-      thunderstormHail: 'Furtună cu Grindină',
-      severeThunderstorm: 'Furtună Severă - Adăpostiți-vă',
-      // Wind alerts
-      moderateWind: 'Vânt Moderat',
-      strongWind: 'Rafale Puternice de Vânt',
-      extremeWind: 'Vânt Extrem - Periculos',
-      // Visibility alerts
-      poorVisibility: 'Vizibilitate Slabă',
-      veryPoorVisibility: 'Vizibilitate Foarte Slabă',
-      extremelyPoorVisibility: 'Vizibilitate Extrem de Slabă - Periculos',
-      // Temperature alerts
-      freezing: 'Temperaturi Sub Zero',
-      extremeCold: 'Frig Extrem',
-      iceRisk: 'Risc de Polei pe Drumuri',
-      extremeHeat: 'Căldură Extremă',
-      // Driving tips
-      tips: {
-        avoidTravel: 'Evitați călătoriile dacă nu sunt necesare',
-        reduceSpeed: 'Reduceți viteza și mențineți distanța de siguranță',
-        increaseDistance: 'Măriți distanța față de vehiculul din față',
-        useHeadlights: 'Folosiți farurile chiar și ziua',
-        checkTires: 'Verificați anvelopele, considerați anvelope de iarnă',
-        gentleBraking: 'Frânați ușor pentru a evita derapajele',
-        clearWindows: 'Curățați toate geamurile și oglinzile de gheață/zăpadă',
-        useFogLights: 'Folosiți luminile de ceață când vizibilitatea este slabă',
-        avoidOvertaking: 'Evitați depășirile în condiții meteo nefavorabile',
-        gripWheel: 'Țineți ferm volanul',
-        watchHighSided: 'Atenție la vehiculele înalte pe autostrăzi',
-        pullOver: 'Opriți în siguranță dacă condițiile se înrăutățesc',
-        avoidFlooded: 'Nu conduceți niciodată prin zone inundate',
-        warmUpEngine: 'Lăsați motorul să se încălzească înainte de plecare',
-        checkCoolant: 'Verificați nivelul lichidului de răcire în căldură extremă',
-      },
-    },
-
     vehicleManual: {
       title: 'Manual de Utilizare',
       viewManual: 'Vezi Manual',
@@ -3685,6 +3567,8 @@ export const translations = {
     update: {
       pill: 'Actualizare',
       pillAria: 'Actualizare disponibilă — atinge pentru detalii',
+      devPill: 'dev',
+      devPillAria: 'Versiune de dezvoltare — atinge pentru a previzualiza dialogul de actualizare',
       available: 'Actualizare disponibilă',
       securityTitle: 'Actualizare de securitate instalată',
       weeklyMaintenance: 'Mentenanță săptămânală',
@@ -3707,7 +3591,6 @@ export const translations = {
     serviceError: {
       title: 'Serviciu indisponibil',
       desc: 'Nu am putut încărca acum aceste date.',
-      weatherTitle: 'Vremea indisponibilă',
       fuelTitle: 'Prețuri combustibil indisponibile',
       retry: 'Reîncearcă',
       retrying: 'Se reîncearcă…',
@@ -3732,6 +3615,12 @@ export const translations = {
       suggestService: 'Când urmează următorul service?',
       suggestFuelYear: 'Cât am cheltuit pe combustibil anul trecut?',
       suggestTotal: 'Cât am cheltuit în total pe acest vehicul?',
+      suggestReminders: 'Ce memento-uri urmează?',
+      suggestInsurance: 'Când expiră asigurarea mea?',
+      suggestConsumables: 'Când am schimbat ultima dată filtrele?',
+      suggestEfficiency: 'Care este consumul mediu de carburant?',
+      selectVehicle: 'Discută despre',
+      noVehicles: 'Adaugă un vehicul pentru a discuta cu asistentul.',
       placeholder: 'Întreabă despre acest vehicul…',
       inputLabel: 'Pune o întrebare',
       send: 'Trimite',
@@ -3808,17 +3697,6 @@ export const translations = {
       low: 'Scăzută',
       medium: 'Medie',
       high: 'Ridicată',
-    },
-    
-    // Weather Widget
-    weather: {
-      humidity: 'Umiditate',
-      wind: 'Vânt',
-      forecast: 'Prognoză',
-      airQuality: 'Calitatea Aerului',
-      today: 'Astăzi',
-      tomorrow: 'Mâine',
-      next7Days: 'Următoarele 7 zile',
     },
     
     // Fuel Prices Widget
@@ -4660,7 +4538,7 @@ export const translations = {
       passwordVeryStrong: 'Foarte Puternică',
       // Setări Locație
       locationSettings: 'Setări Locație',
-      locationDescription: 'Setează locația ta pentru meteo și prețuri carburanți precise pe dashboard.',
+      locationDescription: 'Setează locația ta pentru prețuri carburanți precise pe dashboard.',
       autoDetectLocation: 'Detectare Automată Locație',
       autoDetectDescription: 'Folosește GPS-ul dispozitivului pentru locație precisă',
       locationName: 'Nume Locație',
@@ -4816,13 +4694,13 @@ export const translations = {
       acceptanceItem2: 'Aveți capacitatea legală de a încheia acest acord',
       acceptanceItem3: 'Veți respecta toate legile și reglementările aplicabile în timp ce utilizați acest serviciu',
       
-      proprietaryTitle: 'Software Proprietar',
-      proprietaryHighlight: 'GearCargo este software proprietar, cu sursă închisă. Acesta NU este software open-source și NU este licențiat sub MIT sau orice altă licență open-source.',
-      proprietaryDesc: 'Toate drepturile sunt rezervate. Nu puteți:',
-      proprietaryItem1: 'Copia, modifica, distribui sau crea lucrări derivate din software',
-      proprietaryItem2: 'Face inginerie inversă, decompila sau dezasambla aplicația',
-      proprietaryItem3: 'Încerca să extrageți codul sursă sau algoritmii de bază',
-      proprietaryItem4: 'Sublicenția, vinde, revinde sau transfera accesul la aplicație',
+      licenseTitle: 'Licență Open-Source',
+      licenseHighlight: 'GearCargo este software gratuit, open-source, distribuit sub Licența MIT. Îl poți utiliza, copia, modifica și distribui în condițiile acestei licențe.',
+      licenseDesc: 'Sub Licența MIT, poți:',
+      licenseItem1: 'Utiliza software-ul în orice scop, inclusiv comercial',
+      licenseItem2: 'Copia, modifica și crea lucrări derivate',
+      licenseItem3: 'Distribui, sublicenția și vinde copii ale software-ului',
+      licenseItem4: 'Cu condiția să incluzi notificarea originală de copyright și de permisiune',
       
       securityTitle: 'Obligații de Securitate',
       securityDesc: 'Sunteți responsabil pentru menținerea securității contului dumneavoastră:',
@@ -5411,6 +5289,9 @@ export const translations = {
     dashboard: {
       yourGarage: 'Tu Garaje',
       addVehicle: 'Añadir Vehículo',
+      assistantEyebrow: 'Asistente IA',
+      assistantPrompt: '¿En qué puedo ayudarte hoy?',
+      assistantCta: 'Chat',
       noVehicles: 'Sin vehículos aún',
       addFirstVehicle: 'Añade tu primer vehículo para comenzar el seguimiento',
       startingUpTitle: 'Iniciando…',
@@ -5536,6 +5417,11 @@ export const translations = {
     },
     
     // Timeline Page
+    recentTransactions: {
+      title: 'Transacciones Recientes',
+      empty: 'Aún no hay transacciones',
+      error: 'No se pudieron cargar las transacciones',
+    },
     timeline: {
       title: 'Cronología',
       entries: 'registros',
@@ -5545,6 +5431,7 @@ export const translations = {
       repair: 'Reparación',
       tax: 'Impuesto',
       parking: 'Parking',
+      consumable: 'Consumible',
       reminder: 'Recordatorio',
       todo: 'Tarea',
       insurance: 'Seguro',
@@ -5888,72 +5775,6 @@ export const translations = {
       markDoneCancel: 'Cancelar',
     },
     
-    // Weather Alerts
-    weatherAlerts: {
-      title: 'Alertas Meteorológicas para Conductores',
-      fetchError: 'No se pudieron cargar las alertas meteorológicas',
-      allClear: 'Buenas Condiciones de Conducción',
-      noActiveAlerts: 'Sin alertas meteorológicas para tu zona',
-      activeAlerts: 'Alertas Meteorológicas',
-      safetyScore: 'Seguridad',
-      dismissAll: 'Descartar Todo',
-      now: 'Ahora',
-      upcoming: 'Próximo',
-      expectedAt: 'Esperado a las',
-      drivingTips: 'Consejos de Conducción',
-      lastUpdated: 'Actualizado',
-      // Weather conditions
-      fog: 'Niebla - Visibilidad Reducida',
-      freezingFog: 'Niebla Helada - Peligroso',
-      lightRain: 'Lluvia Ligera',
-      rain: 'Lluvia - Carreteras Resbaladizas',
-      heavyRain: 'Lluvia Intensa - Visibilidad Pobre',
-      showers: 'Chubascos',
-      heavyShowers: 'Chubascos Fuertes - Riesgo de Inundación',
-      lightSnow: 'Nieve Ligera',
-      snow: 'Nieve - Conduzca con Cuidado',
-      heavySnow: 'Nevada Intensa - Evite Viajar',
-      snowGrains: 'Granos de Nieve',
-      snowShowers: 'Chubascos de Nieve',
-      heavySnowShowers: 'Chubascos de Nieve Intensos',
-      freezingRain: 'Lluvia Helada - Riesgo de Hielo',
-      heavyFreezingRain: 'Lluvia Helada Intensa - Peligroso',
-      thunderstorm: 'Tormenta Eléctrica',
-      thunderstormHail: 'Tormenta con Granizo',
-      severeThunderstorm: 'Tormenta Severa - Busque Refugio',
-      // Wind alerts
-      moderateWind: 'Viento Moderado',
-      strongWind: 'Ráfagas de Viento Fuertes',
-      extremeWind: 'Viento Extremo - Peligroso',
-      // Visibility alerts
-      poorVisibility: 'Visibilidad Pobre',
-      veryPoorVisibility: 'Visibilidad Muy Pobre',
-      extremelyPoorVisibility: 'Visibilidad Extremadamente Pobre - Peligroso',
-      // Temperature alerts
-      freezing: 'Temperaturas Bajo Cero',
-      extremeCold: 'Frío Extremo',
-      iceRisk: 'Riesgo de Hielo en Carreteras',
-      extremeHeat: 'Calor Extremo',
-      // Driving tips
-      tips: {
-        avoidTravel: 'Considere evitar viajar a menos que sea necesario',
-        reduceSpeed: 'Reduzca la velocidad y mantenga distancia segura',
-        increaseDistance: 'Aumente la distancia de seguimiento',
-        useHeadlights: 'Use las luces incluso durante el día',
-        checkTires: 'Revise los neumáticos, considere neumáticos de invierno',
-        gentleBraking: 'Frene suavemente para evitar derrapes',
-        clearWindows: 'Limpie todas las ventanas y espejos de hielo/nieve',
-        useFogLights: 'Use las luces antiniebla cuando la visibilidad sea pobre',
-        avoidOvertaking: 'Evite adelantar en malas condiciones',
-        gripWheel: 'Mantenga un agarre firme del volante',
-        watchHighSided: 'Atención a vehículos altos en autopistas',
-        pullOver: 'Deténgase de forma segura si las condiciones empeoran',
-        avoidFlooded: 'Nunca conduzca por carreteras inundadas',
-        warmUpEngine: 'Permita que el motor se caliente antes de conducir',
-        checkCoolant: 'Revise los niveles de refrigerante en calor extremo',
-      },
-    },
-
     vehicleManual: {
       title: 'Manual del Propietario',
       viewManual: 'Ver Manual',
@@ -6354,6 +6175,8 @@ export const translations = {
     update: {
       pill: 'Actualizar',
       pillAria: 'Actualización disponible — toca para ver los detalles',
+      devPill: 'dev',
+      devPillAria: 'Compilación de desarrollo — toca para previsualizar el diálogo de actualización',
       available: 'Actualización disponible',
       securityTitle: 'Actualización de seguridad instalada',
       weeklyMaintenance: 'Mantenimiento semanal',
@@ -6376,7 +6199,6 @@ export const translations = {
     serviceError: {
       title: 'Servicio no disponible',
       desc: 'No pudimos cargar esto ahora mismo.',
-      weatherTitle: 'Meteorología no disponible',
       fuelTitle: 'Precios de combustible no disponibles',
       retry: 'Reintentar',
       retrying: 'Reintentando…',
@@ -6401,6 +6223,12 @@ export const translations = {
       suggestService: '¿Cuándo toca el próximo servicio?',
       suggestFuelYear: '¿Cuánto gasté en combustible el año pasado?',
       suggestTotal: '¿Cuánto he gastado en total en este vehículo?',
+      suggestReminders: '¿Qué recordatorios se acercan?',
+      suggestInsurance: '¿Cuándo vence mi seguro?',
+      suggestConsumables: '¿Cuándo cambié los filtros por última vez?',
+      suggestEfficiency: '¿Cuál es mi consumo medio de combustible?',
+      selectVehicle: 'Chatear sobre',
+      noVehicles: 'Añade un vehículo para empezar a chatear con el asistente.',
       placeholder: 'Pregunta sobre este vehículo…',
       inputLabel: 'Haz una pregunta',
       send: 'Enviar',
@@ -6477,17 +6305,6 @@ export const translations = {
       low: 'Baja',
       medium: 'Media',
       high: 'Alta',
-    },
-    
-    // Weather Widget
-    weather: {
-      humidity: 'Humedad',
-      wind: 'Viento',
-      forecast: 'Pronóstico',
-      airQuality: 'Calidad del Aire',
-      today: 'Hoy',
-      tomorrow: 'Mañana',
-      next7Days: 'Próximos 7 días',
     },
     
     // Fuel Prices Widget
@@ -7329,7 +7146,7 @@ export const translations = {
       passwordVeryStrong: 'Muy Fuerte',
       // Configuración de Ubicación
       locationSettings: 'Configuración de Ubicación',
-      locationDescription: 'Configura tu ubicación para clima y precios de combustible precisos en el panel.',
+      locationDescription: 'Configura tu ubicación para precios de combustible precisos en el panel.',
       autoDetectLocation: 'Detectar Ubicación Automáticamente',
       autoDetectDescription: 'Usar el GPS de tu dispositivo para ubicación precisa',
       locationName: 'Nombre de Ubicación',
@@ -7485,13 +7302,13 @@ export const translations = {
       acceptanceItem2: 'Tiene la capacidad legal para celebrar este acuerdo',
       acceptanceItem3: 'Cumplirá con todas las leyes y regulaciones aplicables mientras usa este servicio',
       
-      proprietaryTitle: 'Software Propietario',
-      proprietaryHighlight: 'GearCargo es software propietario de código cerrado. Este NO es software de código abierto y NO está licenciado bajo MIT ni ninguna otra licencia de código abierto.',
-      proprietaryDesc: 'Todos los derechos están reservados. Usted no puede:',
-      proprietaryItem1: 'Copiar, modificar, distribuir o crear obras derivadas del software',
-      proprietaryItem2: 'Realizar ingeniería inversa, descompilar o desensamblar la aplicación',
-      proprietaryItem3: 'Intentar extraer el código fuente o los algoritmos subyacentes',
-      proprietaryItem4: 'Sublicenciar, vender, revender o transferir el acceso a la aplicación',
+      licenseTitle: 'Licencia de Código Abierto',
+      licenseHighlight: 'GearCargo es software libre y de código abierto publicado bajo la Licencia MIT. Puedes usarlo, copiarlo, modificarlo y distribuirlo según los términos de esa licencia.',
+      licenseDesc: 'Bajo la Licencia MIT, puedes:',
+      licenseItem1: 'Usar el software para cualquier propósito, incluido el comercial',
+      licenseItem2: 'Copiar, modificar y crear obras derivadas',
+      licenseItem3: 'Distribuir, sublicenciar y vender copias del software',
+      licenseItem4: 'Siempre que incluyas el aviso de copyright y de permiso original',
       
       securityTitle: 'Obligaciones de Seguridad',
       securityDesc: 'Usted es responsable de mantener la seguridad de su cuenta:',

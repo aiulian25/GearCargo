@@ -151,6 +151,10 @@ tmp/
 temp/
 *.tmp
 
+# Frontend build output — produced by the Dockerfile frontend-builder stage.
+# Never commit; stale bundles otherwise pile up inside the image.
+backend/static/
+
 # Backup archives
 *.zip
 *.tar.gz
