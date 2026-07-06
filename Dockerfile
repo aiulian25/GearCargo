@@ -14,7 +14,7 @@
 # ============================================================
 # STAGE 1: Build Frontend (React PWA)
 # ============================================================
-FROM node:20-alpine AS frontend-builder
+FROM node:26-alpine AS frontend-builder
 WORKDIR /frontend
 # Build metadata baked into the PWA (via Vite's import.meta.env) so the running
 # app can detect a newer published build and tell a feature update apart from a
