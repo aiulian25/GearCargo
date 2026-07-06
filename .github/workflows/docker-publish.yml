@@ -5,13 +5,20 @@ name: Publish image
 # never build. Multi-arch (amd64 + arm64) so the same `:latest` tag works on any
 # hardware; Docker auto-selects the right arch from the manifest.
 #
-# Triggers: every push to main (publishes :latest + :single + the commit SHA),
-# version tags v* (semver tags), and manual dispatch.
+# Triggers: every push to main (publishes :latest + the commit SHA),
+# version tags v* (semver tags), manual dispatch, and a weekly schedule.
+#
+# DOCK-02: the weekly scheduled run rebuilds and republishes :latest WITHOUT the
+# layer cache (see no-cache below) so the base image is re-pulled and
+# `apt-get upgrade` re-runs — end users get OS-CVE patches even in weeks with no
+# code push. (Dependabot separately tracks base-image TAG moves in dependabot.yml.)
 
 on:
   push:
     branches: [main]
     tags: ['v*']
+  schedule:
+    - cron: '0 4 * * 0'   # Sunday 04:00 UTC — weekly base-image refresh (DOCK-02)
   workflow_dispatch: {}
 
 # One in-flight publish per ref; newer pushes cancel older builds.
@@ -41,6 +48,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Compute build metadata
+        id: buildmeta
+        run: |
+          echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          # APP_VERSION: the semver tag if this is a v* tag build, else the
+          # frontend package.json version. Drives the "v1.2.3" shown in the popup.
+          if [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" == v* ]]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=$(node -p "require('./frontend/package.json').version")" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Compute image tags
         id: meta
         uses: docker/metadata-action@v5
@@ -49,7 +68,6 @@ jobs:
           images: ghcr.io/${{ github.repository_owner }}/gearcargo
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=single,enable={{is_default_branch}}
             type=sha,format=short
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -63,5 +81,19 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Build metadata baked into the image → surfaced at /api/app-version so
+          # the PWA can detect newer builds (feature vs weekly security rebuild).
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            BUILD_DATE=${{ steps.buildmeta.outputs.date }}
+            APP_VERSION=${{ steps.buildmeta.outputs.version }}
+          # Always re-pull the base image so a newer base is picked up promptly.
+          pull: true
+          # DOCK-02: the weekly scheduled run does a full no-cache rebuild so
+          # `apt-get upgrade` actually re-runs and OS-CVE patches land in :latest.
+          # Push/tag/dispatch builds keep the cache for speed.
+          no-cache: ${{ github.event_name == 'schedule' }}
           cache-from: type=gha
+          # Still write the (freshly patched) layers back so the next push build
+          # starts from a patched base.
           cache-to: type=gha,mode=max

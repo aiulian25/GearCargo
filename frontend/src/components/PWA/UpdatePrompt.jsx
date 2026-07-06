@@ -61,11 +61,15 @@ export default function UpdatePrompt() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [])
 
+  // The visible "update available" UX now lives in the header Update pill +
+  // UpdateModal (driven by /api/app-version). We intentionally do NOT raise the
+  // old reload toast here so the two don't duplicate. `needRefresh` still
+  // populates the waiting service worker, which UpdateModal activates on apply.
   useEffect(() => {
     if (needRefresh) {
-      setShowReload(true)
+      setNeedRefresh(false)
     }
-  }, [needRefresh])
+  }, [needRefresh, setNeedRefresh])
 
   useEffect(() => {
     if (offlineReady) {

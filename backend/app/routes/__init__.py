@@ -23,6 +23,7 @@ from app.routes.todos import todos_bp
 from app.routes.reports import reports_bp
 from app.routes.widget import widget_bp
 from app.routes.search import search_bp
+from app.routes.system import system_bp
 
 __all__ = [
     'auth_bp',
@@ -76,6 +77,7 @@ def register_blueprints(app):
         (reports_bp, '/api/reports'),
         (widget_bp, '/api/widget'),
         (search_bp, '/api/search'),
+        (system_bp, '/api'),
     ]
     
     for bp, prefix in blueprints:

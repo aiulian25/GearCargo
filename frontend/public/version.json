@@ -1,0 +1,24 @@
+{
+  "version": "1.1.0",
+  "date": "2026-07-06",
+  "notes": {
+    "en": [
+      { "type": "new", "title": "Smarter vehicle assistant", "desc": "Answers about your car's specs, fuel and history." },
+      { "type": "new", "title": "Redesigned charts", "desc": "Compact, mobile-first spending and forecast views." },
+      { "type": "fix", "title": "Offline entries confirm they're saved", "desc": "A clear 'will sync when back online' message instead of an error." },
+      { "type": "security", "title": "Hardened backups and dependencies", "desc": "SSRF-safe backup destinations and updated packages." }
+    ],
+    "ro": [
+      { "type": "new", "title": "Asistent auto mai inteligent", "desc": "Răspunde despre specificațiile, combustibilul și istoricul mașinii tale." },
+      { "type": "new", "title": "Grafice reproiectate", "desc": "Vizualizări compacte ale cheltuielilor și previziunilor, optimizate pentru mobil." },
+      { "type": "fix", "title": "Intrările offline confirmă salvarea", "desc": "Un mesaj clar „se va sincroniza când revii online” în loc de eroare." },
+      { "type": "security", "title": "Backup-uri și dependențe consolidate", "desc": "Destinații de backup protejate împotriva SSRF și pachete actualizate." }
+    ],
+    "es": [
+      { "type": "new", "title": "Asistente del vehículo más inteligente", "desc": "Responde sobre las especificaciones, el combustible y el historial de tu coche." },
+      { "type": "new", "title": "Gráficos rediseñados", "desc": "Vistas de gastos y previsiones compactas y adaptadas al móvil." },
+      { "type": "fix", "title": "Las entradas sin conexión confirman que se guardaron", "desc": "Un mensaje claro «se sincronizará al reconectar» en lugar de un error." },
+      { "type": "security", "title": "Copias de seguridad y dependencias reforzadas", "desc": "Destinos de copia protegidos contra SSRF y paquetes actualizados." }
+    ]
+  }
+}

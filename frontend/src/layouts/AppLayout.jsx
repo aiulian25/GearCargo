@@ -3,6 +3,8 @@ import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useTranslation } from '../contexts/LanguageContext'
 import { SyncIndicator } from '../components/PWA/SyncIndicator'
+import UpdatePill from '../components/PWA/UpdatePill'
+import { useAppUpdate } from '../contexts/UpdateContext'
 import GlobalSearch from '../components/ui/GlobalSearch'
 import PageLoader from '../components/ui/PageLoader'
 
@@ -211,6 +213,7 @@ function UserMenu({ user, onLogout }) {
 
 export default function AppLayout() {
   const { user, logout } = useAuth()
+  const { available: updateAvailable } = useAppUpdate()
   const { t } = useTranslation()
   const location = useLocation()
   const navigate = useNavigate()
@@ -252,7 +255,7 @@ export default function AppLayout() {
           
           {/* Sync Status, Search, and User Menu */}
           <div className="flex items-center gap-2">
-            <SyncIndicator variant="badge" />
+            {updateAvailable ? <UpdatePill /> : <SyncIndicator variant="badge" />}
             {/* Search button */}
             <button
               onClick={() => setSearchOpen(true)}

@@ -7,6 +7,7 @@ import { AuthProvider } from './contexts/AuthContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { LanguageProvider } from './contexts/LanguageContext'
 import { ConfirmProvider } from './components/ui/ConfirmDialog'
+import { UpdateProvider } from './contexts/UpdateContext'
 import UserPreferencesSync from './components/UserPreferencesSync'
 
 // Remove initial loader
@@ -35,9 +36,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <LanguageProvider>
           <ConfirmProvider>
             <AuthProvider>
-              <UserPreferencesSync>
-                <App />
-              </UserPreferencesSync>
+              <UpdateProvider>
+                <UserPreferencesSync>
+                  <App />
+                </UserPreferencesSync>
+              </UpdateProvider>
             </AuthProvider>
           </ConfirmProvider>
         </LanguageProvider>

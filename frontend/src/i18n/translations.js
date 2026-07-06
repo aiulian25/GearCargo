@@ -229,6 +229,7 @@ export const translations = {
       noEntries: 'No entries found',
       noEntriesFilter: 'Try changing the filter',
       noEntriesYet: 'Start adding expenses to see them here',
+      addEntryCta: 'Add your first entry',
       mileage: 'Mileage',
       loadMore: 'Load more',
     },
@@ -293,17 +294,6 @@ export const translations = {
     },
     
     // Web Share Target
-    share: {
-      title: 'Shared Content',
-      received: 'Content received!',
-      processing: 'Processing shared content...',
-      redirecting: 'Redirecting to the appropriate page...',
-      titleLabel: 'Title',
-      textLabel: 'Text',
-      urlLabel: 'URL',
-      filesLabel: 'Files',
-    },
-    
     // Smart Recommendations
     smartRecommendations: {
       title: 'Smart Recommendations',
@@ -1037,6 +1027,28 @@ export const translations = {
       repairsTitle: 'No repairs logged yet',
       repairsDesc: 'Track repairs, issues and their costs over time.',
       repairsCta: 'Add repair entry',
+    },
+    update: {
+      pill: 'Update',
+      pillAria: 'App update available — tap for details',
+      available: 'Update available',
+      securityTitle: 'Security update installed',
+      weeklyMaintenance: 'Weekly maintenance',
+      onVersion: 'You’re on v{current} · new v{new}',
+      whatsNew: 'What’s new',
+      tagNew: 'New',
+      tagFix: 'Fixed',
+      tagSecurity: 'Security',
+      securityLead: 'Latest operating-system security patches',
+      securityDesc: 'We refreshed the app with this week’s OS security fixes. The app itself didn’t change — your data is unchanged. Reload to run the patched build.',
+      patchedShow: 'Show updated packages ({count})',
+      patchedHide: 'Hide updated packages',
+      viewChangelog: 'View full changelog',
+      viewHistory: 'See build & release history',
+      updateNow: 'Update now',
+      reload: 'Reload',
+      later: 'Later',
+      updating: 'Updating…',
     },
     serviceError: {
       title: 'Service unavailable',
@@ -2445,6 +2457,7 @@ export const translations = {
         conflicts: 'Conflicts',
         upToDate: 'All changes saved',
         offlineNotice: "You're offline. Changes are saved on this device and will sync automatically when you reconnect.",
+        savedOffline: "Saved on this device — we'll sync it when you're back online.",
       },
     },
     
@@ -2869,6 +2882,7 @@ export const translations = {
       noEntries: 'Nu s-au găsit înregistrări',
       noEntriesFilter: 'Încercați să schimbați filtrul',
       noEntriesYet: 'Începeți să adăugați cheltuieli pentru a le vedea aici',
+      addEntryCta: 'Adăugați prima înregistrare',
       mileage: 'Kilometraj',
       loadMore: 'Încarcă mai mult',
     },
@@ -2933,17 +2947,6 @@ export const translations = {
     },
     
     // Web Share Target
-    share: {
-      title: 'Conținut Partajat',
-      received: 'Conținut primit!',
-      processing: 'Se procesează conținutul partajat...',
-      redirecting: 'Redirecționare către pagina corespunzătoare...',
-      titleLabel: 'Titlu',
-      textLabel: 'Text',
-      urlLabel: 'URL',
-      filesLabel: 'Fișiere',
-    },
-    
     // Smart Recommendations
     smartRecommendations: {
       title: 'Recomandări Inteligente',
@@ -3678,6 +3681,28 @@ export const translations = {
       repairsTitle: 'Nicio reparație înregistrată încă',
       repairsDesc: 'Urmărește reparațiile, problemele și costurile lor în timp.',
       repairsCta: 'Adaugă reparație',
+    },
+    update: {
+      pill: 'Actualizare',
+      pillAria: 'Actualizare disponibilă — atinge pentru detalii',
+      available: 'Actualizare disponibilă',
+      securityTitle: 'Actualizare de securitate instalată',
+      weeklyMaintenance: 'Mentenanță săptămânală',
+      onVersion: 'Ai v{current} · nou v{new}',
+      whatsNew: 'Noutăți',
+      tagNew: 'Nou',
+      tagFix: 'Reparat',
+      tagSecurity: 'Securitate',
+      securityLead: 'Cele mai recente actualizări de securitate ale sistemului de operare',
+      securityDesc: 'Am reîmprospătat aplicația cu remedierile de securitate ale sistemului de operare din această săptămână. Aplicația în sine nu s-a schimbat — datele tale rămân neatinse. Reîncarcă pentru a rula versiunea actualizată.',
+      patchedShow: 'Arată pachetele actualizate ({count})',
+      patchedHide: 'Ascunde pachetele actualizate',
+      viewChangelog: 'Vezi jurnalul complet de modificări',
+      viewHistory: 'Vezi istoricul versiunilor',
+      updateNow: 'Actualizează acum',
+      reload: 'Reîncarcă',
+      later: 'Mai târziu',
+      updating: 'Se actualizează…',
     },
     serviceError: {
       title: 'Serviciu indisponibil',
@@ -5103,6 +5128,7 @@ export const translations = {
         conflicts: 'Conflicte',
         upToDate: 'Toate modificările sunt salvate',
         offlineNotice: 'Ești offline. Modificările sunt salvate pe acest dispozitiv și se vor sincroniza automat când te reconectezi.',
+        savedOffline: 'Salvat pe acest dispozitiv — se va sincroniza când revii online.',
       },
     },
     
@@ -5525,6 +5551,7 @@ export const translations = {
       noEntries: 'No se encontraron registros',
       noEntriesFilter: 'Intente cambiar el filtro',
       noEntriesYet: 'Comience a agregar gastos para verlos aquí',
+      addEntryCta: 'Agregue su primer registro',
       mileage: 'Kilometraje',
       loadMore: 'Cargar más',
     },
@@ -5589,17 +5616,6 @@ export const translations = {
     },
     
     // Web Share Target
-    share: {
-      title: 'Contenido Compartido',
-      received: '¡Contenido recibido!',
-      processing: 'Procesando contenido compartido...',
-      redirecting: 'Redirigiendo a la página correspondiente...',
-      titleLabel: 'Título',
-      textLabel: 'Texto',
-      urlLabel: 'URL',
-      filesLabel: 'Archivos',
-    },
-    
     // Smart Recommendations
     smartRecommendations: {
       title: 'Recomendaciones Inteligentes',
@@ -6334,6 +6350,28 @@ export const translations = {
       repairsTitle: 'Aún no hay reparaciones',
       repairsDesc: 'Registra reparaciones, incidencias y sus costes a lo largo del tiempo.',
       repairsCta: 'Añadir reparación',
+    },
+    update: {
+      pill: 'Actualizar',
+      pillAria: 'Actualización disponible — toca para ver los detalles',
+      available: 'Actualización disponible',
+      securityTitle: 'Actualización de seguridad instalada',
+      weeklyMaintenance: 'Mantenimiento semanal',
+      onVersion: 'Tienes v{current} · nueva v{new}',
+      whatsNew: 'Novedades',
+      tagNew: 'Nuevo',
+      tagFix: 'Corregido',
+      tagSecurity: 'Seguridad',
+      securityLead: 'Últimos parches de seguridad del sistema operativo',
+      securityDesc: 'Actualizamos la app con las correcciones de seguridad del sistema operativo de esta semana. La app en sí no cambió — tus datos permanecen intactos. Recarga para ejecutar la versión parcheada.',
+      patchedShow: 'Mostrar paquetes actualizados ({count})',
+      patchedHide: 'Ocultar paquetes actualizados',
+      viewChangelog: 'Ver el registro de cambios completo',
+      viewHistory: 'Ver el historial de versiones',
+      updateNow: 'Actualizar ahora',
+      reload: 'Recargar',
+      later: 'Más tarde',
+      updating: 'Actualizando…',
     },
     serviceError: {
       title: 'Servicio no disponible',
@@ -7764,6 +7802,7 @@ export const translations = {
         conflicts: 'Conflictos',
         upToDate: 'Todos los cambios guardados',
         offlineNotice: 'Estás sin conexión. Los cambios se guardan en este dispositivo y se sincronizarán automáticamente al reconectarte.',
+        savedOffline: 'Guardado en este dispositivo — se sincronizará cuando vuelvas a estar en línea.',
       },
     },
     

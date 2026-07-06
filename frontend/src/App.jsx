@@ -10,6 +10,7 @@ import AuthLayout from './layouts/AuthLayout'
 
 // PWA Components — eager: tiny, mounted globally.
 import { InstallPrompt, UpdatePrompt, PullToRefresh } from './components/PWA'
+import UpdateModal from './components/PWA/UpdateModal'
 
 // Suspense fallback for lazily-loaded route chunks.
 import PageLoader from './components/ui/PageLoader'
@@ -67,7 +68,6 @@ const AddReminder = lazy(() => import('./pages/reminders/AddReminder'))
 const SmartRecommendations = lazy(() => import('./pages/predictions/SmartRecommendations'))
 const Settings = lazy(() => import('./pages/settings/Settings'))
 const Profile = lazy(() => import('./pages/settings/Profile'))
-const Share = lazy(() => import('./pages/Share'))
 const SharedReport = lazy(() => import('./pages/SharedReport'))
 
 // Protected Route Component
@@ -141,7 +141,10 @@ function App() {
     <>
       {/* PWA Components */}
       <InstallPrompt />
+      {/* UpdatePrompt keeps the service worker registered + the "offline ready"
+          toast; the visible update UX is the header pill + UpdateModal below. */}
       <UpdatePrompt />
+      <UpdateModal />
       <PullToRefresh />
       
       <Toaster
@@ -252,9 +255,6 @@ function App() {
           {/* Settings */}
           <Route path="settings" element={<Settings />} />
           <Route path="settings/profile" element={<Profile />} />
-          
-          {/* Share Target */}
-          <Route path="share" element={<Share />} />
         </Route>
         
         {/* Catch all */}

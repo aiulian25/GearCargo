@@ -293,8 +293,8 @@ For almost everyone, **the single container is the answer** — see
 | **Build from source / develop** | `docker-compose.dev.yml` — builds the single image locally (`up -d --build`). |
 | **External DB/Redis (dual-mode)** | The standard compose; point `DATABASE_URL` / `REDIS_URL` at your host and the embedded servers stay dormant. |
 
-**Image:** `ghcr.io/aiulian25/gearcargo:latest` — the single all-in-one image
-(`:single` is an alias). That's the whole app.
+**Image:** `ghcr.io/aiulian25/gearcargo:latest` — the single all-in-one image.
+That's the whole app.
 
 The single container runs PostgreSQL 16 + Redis 7 + gunicorn + scheduled backups
 under [s6-overlay](https://github.com/just-containers/s6-overlay); only the app

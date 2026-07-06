@@ -16,6 +16,15 @@
 # ============================================================
 FROM node:20-alpine AS frontend-builder
 WORKDIR /frontend
+# Build metadata baked into the PWA (via Vite's import.meta.env) so the running
+# app can detect a newer published build and tell a feature update apart from a
+# weekly OS-security rebuild. Default to dev-friendly values for local builds.
+ARG GIT_SHA=dev
+ARG BUILD_DATE=
+ARG APP_VERSION=0.0.0
+ENV VITE_GIT_SHA=$GIT_SHA \
+    VITE_BUILD_DATE=$BUILD_DATE \
+    VITE_APP_VERSION=$APP_VERSION
 COPY frontend/package*.json ./
 COPY frontend/package-lock.json* ./
 RUN npm install --silent
@@ -45,11 +54,22 @@ WORKDIR /app
 ARG TARGETARCH
 ARG S6_OVERLAY_VERSION=3.2.0.2
 
+# Build metadata (same values passed to the frontend stage) — surfaced by the
+# backend at /api/app-version so the running PWA can detect a newer build and
+# distinguish a feature update (git_sha changed) from a weekly OS-security
+# rebuild (same git_sha, newer build_date).
+ARG GIT_SHA=dev
+ARG BUILD_DATE=
+ARG APP_VERSION=0.0.0
+
 # ------------------------------------------------------------
 # System packages: PostgreSQL 16 (PGDG), Redis, cron, OCR, s6-overlay.
 # ------------------------------------------------------------
 RUN set -eux; \
-    apt-get update && apt-get upgrade -y; \
+    apt-get update; \
+    mkdir -p /app; \
+    apt-get -s upgrade 2>/dev/null | awk '/^Inst /{v=$3; gsub(/[()[\]]/,"",v); print $2" "v}' > /app/patched-packages.txt || true; \
+    apt-get upgrade -y; \
     apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg xz-utils \
         gcc libpq-dev \
@@ -93,6 +113,10 @@ RUN pip install --no-cache-dir -r requirements.txt && \
 COPY backend/ .
 COPY scripts/ /app/scripts/
 COPY --from=frontend-builder /frontend/dist /app/static
+
+# Assemble the build manifest the backend serves at /api/app-version. Combines
+# the build-arg metadata with the captured OS-security package list.
+RUN APP_VERSION="$APP_VERSION" GIT_SHA="$GIT_SHA" BUILD_DATE="$BUILD_DATE" python3 -c "import json,os; p='/app/patched-packages.txt'; pkgs=[l.strip() for l in open(p)][:120] if os.path.exists(p) else []; json.dump({'version':os.environ.get('APP_VERSION') or '0.0.0','git_sha':os.environ.get('GIT_SHA') or 'dev','build_date':os.environ.get('BUILD_DATE') or '','patched_packages':[x for x in pkgs if x]}, open('/app/build-info.json','w'))" && rm -f /app/patched-packages.txt
 
 # s6 service tree + service scripts (docker/rootfs → /)
 COPY docker/rootfs/ /

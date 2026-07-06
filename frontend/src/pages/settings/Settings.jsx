@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { BUILD } from '../../config/build'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { useLanguage, useTranslation } from '../../contexts/LanguageContext'
@@ -1664,15 +1665,15 @@ export default function Settings() {
                 <div className="space-y-2">
                   {(calendarSettings.sources || []).map((source) => (
                     <div key={source.id} className={`rounded-lg border p-2 ${selectedCalendarSourceId === source.id ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/5' : 'border-[var(--color-border)]'}`}>
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
                         <button
                           onClick={() => setSelectedCalendarSourceId(source.id)}
-                          className="flex-1 text-left"
+                          className="flex-1 min-w-0 text-left"
                         >
-                          <div className="text-sm font-medium">{source.name || source.provider || 'Source'}</div>
-                          <div className="text-2xs text-[var(--color-text-muted)]">{source.url || t('settings.calendarUrlNotSet') || 'URL not set'}</div>
+                          <div className="text-sm font-medium truncate">{source.name || source.provider || 'Source'}</div>
+                          <div className="text-2xs text-[var(--color-text-muted)] truncate">{source.url || t('settings.calendarUrlNotSet') || 'URL not set'}</div>
                         </button>
-                        <label className="flex items-center gap-1 text-xs text-[var(--color-text-muted)]">
+                        <label className="flex items-center gap-1 text-xs text-[var(--color-text-muted)] shrink-0">
                           <input
                             type="checkbox"
                             checked={source.enabled !== false}
@@ -1682,7 +1683,7 @@ export default function Settings() {
                         </label>
                         <button
                           onClick={() => removeCalendarSource(source.id)}
-                          className="px-2 py-1 text-xs text-red-500 hover:bg-red-500/10 rounded"
+                          className="px-2 py-1 text-xs text-red-500 hover:bg-red-500/10 rounded shrink-0"
                           disabled={(calendarSettings.sources || []).length <= 1}
                         >
                           {t('settings.removeSource') || 'Remove'}
@@ -2620,7 +2621,7 @@ export default function Settings() {
             <div className="flex-1">
               <span className="text-sm">{t('settings.version')}</span>
             </div>
-            <span className="text-sm text-[var(--color-text-muted)]">1.0.0</span>
+            <span className="text-sm text-[var(--color-text-muted)] tabular-nums">{BUILD.version}</span>
           </div>
           
           <button 
