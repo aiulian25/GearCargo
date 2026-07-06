@@ -717,7 +717,7 @@ def create_app(config_class=None):
         return jsonify({
             'status': 'healthy',
             'app': 'GearCargo',
-            'version': '1.0.0',
+            'version': '1.1.0',
             'redis_ok': _redis_available,
         }), 200
 

@@ -1,7 +1,7 @@
 {
   "name": "gearcargo",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "GearCargo - Vehicle Management PWA",
   "type": "module",
   "scripts": {
