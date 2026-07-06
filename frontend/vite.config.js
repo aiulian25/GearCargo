@@ -117,6 +117,10 @@ export default defineConfig({
       },
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // UX-01: PWA manifest screenshots are fetched on-demand by the browser's
+        // install UI, never by the app at runtime — keep them OUT of the SW
+        // precache so they don't bloat the offline bundle.
+        globIgnores: ['**/screenshots/**'],
       }
     })
   ],

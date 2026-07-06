@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
 import { useForm, useWatch } from 'react-hook-form'
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import { serviceApi, vehicleApi, attachmentApi } from '../../services/api'
@@ -174,6 +175,11 @@ export default function AddVehicleService() {
       
       navigate(`/vehicles/${vehicleId}`)
     } catch (err) {
+      if (isOfflineWriteError(err)) {
+        announceOfflineSaved(t)
+        navigate(`/vehicles/${vehicleId}`)
+        return
+      }
       setError(err.response?.data?.error || t('addService.error') || 'Failed to add service entry')
     } finally {
       setIsSubmitting(false)

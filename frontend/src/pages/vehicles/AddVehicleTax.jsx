@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
 import { useForm, useWatch } from 'react-hook-form'
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import { taxApi, vehicleApi, attachmentApi, insuranceApi } from '../../services/api'
@@ -157,6 +158,11 @@ export default function AddVehicleTax() {
       
       navigate(`/vehicles/${vehicleId}`)
     } catch (err) {
+      if (isOfflineWriteError(err)) {
+        announceOfflineSaved(t)
+        navigate(`/vehicles/${vehicleId}`)
+        return
+      }
       setError(err.response?.data?.error || t('addTax.error') || 'Failed to add tax entry')
     } finally {
       setIsSubmitting(false)

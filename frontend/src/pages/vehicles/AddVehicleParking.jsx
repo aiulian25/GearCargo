@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
 import { useForm, useWatch } from 'react-hook-form'
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import { vehicleApi, attachmentApi } from '../../services/api'
@@ -153,6 +154,11 @@ export default function AddVehicleParking() {
       
       navigate(`/vehicles/${vehicleId}`)
     } catch (err) {
+      if (isOfflineWriteError(err)) {
+        announceOfflineSaved(t)
+        navigate(`/vehicles/${vehicleId}`)
+        return
+      }
       setError(err.response?.data?.error || t('addParking.error') || 'Failed to add parking entry')
     } finally {
       setIsSubmitting(false)

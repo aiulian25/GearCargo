@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
 import { useForm } from 'react-hook-form'
 import { vehicleApi, consumableApi, attachmentApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
@@ -132,6 +133,11 @@ export default function AddVehicleConsumable() {
 
       navigate(`/vehicles/${vehicleId}/consumables`)
     } catch (err) {
+      if (isOfflineWriteError(err)) {
+        announceOfflineSaved(t)
+        navigate(`/vehicles/${vehicleId}/consumables`)
+        return
+      }
       setError(err.response?.data?.error || t('addConsumable.error') || 'Failed to save consumable')
     } finally {
       setIsSubmitting(false)

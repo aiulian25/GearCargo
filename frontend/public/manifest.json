@@ -92,7 +92,7 @@
     }
   ],
   "share_target": {
-    "action": "/share",
+    "action": "/share-target",
     "method": "POST",
     "enctype": "multipart/form-data",
     "params": {
@@ -101,7 +101,7 @@
       "url": "url",
       "files": [
         {
-          "name": "media",
+          "name": "receipt",
           "accept": ["image/*", "application/pdf"]
         }
       ]
@@ -111,7 +111,29 @@
     "client_mode": "navigate-existing"
   },
   "handle_links": "preferred",
-  "screenshots": [],
+  "screenshots": [
+    {
+      "src": "/screenshots/dashboard.png",
+      "sizes": "1400x875",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Your garage dashboard with weather and live fuel prices"
+    },
+    {
+      "src": "/screenshots/expenses.png",
+      "sizes": "1400x875",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Track fuel, servicing and every vehicle expense"
+    },
+    {
+      "src": "/screenshots/vehicle-detail.png",
+      "sizes": "1400x875",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "A complete maintenance history for each vehicle"
+    }
+  ],
   "prefer_related_applications": false,
   "related_applications": []
 }

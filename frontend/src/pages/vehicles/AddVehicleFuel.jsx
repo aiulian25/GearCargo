@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
 import { useForm } from 'react-hook-form'
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import { fuelApi, vehicleApi, attachmentApi } from '../../services/api'
@@ -160,6 +161,11 @@ export default function AddVehicleFuel() {
       
       navigate(`/vehicles/${vehicleId}`)
     } catch (err) {
+      if (isOfflineWriteError(err)) {
+        announceOfflineSaved(t)
+        navigate(`/vehicles/${vehicleId}`)
+        return
+      }
       setError(err.response?.data?.error || t('addFuel.error') || 'Failed to add fuel entry')
     } finally {
       setIsSubmitting(false)

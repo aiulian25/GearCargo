@@ -4,6 +4,7 @@ import { reminderApi } from '../../services/api'
 import { formatDistanceToNow, isPast, isToday, isTomorrow, parseISO } from 'date-fns'
 import { useTranslation } from '../../contexts/LanguageContext'
 import toast from 'react-hot-toast'
+import EmptyState from '../../components/ui/EmptyState'
 
 export default function Reminders() {
   const { t } = useTranslation()
@@ -176,26 +177,19 @@ export default function Reminders() {
           ))}
         </div>
       ) : reminders.length === 0 ? (
-        <div className="card text-center py-12">
-          <span className="material-icons-outlined icon-xl text-[var(--color-text-muted)] mb-3">
-            {filter === 'completed' ? 'task_alt' : 'notifications_none'}
-          </span>
-          <h3 className="text-sm font-medium mb-1">
-            {filter === 'completed' ? t('reminders.noCompletedReminders') : t('reminders.noReminders')}
-          </h3>
-          <p className="text-xs text-[var(--color-text-secondary)] mb-4">
-            {filter === 'upcoming' 
+        <EmptyState
+          icon={filter === 'completed' ? 'task_alt' : 'notifications_none'}
+          title={filter === 'completed' ? t('reminders.noCompletedReminders') : t('reminders.noReminders')}
+          description={
+            filter === 'upcoming'
               ? t('reminders.addRemindersHint')
               : filter === 'overdue'
               ? t('reminders.nothingOverdue')
-              : t('reminders.completedAppearHere')}
-          </p>
-          {filter !== 'completed' && (
-            <Link to="/reminders/add" className="btn btn-primary">
-              {t('reminders.addReminder')}
-            </Link>
-          )}
-        </div>
+              : t('reminders.completedAppearHere')
+          }
+          actionLabel={filter !== 'completed' ? t('reminders.addReminder') : undefined}
+          actionTo={filter !== 'completed' ? '/reminders/add' : undefined}
+        />
       ) : (
         <div className="space-y-2">
           {reminders.map(reminder => {

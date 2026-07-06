@@ -1357,20 +1357,20 @@ export default function BackupSettings() {
                     ) : (
                       <div className="space-y-1 max-h-48 overflow-y-auto">
                         {externalFolders.map((folder) => (
-                          <div key={folder} className="flex items-center justify-between p-2 rounded hover:bg-[var(--color-bg-tertiary)] transition-colors">
+                          <div key={folder} className="flex items-center justify-between gap-2 p-2 rounded hover:bg-[var(--color-bg-tertiary)] transition-colors">
                             <button
                               onClick={() => {
                                 const newPath = browsePath === '/' ? `/${folder}` : `${browsePath}/${folder}`
                                 browseExternalFolders(newPath)
                               }}
-                              className="flex items-center gap-2 text-sm text-[var(--color-text-primary)] flex-1 text-left"
+                              className="flex items-center gap-2 text-sm text-[var(--color-text-primary)] flex-1 min-w-0 text-left"
                             >
-                              {Icons.folder}
-                              <span>{folder}</span>
+                              <span className="shrink-0">{Icons.folder}</span>
+                              <span className="truncate">{folder}</span>
                             </button>
                             <button
                               onClick={() => selectExternalFolder(folder)}
-                              className="text-xs text-[var(--color-accent)] hover:underline px-2"
+                              className="text-xs text-[var(--color-accent)] hover:underline px-2 shrink-0"
                             >
                               {t('backup.selectFolder') || 'Select'}
                             </button>

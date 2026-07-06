@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
 import { useForm, useWatch } from 'react-hook-form'
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import { repairApi, vehicleApi, attachmentApi } from '../../services/api'
@@ -170,6 +171,11 @@ export default function AddVehicleRepair() {
       
       navigate(`/vehicles/${vehicleId}`)
     } catch (err) {
+      if (isOfflineWriteError(err)) {
+        announceOfflineSaved(t)
+        navigate(`/vehicles/${vehicleId}`)
+        return
+      }
       // Translate known backend errors
       const backendError = err.response?.data?.error || ''
       if (backendError.toLowerCase().includes('repair type')) {

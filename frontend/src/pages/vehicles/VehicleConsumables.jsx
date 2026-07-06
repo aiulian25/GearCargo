@@ -5,6 +5,7 @@ import { vehicleApi, consumableApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { formatDate } from '../../utils/dateFormat'
 import { Skeleton, SkeletonList } from '../../components/ui/Skeleton'
+import EmptyState from '../../components/ui/EmptyState'
 
 const Icons = {
   back: (
@@ -131,15 +132,13 @@ export default function VehicleConsumables() {
       </div>
 
       {entries.length === 0 ? (
-        // Empty state with CTA
-        <div className="flex flex-col items-center justify-center text-center py-16 text-[var(--color-text-muted)]">
-          <span className="mb-3 opacity-60">{Icons.gauge}</span>
-          <p className="text-sm font-medium text-[var(--color-text-secondary)]">{t('consumables.emptyTitle') || 'No consumables tracked yet'}</p>
-          <p className="text-2xs mt-1 mb-4 max-w-xs">{t('consumables.emptyDesc') || 'Track tyres, battery, wipers and filters to estimate wear and plan replacements.'}</p>
-          <Link to={`/vehicles/${id}/consumable/add`} className="btn-primary flex items-center gap-1.5">
-            {Icons.plus}<span>{t('consumables.addFirst') || 'Add your first consumable'}</span>
-          </Link>
-        </div>
+        <EmptyState
+          icon={Icons.gauge}
+          title={t('consumables.emptyTitle') || 'No consumables tracked yet'}
+          description={t('consumables.emptyDesc') || 'Track tyres, battery, wipers and filters to estimate wear and plan replacements.'}
+          actionLabel={t('consumables.addFirst') || 'Add your first consumable'}
+          actionTo={`/vehicles/${id}/consumable/add`}
+        />
       ) : (
         <ul className="space-y-3">
           {entries.map((entry) => {

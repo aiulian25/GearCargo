@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { vehicleApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { formatDateShort, formatMonthYear } from '../../utils/dateFormat'
+import EmptyState from '../../components/ui/EmptyState'
 
 // SVG Icons
 const Icons = {
@@ -323,17 +324,17 @@ export default function VehicleTimeline() {
       {/* Timeline content */}
       <div className="p-4">
         {groupedTimeline.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[var(--color-bg-tertiary)] flex items-center justify-center">
-              {Icons.calendar}
-            </div>
-            <h3 className="font-medium mb-1">{t('timeline.noEntries') || 'No entries found'}</h3>
-            <p className="text-sm text-[var(--color-text-secondary)]">
-              {filter !== 'all' 
+          <EmptyState
+            icon="timeline"
+            title={t('timeline.noEntries') || 'No entries found'}
+            description={
+              filter !== 'all'
                 ? t('timeline.noEntriesFilter') || 'Try changing the filter'
-                : t('timeline.noEntriesYet') || 'Start adding expenses to see them here'}
-            </p>
-          </div>
+                : t('timeline.noEntriesYet') || 'Start adding expenses to see them here'
+            }
+            actionLabel={filter === 'all' ? (t('timeline.addEntryCta') || 'Add your first entry') : undefined}
+            actionTo={filter === 'all' ? `/vehicles/${id}/fuel/add` : undefined}
+          />
         ) : (
           <div className="space-y-6">
             {groupedTimeline.map((group, groupIdx) => (
