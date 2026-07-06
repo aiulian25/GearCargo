@@ -12,14 +12,17 @@ import zipfile
 import shutil
 import hashlib
 import ipaddress
+import socket
 import tempfile
 import subprocess
 import uuid
 import re
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.poolmanager import PoolManager
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 from flask import Blueprint, request, jsonify, current_app, send_file
 from sqlalchemy.engine.url import make_url
 from sqlalchemy import func
@@ -673,20 +676,62 @@ def save_backup_to_disk(user, zip_buffer, include_attachments=True):
     return filename, filepath, file_size
 
 
+def _ip_is_internal(ip_str: str) -> bool:
+    """True if *ip_str* is a private / loopback / link-local / reserved /
+    multicast / unspecified address (i.e. NOT safe to reach outbound).
+
+    Unparseable input is treated as internal (fail closed)."""
+    try:
+        addr = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return True
+    return (addr.is_private or addr.is_loopback or addr.is_link_local
+            or addr.is_reserved or addr.is_multicast or addr.is_unspecified)
+
+
+def _resolve_public_ips(host: str, port: int = 443):
+    """Resolve *host* and return the list of resolved IPs, or ``None`` if it
+    cannot be resolved or ANY resolved address is internal/reserved.
+
+    SEC-01: rejecting the whole host when *any* A/AAAA record is internal is the
+    safe choice — a DNS-rebinding attacker returns one public + one internal
+    address and the client may connect to either. Fail closed."""
+    try:
+        infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
+    except (socket.gaierror, UnicodeError, OSError, ValueError):
+        return None
+
+    ips = []
+    for info in infos:
+        ip = info[4][0]
+        if _ip_is_internal(ip):
+            return None  # any internal address → reject the entire host
+        ips.append(ip)
+    return ips or None
+
+
 def _is_allowed_webdav_url(url: str) -> bool:
-    """Validate a WebDAV destination URL against SSRF risks (S09).
+    """Cheap, network-free validation of a WebDAV destination URL (S09).
+
+    This runs at CONFIG-SAVE time, so it deliberately does NO DNS lookup — a
+    valid destination that is momentarily unresolvable must still be saveable,
+    and saving settings must never block on the network.
 
     Rules:
     - Scheme must be 'https' — no plain-HTTP WebDAV.
     - IP address literals in private / loopback / link-local / reserved /
-      multicast ranges are blocked entirely.  This defeats direct SSRF via
-      cloud metadata endpoints (169.254.169.254, 100.100.100.200, fd00::ec2:…)
-      and RFC-1918 internal services.
-    - Hostname-based URLs whose DNS resolves to an internal IP at request time
-      (DNS rebinding) are not blocked here; the server's egress firewall is the
-      defence-in-depth for that vector.
+      multicast ranges are blocked entirely.  This rejects the obvious direct
+      SSRF via cloud metadata endpoints (169.254.169.254, 100.100.100.200,
+      fd00::ec2:…) and RFC-1918 internal services at the front door.
 
-    Returns True only if the URL is safe to make an outbound HTTPS request to.
+    The AUTHORITATIVE SSRF control (SEC-01) lives in ``_safe_webdav_request``,
+    which every outbound WebDAV call goes through: it resolves the hostname,
+    validates ALL resolved addresses, and pins the TCP connection to a validated
+    IP — closing the DNS-rebinding validate→connect race that a config-time DNS
+    check could never close anyway. A hostname that resolves to an internal IP
+    therefore saves fine but can never actually be reached.
+
+    Returns True only if the URL passes the cheap front-door checks.
     """
     if not url:
         return False
@@ -703,16 +748,93 @@ def _is_allowed_webdav_url(url: str) -> bool:
     if not host:
         return False
 
-    # Block IP address literals in any internal or reserved range
+    # IP-literal host → validate its range directly (no DNS lookup).
     try:
-        addr = ipaddress.ip_address(host)
-        if (addr.is_private or addr.is_loopback or addr.is_link_local
-                or addr.is_reserved or addr.is_multicast or addr.is_unspecified):
-            return False
+        ipaddress.ip_address(host)
+        return not _ip_is_internal(host)
     except ValueError:
-        pass  # Not an IP literal — hostname, allow resolution
+        return True  # Hostname — authoritative resolve+validate+pin at request time.
 
-    return True
+
+class _PinnedHTTPSAdapter(HTTPAdapter):
+    """requests adapter that pins the TLS connection to a pre-validated IP while
+    preserving the original hostname for SNI + certificate verification.
+
+    This closes the DNS-rebinding TOCTOU (SEC-01): the caller resolves and
+    validates the host, then connects to *that* IP — a hostname that re-resolves
+    to an internal address between validation and connect cannot be reached,
+    yet the certificate is still verified against the real hostname (verified:
+    connecting to a raw IP without this adapter raises SSLError; asserting a
+    hostname the cert does not cover also raises SSLError)."""
+
+    def __init__(self, hostname, *args, **kwargs):
+        self._pinned_hostname = hostname
+        super().__init__(*args, **kwargs)
+
+    def init_poolmanager(self, connections, maxsize, block=False, **pool_kwargs):
+        pool_kwargs['server_hostname'] = self._pinned_hostname   # SNI = real host
+        pool_kwargs['assert_hostname'] = self._pinned_hostname   # cert checked vs real host
+        self.poolmanager = PoolManager(
+            num_pools=connections, maxsize=maxsize, block=block, **pool_kwargs
+        )
+
+
+def _safe_webdav_request(method: str, url: str, **kwargs):
+    """SSRF-safe drop-in for ``requests.request`` used for ALL outbound WebDAV
+    calls (SEC-01 / SEC-02).
+
+    - Requires HTTPS and a host that resolves only to public addresses.
+    - Pins the connection to the validated IP (defeats DNS rebinding) while
+      keeping SNI + certificate verification against the real hostname.
+    - Forces ``allow_redirects=False`` so a 3xx to an internal URL is never
+      followed (SEC-02).
+
+    Raises ``requests.exceptions.ConnectionError`` for an unsafe or unresolvable
+    host — the existing WebDAV error handling already catches requests errors,
+    so callers surface their normal "connection failed" message with no info
+    leak."""
+    parsed = urlparse(url)
+    host = (parsed.hostname or '').lower()
+    if parsed.scheme != 'https' or not host:
+        raise requests.exceptions.ConnectionError('Refusing non-HTTPS or hostless WebDAV request')
+
+    port = parsed.port or 443
+
+    # Resolve + validate, then choose the concrete IP to connect to.
+    try:
+        ipaddress.ip_address(host)
+        if _ip_is_internal(host):
+            raise requests.exceptions.ConnectionError('Refusing WebDAV request to an internal address')
+        pinned_ip = host
+    except ValueError:
+        pinned_ips = _resolve_public_ips(host, port)
+        if not pinned_ips:
+            raise requests.exceptions.ConnectionError(
+                'Refusing WebDAV request: host is unresolvable or resolves to an internal address'
+            )
+        pinned_ip = pinned_ips[0]
+
+    # Rebuild the URL against the pinned IP; keep the real Host header so the
+    # server routes the request correctly (userinfo is never carried in Host).
+    netloc_ip = f'[{pinned_ip}]' if ':' in pinned_ip else pinned_ip
+    if parsed.port:
+        netloc_ip += f':{parsed.port}'
+    pinned_url = urlunparse(parsed._replace(netloc=netloc_ip))
+
+    host_header = host if not parsed.port or parsed.port == 443 else f'{host}:{parsed.port}'
+    headers = dict(kwargs.pop('headers', None) or {})
+    headers.setdefault('Host', host_header)
+
+    kwargs['headers'] = headers
+    kwargs['allow_redirects'] = False   # SEC-02: never follow redirects
+    kwargs.setdefault('verify', True)
+
+    session = requests.Session()
+    session.mount('https://', _PinnedHTTPSAdapter(host))
+    try:
+        return session.request(method, pinned_url, **kwargs)
+    finally:
+        session.close()
 
 
 def _webdav_base_url(server_url):
@@ -764,7 +886,7 @@ def _ensure_webdav_folder(schedule):
     for segment in segments:
         current = f"{current}/{segment}"
         try:
-            requests.request(
+            _safe_webdav_request(
                 'MKCOL', current,
                 auth=auth, timeout=15, verify=True
             )
@@ -795,7 +917,7 @@ def _chunked_webdav_upload(backup_data, schedule, filename, auth):
 
     # 1. Create upload directory
     upload_dir = f"{uploads_base}/{auth[0]}/{upload_id}"
-    resp = requests.request(
+    resp = _safe_webdav_request(
         'MKCOL', upload_dir,
         auth=auth, timeout=30, verify=True
     )
@@ -808,7 +930,7 @@ def _chunked_webdav_upload(backup_data, schedule, filename, auth):
     while offset < total_size:
         chunk = backup_data[offset:offset + CHUNK_SIZE]
         chunk_url = f"{upload_dir}/{chunk_num:05d}"
-        resp = requests.put(
+        resp = _safe_webdav_request('PUT',
             chunk_url,
             data=chunk,
             auth=auth,
@@ -821,7 +943,7 @@ def _chunked_webdav_upload(backup_data, schedule, filename, auth):
         )
         if resp.status_code not in [200, 201, 204]:
             # Cleanup: try to delete the upload directory
-            requests.delete(upload_dir, auth=auth, timeout=15, verify=True)
+            _safe_webdav_request('DELETE', upload_dir, auth=auth, timeout=15, verify=True)
             return None, f"Chunk {chunk_num} upload failed: {resp.status_code}"
         offset += CHUNK_SIZE
         chunk_num += 1
@@ -834,7 +956,7 @@ def _chunked_webdav_upload(backup_data, schedule, filename, auth):
     dest_path = dest_parsed.path
 
     assemble_url = f"{upload_dir}/.file"
-    resp = requests.request(
+    resp = _safe_webdav_request(
         'MOVE', assemble_url,
         auth=auth,
         headers={
@@ -889,7 +1011,7 @@ def send_to_external_server(backup_data, schedule, filename=None):
             'OCS-APIREQUEST': 'true',
         }
 
-        response = requests.put(
+        response = _safe_webdav_request('PUT',
             upload_url,
             data=backup_data,
             auth=auth,
@@ -901,9 +1023,9 @@ def send_to_external_server(backup_data, schedule, filename=None):
         # Handle 423 Locked — delete the locked file and retry once
         if response.status_code == 423:
             current_app.logger.warning(f'WebDAV 423 Locked on {filename}, deleting and retrying')
-            requests.delete(upload_url, auth=auth, timeout=30, verify=True)
+            _safe_webdav_request('DELETE', upload_url, auth=auth, timeout=30, verify=True)
             time.sleep(1)
-            response = requests.put(
+            response = _safe_webdav_request('PUT',
                 upload_url,
                 data=backup_data,
                 auth=auth,
@@ -2452,7 +2574,7 @@ def test_external_connection(current_user):
         base = _webdav_base_url(url)
         propfind_url = f"{base}/{auth[0]}"
 
-        response = requests.request(
+        response = _safe_webdav_request(
             'PROPFIND',
             propfind_url,
             auth=auth,
@@ -2529,7 +2651,7 @@ def browse_external_folders(current_user):
 
         current_app.logger.info(f'WebDAV PROPFIND: {browse_url}')
 
-        response = requests.request(
+        response = _safe_webdav_request(
             'PROPFIND',
             browse_url,
             auth=auth,
@@ -2612,7 +2734,7 @@ def browse_external_files(current_user):
         browse_path = path.strip('/')
         browse_url = f"{base}/{auth[0]}/{browse_path}/" if browse_path else f"{base}/{auth[0]}/"
 
-        response = requests.request(
+        response = _safe_webdav_request(
             'PROPFIND',
             browse_url,
             auth=auth,
@@ -2702,7 +2824,7 @@ def restore_from_external(current_user):
 
         current_app.logger.info(f'Downloading from external: {download_url}')
 
-        response = requests.get(
+        response = _safe_webdav_request('GET',
             download_url,
             auth=auth,
             timeout=300,

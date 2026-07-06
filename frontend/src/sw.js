@@ -126,7 +126,33 @@ registerRoute(
   })
 )
 
-// Cache images
+// SEC-06: Authenticated media (attachment/receipt + vehicle-photo images served
+// under /api/ or /media/) is per-user PERSONAL data. Keep it in a DEDICATED
+// `media-cache` — registered BEFORE the generic images route so it wins — with a
+// shorter lifetime, and purge it on login/logout (see clearApiCache /
+// CLEAR_API_CACHE) so receipts/photos never linger for the next user on a
+// shared device. Generic/app images (icons, map tiles) stay in `images` below.
+registerRoute(
+  ({ url, request }) =>
+    request.destination === 'image' &&
+    url.origin === self.location.origin &&
+    (url.pathname.startsWith('/api/') || url.pathname.startsWith('/media/')),
+  new CacheFirst({
+    cacheName: 'media-cache',
+    plugins: [
+      new CacheableResponsePlugin({
+        statuses: [0, 200],
+      }),
+      new ExpirationPlugin({
+        maxEntries: 60,
+        maxAgeSeconds: 60 * 60 * 24, // 24 hours — purged on identity change
+      }),
+    ],
+  })
+)
+
+// Cache generic / third-party images (app icons, map tiles, weather, etc.).
+// These are NOT per-user, so they are long-lived and not purged on logout.
 registerRoute(
   ({ request }) => request.destination === 'image',
   new CacheFirst({
@@ -159,6 +185,9 @@ function isCacheableApiGet(url, request) {
 // last-good cached copy when offline). The `api-cache` is purged on login AND
 // logout (see clearApiCache / CLEAR_API_CACHE) so one user's data is never
 // served to another account or after sign-out on a shared device.
+// SEC-06: maxAge kept deliberately short (12h) to bound how long authenticated
+// personal data can sit at rest on a shared profile, while still covering
+// realistic same-day offline use (offline reads only fall back to this cache).
 registerRoute(
   ({ url, request }) => isCacheableApiGet(url, request),
   new NetworkFirst({
@@ -169,7 +198,7 @@ registerRoute(
       }),
       new ExpirationPlugin({
         maxEntries: 100,
-        maxAgeSeconds: 60 * 60 * 24, // 24 hours
+        maxAgeSeconds: 60 * 60 * 12, // 12 hours (SEC-06)
       }),
     ],
     networkTimeoutSeconds: 10,
@@ -299,10 +328,14 @@ self.addEventListener('message', async (event) => {
     self.skipWaiting()
   }
 
-  // Purge cached API responses (called on login/logout so authenticated data
-  // is never served across accounts or after sign-out on a shared device).
+  // Purge per-user cached data (called on login/logout so authenticated data —
+  // API responses AND attachment/receipt/vehicle-photo media — is never served
+  // across accounts or after sign-out on a shared device). SEC-06.
   if (event.data && event.data.type === 'CLEAR_API_CACHE') {
-    event.waitUntil(caches.delete('api-cache'))
+    event.waitUntil(Promise.all([
+      caches.delete('api-cache'),
+      caches.delete('media-cache'),
+    ]))
   }
 
   // Handle request to get pending sync count

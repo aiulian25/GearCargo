@@ -4,7 +4,6 @@ GearCargo - Authentication Routes
 
 import io
 import re
-import ast
 import json
 import base64
 import pyotp
@@ -873,9 +872,10 @@ def validate_session(user_id, token_jti):
 def get_session_data(user_id, token_jti):
     """Retrieve and parse session data from Redis. Returns dict or None.
 
-    New sessions are stored as JSON.  Old sessions (pre-48h enforcement)
-    were stored as Python dict strings — those are parsed via ast.literal_eval
-    for backward compatibility.
+    Sessions are stored as JSON (see the ``json.dumps`` write path). Any value
+    that is not valid JSON is treated as corrupt/untrusted and ignored — control
+    falls through to the durable DB session mirror below, so a bad blob forces a
+    safe re-login rather than being trusted.
     """
     if redis_client:
         try:
@@ -887,7 +887,14 @@ def get_session_data(user_id, token_jti):
                 try:
                     return json.loads(raw)
                 except (json.JSONDecodeError, ValueError):
-                    return ast.literal_eval(raw)
+                    # SEC-04: never eval Redis contents. Legacy Python-dict-string
+                    # sessions (pre-JSON) are long expired (TTL + 48h absolute
+                    # wall), so a non-JSON value is corrupt — ignore it and fall
+                    # through to the DB mirror below (→ re-login if none found).
+                    current_app.logger.warning(
+                        "Ignoring non-JSON session blob for jti %s; using DB mirror.",
+                        token_jti,
+                    )
             # Key missing while Redis is healthy — fall through to the DB mirror.
             # In practice validate_session has already rejected this case before
             # we get here, so this only matters during a Redis outage.
@@ -905,7 +912,15 @@ def get_session_data(user_id, token_jti):
 # ============================================================
 
 def _auth_cookie_settings():
-    """Return shared kwargs for auth token cookies."""
+    """Return shared kwargs for auth token cookies.
+
+    SEC-03: ``httponly`` and ``samesite`` are hardcoded BY DESIGN and are NOT
+    operator-configurable — do not wire them to an env var / config key. A
+    private PWA has no legitimate cross-site auth-cookie use, so SameSite=Strict
+    is the strongest CSRF posture and must never be weakened to Lax/None. Only
+    ``secure`` is env-driven (JWT_COOKIE_SECURE) so HTTP-only local/dev setups can
+    still log in while production stays HTTPS-only.
+    """
     return dict(
         httponly=True,
         secure=bool(current_app.config.get('JWT_COOKIE_SECURE', False)),

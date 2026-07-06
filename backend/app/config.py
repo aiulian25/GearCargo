@@ -62,10 +62,14 @@ class Config:
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(seconds=int(os.environ.get('JWT_REFRESH_TOKEN_EXPIRES', 2592000)))
     JWT_TOKEN_LOCATION = ['headers', 'cookies']
     JWT_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
-    JWT_COOKIE_SAMESITE = os.environ.get('SESSION_COOKIE_SAMESITE', 'Strict')  # S26: Strict prevents top-level cross-site GET leakage for this private PWA
-    JWT_COOKIE_HTTPONLY = True
-    JWT_COOKIE_CSRF_PROTECT = True
-    
+    # SEC-03: The auth-cookie SameSite / HttpOnly policy is NOT operator-configurable.
+    # It is hardcoded to SameSite=Strict + HttpOnly in _auth_cookie_settings()
+    # (app/routes/auth.py) — the strongest CSRF posture for this private PWA.
+    # The previous JWT_COOKIE_SAMESITE / JWT_COOKIE_HTTPONLY / JWT_COOKIE_CSRF_PROTECT
+    # keys were dead (this app uses raw PyJWT, not flask-jwt-extended, so nothing
+    # read them) and were removed so no env var or future refactor can silently
+    # weaken auth cookies to Lax/None. Only JWT_COOKIE_SECURE (above) is env-driven.
+
     # Session
     SESSION_TYPE = 'redis'
     SESSION_PERMANENT = True

@@ -97,15 +97,15 @@ export function AuthProvider({ children }) {
     } catch (error) {
       // Ignore logout errors — server clears cookies regardless
     }
-    
-    // S05 — cookies are expired by the server response; clear local state.
-    localStorage.removeItem('auth_session')
 
-    // Clear cached data — Dexie user record AND the SW API response cache, so
-    // no signed-in data lingers for the next user on a shared device.
+    // SEC-06: purge all per-user cached data BEFORE we clear the session flag /
+    // auth state, so "signed out" always implies "no personal data left at rest"
+    // (Dexie user record + the SW api-cache/media-cache) on a shared device.
     await db.settings.delete('user')
     await clearApiCache()
 
+    // S05 — cookies are expired by the server response; clear local state last.
+    localStorage.removeItem('auth_session')
     setUser(null)
     setIsAuthenticated(false)
   }, [])
