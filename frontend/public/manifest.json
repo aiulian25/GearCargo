@@ -113,13 +113,6 @@
   "handle_links": "preferred",
   "screenshots": [
     {
-      "src": "/screenshots/dashboard.png",
-      "sizes": "1400x875",
-      "type": "image/png",
-      "form_factor": "wide",
-      "label": "Your garage dashboard with live fuel prices"
-    },
-    {
       "src": "/screenshots/expenses.png",
       "sizes": "1400x875",
       "type": "image/png",
