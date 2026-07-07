@@ -19,13 +19,29 @@ const UpdateContext = createContext(null)
 const POLL_MS = 30 * 60 * 1000        // background re-check every 30 min
 const FOCUS_THROTTLE_MS = 15 * 60 * 1000
 
+/** Return true when semver string `a` is strictly newer than `b` (major.minor.patch). */
+function isNewerVersion(a, b) {
+  const pa = String(a).split('.').map((n) => parseInt(n, 10) || 0)
+  const pb = String(b).split('.').map((n) => parseInt(n, 10) || 0)
+  for (let i = 0; i < 3; i++) {
+    if ((pa[i] || 0) > (pb[i] || 0)) return true
+    if ((pa[i] || 0) < (pb[i] || 0)) return false
+  }
+  return false
+}
+
 export function UpdateProvider({ children }) {
   const [available, setAvailable] = useState(false)
   const [kind, setKind] = useState(null)          // 'feature' | 'security'
   const [serverInfo, setServerInfo] = useState(null)
   const [changelog, setChangelog] = useState(null) // parsed /version.json
   const [open, setOpen] = useState(false)
+  // "A newer version exists on GitHub" — only when the server opts in
+  // (UPDATE_CHECK_ENABLED). Independent of the container-vs-browser update above,
+  // so version-pinned deployments can still learn a newer release is out.
+  const [newerRelease, setNewerRelease] = useState(null)  // { version, url, publishedAt }
   const dismissedRef = useRef(null)               // "sha:date" the user tapped "Later" on
+  const releaseDismissedRef = useRef(null)        // release version the user dismissed
 
   const check = useCallback(async () => {
     if (!IS_PUBLISHED_BUILD) return                // local dev — no update UI
@@ -37,6 +53,16 @@ export function UpdateProvider({ children }) {
       const sha = info.git_sha || ''
       const date = info.build_date || ''
 
+      // Newer-release hint (evaluated regardless of the feature/security result
+      // below, so a pinned deployment still surfaces it).
+      const rel = info.latest_release
+      if (rel && rel.version && isNewerVersion(rel.version, info.version || BUILD.version)
+          && releaseDismissedRef.current !== rel.version) {
+        setNewerRelease({ version: rel.version, url: rel.url || '', publishedAt: rel.published_at || '' })
+      } else {
+        setNewerRelease(null)
+      }
+
       let nextKind = null
       if (sha && sha !== 'dev' && sha !== BUILD.gitSha) nextKind = 'feature'
       else if (sha && sha === BUILD.gitSha && date && BUILD.buildDate && date > BUILD.buildDate) nextKind = 'security'
@@ -47,6 +73,11 @@ export function UpdateProvider({ children }) {
       setServerInfo(info)
       setKind(nextKind)
       setAvailable(true)
+
+      // Proactively pull the new service worker the moment we detect a new build
+      // (not just at click time), so a waiting worker is ready when the user taps
+      // Update — making the apply near-instant and reliable.
+      navigator.serviceWorker?.getRegistration?.().then((r) => r && r.update()).catch(() => {})
 
       if (nextKind === 'feature') {
         try {
@@ -80,26 +111,66 @@ export function UpdateProvider({ children }) {
     }
   }, [check])
 
+  // Apply an update by ACTIVATING the new service worker, then reloading — never
+  // a bare reload of the stale shell.
+  //
+  // Why the old bare-reload was wrong: the pill fires the instant /api/app-version
+  // reports a new git_sha (network), but the new SW is only discovered by a
+  // periodic update() check — so at click time there is usually NO waiting worker.
+  // A plain window.location.reload() is then intercepted by the still-active OLD
+  // SW, which serves the OLD precached index.html + bundle → same git_sha → the
+  // prompt reappears forever (the "clear cache to update" pain). Here we force the
+  // new SW to download + install, tell it to skip waiting, and only reload once it
+  // has taken control (controllerchange) so the fresh assets are actually served.
   const applyUpdate = useCallback(async () => {
-    try {
-      const reg = await navigator.serviceWorker?.getRegistration?.()
-      if (kind === 'feature' && reg?.waiting) {
-        let reloaded = false
-        const reload = () => { if (!reloaded) { reloaded = true; window.location.reload() } }
-        navigator.serviceWorker.addEventListener('controllerchange', reload)
-        reg.waiting.postMessage({ type: 'SKIP_WAITING' })
-        setTimeout(reload, 1500)   // safety net if controllerchange doesn't fire
-        return
-      }
-    } catch { /* fall through to a plain reload */ }
-    window.location.reload()
-  }, [kind])
+    const reg = await navigator.serviceWorker?.getRegistration?.().catch(() => null)
+    if (!reg) { window.location.reload(); return }  // dev / no SW support
+
+    let reloaded = false
+    const doReload = () => { if (!reloaded) { reloaded = true; window.location.reload() } }
+
+    // Skip-waiting a specific worker, then reload when it takes control.
+    const activate = (worker) => {
+      navigator.serviceWorker.addEventListener('controllerchange', doReload, { once: true })
+      worker.postMessage({ type: 'SKIP_WAITING' })
+      setTimeout(doReload, 3000)   // safety net if controllerchange doesn't fire
+    }
+
+    // 1) A new worker is already waiting → activate it now.
+    if (reg.waiting) { activate(reg.waiting); return }
+
+    // 2) None waiting yet → force an update check and wait for the new worker to
+    //    finish installing, THEN activate it.
+    const waitForInstall = (worker) => {
+      worker.addEventListener('statechange', () => {
+        if (worker.state === 'installed') activate(worker)          // now the waiting worker
+        else if (worker.state === 'activated') doReload()           // already took over
+      })
+    }
+
+    try { await reg.update() } catch { /* offline / fetch error */ }
+
+    if (reg.waiting) { activate(reg.waiting); return }
+    if (reg.installing) { waitForInstall(reg.installing); return }
+
+    // 3) Genuinely nothing new to install (e.g. the active SW already matches).
+    //    A plain reload is safe here and cannot loop, because there is no newer
+    //    build to keep detecting.
+    doReload()
+  }, [])
 
   const dismiss = useCallback(() => {
     if (serverInfo) dismissedRef.current = `${serverInfo.git_sha}:${serverInfo.build_date}`
     setOpen(false)
     setAvailable(false)
   }, [serverInfo])
+
+  // Dismiss just the "newer release" hint (remembers the version so it won't nag
+  // again for the same release).
+  const dismissRelease = useCallback(() => {
+    setNewerRelease((prev) => { if (prev) releaseDismissedRef.current = prev.version; return null })
+    setOpen(false)
+  }, [])
 
   // Open the details modal. On a dev build there is no real update to show, so
   // we load the local /version.json and synthesise a "feature" manifest — this
@@ -126,6 +197,7 @@ export function UpdateProvider({ children }) {
 
   const value = {
     available, kind, serverInfo, changelog, isDev: IS_DEV_BUILD,
+    newerRelease, dismissRelease,
     open, openModal, closeModal: () => setOpen(false),
     applyUpdate, dismiss,
   }

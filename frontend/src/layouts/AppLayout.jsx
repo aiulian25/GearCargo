@@ -214,7 +214,7 @@ function UserMenu({ user, onLogout }) {
 
 export default function AppLayout() {
   const { user, logout } = useAuth()
-  const { available: updateAvailable, isDev } = useAppUpdate()
+  const { available: updateAvailable, isDev, newerRelease } = useAppUpdate()
   const { t } = useTranslation()
   const location = useLocation()
   const navigate = useNavigate()
@@ -256,7 +256,7 @@ export default function AppLayout() {
           
           {/* Sync Status, Search, and User Menu */}
           <div className="flex items-center gap-2">
-            {updateAvailable ? <UpdatePill /> : isDev ? <DevPill /> : <SyncIndicator variant="badge" />}
+            {(updateAvailable || newerRelease) ? <UpdatePill /> : isDev ? <DevPill /> : <SyncIndicator variant="badge" />}
             {/* Search button */}
             <button
               onClick={() => setSearchOpen(true)}

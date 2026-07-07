@@ -21,7 +21,7 @@ const TAG_STYLE = {
 
 export default function UpdateModal() {
   const { t, language } = useTranslation()
-  const { open, kind, serverInfo, changelog, closeModal, dismiss, applyUpdate } = useAppUpdate()
+  const { open, kind, serverInfo, changelog, newerRelease, closeModal, dismiss, dismissRelease, applyUpdate } = useAppUpdate()
   const [showPkgs, setShowPkgs] = useState(false)
   const [applying, setApplying] = useState(false)
 
@@ -32,12 +32,15 @@ export default function UpdateModal() {
     return () => document.removeEventListener('keydown', onKey)
   }, [open, closeModal])
 
-  if (!open || !serverInfo) return null
+  if (!open || (!serverInfo && !newerRelease)) return null
 
+  // A "newer release exists on GitHub" hint (admin-facing) is shown only when
+  // there is no in-place container update to apply (that one is actionable).
+  const isRelease = !!newerRelease && !kind
   const isSecurity = kind === 'security'
   const lang = (language || 'en').slice(0, 2)
   const notes = changelog?.notes?.[lang] || changelog?.notes?.en || []
-  const patched = serverInfo.patched_packages || []
+  const patched = serverInfo?.patched_packages || []
   const tagLabel = { new: t('update.tagNew') || 'New', fix: t('update.tagFix') || 'Fixed', security: t('update.tagSecurity') || 'Security' }
 
   const onApply = async () => { setApplying(true); await applyUpdate() }
@@ -61,12 +64,16 @@ export default function UpdateModal() {
           </span>
           <div className="min-w-0 flex-1">
             <h2 id="update-title" className="text-base font-semibold leading-tight">
-              {isSecurity ? (t('update.securityTitle') || 'Security update installed') : (t('update.available') || 'Update available')}
+              {isRelease
+                ? (t('update.newRelease') || 'A newer version is available')
+                : isSecurity ? (t('update.securityTitle') || 'Security update installed') : (t('update.available') || 'Update available')}
             </h2>
             <p className="text-xs text-[var(--color-text-muted)] mt-0.5 tabular-nums">
-              {isSecurity
-                ? `${t('update.weeklyMaintenance') || 'Weekly maintenance'} · ${serverInfo.build_date?.slice(0, 10) || ''}`
-                : `${(t('update.onVersion') || 'You’re on v{current} · new v{new}').replace('{current}', BUILD.version).replace('{new}', serverInfo.version)}`}
+              {isRelease
+                ? (t('update.onVersionGithub') || 'You’re on v{current} · v{new} on GitHub').replace('{current}', BUILD.version).replace('{new}', newerRelease.version)
+                : isSecurity
+                  ? `${t('update.weeklyMaintenance') || 'Weekly maintenance'} · ${serverInfo.build_date?.slice(0, 10) || ''}`
+                  : `${(t('update.onVersion') || 'You’re on v{current} · new v{new}').replace('{current}', BUILD.version).replace('{new}', serverInfo.version)}`}
             </p>
           </div>
           <button type="button" onClick={closeModal} aria-label={t('common.close') || 'Close'}
@@ -75,8 +82,20 @@ export default function UpdateModal() {
           </button>
         </div>
 
+        {/* Newer release available (admin-facing) */}
+        {isRelease && (
+          <div className="mt-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-3.5">
+            <p className="text-sm font-medium text-[var(--color-text-primary)]">
+              {t('update.newReleaseLead') || 'A newer version has been published.'}
+            </p>
+            <p className="text-xs text-[var(--color-text-muted)] mt-1.5 leading-relaxed">
+              {t('update.newReleaseDesc') || 'Pull the new image tag to upgrade your server — your data is unaffected. Ask your administrator if you don’t manage this server.'}
+            </p>
+          </div>
+        )}
+
         {/* Feature update — changelog */}
-        {!isSecurity && notes.length > 0 && (
+        {!isRelease && !isSecurity && notes.length > 0 && (
           <>
             <p className="mt-4 mb-2 text-[11px] font-semibold tracking-wider uppercase text-[var(--color-text-muted)]">
               {t('update.whatsNew') || 'What’s new'}
@@ -98,7 +117,7 @@ export default function UpdateModal() {
         )}
 
         {/* Security rebuild */}
-        {isSecurity && (
+        {!isRelease && isSecurity && (
           <div className="mt-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-3.5">
             <div className="flex items-center gap-2 font-medium text-sm text-[var(--color-text-primary)]">
               <span className="text-[var(--color-accent)] shrink-0">{Ic.shield}</span>
@@ -125,30 +144,40 @@ export default function UpdateModal() {
           </div>
         )}
 
-        {/* GitHub link */}
-        <a href={REPO_URL} target="_blank" rel="noopener noreferrer"
-          className="mt-4 flex items-center gap-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-3 py-2.5 text-sm text-[var(--color-text-primary)] hover:border-[var(--color-accent)]">
-          <span className="shrink-0">{Ic.github}</span>
-          <span className="min-w-0 flex-1">
-            {isSecurity ? (t('update.viewHistory') || 'See build & release history') : (t('update.viewChangelog') || 'View full changelog')}
-            <small className="block text-[var(--color-text-muted)] text-[11px] truncate">github.com/aiulian25/GearCargo</small>
-          </span>
-          <span className="text-[var(--color-text-muted)] shrink-0" aria-hidden="true">↗</span>
-        </a>
+        {/* GitHub link (feature/security only — release mode has its own button) */}
+        {!isRelease && (
+          <a href={REPO_URL} target="_blank" rel="noopener noreferrer"
+            className="mt-4 flex items-center gap-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-3 py-2.5 text-sm text-[var(--color-text-primary)] hover:border-[var(--color-accent)]">
+            <span className="shrink-0">{Ic.github}</span>
+            <span className="min-w-0 flex-1">
+              {isSecurity ? (t('update.viewHistory') || 'See build & release history') : (t('update.viewChangelog') || 'View full changelog')}
+              <small className="block text-[var(--color-text-muted)] text-[11px] truncate">github.com/aiulian25/GearCargo</small>
+            </span>
+            <span className="text-[var(--color-text-muted)] shrink-0" aria-hidden="true">↗</span>
+          </a>
+        )}
 
         {/* Actions */}
         <div className="flex gap-2.5 mt-5">
-          <button type="button" onClick={dismiss}
+          <button type="button" onClick={isRelease ? dismissRelease : dismiss}
             className="px-4 py-3 rounded-xl border border-[var(--color-border)] text-[var(--color-text-secondary)] text-sm font-medium hover:text-[var(--color-text-primary)] shrink-0">
             {t('update.later') || 'Later'}
           </button>
-          <button type="button" onClick={onApply} disabled={applying}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[var(--color-accent)] text-white text-sm font-semibold hover:opacity-90 disabled:opacity-60">
-            {Ic.reload}
-            {applying
-              ? (t('update.updating') || 'Updating…')
-              : isSecurity ? (t('update.reload') || 'Reload') : (t('update.updateNow') || 'Update now')}
-          </button>
+          {isRelease ? (
+            <a href={newerRelease.url || REPO_URL} target="_blank" rel="noopener noreferrer" onClick={dismissRelease}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[var(--color-accent)] text-white text-sm font-semibold hover:opacity-90">
+              {Ic.github}
+              {t('update.viewRelease') || 'View release'}
+            </a>
+          ) : (
+            <button type="button" onClick={onApply} disabled={applying}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[var(--color-accent)] text-white text-sm font-semibold hover:opacity-90 disabled:opacity-60">
+              {Ic.reload}
+              {applying
+                ? (t('update.updating') || 'Updating…')
+                : isSecurity ? (t('update.reload') || 'Reload') : (t('update.updateNow') || 'Update now')}
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -849,6 +849,9 @@ Every environment variable the application reads, with its default value:
 | `OLLAMA_BASE_URL` | `http://host.docker.internal:11434` | Ollama API URL |
 | `OLLAMA_MODEL` | `llama3.2` | Ollama model name |
 | `OLLAMA_TIMEOUT` | `30` | API timeout (seconds) |
+| **Update check (optional)** | | |
+| `UPDATE_CHECK_ENABLED` | `false` | Opt-in: check GitHub for a newer release and surface it in-app (useful for version-pinned deployments). Contacts api.github.com only; off by default. |
+| `UPDATE_CHECK_REPO` | `aiulian25/GearCargo` | Repo to check releases for |
 | **Admin Bootstrap** | | |
 | `ADMIN_EMAIL` | *(empty)* | Auto-create admin with this email |
 | `ADMIN_USERNAME` | *(empty)* | Admin username |

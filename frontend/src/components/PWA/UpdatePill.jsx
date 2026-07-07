@@ -7,8 +7,8 @@ import { useAppUpdate } from '../../contexts/UpdateContext'
  */
 export default function UpdatePill() {
   const { t } = useTranslation()
-  const { available, openModal } = useAppUpdate()
-  if (!available) return null
+  const { available, newerRelease, openModal } = useAppUpdate()
+  if (!available && !newerRelease) return null
 
   return (
     <button

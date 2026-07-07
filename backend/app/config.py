@@ -167,6 +167,16 @@ class Config:
     # (resolve_model). Empty = use global.
     OLLAMA_MODEL_CLASSIFIER = os.environ.get('OLLAMA_MODEL_CLASSIFIER', '')
 
+    # Optional "a newer release is available" check (OFF by default to preserve
+    # the no-phone-home / offline-safe posture). When enabled, the backend polls
+    # GitHub's latest-release API (server-side, heavily cached) and surfaces the
+    # newest published version at /api/app-version, so even version-pinned
+    # deployments (e.g. :1.2.0) can learn a newer release exists. The only host
+    # contacted is api.github.com; the repo is a fixed config value, never user
+    # input.
+    UPDATE_CHECK_ENABLED = os.environ.get('UPDATE_CHECK_ENABLED', 'false').lower() == 'true'
+    UPDATE_CHECK_REPO = os.environ.get('UPDATE_CHECK_REPO', 'aiulian25/GearCargo')
+
     # Vehicle chat rate limit (per user). Generous enough for a natural
     # back-and-forth about the user's car/app, while the per-minute burst still
     # bounds abuse (each chat = up to two remote model calls — see §14.3 pool
