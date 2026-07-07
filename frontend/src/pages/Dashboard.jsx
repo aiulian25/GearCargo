@@ -89,40 +89,50 @@ function FuelPricesWidget({ fuelPrices, currency, t, onRefresh, isRefreshing, la
         </div>
       </div>
       
-      <div className="p-4">
-        <p className="text-xs text-[var(--color-text-secondary)] mb-4">
-          {fuelPrices?.location || 'Loading...'}
+      {/* Prices — a single horizontal row on desktop, stacked on mobile.
+          Detected location sits on the left; the three fuel types spread
+          across the remaining width with hairline dividers between them. */}
+      <div className="px-4 py-4 flex flex-col gap-4 lg:flex-row lg:items-center">
+        <p className="text-sm text-[var(--color-text-secondary)] lg:w-52 lg:shrink-0 truncate">
+          {fuelPrices?.location || t('common.loading') || 'Loading...'}
         </p>
-        
-        <div className="space-y-3">
+
+        <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-[var(--color-border)]">
           {[
             { type: 'diesel', labelKey: 'fuelPrices.diesel', color: 'bg-blue-500' },
             { type: 'lpg', labelKey: 'fuelPrices.lpg', color: 'bg-green-500' },
             { type: 'petrol', labelKey: 'fuelPrices.petrol', color: 'bg-yellow-500' },
-          ].map((fuel) => (
-            <div key={fuel.type} className="flex items-center justify-between group">
-              <div className="flex items-center gap-2">
-                <span className={`w-2.5 h-2.5 rounded-full ${fuel.color}`}></span>
-                <span className="text-sm text-[var(--color-text-primary)]">{t(fuel.labelKey)}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="font-semibold text-[var(--color-text-primary)]">
-                  {fuelCurrency}{fuelPrices?.prices?.[fuel.type]?.toFixed(2) ?? '--'}/L
+          ].map((fuel) => {
+            const price = fuelPrices?.prices?.[fuel.type]
+            return (
+              <div key={fuel.type} className="flex items-center justify-between gap-2 py-2 sm:py-0 sm:px-4 sm:first:pl-0 sm:last:pr-0">
+                <span className="flex items-center gap-2 min-w-0">
+                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${fuel.color}`} aria-hidden="true"></span>
+                  <span className="text-sm text-[var(--color-text-primary)] truncate">{t(fuel.labelKey)}</span>
                 </span>
-                <span className="text-red-500 text-sm">📈</span>
+                <span className="flex items-center gap-1.5 whitespace-nowrap">
+                  <span className="font-semibold text-[var(--color-text-primary)] tabular-nums">
+                    {fuelCurrency}{price != null ? price.toFixed(2) : '--'}/L
+                  </span>
+                  {price != null && (
+                    <svg className="w-3.5 h-3.5 text-[var(--color-text-muted)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  )}
+                </span>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
-        
-        <div className="mt-4 pt-3 border-t border-[var(--color-border)]">
-          <p className="text-xs text-[var(--color-text-muted)]">
-            {fuelPrices?.source || t('fuelPrices.dataSource')}
-            {fuelPrices?.last_update && (
-              <span className="ml-1">• {formatLastUpdate(fuelPrices.last_update)}</span>
-            )}
-          </p>
-        </div>
+      </div>
+
+      <div className="px-4 py-2.5 border-t border-[var(--color-border)]">
+        <p className="text-xs text-[var(--color-text-muted)]">
+          {fuelPrices?.source || t('fuelPrices.dataSource')}
+          {fuelPrices?.last_update && (
+            <span className="ml-1">• {formatLastUpdate(fuelPrices.last_update)}</span>
+          )}
+        </p>
       </div>
     </div>
   )
@@ -811,10 +821,7 @@ export default function Dashboard() {
   if (isLoading) {
     return (
       <div className="p-4 lg:p-6 space-y-4">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2 skeleton h-72 rounded-xl" />
-          <div className="skeleton h-72 rounded-xl" />
-        </div>
+        <div className="skeleton h-28 rounded-xl" />
         <div className="skeleton h-8 w-48 rounded-lg" />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map(i => (
@@ -859,8 +866,8 @@ export default function Dashboard() {
 
       {aiEnabled && <ChatModal open={chatOpen} onClose={() => setChatOpen(false)} vehicles={vehicles} />}
 
-      {/* Fuel Prices Widget */}
-      <div className="mb-6 max-w-md">
+      {/* Fuel Prices Widget — full-width banner */}
+      <div className="mb-6">
         <FuelPricesWidget fuelPrices={fuelPrices} currency={currency} t={t} onRefresh={handleRefreshFuelPrices} isRefreshing={isRefreshingFuel} lastAutoUpdate={fuelPriceFetchedAt}
           error={fuelError && !fuelDismissed}
           onRetry={retryFuel}
@@ -1157,9 +1164,9 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Recent Transactions — below the garage */}
+      {/* Recent Transactions — full-width, below the garage */}
       {vehicles.length > 0 && (
-        <div className="mt-8 max-w-2xl">
+        <div className="mt-8">
           <RecentTransactions
             transactions={recentTx}
             loading={recentTxLoading}
