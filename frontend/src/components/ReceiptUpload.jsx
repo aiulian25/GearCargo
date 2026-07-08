@@ -53,22 +53,32 @@ export default function ReceiptUpload({ onFileSelect, onFileRemove, selectedFile
 
   const handleFileSelect = (file) => {
     if (!file) return
-    
-    // Validate file type
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf']
-    if (!allowedTypes.includes(file.type)) {
+
+    // Validate file type. iPhones shoot HEIC by default; some browsers report its
+    // MIME as image/heic, others leave file.type empty — so we also accept by
+    // extension. The server re-validates via magic bytes and transcodes HEIC→JPEG.
+    const allowedTypes = [
+      'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+      'image/heic', 'image/heif', 'application/pdf',
+    ]
+    const name = (file.name || '').toLowerCase()
+    const extOk = /\.(jpe?g|png|gif|webp|heic|heif|pdf)$/.test(name)
+    if (!allowedTypes.includes(file.type) && !extOk) {
       alert(t('receipt.invalidType') || 'Invalid file type. Please select an image or PDF.')
       return
     }
-    
+
     // Validate file size (max 10MB)
     if (file.size > 10 * 1024 * 1024) {
       alert(t('receipt.tooLarge') || 'File is too large. Maximum size is 10MB.')
       return
     }
-    
-    // Create preview for images
-    if (file.type.startsWith('image/')) {
+
+    // Inline preview only for formats the browser can actually render. HEIC/HEIF
+    // can't be decoded by most browsers, so skip the preview (the server returns
+    // a JPEG after transcoding) rather than showing a broken image.
+    const isRenderable = /^image\/(jpeg|png|gif|webp)$/.test(file.type)
+    if (isRenderable) {
       const reader = new FileReader()
       reader.onloadend = () => {
         setPreviewUrl(reader.result)
@@ -77,7 +87,7 @@ export default function ReceiptUpload({ onFileSelect, onFileRemove, selectedFile
     } else {
       setPreviewUrl(null)
     }
-    
+
     onFileSelect(file)
   }
 
@@ -136,7 +146,7 @@ export default function ReceiptUpload({ onFileSelect, onFileRemove, selectedFile
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*,.pdf"
+        accept="image/*,.heic,.heif,.pdf"
         onChange={handleFileChange}
         className="hidden"
         disabled={disabled}

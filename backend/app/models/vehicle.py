@@ -115,6 +115,11 @@ class Vehicle(db.Model):
             'engine_cc': self.engine_cc,
             'transmission': self.transmission,
             'color': self.color,
+            # Dimensions (F17) — captured on Add/Edit, now exposed for display.
+            'vehicle_weight_kg': self.vehicle_weight_kg,
+            'vehicle_height_cm': self.vehicle_height_cm,
+            'vehicle_length_cm': self.vehicle_length_cm,
+            'vehicle_width_cm': self.vehicle_width_cm,
             'current_mileage': self.current_mileage,
             'distance_unit': self.distance_unit,
             'monthly_budget': float(self.monthly_budget) if self.monthly_budget else None,

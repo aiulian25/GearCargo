@@ -141,7 +141,12 @@ def update_policy(current_user, policy_id):
                 setattr(policy, field, datetime.fromisoformat(data[field]).date())
             else:
                 setattr(policy, field, data[field])
-    
+
+    # F6: editing an auto-renewed policy is the user's "confirm details" signal —
+    # clear the provenance marker so the "confirm premium" prompt disappears.
+    if policy.renewed_from_id is not None:
+        policy.renewed_from_id = None
+
     db.session.commit()
     
     return jsonify({

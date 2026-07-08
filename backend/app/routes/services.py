@@ -12,6 +12,14 @@ from app.routes.auth import token_required
 services_bp = Blueprint('services', __name__)
 
 
+def _opt_int(value):
+    """Coerce an optional numeric field to int, treating ''/invalid as None."""
+    try:
+        return int(value) if value not in (None, '') else None
+    except (TypeError, ValueError):
+        return None
+
+
 @services_bp.route('', methods=['GET'])
 @token_required
 def get_service_entries(current_user):
@@ -121,6 +129,8 @@ def create_service_entry(current_user):
         next_due_mileage=data.get('next_service_mileage') or data.get('next_due_mileage'),
         next_due_date=next_due_date,
         warranty_expires=warranty_expires,
+        warranty_months=_opt_int(data.get('warranty_months')),
+        warranty_km=_opt_int(data.get('warranty_km')),
         notes=data.get('notes'),
     )
     
@@ -195,14 +205,25 @@ def update_service_entry(current_user, entry_id):
     allowed = ['entry_date', 'mileage', 'cost', 'description',
                'provider_name', 'provider_location', 'provider_phone',
                'parts_replaced', 'labor_cost', 'parts_cost',
-               'next_service_mileage', 'next_service_date', 'warranty_until', 'notes']
-    
+               'next_service_mileage', 'next_service_date', 'notes']
+
     for field in allowed:
         if field in data:
-            if field in ['entry_date', 'next_service_date', 'warranty_until'] and data[field]:
+            if field in ['entry_date', 'next_service_date'] and data[field]:
                 setattr(entry, field, datetime.fromisoformat(data[field]))
             else:
                 setattr(entry, field, data[field])
+
+    # F2 — warranty fields, mapped to the real columns.
+    if 'warranty_months' in data:
+        entry.warranty_months = _opt_int(data['warranty_months'])
+    if 'warranty_km' in data:
+        entry.warranty_km = _opt_int(data['warranty_km'])
+    if 'warranty_expires' in data or 'warranty_until' in data:
+        raw = data.get('warranty_expires') or data.get('warranty_until')
+        entry.warranty_expires = (
+            datetime.fromisoformat(raw.replace('Z', '+00:00')).date() if raw else None
+        )
     
     # Recalculate amount from labor_cost + parts_cost if either was updated
     # or if cost/total_cost was explicitly provided

@@ -3,6 +3,11 @@
 
 export const translations = {
   en: {
+    // Measurement units
+    units: {
+      mpgUk: 'MPG',        // Imperial (UK) gallon
+      mpgUs: 'MPG (US)',   // US gallon
+    },
     // Global Search
     search: {
       title: 'Search',
@@ -15,6 +20,8 @@ export const translations = {
       rateLimited: 'Too many requests — please slow down.',
       groupVehicles: 'Vehicles',
       groupEntries: 'Entries',
+      groupReminders: 'Reminders',
+      groupInsurance: 'Insurance',
       groupAttachments: 'Scanned Documents',
       selectHint: 'to open',
       closeHint: 'to close',
@@ -222,6 +229,44 @@ export const translations = {
       empty: 'No transactions yet',
       error: 'Could not load transactions',
     },
+    due: {
+      title: 'Coming up',
+      empty: 'Nothing due — you’re all caught up',
+      error: 'Could not load what’s due',
+      overdue: 'Overdue',
+      today: 'Today',
+      inDays: 'In {n} days',
+      replaceNow: 'Replace now',
+      monitor: 'Monitor',
+      showMore: 'Show {n} more',
+      showLess: 'Show less',
+      similarCount: '{n} similar items',
+      dismiss: 'Dismiss',
+      dismissItem: 'Dismiss {title}',
+      dismissed: 'Dismissed',
+      undo: 'Undo',
+      dismissError: 'Could not update — try again',
+      kind: {
+        reminder: 'Reminder',
+        service: 'Service due',
+        tax: 'Tax',
+        insurance: 'Insurance',
+        document: 'Document',
+        parking: 'Parking permit',
+        consumable: 'Consumable',
+        fine: 'Parking fine',
+      },
+    },
+    parking: {
+      unpaidFines: 'Unpaid fines',
+      totalOwed: 'Total owed',
+      contested: 'Contested',
+      pending: 'Unpaid',
+      paid: 'Paid',
+      markPaid: 'Mark paid',
+      markedPaid: 'Fine marked as paid',
+      markPaidError: 'Could not update fine — try again',
+    },
     timeline: {
       title: 'Timeline',
       entries: 'entries',
@@ -243,6 +288,42 @@ export const translations = {
       loadMore: 'Load more',
     },
     
+    // Cost-analytics currency normalization (F1)
+    analytics: {
+      approxConverted: 'Converted from mixed currencies at today’s rates.',
+      rateUnavailable: 'Some amounts could not be converted — exchange rate unavailable.',
+    },
+
+    // 12-month cost forecast (F11)
+    forecast: {
+      title: 'Projected costs — next 12 months',
+      projected: 'Recurring taxes, insurance, permits and predicted maintenance',
+      overBudget: 'Over budget',
+      budgetLine: 'Monthly budget',
+    },
+
+    // Consumables due for replacement (F3)
+    consumablesDue: {
+      title: 'Due for replacement',
+      replaceNow: 'Replace now',
+      monitor: 'Monitor',
+    },
+
+    // Warranty ledger (F2)
+    warranty: {
+      title: 'Under warranty',
+      expiresIn: 'Expires in {n} days',
+      kmLeft: '{n} {unit} left',
+      expiringSoon: 'Expiring soon',
+      none: 'No active warranties on record.',
+      section: 'Warranty',
+      months: 'Warranty (months)',
+      distance: 'Warranty ({unit})',
+      expiresOn: 'Warranty expires on',
+      hint: 'Optional — whichever limit is reached first ends the coverage.',
+      coveredByWarranty: 'This repair was covered by an existing warranty',
+    },
+
     // Charts Page
     charts: {
       title: 'Charts',
@@ -752,6 +833,19 @@ export const translations = {
     },
     
     // Add Insurance Form
+    // Insurance auto-renew (F6)
+    insurance: {
+      autoRenewed: 'Auto-renewed',
+      confirmPremium: 'confirm premium',
+      perYear: '/yr',
+      frequency: {
+        monthly: 'monthly',
+        quarterly: 'quarterly',
+        semi_annual: 'semi-annual',
+        annual: 'annual',
+      },
+    },
+
     addInsurance: {
       title: 'Add Insurance',
       policyDetails: 'Policy Details',
@@ -834,8 +928,13 @@ export const translations = {
       optionalNotes: 'Optional notes...',
       error: 'Failed to add parking entry',
       optional: 'Optional',
+      fineDetails: 'Fine Details',
+      fineReason: 'Reason',
+      fineReasonPlaceholder: 'e.g. Overstayed parking time',
+      fineStatus: 'Status',
+      fineNote: 'Unpaid fines stay visible on the dashboard until marked as paid.',
     },
-    
+
     // Parking Types
     parkingTypes: {
       street: 'Street Parking',
@@ -844,6 +943,7 @@ export const translations = {
       monthly: 'Monthly Permit',
       airport: 'Airport Parking',
       valet: 'Valet',
+      fine: 'Parking Fine',
       other: 'Other',
     },
     
@@ -1032,6 +1132,9 @@ export const translations = {
       suggestConsumables: 'When did I last change the filters?',
       suggestEfficiency: 'What is my average fuel consumption?',
       selectVehicle: 'Chat about',
+      allVehicles: 'All vehicles',
+      fleetHint: 'Ask across all your vehicles…',
+      greetingFleet: "Hi! I'm {assistant} 🚗 — ask me anything across all your vehicles: compare costs, running totals, which car is cheapest per km, and more.",
       noVehicles: 'Add a vehicle to start chatting with the assistant.',
       placeholder: 'Ask about this vehicle…',
       inputLabel: 'Ask a question',
@@ -1091,6 +1194,9 @@ export const translations = {
     },
     
     // Add Todo Form
+    todo: {
+      repeats: 'Repeats',
+    },
     addTodo: {
       title: 'Add Todo',
       taskTitle: 'Task Title',
@@ -1161,6 +1267,12 @@ export const translations = {
       dimensions: 'Dimensions',
       dimensionsOptional: 'Dimensions (Optional)',
       dimensionsHelp: 'These details help with smart recommendations for parking, ferries, and more.',
+      // F17 — unit-free labels for the read-only Dimensions block on the detail page
+      dimHeight: 'Height',
+      dimWidth: 'Width',
+      dimLength: 'Length',
+      dimWeight: 'Weight',
+      clearanceHint: 'Car-park clearance',
       height: 'Height (cm)',
       heightPlaceholder: 'e.g., 150',
       width: 'Width (cm)',
@@ -1230,6 +1342,7 @@ export const translations = {
       statsOverdue: 'Overdue',
       statsCompleted: 'Done',
       noVehicle: 'No vehicle assigned',
+      autoFromService: 'Auto-created from a scheduled service',
       snoozedSuccess: 'Reminder snoozed for 7 days',
       snoozeFailed: 'Failed to snooze reminder',
       noCompletedReminders: 'No completed reminders',
@@ -2293,7 +2406,7 @@ export const translations = {
       taxDocument: 'Tax Document',
       document: 'Attachment / Document',
       dragDrop: 'Drag & drop or click to browse',
-      formats: 'JPG, PNG, GIF, PDF up to 10MB',
+      formats: 'JPG, PNG, GIF, WebP, iPhone (HEIC), PDF up to 10MB',
       browse: 'Browse Files',
       camera: 'Use Camera',
       invalidType: 'Invalid file type. Please select an image or PDF.',
@@ -2598,6 +2711,11 @@ export const translations = {
   },
   
   ro: {
+    // Measurement units
+    units: {
+      mpgUk: 'MPG',          // galon imperial (UK)
+      mpgUs: 'MPG (SUA)',    // galon SUA
+    },
     // Global Search
     search: {
       title: 'Căutare',
@@ -2610,6 +2728,8 @@ export const translations = {
       rateLimited: 'Prea multe cereri — te rugăm să încetinești.',
       groupVehicles: 'Vehicule',
       groupEntries: 'Înregistrări',
+      groupReminders: 'Mementouri',
+      groupInsurance: 'Asigurări',
       groupAttachments: 'Documente scanate',
       selectHint: 'pentru deschidere',
       closeHint: 'pentru închidere',
@@ -2819,6 +2939,44 @@ export const translations = {
       empty: 'Nicio tranzacție încă',
       error: 'Tranzacțiile nu au putut fi încărcate',
     },
+    due: {
+      title: 'În curând',
+      empty: 'Nimic scadent — ești la zi',
+      error: 'Nu s-a putut încărca ce este scadent',
+      overdue: 'Restant',
+      today: 'Astăzi',
+      inDays: 'În {n} zile',
+      replaceNow: 'Înlocuiește acum',
+      monitor: 'Monitorizează',
+      showMore: 'Arată încă {n}',
+      showLess: 'Arată mai puțin',
+      similarCount: '{n} elemente similare',
+      dismiss: 'Ignoră',
+      dismissItem: 'Ignoră {title}',
+      dismissed: 'Ignorat',
+      undo: 'Anulează',
+      dismissError: 'Nu s-a putut actualiza — încearcă din nou',
+      kind: {
+        reminder: 'Memento',
+        service: 'Service scadent',
+        tax: 'Taxă',
+        insurance: 'Asigurare',
+        document: 'Document',
+        parking: 'Permis de parcare',
+        consumable: 'Consumabil',
+        fine: 'Amendă de parcare',
+      },
+    },
+    parking: {
+      unpaidFines: 'Amenzi neplătite',
+      totalOwed: 'Total datorat',
+      contested: 'Contestată',
+      pending: 'Neplătită',
+      paid: 'Plătită',
+      markPaid: 'Marchează plătită',
+      markedPaid: 'Amendă marcată ca plătită',
+      markPaidError: 'Actualizarea a eșuat — încearcă din nou',
+    },
     timeline: {
       title: 'Cronologie',
       entries: 'înregistrări',
@@ -2840,6 +2998,42 @@ export const translations = {
       loadMore: 'Încarcă mai mult',
     },
     
+    // Cost-analytics currency normalization (F1)
+    analytics: {
+      approxConverted: 'Convertit din monede diferite la cursul de azi.',
+      rateUnavailable: 'Unele sume nu au putut fi convertite — curs valutar indisponibil.',
+    },
+
+    // Prognoză de costuri pe 12 luni (F11)
+    forecast: {
+      title: 'Costuri estimate — următoarele 12 luni',
+      projected: 'Taxe recurente, asigurări, permise și mentenanță estimată',
+      overBudget: 'Peste buget',
+      budgetLine: 'Buget lunar',
+    },
+
+    // Consumables due for replacement (F3)
+    consumablesDue: {
+      title: 'De înlocuit',
+      replaceNow: 'Înlocuiește acum',
+      monitor: 'De monitorizat',
+    },
+
+    // Warranty ledger (F2)
+    warranty: {
+      title: 'În garanție',
+      expiresIn: 'Expiră în {n} zile',
+      kmLeft: '{n} {unit} rămași',
+      expiringSoon: 'Expiră curând',
+      none: 'Nicio garanție activă înregistrată.',
+      section: 'Garanție',
+      months: 'Garanție (luni)',
+      distance: 'Garanție ({unit})',
+      expiresOn: 'Garanția expiră la',
+      hint: 'Opțional — acoperirea se încheie la prima limită atinsă.',
+      coveredByWarranty: 'Această reparație a fost acoperită de o garanție existentă',
+    },
+
     // Charts Page
     charts: {
       title: 'Grafice',
@@ -3350,6 +3544,19 @@ export const translations = {
     },
     
     // Add Insurance Form
+    // Insurance auto-renew (F6)
+    insurance: {
+      autoRenewed: 'Reînnoit automat',
+      confirmPremium: 'confirmă prima',
+      perYear: '/an',
+      frequency: {
+        monthly: 'lunar',
+        quarterly: 'trimestrial',
+        semi_annual: 'semestrial',
+        annual: 'anual',
+      },
+    },
+
     addInsurance: {
       title: 'Adaugă Asigurare',
       policyDetails: 'Detalii Poliță',
@@ -3432,8 +3639,13 @@ export const translations = {
       optionalNotes: 'Notițe opționale...',
       error: 'Eroare la adăugarea parcării',
       optional: 'Opțional',
+      fineDetails: 'Detalii Amendă',
+      fineReason: 'Motiv',
+      fineReasonPlaceholder: 'ex. Depășirea timpului de parcare',
+      fineStatus: 'Stare',
+      fineNote: 'Amenzile neplătite rămân vizibile pe panoul principal până sunt marcate ca plătite.',
     },
-    
+
     // Parking Types
     parkingTypes: {
       street: 'Parcare Stradală',
@@ -3442,6 +3654,7 @@ export const translations = {
       monthly: 'Abonament Lunar',
       airport: 'Parcare Aeroport',
       valet: 'Valet',
+      fine: 'Amendă de Parcare',
       other: 'Altele',
     },
     
@@ -3630,6 +3843,9 @@ export const translations = {
       suggestConsumables: 'Când am schimbat ultima dată filtrele?',
       suggestEfficiency: 'Care este consumul mediu de carburant?',
       selectVehicle: 'Discută despre',
+      allVehicles: 'Toate vehiculele',
+      fleetHint: 'Întreabă despre toate vehiculele tale…',
+      greetingFleet: "Salut! Sunt {assistant} 🚗 — întreabă-mă orice despre toate vehiculele tale: compară costuri, totaluri, care mașină e mai ieftină pe km și altele.",
       noVehicles: 'Adaugă un vehicul pentru a discuta cu asistentul.',
       placeholder: 'Întreabă despre acest vehicul…',
       inputLabel: 'Pune o întrebare',
@@ -3689,6 +3905,9 @@ export const translations = {
     },
     
     // Add Todo Form
+    todo: {
+      repeats: 'Se repetă',
+    },
     addTodo: {
       title: 'Adaugă Sarcină',
       taskTitle: 'Titlu Sarcină',
@@ -3759,6 +3978,12 @@ export const translations = {
       dimensions: 'Dimensiuni',
       dimensionsOptional: 'Dimensiuni (Opțional)',
       dimensionsHelp: 'Aceste detalii ajută la recomandări inteligente pentru parcări, feriboturi și altele.',
+      // F17 — etichete fără unități pentru blocul Dimensiuni (pagina de detalii)
+      dimHeight: 'Înălțime',
+      dimWidth: 'Lățime',
+      dimLength: 'Lungime',
+      dimWeight: 'Greutate',
+      clearanceHint: 'Gabarit parcare',
       height: 'Înălțime (cm)',
       heightPlaceholder: 'ex., 150',
       width: 'Lățime (cm)',
@@ -3828,6 +4053,7 @@ export const translations = {
       statsOverdue: 'Întârziate',
       statsCompleted: 'Finalizate',
       noVehicle: 'Niciun vehicul asociat',
+      autoFromService: 'Creat automat dintr-un service programat',
       snoozedSuccess: 'Memento amânat cu 7 zile',
       snoozeFailed: 'Nu s-a putut amâna memento-ul',
       noCompletedReminders: 'Niciun memento finalizat',
@@ -4908,7 +5134,7 @@ export const translations = {
       taxDocument: 'Document Taxă',
       document: 'Atașament / Document',
       dragDrop: 'Trage și plasează sau click pentru a naviga',
-      formats: 'JPG, PNG, GIF, PDF până la 10MB',
+      formats: 'JPG, PNG, GIF, WebP, iPhone (HEIC), PDF până la 10MB',
       browse: 'Navighează Fișiere',
       camera: 'Folosește Camera',
       invalidType: 'Tip de fișier invalid. Selectează o imagine sau PDF.',
@@ -5213,6 +5439,11 @@ export const translations = {
   },
   
   es: {
+    // Measurement units
+    units: {
+      mpgUk: 'MPG',            // galón imperial (Reino Unido)
+      mpgUs: 'MPG (EE. UU.)',  // galón estadounidense
+    },
     // Global Search
     search: {
       title: 'Buscar',
@@ -5225,6 +5456,8 @@ export const translations = {
       rateLimited: 'Demasiadas solicitudes — por favor, ve más despacio.',
       groupVehicles: 'Vehículos',
       groupEntries: 'Registros',
+      groupReminders: 'Recordatorios',
+      groupInsurance: 'Seguros',
       groupAttachments: 'Documentos escaneados',
       selectHint: 'para abrir',
       closeHint: 'para cerrar',
@@ -5432,6 +5665,44 @@ export const translations = {
       empty: 'Aún no hay transacciones',
       error: 'No se pudieron cargar las transacciones',
     },
+    due: {
+      title: 'Próximamente',
+      empty: 'Nada pendiente — estás al día',
+      error: 'No se pudo cargar lo que vence',
+      overdue: 'Vencido',
+      today: 'Hoy',
+      inDays: 'En {n} días',
+      replaceNow: 'Reemplazar ahora',
+      monitor: 'Vigilar',
+      showMore: 'Mostrar {n} más',
+      showLess: 'Mostrar menos',
+      similarCount: '{n} elementos similares',
+      dismiss: 'Descartar',
+      dismissItem: 'Descartar {title}',
+      dismissed: 'Descartado',
+      undo: 'Deshacer',
+      dismissError: 'No se pudo actualizar — inténtalo de nuevo',
+      kind: {
+        reminder: 'Recordatorio',
+        service: 'Servicio pendiente',
+        tax: 'Impuesto',
+        insurance: 'Seguro',
+        document: 'Documento',
+        parking: 'Permiso de aparcamiento',
+        consumable: 'Consumible',
+        fine: 'Multa de aparcamiento',
+      },
+    },
+    parking: {
+      unpaidFines: 'Multas pendientes',
+      totalOwed: 'Total adeudado',
+      contested: 'Recurrida',
+      pending: 'Impagada',
+      paid: 'Pagada',
+      markPaid: 'Marcar pagada',
+      markedPaid: 'Multa marcada como pagada',
+      markPaidError: 'No se pudo actualizar — inténtalo de nuevo',
+    },
     timeline: {
       title: 'Cronología',
       entries: 'registros',
@@ -5453,6 +5724,42 @@ export const translations = {
       loadMore: 'Cargar más',
     },
     
+    // Cost-analytics currency normalization (F1)
+    analytics: {
+      approxConverted: 'Convertido de monedas mixtas al tipo de cambio de hoy.',
+      rateUnavailable: 'Algunos importes no se pudieron convertir — tipo de cambio no disponible.',
+    },
+
+    // Previsión de costes a 12 meses (F11)
+    forecast: {
+      title: 'Costes previstos — próximos 12 meses',
+      projected: 'Impuestos recurrentes, seguros, permisos y mantenimiento previsto',
+      overBudget: 'Sobre presupuesto',
+      budgetLine: 'Presupuesto mensual',
+    },
+
+    // Consumables due for replacement (F3)
+    consumablesDue: {
+      title: 'Para reemplazar',
+      replaceNow: 'Reemplazar ahora',
+      monitor: 'Vigilar',
+    },
+
+    // Warranty ledger (F2)
+    warranty: {
+      title: 'En garantía',
+      expiresIn: 'Vence en {n} días',
+      kmLeft: '{n} {unit} restantes',
+      expiringSoon: 'Vence pronto',
+      none: 'No hay garantías activas registradas.',
+      section: 'Garantía',
+      months: 'Garantía (meses)',
+      distance: 'Garantía ({unit})',
+      expiresOn: 'La garantía vence el',
+      hint: 'Opcional — la cobertura termina con el primer límite alcanzado.',
+      coveredByWarranty: 'Esta reparación estaba cubierta por una garantía existente',
+    },
+
     // Charts Page
     charts: {
       title: 'Gráficos',
@@ -5963,6 +6270,19 @@ export const translations = {
     },
     
     // Add Insurance Form
+    // Insurance auto-renew (F6)
+    insurance: {
+      autoRenewed: 'Renovado automáticamente',
+      confirmPremium: 'confirmar prima',
+      perYear: '/año',
+      frequency: {
+        monthly: 'mensual',
+        quarterly: 'trimestral',
+        semi_annual: 'semestral',
+        annual: 'anual',
+      },
+    },
+
     addInsurance: {
       title: 'Añadir Seguro',
       policyDetails: 'Detalles de Póliza',
@@ -6045,8 +6365,13 @@ export const translations = {
       optionalNotes: 'Notas opcionales...',
       error: 'Error al añadir parking',
       optional: 'Opcional',
+      fineDetails: 'Detalles de la Multa',
+      fineReason: 'Motivo',
+      fineReasonPlaceholder: 'ej. Exceso de tiempo de estacionamiento',
+      fineStatus: 'Estado',
+      fineNote: 'Las multas impagadas siguen visibles en el panel hasta marcarlas como pagadas.',
     },
-    
+
     // Parking Types
     parkingTypes: {
       street: 'Parking Calle',
@@ -6055,6 +6380,7 @@ export const translations = {
       monthly: 'Abono Mensual',
       airport: 'Parking Aeropuerto',
       valet: 'Valet',
+      fine: 'Multa de Aparcamiento',
       other: 'Otro',
     },
     
@@ -6243,6 +6569,9 @@ export const translations = {
       suggestConsumables: '¿Cuándo cambié los filtros por última vez?',
       suggestEfficiency: '¿Cuál es mi consumo medio de combustible?',
       selectVehicle: 'Chatear sobre',
+      allVehicles: 'Todos los vehículos',
+      fleetHint: 'Pregunta sobre todos tus vehículos…',
+      greetingFleet: "¡Hola! Soy {assistant} 🚗 — pregúntame cualquier cosa sobre todos tus vehículos: compara costes, totales, qué coche es más barato por km y más.",
       noVehicles: 'Añade un vehículo para empezar a chatear con el asistente.',
       placeholder: 'Pregunta sobre este vehículo…',
       inputLabel: 'Haz una pregunta',
@@ -6302,6 +6631,9 @@ export const translations = {
     },
     
     // Add Todo Form
+    todo: {
+      repeats: 'Se repite',
+    },
     addTodo: {
       title: 'Añadir Tarea',
       taskTitle: 'Título de la Tarea',
@@ -6372,6 +6704,12 @@ export const translations = {
       dimensions: 'Dimensiones',
       dimensionsOptional: 'Dimensiones (Opcional)',
       dimensionsHelp: 'Estos detalles ayudan con recomendaciones inteligentes para aparcamiento, ferries y más.',
+      // F17 — etiquetas sin unidades para el bloque Dimensiones (página de detalle)
+      dimHeight: 'Altura',
+      dimWidth: 'Anchura',
+      dimLength: 'Longitud',
+      dimWeight: 'Peso',
+      clearanceHint: 'Gálibo de aparcamiento',
       height: 'Altura (cm)',
       heightPlaceholder: 'ej., 150',
       width: 'Ancho (cm)',
@@ -6441,6 +6779,7 @@ export const translations = {
       statsOverdue: 'Vencidos',
       statsCompleted: 'Hecho',
       noVehicle: 'Sin vehículo asignado',
+      autoFromService: 'Creado automáticamente desde un servicio programado',
       snoozedSuccess: 'Recordatorio pospuesto 7 días',
       snoozeFailed: 'Error al posponer el recordatorio',
       noCompletedReminders: 'Sin recordatorios completados',
@@ -7526,7 +7865,7 @@ export const translations = {
       taxDocument: 'Documento de Impuesto',
       document: 'Adjunto / Documento',
       dragDrop: 'Arrastra y suelta o haz clic para navegar',
-      formats: 'JPG, PNG, GIF, PDF hasta 10MB',
+      formats: 'JPG, PNG, GIF, WebP, iPhone (HEIC), PDF hasta 10MB',
       browse: 'Buscar Archivos',
       camera: 'Usar Cámara',
       invalidType: 'Tipo de archivo no válido. Selecciona una imagen o PDF.',

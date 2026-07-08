@@ -5,7 +5,7 @@ import { useTranslation } from '../../contexts/LanguageContext'
 import { useAuth } from '../../contexts/AuthContext'
 import SeasonalChecklists from '../../components/recommendations/SeasonalChecklists'
 import { formatDate } from '../../utils/dateFormat'
-import { formatFuelEconomy } from '../../utils/fuelEconomy'
+import { formatFuelEconomy, resolveFuelSystem } from '../../utils/fuelEconomy'
 
 // SVG Icons
 const Icons = {
@@ -81,6 +81,9 @@ const Icons = {
 export default function SmartRecommendations() {
   const { t, language } = useTranslation()
   const { user } = useAuth()
+  // F16: MPG gallon system (US vs Imperial) follows the user's region.
+  const fuelSystem = resolveFuelSystem({ country: user?.country_preference, currency: user?.currency })
+  const mpgLabel = t(fuelSystem === 'us' ? 'units.mpgUs' : 'units.mpgUk') || 'MPG'
   const [recommendations, setRecommendations] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [vehicles, setVehicles] = useState([])
@@ -398,7 +401,7 @@ export default function SmartRecommendations() {
         vehicleName: vehicle.name,
         type: 'fuel_efficiency',
         title: t('smartRecommendations.highFuelConsumption') || 'High Fuel Consumption',
-        description: formatFuelEconomy(stats.avg_consumption, vehicle.distance_unit || user?.distance_unit),
+        description: formatFuelEconomy(stats.avg_consumption, vehicle.distance_unit || user?.distance_unit, 1, { system: fuelSystem, mpgLabel }),
         priority: 'low',
         icon: Icons.fuel,
         color: 'text-amber-500',

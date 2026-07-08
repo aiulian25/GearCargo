@@ -5,7 +5,7 @@ import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { useConfirm } from '../../components/ui/ConfirmDialog'
 import { formatDate } from '../../utils/dateFormat'
-import { formatFuelEconomy } from '../../utils/fuelEconomy'
+import { formatFuelEconomy, resolveFuelSystem } from '../../utils/fuelEconomy'
 
 // SVG Icons
 const Icons = {
@@ -323,7 +323,10 @@ export default function VehicleDetail() {
   if (!vehicle) return null
 
   const fuelEconomyUnit = vehicle?.distance_unit || user?.distance_unit || 'km'
-  
+  // F16: UK vs US MPG follows the user's region (US gallon differs ~20%).
+  const fuelSystem = resolveFuelSystem({ country: user?.country_preference, currency: user?.currency })
+  const mpgLabel = t(fuelSystem === 'us' ? 'units.mpgUs' : 'units.mpgUk') || 'MPG'
+
   // Stats cards configuration
   const statsCards = [
     { 
@@ -400,7 +403,7 @@ export default function VehicleDetail() {
     { 
       id: 'fuelEconomy',
       label: t('vehicleDetail.fuelEconomy') || 'Fuel Economy',
-      value: formatFuelEconomy(stats?.avg_consumption, fuelEconomyUnit),
+      value: formatFuelEconomy(stats?.avg_consumption, fuelEconomyUnit, 1, { system: fuelSystem, mpgLabel }),
       icon: Icons.gauge,
       color: 'text-teal-500',
       bgColor: 'bg-teal-500/10',
@@ -430,7 +433,16 @@ export default function VehicleDetail() {
       to: `/vehicles/${id}/expenses?tab=repair`
     },
   ]
-  
+
+  // Dimensions (F17) — only the values that are actually set; the block hides
+  // entirely when none are present. Height is flagged for car-park clearance.
+  const dimensionItems = [
+    { id: 'height', label: t('vehicles.dimHeight') || 'Height', value: vehicle.vehicle_height_cm, unit: 'cm', highlight: true },
+    { id: 'width', label: t('vehicles.dimWidth') || 'Width', value: vehicle.vehicle_width_cm, unit: 'cm' },
+    { id: 'length', label: t('vehicles.dimLength') || 'Length', value: vehicle.vehicle_length_cm, unit: 'cm' },
+    { id: 'weight', label: t('vehicles.dimWeight') || 'Weight', value: vehicle.vehicle_weight_kg, unit: 'kg' },
+  ].filter(d => d.value != null && d.value !== '')
+
   // Action buttons configuration
   const actionButtons = [
     { id: 'search', label: t('vehicleDetail.search') || 'Search', icon: Icons.search, to: `/vehicles/${id}/search` },
@@ -633,7 +645,32 @@ export default function VehicleDetail() {
             </div>
           </div>
         </div>
-        
+
+        {/* Dimensions Section (F17) — hidden entirely when no values are set */}
+        {dimensionItems.length > 0 && (
+          <div className="card">
+            <h3 className="text-base font-semibold mb-3">{t('vehicles.dimensions') || 'Dimensions'}</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {dimensionItems.map(d => (
+                <div
+                  key={d.id}
+                  className={`rounded-lg p-3 ${d.highlight ? 'bg-[var(--color-accent)]/10' : 'bg-[var(--color-bg-tertiary)]'}`}
+                >
+                  <p className="text-xs text-[var(--color-text-muted)] truncate">{d.label}</p>
+                  <p className="text-sm font-bold tabular-nums whitespace-nowrap">
+                    {Number(d.value).toLocaleString()} <span className="font-medium text-[var(--color-text-secondary)]">{d.unit}</span>
+                  </p>
+                  {d.highlight && (
+                    <p className="text-2xs text-[var(--color-text-muted)] truncate">
+                      {t('vehicles.clearanceHint') || 'Car-park clearance'}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Recent Activity Section */}
         <div className="card">
           <div className="flex items-center justify-between mb-4">

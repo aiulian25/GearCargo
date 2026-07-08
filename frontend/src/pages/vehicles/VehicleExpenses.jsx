@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { vehicleApi, fuelApi, serviceApi, repairApi, taxApi, reminderApi, insuranceApi } from '../../services/api'
+import { vehicleApi, fuelApi, serviceApi, repairApi, taxApi, reminderApi, insuranceApi, parkingApi } from '../../services/api'
 import api from '../../services/api'
+import toast from 'react-hot-toast'
+import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { formatDate } from '../../utils/dateFormat'
 import { Skeleton, SkeletonScreen } from '../../components/ui/Skeleton'
@@ -298,6 +300,7 @@ export default function VehicleExpenses() {
   const [insuranceEntries, setInsuranceEntries] = useState([])
   const [todoEntries, setTodoEntries] = useState([])
   const [reminderEntries, setReminderEntries] = useState([])
+  const [outstandingFines, setOutstandingFines] = useState([])  // F14
 
   useEffect(() => {
     fetchAllData()
@@ -325,10 +328,11 @@ export default function VehicleExpenses() {
         reminderApi.getAll(id),
         api.get(`/todos?vehicle_id=${id}`),
         insuranceApi.getAll(id),
+        parkingApi.getFines(),
       ])
-      
+
       // Process results with proper fallbacks
-      const [fuelRes, serviceRes, repairRes, taxRes, parkingRes, reminderRes, todoRes, insuranceRes] = results
+      const [fuelRes, serviceRes, repairRes, taxRes, parkingRes, reminderRes, todoRes, insuranceRes, finesRes] = results
       
       if (fuelRes.status === 'fulfilled') {
         setFuelEntries(fuelRes.value.data.entries || fuelRes.value.data || [])
@@ -354,7 +358,12 @@ export default function VehicleExpenses() {
       if (insuranceRes.status === 'fulfilled') {
         setInsuranceEntries(insuranceRes.value.data.policies || insuranceRes.value.data || [])
       }
-      
+      if (finesRes.status === 'fulfilled') {
+        // The endpoint is user-scoped; keep only this vehicle's outstanding fines.
+        const all = finesRes.value.data.fines || []
+        setOutstandingFines(all.filter(f => f.vehicle_id === Number(id)))
+      }
+
     } catch (error) {
       console.error('Failed to fetch data:', error)
     } finally {
@@ -659,6 +668,26 @@ export default function VehicleExpenses() {
 
   const handleMonthClick = (monthIndex) => {
     setSelectedMonth(prev => prev === monthIndex ? null : monthIndex)
+  }
+
+  // F14 — settle an outstanding parking fine (optimistic, offline-tolerant).
+  const handleMarkFinePaid = async (fine) => {
+    const previous = outstandingFines
+    setOutstandingFines(prev => prev.filter(f => f.id !== fine.id))
+    setParkingEntries(prev => prev.map(e =>
+      e.id === fine.id ? { ...e, fine_status: 'paid' } : e
+    ))
+    try {
+      await parkingApi.update(fine.id, { fine_status: 'paid' })
+      toast.success(t('parking.markedPaid') || 'Fine marked as paid')
+    } catch (err) {
+      if (isOfflineWriteError(err)) {
+        announceOfflineSaved(t)
+        return
+      }
+      setOutstandingFines(previous)
+      toast.error(t('parking.markPaidError') || 'Could not update fine — try again')
+    }
   }
 
   // Open attachment viewer
@@ -1021,7 +1050,14 @@ export default function VehicleExpenses() {
             <tbody>
               {insuranceEntries.map(entry => (
                 <tr key={entry.id} className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)]">
-                  <td className="py-3 px-4 font-medium">{entry.provider}</td>
+                  <td className="py-3 px-4 font-medium">
+                    {entry.provider}
+                    {entry.renewed_from_id && (
+                      <span className="mt-1 block text-2xs font-normal text-amber-600 dark:text-amber-400">
+                        {t('insurance.autoRenewed') || 'Auto-renewed'} · {t('insurance.confirmPremium') || 'confirm premium'}
+                      </span>
+                    )}
+                  </td>
                   <td className="py-3 px-4">{entry.policy_number || '-'}</td>
                   <td className="py-3 px-4 capitalize">{entry.policy_type?.replace('_', ' ') || '-'}</td>
                   <td className="py-3 px-4 text-[var(--color-accent)] font-medium">{formatCurrency(entry.premium)}</td>
@@ -1321,6 +1357,48 @@ export default function VehicleExpenses() {
           />
         ))}
       </div>
+
+      {/* F14 — Unpaid fines for this vehicle */}
+      {activeTab === 'parking' && outstandingFines.length > 0 && (
+        <div className="bg-orange-500/5 border border-orange-500/20 rounded-xl p-4 mb-6">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <h3 className="text-sm font-semibold text-orange-600 dark:text-orange-400">
+              {t('parking.unpaidFines') || 'Unpaid fines'} ({outstandingFines.length})
+            </h3>
+            <span className="text-sm font-semibold">
+              {t('parking.totalOwed') || 'Total owed'}:{' '}
+              {formatCurrency(outstandingFines.reduce((sum, f) => sum + (parseFloat(f.amount) || 0), 0))}
+            </span>
+          </div>
+          <ul className="space-y-2">
+            {outstandingFines.map(fine => (
+              <li
+                key={fine.id}
+                className="flex items-center gap-3 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg px-3 py-2"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">
+                    {fine.fine_reason || fine.location || (t('due.kind.fine') || 'Parking fine')}
+                  </p>
+                  <p className="text-xs text-[var(--color-text-muted)]">
+                    {formatDate(fine.date)}
+                    {fine.fine_status === 'contested' ? ` • ${t('parking.contested') || 'Contested'}` : ''}
+                  </p>
+                </div>
+                <span className="text-sm font-semibold text-orange-500 whitespace-nowrap">
+                  {formatCurrency(fine.amount)}
+                </span>
+                <button
+                  onClick={() => handleMarkFinePaid(fine)}
+                  className="btn btn-secondary btn-sm whitespace-nowrap"
+                >
+                  {t('parking.markPaid') || 'Mark paid'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Data Table */}
       <div className="bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border)] overflow-x-auto">

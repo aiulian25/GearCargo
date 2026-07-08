@@ -248,7 +248,15 @@ class Config:
     MAX_CONTENT_LENGTH = int(os.environ.get('MAX_UPLOAD_SIZE_MB', 200)) * 1024 * 1024
     UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', '/app/volumes/attachments')
     BACKUP_FOLDER = os.environ.get('BACKUP_FOLDER', '/app/volumes/backups')
-    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'bmp', 'tiff'}
+    # NOTE: attachment upload validation is enforced by app/routes/attachments.py
+    # (ALLOWED_EXTENSIONS + magic-byte checks there are the single source of truth).
+    # This mirror is kept in sync to avoid the previous divergence (F9). bmp/tiff
+    # were dropped (no magic-byte signature / transcode path); heic/heif/webp added.
+    ALLOWED_EXTENSIONS = {
+        'png', 'jpg', 'jpeg', 'gif', 'webp', 'heic', 'heif',
+        'pdf', 'doc', 'docx', 'xls', 'xlsx',
+        'odt', 'ods', 'odp',   # OpenDocument (LibreOffice/OpenOffice)
+    }
     
     # Rate limiting
     RATELIMIT_ENABLED = os.environ.get('RATELIMIT_ENABLED', 'true').lower() == 'true'

@@ -19,7 +19,7 @@ import json
 import time
 
 import requests
-from flask import Blueprint, jsonify, current_app
+from flask import Blueprint, jsonify, current_app, request
 
 from app.routes.auth import token_required
 
@@ -146,3 +146,160 @@ def app_version(current_user):
         if rel:
             data['latest_release'] = rel
     return jsonify(data)
+
+
+@system_bp.route('/due', methods=['GET'])
+@token_required
+def get_due_surface(current_user):
+    """Unified "Due & Expiring" list (F4).
+
+    Merges overdue+upcoming reminders, service next-due, tax/insurance/document
+    expiry, parking-permit expiry, and consumable replacement into one ranked
+    feed, each item deep-linking to its record. Scoped to the current user.
+
+    Query: ``?days=30`` sets the forward horizon (clamped to 1..365). Overdue
+    items are always included.
+    """
+    days = request.args.get('days', 30, type=int) or 30
+    days = max(1, min(days, 365))
+
+    from app.services.due import build_due_items
+    items = build_due_items(current_user.id, days=days)
+    return jsonify({'items': items, 'count': len(items)})
+
+
+# Kinds a user may dismiss from the "Coming up" feed. Must stay in sync with
+# the kinds emitted by app.services.due.build_due_items.
+_DISMISSIBLE_KINDS = frozenset((
+    'reminder', 'service', 'tax', 'insurance', 'document',
+    'parking', 'fine', 'consumable',
+))
+
+
+def _resolve_due_ref(user, kind, ref_id):
+    """Resolve a due-feed item back to its OWNED source record.
+
+    Returns ``(obj, effective_due_date)`` — ``(None, None)`` when the record
+    does not exist or does not belong to ``user`` (callers answer 404 either
+    way, so ownership is never disclosed). The effective due date mirrors
+    build_due_items' per-kind date so a dismissal pins exactly the occurrence
+    the user saw; it is always computed server-side, never taken from the
+    client.
+    """
+    from app.models import (
+        Reminder, ServiceEntry, TaxEntry, InsurancePolicy,
+        Attachment, ParkingEntry, ConsumableEntry,
+    )
+
+    if kind == 'reminder':
+        obj = Reminder.query.filter_by(id=ref_id, user_id=user.id).first()
+        return obj, (obj.due_date if obj else None)
+    if kind == 'service':
+        obj = ServiceEntry.query.filter_by(id=ref_id, user_id=user.id).first()
+        return obj, (obj.next_due_date if obj else None)
+    if kind == 'tax':
+        obj = TaxEntry.query.filter_by(id=ref_id, user_id=user.id).first()
+        return obj, ((obj.next_due_date or obj.due_date) if obj else None)
+    if kind == 'insurance':
+        obj = InsurancePolicy.query.filter_by(id=ref_id, user_id=user.id).first()
+        return obj, (obj.end_date if obj else None)
+    if kind == 'document':
+        obj = Attachment.query.filter_by(id=ref_id, user_id=user.id).first()
+        return obj, (obj.expires_at if obj else None)
+    if kind in ('parking', 'fine'):
+        obj = ParkingEntry.query.filter_by(id=ref_id, user_id=user.id).first()
+        # Fines carry no due date (dismissal hides the fine until un-dismissed
+        # or its status changes on the record itself).
+        return obj, (obj.permit_expires if (obj and kind == 'parking') else None)
+    if kind == 'consumable':
+        obj = ConsumableEntry.query.filter_by(id=ref_id, user_id=user.id).first()
+        return obj, None
+    return None, None
+
+
+def _parse_dismiss_body():
+    """Validate the dismiss/undismiss request body → (kind, ref_id) or (None, None)."""
+    data = request.get_json(silent=True) or {}
+    kind = (data.get('kind') or '').strip().lower()
+    if kind not in _DISMISSIBLE_KINDS:
+        return None, None
+    try:
+        ref_id = int(data.get('ref_id'))
+    except (TypeError, ValueError):
+        return None, None
+    return kind, ref_id
+
+
+@system_bp.route('/due/dismiss', methods=['POST'])
+@token_required
+def dismiss_due_item(current_user):
+    """Dismiss ONE occurrence of a "Coming up" item (F40).
+
+    Reminders use their native ``dismissed`` flag (which also silences their
+    push/email pipeline); every other kind gets a DueDismissal row pinned to
+    the item's current effective due date, so a future occurrence resurfaces.
+    Idempotent.
+    """
+    from app import db
+    from app.models import DueDismissal
+
+    kind, ref_id = _parse_dismiss_body()
+    if kind is None:
+        return jsonify({'error': 'A valid kind and ref_id are required'}), 400
+
+    obj, due = _resolve_due_ref(current_user, kind, ref_id)
+    if obj is None:
+        return jsonify({'error': 'Item not found'}), 404
+
+    if kind == 'reminder':
+        obj.dismissed = True
+    else:
+        exists = DueDismissal.query.filter_by(
+            user_id=current_user.id, kind=kind, ref_id=ref_id, due_date=due,
+        ).first()
+        if not exists:
+            db.session.add(DueDismissal(
+                user_id=current_user.id, kind=kind, ref_id=ref_id, due_date=due,
+            ))
+    db.session.commit()
+    return jsonify({'message': 'Dismissed', 'kind': kind, 'ref_id': ref_id})
+
+
+@system_bp.route('/due/undismiss', methods=['POST'])
+@token_required
+def undismiss_due_item(current_user):
+    """Undo a dismissal (the frontend's Undo action). Idempotent."""
+    from app import db
+    from app.models import DueDismissal
+
+    kind, ref_id = _parse_dismiss_body()
+    if kind is None:
+        return jsonify({'error': 'A valid kind and ref_id are required'}), 400
+
+    obj, _ = _resolve_due_ref(current_user, kind, ref_id)
+    if obj is None:
+        return jsonify({'error': 'Item not found'}), 404
+
+    if kind == 'reminder':
+        obj.dismissed = False
+    else:
+        DueDismissal.query.filter_by(
+            user_id=current_user.id, kind=kind, ref_id=ref_id,
+        ).delete(synchronize_session=False)
+    db.session.commit()
+    return jsonify({'message': 'Restored', 'kind': kind, 'ref_id': ref_id})
+
+
+@system_bp.route('/forecast', methods=['GET'])
+@token_required
+def get_fleet_forecast(current_user):
+    """Fleet-wide 12-month cost forecast (F11) — sums all non-archived vehicles.
+
+    Query: ``?months=12`` (clamped 1..24). Owner-scoped; amounts in the user's
+    display currency.
+    """
+    from app.models import Vehicle
+    from app.routes.vehicles import _build_forecast
+    months = request.args.get('months', 12, type=int)
+    vehicles = Vehicle.query.filter_by(user_id=current_user.id, archived=False).all()
+    return jsonify(_build_forecast(current_user, vehicles, months))

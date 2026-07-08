@@ -4,7 +4,7 @@ import { fuelApi, vehicleApi } from '../../services/api'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTranslation } from '../../contexts/LanguageContext'
 import { formatDate } from '../../utils/dateFormat'
-import { formatFuelEconomy, getFuelEconomyUnit } from '../../utils/fuelEconomy'
+import { formatFuelEconomy, getFuelEconomyUnit, resolveFuelSystem } from '../../utils/fuelEconomy'
 import EmptyState from '../../components/ui/EmptyState'
 
 export default function FuelEntries() {
@@ -28,6 +28,13 @@ export default function FuelEntries() {
     : getVehicleDistanceUnit(selectedVehicle)
 
   const avgFuelEconomy = stats?.avg_consumption ?? stats?.avg_efficiency ?? null
+
+  // F16: MPG gallon system (US vs Imperial) follows the user's region.
+  const fuelSystem = resolveFuelSystem({ country: user?.country_preference, currency: user?.currency })
+  const mpgLabel = t(fuelSystem === 'us' ? 'units.mpgUs' : 'units.mpgUk') || 'MPG'
+  const economyOpts = { system: fuelSystem, mpgLabel }
+  const economyUnitLabel = (unit) =>
+    getFuelEconomyUnit(unit) === 'MPG' ? mpgLabel : getFuelEconomyUnit(unit)
   
   useEffect(() => {
     const fetchVehicles = async () => {
@@ -92,9 +99,9 @@ export default function FuelEntries() {
         <div className="grid grid-cols-3 gap-2 mb-4">
           <div className="card text-center py-3">
             <p className="text-lg font-bold text-[var(--color-accent)]">
-              {formatFuelEconomy(avgFuelEconomy, selectedVehicleUnit).split(' ')[0]}
+              {formatFuelEconomy(avgFuelEconomy, selectedVehicleUnit, 1, economyOpts).split(' ')[0]}
             </p>
-            <p className="text-2xs text-[var(--color-text-muted)]">{getFuelEconomyUnit(selectedVehicleUnit)}</p>
+            <p className="text-2xs text-[var(--color-text-muted)]">{economyUnitLabel(selectedVehicleUnit)}</p>
           </div>
           <div className="card text-center py-3">
             <p className="text-lg font-bold">
@@ -157,7 +164,7 @@ export default function FuelEntries() {
                 <p className="text-sm font-semibold">{entry.total_cost}</p>
                 {entry.consumption && (
                   <p className="text-2xs text-[var(--color-text-muted)]">
-                    {formatFuelEconomy(entry.consumption, getVehicleDistanceUnit(entry.vehicle_id))}
+                    {formatFuelEconomy(entry.consumption, getVehicleDistanceUnit(entry.vehicle_id), 1, economyOpts)}
                   </p>
                 )}
               </div>

@@ -60,7 +60,15 @@ class Reminder(db.Model):
     # Foreign keys
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id'), index=True)
-    
+    # F5: set when this reminder was auto-generated from a ServiceEntry's
+    # next_due_date/next_due_mileage. Links back to that service AND dedups the
+    # generator (one auto-reminder per source service).
+    source_service_id = db.Column(db.Integer, db.ForeignKey('service_entries.id'), nullable=True, index=True)
+    # F7: set once we've pushed for the odometer crossing due_mileage, so the
+    # hourly mileage check never re-fires. Independent of last_notified_at (which
+    # governs the date-based notification path).
+    mileage_notified = db.Column(db.Boolean, default=False)
+
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -119,5 +127,6 @@ class Reminder(db.Model):
             'vehicle_distance_unit': self.vehicle.distance_unit if self.vehicle else 'km',
             'calendar_sync': self.calendar_sync,
             'sync_conflict': self.sync_conflict,
+            'source_service_id': self.source_service_id,
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }

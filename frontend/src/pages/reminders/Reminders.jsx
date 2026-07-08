@@ -226,6 +226,11 @@ export default function Reminders() {
                   <p className={`text-2xs mt-0.5 ${dueDate.className}`}>
                     {dueDate.text}
                   </p>
+                  {reminder.source_service_id && (
+                    <p className="text-2xs mt-0.5 text-[var(--color-text-muted)] truncate">
+                      {t('reminders.autoFromService') || 'Auto-created from a scheduled service'}
+                    </p>
+                  )}
                 </div>
                 
                 {/* Actions */}

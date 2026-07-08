@@ -1,0 +1,16 @@
+# Local DEV-over-HTTP override — NOT for production, NOT committed.
+# Relaxes the cookie/CSRF posture so login works over plain HTTP on the LAN,
+# and runs the app in development mode (reports version 'dev', bypasses the
+# production placeholder-secret startup check).
+#
+# Usage:
+#   docker compose -f docker-compose.dev.yml -f docker-compose.dev-http.override.yml up -d --build
+services:
+  gearcargo:
+    environment:
+      - FLASK_ENV=development
+      - SESSION_COOKIE_SECURE=false
+      - SESSION_COOKIE_HTTPONLY=true
+      - SESSION_COOKIE_SAMESITE=Lax
+      - WTF_CSRF_SSL_STRICT=false
+      - JWT_COOKIE_SECURE=false

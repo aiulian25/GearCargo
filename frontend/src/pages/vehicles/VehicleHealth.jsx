@@ -4,7 +4,7 @@ import { vehicleApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { formatDate } from '../../utils/dateFormat'
-import { formatFuelEconomy } from '../../utils/fuelEconomy'
+import { formatFuelEconomy, resolveFuelSystem } from '../../utils/fuelEconomy'
 
 // SVG Icons
 const Icons = {
@@ -216,6 +216,7 @@ export default function VehicleHealth() {
   const { user } = useAuth()
   
   const [health, setHealth] = useState(null)
+  const [warranties, setWarranties] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -240,6 +241,15 @@ export default function VehicleHealth() {
 
   useEffect(() => {
     fetchHealth()
+  }, [id])
+
+  // Warranty ledger — fetched independently so a failure never blocks health.
+  useEffect(() => {
+    let active = true
+    vehicleApi.getWarranties(id)
+      .then((res) => { if (active) setWarranties(res.data?.items || []) })
+      .catch(() => { /* non-fatal: the warranty card just stays empty */ })
+    return () => { active = false }
   }, [id])
 
   const handleMarkDone = (action) => {
@@ -392,7 +402,10 @@ export default function VehicleHealth() {
   if (!health) return null
 
   const fuelEconomyUnit = health.vehicle_info?.distance_unit || user?.distance_unit || 'km'
-  
+  // F16: correct MPG gallon system for the user's region.
+  const fuelSystem = resolveFuelSystem({ country: user?.country_preference, currency: user?.currency })
+  const mpgLabel = t(fuelSystem === 'us' ? 'units.mpgUs' : 'units.mpgUk') || 'MPG'
+
   const getHealthStatusColor = () => {
     switch (health.health_status) {
       case 'excellent': return 'text-green-500'
@@ -515,7 +528,7 @@ export default function VehicleHealth() {
               <span className="text-xs">{t('vehicleHealth.avgEfficiency') || 'Avg Efficiency'}</span>
             </div>
             <p className="text-xl font-bold">
-              {formatFuelEconomy(health.carbon_footprint?.avg_efficiency, fuelEconomyUnit)}
+              {formatFuelEconomy(health.carbon_footprint?.avg_efficiency, fuelEconomyUnit, 1, { system: fuelSystem, mpgLabel })}
             </p>
           </div>
           
@@ -850,21 +863,58 @@ export default function VehicleHealth() {
               </span>
             </div>
             
-            {health.vehicle_info?.warranty_status && health.vehicle_info?.warranty_status !== 'unknown' && (
-              <div className="mt-4 bg-purple-500/10 border border-purple-500/20 rounded-lg p-3">
+            {/* Under warranty (F2) — real ledger from stored warranty dates/mileage */}
+            <div className="mt-4 bg-purple-500/10 border border-purple-500/20 rounded-lg p-3">
+              <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-medium text-purple-600 dark:text-purple-400">
-                  {t('vehicleHealth.warrantyInfo') || 'Warranty Info'}
+                  {t('warranty.title') || 'Under warranty'}
                 </p>
-                <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
-                  {health.vehicle_info.warranty_status === 'likely_covered' 
-                    ? t('vehicleHealth.warrantyLikelyCovered') || 'Your vehicle may still be under manufacturer warranty.'
-                    : health.vehicle_info.warranty_status === 'extended_possible'
-                      ? t('vehicleHealth.warrantyExtendedPossible') || 'Consider extended warranty options if not already purchased.'
-                      : t('vehicleHealth.warrantyLikelyExpired') || 'Standard warranty likely expired. Focus on preventive maintenance.'
-                  }
-                </p>
+                {warranties.length > 0 && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-700 dark:text-purple-300 tabular-nums shrink-0">
+                    {warranties.length}
+                  </span>
+                )}
               </div>
-            )}
+              {warranties.length === 0 ? (
+                <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
+                  {t('warranty.none') || 'No active warranties on record.'}
+                </p>
+              ) : (
+                <ul className="mt-3 space-y-2" role="list">
+                  {warranties.map((w) => {
+                    const soon = w.days_left != null && w.days_left <= 30
+                    const unit = health?.vehicle_info?.distance_unit || 'km'
+                    return (
+                      <li key={`${w.source_type}-${w.id}`} className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-[var(--color-text-primary)] truncate capitalize">
+                            {w.label}
+                          </p>
+                          <p className="text-xs text-[var(--color-text-muted)]">
+                            {w.days_left != null && (
+                              <span>{(t('warranty.expiresIn') || 'Expires in {n} days').replace('{n}', w.days_left)}</span>
+                            )}
+                            {w.km_left != null && (
+                              <span>
+                                {w.days_left != null ? ' · ' : ''}
+                                {(t('warranty.kmLeft') || '{n} {unit} left')
+                                  .replace('{n}', Number(w.km_left).toLocaleString())
+                                  .replace('{unit}', unit)}
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                        {soon && (
+                          <span className="shrink-0 text-2xs px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 whitespace-nowrap">
+                            {t('warranty.expiringSoon') || 'Expiring soon'}
+                          </span>
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </div>
           </div>
         </ExpandableCard>
         

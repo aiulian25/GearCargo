@@ -12,6 +12,14 @@ from app.routes.auth import token_required
 repairs_bp = Blueprint('repairs', __name__)
 
 
+def _opt_int(value):
+    """Coerce an optional numeric field to int, treating ''/invalid as None."""
+    try:
+        return int(value) if value not in (None, '') else None
+    except (TypeError, ValueError):
+        return None
+
+
 @repairs_bp.route('', methods=['GET'])
 @token_required
 def get_repair_entries(current_user):
@@ -104,6 +112,8 @@ def create_repair_entry(current_user):
         parts_replaced=data.get('parts_replaced'),
         severity=data.get('severity', 'medium'),
         under_warranty=data.get('warranty_covered') or data.get('under_warranty', False),
+        warranty_months=_opt_int(data.get('warranty_months')),
+        warranty_km=_opt_int(data.get('warranty_km')),
         notes=data.get('notes'),
     )
     
@@ -159,7 +169,7 @@ def update_repair_entry(current_user, entry_id):
     allowed = ['entry_date', 'mileage', 'cost', 'repair_type', 'repair_types', 'description',
                'diagnosis', 'parts_replaced', 'labor_cost', 'parts_cost',
                'provider_name', 'provider_location', 'provider_phone',
-               'severity', 'is_recurring', 'warranty_covered',
+               'severity', 'is_recurring',
                'insurance_covered', 'insurance_claim_number', 'notes']
     
     # Handle multi-select repair_types
@@ -180,9 +190,17 @@ def update_repair_entry(current_user, entry_id):
                 setattr(entry, field, datetime.fromisoformat(data[field]))
             else:
                 setattr(entry, field, data[field])
-    
+
+    # F2 — warranty fields, mapped to the real columns.
+    if 'warranty_covered' in data or 'under_warranty' in data:
+        entry.under_warranty = bool(data.get('warranty_covered') or data.get('under_warranty'))
+    if 'warranty_months' in data:
+        entry.warranty_months = _opt_int(data['warranty_months'])
+    if 'warranty_km' in data:
+        entry.warranty_km = _opt_int(data['warranty_km'])
+
     db.session.commit()
-    
+
     return jsonify({
         'message': 'Repair entry updated',
         'entry': entry.to_dict()

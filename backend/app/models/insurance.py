@@ -46,7 +46,11 @@ class InsurancePolicy(db.Model):
     # Status
     status = db.Column(db.String(20), default='active')  # active, expired, cancelled
     auto_renew = db.Column(db.Boolean, default=False)
-    
+    # F6: set on a policy auto-created by the renewal job; links back to the
+    # policy it was renewed from. Drives dedup + the "confirm premium" UI prompt,
+    # and is cleared once the user edits (confirms) the renewed policy.
+    renewed_from_id = db.Column(db.Integer, db.ForeignKey('insurance_policies.id'), nullable=True, index=True)
+
     # Notes
     notes = db.Column(db.Text)
     
@@ -59,7 +63,32 @@ class InsurancePolicy(db.Model):
     
     def __repr__(self):
         return f'<InsurancePolicy {self.policy_number}>'
-    
+
+    # F12: how many premium payments make up one year, per payment frequency.
+    # Single source of truth for annualizing a premium in analytics/forecasts.
+    FREQUENCY_MULTIPLIER = {
+        'monthly': 12,
+        'quarterly': 4,
+        'semi-annual': 2,
+        'semi_annual': 2,
+        'annual': 1,
+        'yearly': 1,
+        'one_time': 1,
+    }
+
+    @property
+    def annualized_premium(self):
+        """Premium normalized to a yearly cost, respecting ``payment_frequency``.
+
+        A €100/month policy and a €1,200/year policy both return 1200.0, so
+        analytics compare like-for-like instead of double- or under-counting.
+        An unknown/blank frequency is treated as annual (multiplier 1).
+        """
+        if self.premium is None:
+            return 0.0
+        mult = self.FREQUENCY_MULTIPLIER.get(self.payment_frequency or 'annual', 1)
+        return float(self.premium) * mult
+
     @property
     def is_active(self):
         """Check if policy is currently active."""
@@ -97,6 +126,7 @@ class InsurancePolicy(db.Model):
             'deductible': float(self.deductible) if self.deductible else None,
             'premium': float(self.premium) if self.premium else None,
             'payment_frequency': self.payment_frequency,
+            'annualized_premium': self.annualized_premium,  # F12 — premium × freq
             'currency': self.currency,
             'start_date': self.start_date.isoformat() if self.start_date else None,
             'end_date': self.end_date.isoformat() if self.end_date else None,
@@ -111,6 +141,7 @@ class InsurancePolicy(db.Model):
             'days_until_expiry': self.days_until_expiry,
             'is_expiring_soon': self.is_expiring_soon,
             'auto_renew': self.auto_renew,
+            'renewed_from_id': self.renewed_from_id,
             'notes': self.notes,
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }

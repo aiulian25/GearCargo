@@ -59,6 +59,9 @@ export default function AddVehicleService() {
       shop_name: '',
       notes: '',
       next_due_date: '',
+      warranty_months: '',
+      warranty_km: '',
+      warranty_expires: '',
     }
   })
   
@@ -97,6 +100,9 @@ export default function AddVehicleService() {
             shop_name: entry.garage_name || entry.provider || '',
             notes: entry.notes || '',
             next_due_date: entry.next_due_date ? entry.next_due_date.split('T')[0] : '',
+            warranty_months: entry.warranty_months ?? '',
+            warranty_km: entry.warranty_km ?? '',
+            warranty_expires: entry.warranty_expires ? entry.warranty_expires.split('T')[0] : '',
           })
           
           // Restore multi-select service types
@@ -144,6 +150,9 @@ export default function AddVehicleService() {
         labor_cost: data.labor_cost ? parseFloat(data.labor_cost) : null,
         total_cost: data.total_cost ? parseFloat(data.total_cost) : null,
         next_due_date: data.next_due_date || null,
+        warranty_months: data.warranty_months === '' ? null : parseInt(data.warranty_months),
+        warranty_km: data.warranty_km === '' ? null : parseInt(data.warranty_km),
+        warranty_expires: data.warranty_expires || null,
       }
       
       let response
@@ -408,7 +417,54 @@ export default function AddVehicleService() {
             />
           </div>
         </div>
-        
+
+        {/* Warranty (F2) — feeds the "Under warranty" ledger in Vehicle Health */}
+        <div className="card space-y-4">
+          <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
+            {t('warranty.section') || 'Warranty'}
+          </h3>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                {t('warranty.months') || 'Warranty (months)'}
+              </label>
+              <input
+                type="number" inputMode="numeric" min="0"
+                {...register('warranty_months')}
+                className="input"
+                placeholder={t('addService.optional') || 'Optional'}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                {(t('warranty.distance') || 'Warranty ({unit})').replace('{unit}', vehicle?.distance_unit || 'km')}
+              </label>
+              <input
+                type="number" inputMode="numeric" min="0"
+                {...register('warranty_km')}
+                className="input"
+                placeholder={t('addService.optional') || 'Optional'}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              {t('warranty.expiresOn') || 'Warranty expires on'}
+            </label>
+            <input
+              type="date"
+              {...register('warranty_expires')}
+              className="input"
+            />
+            <p className="text-2xs text-[var(--color-text-muted)] mt-1">
+              {t('warranty.hint') || 'Optional — whichever limit is reached first ends the coverage.'}
+            </p>
+          </div>
+        </div>
+
         {/* Additional */}
         <div className="card space-y-4">
           <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">

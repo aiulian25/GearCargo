@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { vehicleApi, externalApi, insuranceApi, configApi } from '../services/api'
+import toast from 'react-hot-toast'
+import { vehicleApi, externalApi, insuranceApi, configApi, dueApi } from '../services/api'
 import { useCurrency, useTranslation } from '../contexts/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
+import { isOfflineWriteError, announceOfflineSaved } from '../utils/offlineWrite'
 import { formatDate, formatDateShort } from '../utils/dateFormat'
 import ServiceUnavailable from '../components/ui/ServiceUnavailable'
 import { useConfirm } from '../components/ui/ConfirmDialog'
@@ -152,6 +154,13 @@ const _DEFAULT_TX = { color: 'text-gray-500', bg: 'bg-gray-500/10', icon: <><rec
 // Timeline supports these as filter chips; anything else deep-links to the "all" view.
 const TIMELINE_FILTER_TYPES = new Set(['fuel', 'service', 'repair', 'tax', 'parking', 'consumable', 'insurance'])
 
+// F12: normalize a policy's payment_frequency to an i18n key under insurance.frequency.*
+const INS_FREQ_KEY = {
+  monthly: 'monthly', quarterly: 'quarterly',
+  'semi-annual': 'semi_annual', semi_annual: 'semi_annual',
+  annual: 'annual', yearly: 'annual', one_time: 'annual',
+}
+
 // Recent Transactions — fleet-wide feed of the latest cost-bearing entries.
 function RecentTransactions({ transactions, loading, error, t, formatCurrency }) {
   const txLink = (tx) => {
@@ -204,6 +213,14 @@ function RecentTransactions({ transactions, loading, error, t, formatCurrency })
                       <span className={cat.color}>{categoryLabel}</span>
                       <span aria-hidden="true"> · </span>
                       {tx.vehicle_name}
+                      {/* F12: label the premium's payment frequency (the cost shown
+                          is the per-payment premium, not the annualized figure). */}
+                      {tx.type === 'insurance' && tx.payment_frequency && (
+                        <>
+                          <span aria-hidden="true"> · </span>
+                          {t(`insurance.frequency.${INS_FREQ_KEY[tx.payment_frequency] || 'annual'}`)}
+                        </>
+                      )}
                     </p>
                   </div>
                   <div className="shrink-0 text-right">
@@ -226,6 +243,166 @@ function RecentTransactions({ transactions, loading, error, t, formatCurrency })
   )
 }
 
+// F4 — icon + accent per due-item kind (reuses the Timeline palette so a fuel-up
+// and its due reminder read consistently across the dashboard).
+const DUE_KIND = {
+  reminder:   { color: 'text-indigo-500', bg: 'bg-indigo-500/10', icon: <><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2 2M12 2h0M5 3 2 6M22 6l-3-3" /></> },
+  service:    { color: 'text-blue-500',   bg: 'bg-blue-500/10',   icon: <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" /> },
+  tax:        { color: 'text-rose-500',   bg: 'bg-rose-500/10',   icon: <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1-2-1zM16 8H8M16 12H8M10 16H8" /> },
+  insurance:  { color: 'text-teal-500',   bg: 'bg-teal-500/10',   icon: <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /> },
+  document:   { color: 'text-slate-500',  bg: 'bg-slate-500/10',  icon: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M8 13h8M8 17h8" /></> },
+  parking:    { color: 'text-purple-500', bg: 'bg-purple-500/10', icon: <><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 17V7h4a3 3 0 0 1 0 6H9" /></> },
+  consumable: { color: 'text-cyan-500',   bg: 'bg-cyan-500/10',   icon: <><path d="M21 8V21H3V8M1 3h22v5H1zM10 12h4" /></> },
+  fine:       { color: 'text-orange-500', bg: 'bg-orange-500/10', icon: <><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></> },
+}
+const _DEFAULT_DUE = { color: 'text-gray-500', bg: 'bg-gray-500/10', icon: <><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h0" /></> }
+
+// Severity → left stripe + chip styling. Semantic status colors (not the app accent).
+const DUE_SEVERITY = {
+  critical: { stripe: 'bg-red-500',   chip: 'text-red-600 dark:text-red-400 bg-red-500/10' },
+  warning:  { stripe: 'bg-amber-500', chip: 'text-amber-600 dark:text-amber-400 bg-amber-500/10' },
+  info:     { stripe: 'bg-[var(--color-border)]', chip: 'text-[var(--color-text-muted)] bg-[var(--color-bg-tertiary)]' },
+}
+
+// Coming up — unified "what needs attention?" feed across all sources (F4).
+// F39: only the 2 most urgent rows render by default; the rest sit behind an
+// explicit, keyboard/touch-friendly "Show N more" toggle so the card stays
+// compact on small PWA viewports. Expansion is pure client state (no refetch).
+const DUE_COLLAPSED_COUNT = 2
+
+function DueSoon({ items, loading, error, t, onDismiss }) {
+  const [expanded, setExpanded] = useState(false)
+
+  const dueLabel = (it) => {
+    if (it.days_left == null) {
+      return it.severity === 'critical'
+        ? (t('due.replaceNow') || 'Replace now')
+        : (t('due.monitor') || 'Monitor')
+    }
+    if (it.days_left < 0) return t('due.overdue') || 'Overdue'
+    if (it.days_left === 0) return t('due.today') || 'Today'
+    return (t('due.inDays') || 'In {n} days').replace('{n}', it.days_left)
+  }
+
+  return (
+    <div className="bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border)] overflow-hidden h-full flex flex-col">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--color-border)]">
+        <span className="text-lg" aria-hidden="true">📅</span>
+        <h3 className="text-sm font-semibold">{t('due.title') || 'Coming up'}</h3>
+        {!loading && !error && items?.length > 0 && (
+          <span className="ml-auto text-2xs font-semibold tabular-nums px-2 py-0.5 rounded-full bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]">
+            {items.length}
+          </span>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="p-4 space-y-3">
+          {[0, 1, 2].map(i => <div key={i} className="skeleton h-12 rounded-lg" />)}
+        </div>
+      ) : error || !items?.length ? (
+        <div className="flex-1 flex flex-col items-center justify-center text-center px-4 py-10">
+          <span className="text-3xl mb-2" aria-hidden="true">{error ? '⚠️' : '✅'}</span>
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            {error
+              ? (t('due.error') || 'Could not load what’s due')
+              : (t('due.empty') || 'Nothing due — you’re all caught up')}
+          </p>
+        </div>
+      ) : (
+        <>
+          <ul id="due-soon-list" className="divide-y divide-[var(--color-border)]" role="list">
+            {(expanded ? items : items.slice(0, DUE_COLLAPSED_COUNT)).map((it) => {
+              const cat = DUE_KIND[it.kind] || _DEFAULT_DUE
+              const sev = DUE_SEVERITY[it.severity] || DUE_SEVERITY.info
+              const kindLabel = t(`due.kind.${it.kind}`) || it.kind
+              const similar = it.count > 1
+                ? (t('due.similarCount') || '{n} similar items').replace('{n}', it.count)
+                : null
+              return (
+                <li key={`${it.kind}-${it.ref_id}`} className="relative">
+                  <span className={`absolute inset-y-0 left-0 w-1 ${sev.stripe}`} aria-hidden="true" />
+                  <div className="flex items-center pr-2 hover:bg-[var(--color-bg-tertiary)] transition-colors">
+                    <Link
+                      to={it.link}
+                      className="flex items-center gap-3 pl-5 pr-2 py-3 min-w-0 flex-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-inset"
+                      aria-label={`${kindLabel} · ${it.title} · ${dueLabel(it)}${similar ? ` · ${similar}` : ''}`}
+                    >
+                      <span className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${cat.bg} ${cat.color}`} aria-hidden="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          {cat.icon}
+                        </svg>
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
+                          {it.title}
+                          {it.count > 1 && (
+                            <span
+                              className="ml-1.5 align-middle text-2xs font-semibold tabular-nums px-1.5 py-0.5 rounded-full bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]"
+                              title={similar}
+                              aria-hidden="true"
+                            >
+                              ×{it.count}
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-xs text-[var(--color-text-muted)] truncate">
+                          <span className={cat.color}>{kindLabel}</span>
+                          {it.vehicle_name && (
+                            <>
+                              <span aria-hidden="true"> · </span>
+                              {it.vehicle_name}
+                            </>
+                          )}
+                        </p>
+                      </div>
+                      <span className={`shrink-0 text-2xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${sev.chip}`}>
+                        {dueLabel(it)}
+                      </span>
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => onDismiss?.(it)}
+                      title={t('due.dismiss') || 'Dismiss'}
+                      aria-label={(t('due.dismissItem') || 'Dismiss {title}').replace('{title}', it.title)}
+                      className="shrink-0 p-2.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-secondary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+          {items.length > DUE_COLLAPSED_COUNT && (
+            <button
+              type="button"
+              onClick={() => setExpanded(v => !v)}
+              aria-expanded={expanded}
+              aria-controls="due-soon-list"
+              className="w-full flex items-center justify-center gap-1.5 px-4 py-3 text-xs font-semibold text-[var(--color-accent)] border-t border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-inset"
+            >
+              {expanded
+                ? (t('due.showLess') || 'Show less')
+                : (t('due.showMore') || 'Show {n} more').replace('{n}', items.length - DUE_COLLAPSED_COUNT)}
+              <svg
+                width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                className={`transition-transform ${expanded ? 'rotate-180' : ''}`}
+                aria-hidden="true"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 export default function Dashboard() {
   const navigate = useNavigate()
   const { currency, setCurrencyFromCountry, formatCurrency } = useCurrency()
@@ -236,6 +413,10 @@ export default function Dashboard() {
   const [recentTx, setRecentTx] = useState([])
   const [recentTxLoading, setRecentTxLoading] = useState(true)
   const [recentTxError, setRecentTxError] = useState(false)
+  // F4 — unified "Due & Expiring" feed.
+  const [dueItems, setDueItems] = useState([])
+  const [dueLoading, setDueLoading] = useState(true)
+  const [dueError, setDueError] = useState(false)
   const [fuelPrices, setFuelPrices] = useState(null)
   const [isRefreshingFuel, setIsRefreshingFuel] = useState(false)
   const [resolvedLocation, setResolvedLocation] = useState(null)
@@ -446,6 +627,68 @@ export default function Dashboard() {
     fetchRecent()
     return () => { cancelled = true }
   }, [])
+
+  // Fetch the unified "Due & Expiring" feed (F4) — one ranked list fleet-wide.
+  useEffect(() => {
+    let cancelled = false
+    const fetchDue = async () => {
+      try {
+        const res = await dueApi.get(30)
+        if (cancelled) return
+        setDueItems(res.data.items || [])
+        setDueError(false)
+      } catch (error) {
+        if (cancelled) return
+        console.error('Failed to fetch due items:', error)
+        setDueError(true)
+      } finally {
+        if (!cancelled) setDueLoading(false)
+      }
+    }
+    fetchDue()
+    return () => { cancelled = true }
+  }, [])
+
+  // F40 — dismiss a "Coming up" item: optimistic removal, offline-tolerant
+  // (the queued POST replays via Background Sync), with an Undo toast.
+  const handleDismissDue = useCallback(async (item) => {
+    setDueItems(prev => prev.filter(i => !(i.kind === item.kind && i.ref_id === item.ref_id)))
+    try {
+      await dueApi.dismiss(item.kind, item.ref_id)
+      toast((tst) => (
+        <span className="flex items-center gap-3 text-sm">
+          {t('due.dismissed') || 'Dismissed'}
+          <button
+            type="button"
+            className="font-semibold text-[var(--color-accent)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] rounded"
+            onClick={async () => {
+              toast.dismiss(tst.id)
+              try {
+                await dueApi.undismiss(item.kind, item.ref_id)
+                const res = await dueApi.get(30)
+                setDueItems(res.data.items || [])
+              } catch {
+                toast.error(t('due.dismissError') || 'Could not update — try again')
+              }
+            }}
+          >
+            {t('due.undo') || 'Undo'}
+          </button>
+        </span>
+      ), { duration: 5000 })
+    } catch (error) {
+      if (isOfflineWriteError(error)) {
+        // Removal stands: the dismissal is queued and replays on reconnect.
+        announceOfflineSaved(t)
+        return
+      }
+      toast.error(t('due.dismissError') || 'Could not update — try again')
+      try {
+        const res = await dueApi.get(30)
+        setDueItems(res.data.items || [])
+      } catch { /* keep optimistic state; next visit refetches */ }
+    }
+  }, [t])
 
   // Is the AI assistant available on this server (Ollama enabled + configured)?
   useEffect(() => {
@@ -1161,6 +1404,20 @@ export default function Dashboard() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Coming up — unified "Due & Expiring" surface (F4), full-width above the feed.
+          Gated on having items so an all-caught-up fleet stays uncluttered. */}
+      {vehicles.length > 0 && (dueLoading || dueItems.length > 0) && (
+        <div className="mt-8">
+          <DueSoon
+            items={dueItems}
+            loading={dueLoading}
+            error={dueError}
+            t={t}
+            onDismiss={handleDismissDue}
+          />
         </div>
       )}
 

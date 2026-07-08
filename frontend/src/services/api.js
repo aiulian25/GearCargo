@@ -104,9 +104,14 @@ export const vehicleApi = {
   unarchive: (id) => api.post(`/vehicles/${id}/unarchive`),
   getStats: (id) => api.get(`/vehicles/${id}/stats`),
   getCostAnalytics: (id) => api.get(`/vehicles/${id}/cost-analytics`),
+  // F11 — 12-month forward cost forecast (recurring + predictions vs budget)
+  getForecast: (id, months = 12) => api.get(`/vehicles/${id}/forecast?months=${months}`),
   // F06 — natural-language vehicle chat (single-turn, AI/Ollama)
   chat: (id, question, locale) => api.post(`/vehicles/${id}/chat`, { question, locale }),
+  // F10 — fleet-wide chat across all vehicles (no id)
+  chatFleet: (question, locale) => api.post('/vehicles/chat', { question, locale }),
   getHealth: (id) => api.get(`/vehicles/${id}/health`),
+  getWarranties: (id) => api.get(`/vehicles/${id}/warranties`),
   completeHealthAction: (id, data) => api.post(`/vehicles/${id}/health/actions/complete`, data),
   getManual: (id) => api.get(`/vehicles/${id}/manual`),
   getTimeline: (id, page = 1, type = 'all', perPage = 50) =>
@@ -173,6 +178,7 @@ export const repairApi = {
 
 export const consumableApi = {
   getByVehicle: (vehicleId, page = 1) => api.get(`/consumables?vehicle_id=${vehicleId}&page=${page}`),
+  getDue: () => api.get('/consumables/due'),
   get: (id) => api.get(`/consumables/${id}`),
   create: (data) => api.post('/consumables', data),
   update: (id, data) => api.put(`/consumables/${id}`, data),
@@ -196,6 +202,27 @@ export const reminderApi = {
   getUpcoming: (days = 7) => api.get(`/reminders/upcoming?days=${days}`),
   getOverdue: () => api.get('/reminders/overdue'),
   getStats: () => api.get('/reminders/stats'),
+}
+
+// F4 — unified "Due & Expiring" surface: one ranked feed across every source.
+export const dueApi = {
+  get: (days = 30) => api.get(`/due?days=${days}`),
+  // F40 — dismiss one occurrence of an item (reminders flip their native
+  // dismissed flag; other kinds store an occurrence-scoped dismissal).
+  dismiss: (kind, refId) => api.post('/due/dismiss', { kind, ref_id: refId }),
+  undismiss: (kind, refId) => api.post('/due/undismiss', { kind, ref_id: refId }),
+}
+
+// F11 — fleet-wide 12-month cost forecast.
+export const forecastApi = {
+  getFleet: (months = 12) => api.get(`/forecast?months=${months}`),
+}
+
+export const parkingApi = {
+  getByVehicle: (vehicleId, page = 1) => api.get(`/parking?vehicle_id=${vehicleId}&page=${page}`),
+  update: (id, data) => api.put(`/parking/${id}`, data),
+  // F14 — outstanding parking fines (+ total_owed). status: pending|contested|paid, or omit for all outstanding.
+  getFines: (status) => api.get(status ? `/parking/fines?status=${status}` : '/parking/fines'),
 }
 
 // Public, non-sensitive branding config (app + assistant name).

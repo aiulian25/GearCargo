@@ -66,6 +66,47 @@ def get_consumable_entries(current_user):
     })
 
 
+@consumables_bp.route('/due', methods=['GET'])
+@token_required
+def get_consumables_due(current_user):
+    """Fleet-wide list of consumables that are worn enough to watch/replace.
+
+    Returns every consumable across the user's NON-archived vehicles whose wear
+    estimate is 'monitor' (>=70%) or 'replace' (>=100%), newest-wear first, each
+    enriched with its vehicle name so a single "due" surface can label + link it.
+    Ownership is enforced by scoping to the current user's vehicles.
+    """
+    # One query for the vehicles (name + current mileage + ownership allow-list)…
+    vehicles = Vehicle.query.filter_by(user_id=current_user.id, archived=False).all()
+    vinfo = {
+        v.id: (
+            v.name or f"{v.make or ''} {v.model or ''}".strip() or 'Vehicle',
+            v.current_mileage,
+        )
+        for v in vehicles
+    }
+    if not vinfo:
+        return jsonify({'items': []})
+
+    # …and one query for all their consumables (no N+1).
+    consumables = ConsumableEntry.query.filter(
+        ConsumableEntry.vehicle_id.in_(list(vinfo.keys()))
+    ).all()
+
+    items = []
+    for c in consumables:
+        name, mileage = vinfo[c.vehicle_id]
+        wear = c.wear_estimate(current_mileage=mileage)
+        if wear.get('status') in ('monitor', 'replace'):
+            d = c.to_dict(current_mileage=mileage)
+            d['vehicle_name'] = name
+            items.append(d)
+
+    # Most-worn first (replace before monitor); unknown percents sort last.
+    items.sort(key=lambda x: (x.get('wear') or {}).get('wear_percent') or 0, reverse=True)
+    return jsonify({'items': items})
+
+
 @consumables_bp.route('', methods=['POST'])
 @token_required
 def create_consumable_entry(current_user):

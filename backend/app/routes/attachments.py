@@ -19,7 +19,28 @@ from app.routes.auth import token_required, token_required_query_param
 
 attachments_bp = Blueprint('attachments', __name__)
 
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'xls', 'xlsx'}
+# F9: register Pillow's HEIF/HEIC opener so PIL can decode iPhone photos. The
+# manylinux `pillow-heif` wheels vendor libheif, so this works without a system
+# package; if the library is somehow unavailable we degrade gracefully (HEIC
+# uploads then fail with a clear 400 at transcode time rather than crashing).
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+    _HEIF_AVAILABLE = True
+except Exception:  # pragma: no cover - only when the optional wheel is missing
+    _HEIF_AVAILABLE = False
+
+# F9: HEIC/HEIF/webp accepted. HEIC/HEIF are transcoded to JPEG on ingest (see
+# _transcode_heic_to_jpeg) so OCR and inline viewing use a broadly-supported
+# format; webp is stored as-is (Pillow decodes it natively for OCR).
+ALLOWED_EXTENSIONS = {
+    'png', 'jpg', 'jpeg', 'gif', 'webp', 'heic', 'heif',
+    'pdf',
+    # MS Office
+    'doc', 'docx', 'xls', 'xlsx',
+    # OpenDocument (LibreOffice/OpenOffice) — ZIP-based, same PK magic as *.x
+    'odt', 'ods', 'odp',
+}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
 # Global concurrency limit for OCR (pytesseract is CPU-bound).
@@ -49,11 +70,19 @@ _EXTENSION_TO_MIME = {
     'jpeg': 'image/jpeg',            # 10 chars
     'png':  'image/png',             #  9 chars
     'gif':  'image/gif',             #  9 chars
+    'webp': 'image/webp',            # 10 chars
+    'heic': 'image/heic',            # 10 chars
+    'heif': 'image/heif',            # 10 chars
     'pdf':  'application/pdf',       # 15 chars
     'doc':  'application/msword',    # 18 chars
     'docx': 'application/octet-stream',  # 24 chars — full IANA type is 71 chars, too long for String(50)
     'xls':  'application/vnd.ms-excel', # 24 chars
     'xlsx': 'application/octet-stream',  # 24 chars — full IANA type is 65 chars, too long for String(50)
+    # OpenDocument — forced download (not inline-safe), so octet-stream is correct
+    # and consistent with the docx/xlsx handling above.
+    'odt':  'application/octet-stream',
+    'ods':  'application/octet-stream',
+    'odp':  'application/octet-stream',
 }
 
 # S13: Only these MIME types may be served inline (without Content-Disposition: attachment).
@@ -111,12 +140,44 @@ _EXTENSION_TO_TYPE = {
     'jpeg': 'jpeg',
     'png':  'png',
     'gif':  'gif',
+    'webp': 'webp',
+    'heic': 'heif',
+    'heif': 'heif',
     'pdf':  'pdf',
     'doc':  'office_legacy',
     'xls':  'office_legacy',
     'docx': 'office_openxml',
     'xlsx': 'office_openxml',
+    # OpenDocument files are ZIP containers → same PK\x03\x04 signature.
+    'odt':  'office_openxml',
+    'ods':  'office_openxml',
+    'odp':  'office_openxml',
 }
+
+# ISO-BMFF (`ftyp`) major brands that identify a HEIF/HEIC still image. Both
+# .heic and .heif extensions map to the 'heif' detected type.
+_HEIF_BRANDS = frozenset({
+    b'heic', b'heix', b'hevc', b'hevx', b'heim', b'heis',
+    b'hevm', b'hevs', b'mif1', b'msf1',
+})
+
+
+def _detect_file_type(header: bytes):
+    """Return the detected content type from a 12-byte header, or None.
+
+    Handles both offset-0 signatures (JPEG/PNG/…) and container formats whose
+    signature is not at the start of the file (WebP's RIFF/WEBP, HEIF's ftyp box).
+    """
+    for sig, file_type in _FILE_SIGNATURES:
+        if header.startswith(sig):
+            return file_type
+    # WebP: 'RIFF' <4-byte size> 'WEBP'
+    if header[:4] == b'RIFF' and header[8:12] == b'WEBP':
+        return 'webp'
+    # HEIF/HEIC: <4-byte box size> 'ftyp' <major brand>
+    if header[4:8] == b'ftyp' and header[8:12] in _HEIF_BRANDS:
+        return 'heif'
+    return None
 
 
 def _validate_file_magic(file_obj, extension):
@@ -128,12 +189,7 @@ def _validate_file_magic(file_obj, extension):
     header = file_obj.read(12)
     file_obj.seek(0)
 
-    detected = None
-    for sig, file_type in _FILE_SIGNATURES:
-        if header.startswith(sig):
-            detected = file_type
-            break
-
+    detected = _detect_file_type(header)
     expected = _EXTENSION_TO_TYPE.get(extension)
     return detected is not None and detected == expected
 
@@ -141,6 +197,32 @@ def _validate_file_magic(file_obj, extension):
 def get_upload_folder():
     """Get upload folder path."""
     return current_app.config.get('UPLOAD_FOLDER', '/app/uploads')
+
+
+def _transcode_heic_to_jpeg(src_path, dest_folder):
+    """Transcode a HEIC/HEIF file at *src_path* to a JPEG in *dest_folder*.
+
+    Returns ``(unique_filename, temp_path)`` for the JPEG written to a ``.tmp``
+    path (mirroring the upload's write-then-activate flow), or ``None`` on
+    failure. EXIF orientation is applied so a photo taken sideways is upright.
+    """
+    from PIL import Image, ImageOps
+    unique = f"{uuid.uuid4().hex}.jpg"
+    temp = os.path.join(dest_folder, unique + '.tmp')
+    try:
+        with Image.open(src_path) as im:
+            im = ImageOps.exif_transpose(im)   # honour iPhone rotation metadata
+            im = im.convert('RGB')             # drop alpha/ICC for a clean JPEG
+            im.save(temp, format='JPEG', quality=90, optimize=True)
+        os.chmod(temp, 0o640)
+    except Exception as e:
+        current_app.logger.warning(f"HEIC→JPEG transcode failed: {e}")
+        try:
+            os.remove(temp)
+        except OSError:
+            pass
+        return None
+    return unique, temp
 
 
 @attachments_bp.route('', methods=['GET'])
@@ -289,6 +371,25 @@ def upload_attachment(current_user):
     # with user-controlled input. safe_attachment_mime() looks up the extension in
     # _EXTENSION_TO_MIME and returns application/octet-stream for anything unknown.
     mime_type = safe_attachment_mime(original_filename)
+
+    # F9: transcode HEIC/HEIF → JPEG so OCR and inline viewing use a broadly
+    # supported format. The stored file (filename/filepath/type/size) becomes the
+    # JPEG; original_filename keeps the user's .heic name for display/download.
+    if ext in ('heic', 'heif'):
+        transcoded = _transcode_heic_to_jpeg(temp_path, user_folder)
+        try:
+            os.remove(temp_path)  # drop the original HEIC temp either way
+        except OSError:
+            pass
+        if not transcoded:
+            return jsonify({'error': 'Failed to process HEIC/HEIF image'}), 400
+        unique_filename, temp_path = transcoded
+        filepath = os.path.join(user_folder, unique_filename)
+        mime_type = 'image/jpeg'
+        try:
+            size = os.path.getsize(temp_path)
+        except OSError:
+            pass
 
     # Build DB record in memory (file not yet at its permanent path)
     attachment = Attachment(
@@ -861,13 +962,14 @@ def download_attachment(current_user, attachment_id):
     
     return send_file(
         attachment.filepath,
-        # S13: Re-derive MIME from the stored filename extension using the
-        # canonical allowlist. Never trust attachment.file_type from the DB —
-        # a crafted backup ZIP could have stored 'text/html' or 'image/svg+xml'
-        # in that column. For downloads the Content-Disposition: attachment
-        # header already prevents inline rendering, but using the safe MIME
-        # is defence-in-depth.
-        mimetype=safe_attachment_mime(attachment.original_filename),
+        # S13: Re-derive MIME from the STORED filename extension using the
+        # canonical allowlist — this is the server-generated `uuid.<ext>` we
+        # actually wrote and validated, so it reflects the real bytes on disk
+        # (e.g. a transcoded HEIC is now `.jpg`). Never trust attachment.file_type
+        # from the DB — a crafted backup ZIP could have stored 'text/html' or
+        # 'image/svg+xml'. For downloads the Content-Disposition: attachment
+        # header already prevents inline rendering; the safe MIME is defence-in-depth.
+        mimetype=safe_attachment_mime(attachment.filename),
         as_attachment=True,
         download_name=attachment.original_filename
     )
@@ -910,16 +1012,18 @@ def view_attachment(current_user, attachment_id):
     if not os.path.exists(attachment.filepath):
         return jsonify({'error': 'File not found on server'}), 404
 
-    # S13: Re-derive the MIME type from the original filename extension using
-    # the strict allowlist. Never trust attachment.file_type from the DB —
-    # a crafted backup ZIP could have stored 'text/html' or 'image/svg+xml'
-    # in that column, causing the browser to execute arbitrary scripts when
-    # the file is served inline in the app origin.
+    # S13: Re-derive the MIME type from the STORED filename extension using the
+    # strict allowlist. The stored name is the server-generated `uuid.<ext>` we
+    # wrote and validated, so it matches the real bytes on disk (a transcoded
+    # HEIC is `.jpg` and therefore correctly served inline). Never trust
+    # attachment.file_type from the DB — a crafted backup ZIP could have stored
+    # 'text/html' or 'image/svg+xml' there, causing the browser to execute
+    # arbitrary scripts when the file is served inline in the app origin.
     #
     # Only MIME types in _INLINE_SAFE_MIME_TYPES are served inline.
     # Everything else is served with Content-Disposition: attachment +
     # application/octet-stream so the browser downloads rather than renders.
-    safe_mime = safe_attachment_mime(attachment.original_filename)
+    safe_mime = safe_attachment_mime(attachment.filename)
     inline = safe_mime in _INLINE_SAFE_MIME_TYPES
 
     return send_file(

@@ -64,7 +64,7 @@ const SUGGESTIONS_SHOWN = 3
  *   selectorSlot – modal variant: optional node (e.g. a vehicle <select>) shown
  *                  in the header when the user has more than one vehicle
  */
-export default function AssistantChat({ vehicleId, variant = 'page', onBack, onClose, selectorSlot = null }) {
+export default function AssistantChat({ vehicleId, fleet = false, fleetLabel = '', variant = 'page', onBack, onClose, selectorSlot = null }) {
   const { t, language } = useTranslation()
   const { user } = useAuth()
 
@@ -85,9 +85,15 @@ export default function AssistantChat({ vehicleId, variant = 'page', onBack, onC
     setMessages([])
     setInput('')
     setVehicle(null)
+    // Fleet mode has no single vehicle — use a synthetic marker so the greeting
+    // effect can seed a fleet-wide welcome without fetching a vehicle.
+    if (fleet) {
+      setVehicle({ fleet: true, name: fleetLabel })
+      return
+    }
     if (vehicleId == null) return
     vehicleApi.getById(vehicleId).then((r) => setVehicle(r.data)).catch(() => {})
-  }, [vehicleId])
+  }, [vehicleId, fleet, fleetLabel])
 
   // Sync the assistant/app name with the backend persona (CHAT_ASSISTANT_NAME).
   useEffect(() => {
@@ -112,19 +118,25 @@ export default function AssistantChat({ vehicleId, variant = 'page', onBack, onC
   useEffect(() => {
     if (!vehicle || hasUserMessage) return
     const firstName = (user?.name || '').trim().split(/\s+/)[0]
-    const vehicleDesc = [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ').trim()
     const base = { assistant: assistantName, app: appName, name: firstName }
 
     let greeting
-    if (firstName && vehicleDesc) {
-      greeting = t('chat.greetingWithVehicle', { ...base, vehicle: vehicleDesc })
-    } else if (firstName) {
-      greeting = t('chat.greeting', base)
+    if (fleet) {
+      // Fleet-wide welcome (spans all vehicles).
+      greeting = t('chat.greetingFleet', base)
+        || `Hi! Ask me anything across all your vehicles — compare costs, totals, and more.`
     } else {
-      greeting = t('chat.greetingGeneric', base)
+      const vehicleDesc = [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ').trim()
+      if (firstName && vehicleDesc) {
+        greeting = t('chat.greetingWithVehicle', { ...base, vehicle: vehicleDesc })
+      } else if (firstName) {
+        greeting = t('chat.greeting', base)
+      } else {
+        greeting = t('chat.greetingGeneric', base)
+      }
     }
     setMessages([{ role: 'assistant', text: greeting, greeting: true }])
-  }, [vehicle, language, user, hasUserMessage, assistantName, appName, t])
+  }, [vehicle, language, user, hasUserMessage, assistantName, appName, fleet, t])
 
   useEffect(() => {
     const on = () => setOnline(true)
@@ -149,12 +161,14 @@ export default function AssistantChat({ vehicleId, variant = 'page', onBack, onC
 
   const send = useCallback(async (text) => {
     const question = (text ?? input).trim()
-    if (!question || loading || vehicleId == null) return
+    if (!question || loading || (!fleet && vehicleId == null)) return
     setInput('')
     setMessages((prev) => [...prev, { role: 'user', text: question }])
     setLoading(true)
     try {
-      const res = await vehicleApi.chat(vehicleId, question, language)
+      const res = fleet
+        ? await vehicleApi.chatFleet(question, language)
+        : await vehicleApi.chat(vehicleId, question, language)
       setMessages((prev) => [...prev, {
         role: 'assistant',
         text: res.data?.answer || '',
@@ -166,7 +180,7 @@ export default function AssistantChat({ vehicleId, variant = 'page', onBack, onC
     } finally {
       setLoading(false)
     }
-  }, [vehicleId, input, language, loading, errorTextForCode])
+  }, [vehicleId, fleet, input, language, loading, errorTextForCode])
 
   const onKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -184,7 +198,7 @@ export default function AssistantChat({ vehicleId, variant = 'page', onBack, onC
       return t(key) || fallback
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vehicleId, language])
+  }, [vehicleId, fleet, language])
 
   const isModal = variant === 'modal'
 
@@ -286,7 +300,9 @@ export default function AssistantChat({ vehicleId, variant = 'page', onBack, onC
             rows={1}
             maxLength={500}
             disabled={loading || !online}
-            placeholder={t('chat.placeholder') || 'Ask about this vehicle…'}
+            placeholder={fleet
+              ? (t('chat.fleetHint') || 'Ask across all your vehicles…')
+              : (t('chat.placeholder') || 'Ask about this vehicle…')}
             className="input flex-1 resize-none max-h-32 disabled:opacity-50"
           />
           <button

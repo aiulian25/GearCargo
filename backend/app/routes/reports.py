@@ -53,21 +53,27 @@ def _report_summary(user, vehicles, period, year, month):
     numbers are always identical. Returns only aggregate, non-sensitive data.
     """
     from app.services.pdf_report_service import get_vehicle_entries
+    from app.services.currency import get_rates_cached
 
     start_date, end_date, period_label = get_period_dates(period, year, month)
-    currency = getattr(user, 'currency', 'EUR') or 'EUR'
+    currency = (getattr(user, 'currency', 'EUR') or 'EUR').upper()
+    rates = get_rates_cached(current_app._get_current_object())
 
     cats = ['fuel', 'service', 'repair', 'tax', 'parking', 'insurance']
     totals = {k: 0 for k in cats}
     totals['grand_total'] = 0
     counts = {k: 0 for k in cats}
+    converted = True
+    fx_applied = False
 
     for vehicle in vehicles:
-        entries = get_vehicle_entries(vehicle, start_date, end_date, currency)
+        entries = get_vehicle_entries(vehicle, start_date, end_date, currency, rates)
         for key in cats:
             totals[key] += entries['totals'][key]
             counts[key] += len(entries[key])
         totals['grand_total'] += entries['totals']['grand_total']
+        converted = converted and entries['totals'].get('converted', True)
+        fx_applied = fx_applied or entries['totals'].get('fx_applied', False)
     counts['total'] = sum(counts[k] for k in cats)
 
     return {
@@ -81,6 +87,9 @@ def _report_summary(user, vehicles, period, year, month):
         'entry_counts': counts,
         'totals': totals,
         'currency': currency,
+        'display_currency': currency,
+        'converted': converted,
+        'fx_applied': fx_applied,
     }
 
 
@@ -219,10 +228,12 @@ def preview_report_info(current_user):
         
         # Import here to avoid circular imports
         from app.services.pdf_report_service import get_vehicle_entries
-        
-        # Get currency
-        currency = getattr(current_user, 'currency', 'EUR') or 'EUR'
-        
+        from app.services.currency import get_rates_cached
+
+        # Get currency + EUR-based rates (F1: convert amounts before summing)
+        currency = (getattr(current_user, 'currency', 'EUR') or 'EUR').upper()
+        rates = get_rates_cached(current_app._get_current_object())
+
         # Calculate totals
         totals = {
             'fuel': 0,
@@ -244,15 +255,19 @@ def preview_report_info(current_user):
             'total': 0
         }
         
+        converted = True
+        fx_applied = False
         for vehicle in vehicles:
-            entries = get_vehicle_entries(vehicle, start_date, end_date, currency)
+            entries = get_vehicle_entries(vehicle, start_date, end_date, currency, rates)
             for key in ['fuel', 'service', 'repair', 'tax', 'parking', 'insurance']:
                 totals[key] += entries['totals'][key]
                 entry_counts[key] += len(entries[key])
             totals['grand_total'] += entries['totals']['grand_total']
-        
+            converted = converted and entries['totals'].get('converted', True)
+            fx_applied = fx_applied or entries['totals'].get('fx_applied', False)
+
         entry_counts['total'] = sum([entry_counts[k] for k in ['fuel', 'service', 'repair', 'tax', 'parking', 'insurance']])
-        
+
         return jsonify({
             'period_label': period_label,
             'start_date': start_date.strftime('%Y-%m-%d'),
@@ -261,7 +276,10 @@ def preview_report_info(current_user):
             'vehicles': [{'id': v.id, 'name': f"{v.make} {v.model}"} for v in vehicles],
             'entry_counts': entry_counts,
             'totals': totals,
-            'currency': currency
+            'currency': currency,
+            'display_currency': currency,
+            'converted': converted,
+            'fx_applied': fx_applied,
         })
         
     except Exception as e:

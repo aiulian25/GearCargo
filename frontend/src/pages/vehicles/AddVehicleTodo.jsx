@@ -55,6 +55,7 @@ export default function AddVehicleTodo() {
       description: '',
       priority: 'medium',
       due_date: '',
+      repeat: '',   // F15: '' | weekly | monthly | yearly
     }
   })
   
@@ -74,6 +75,7 @@ export default function AddVehicleTodo() {
             description: entry.description || '',
             priority: entry.priority || 'medium',
             due_date: entry.due_date ? entry.due_date.split('T')[0] : '',
+            repeat: entry.recurring ? (entry.frequency || '') : '',
           })
           
           if (entry.attachments && entry.attachments.length > 0) {
@@ -97,9 +99,14 @@ export default function AddVehicleTodo() {
     setError('')
     
     try {
+      // F15: map the single "Repeats" select onto the recurrence fields.
+      const { repeat, ...rest } = data
       const payload = {
-        ...data,
+        ...rest,
         vehicle_id: parseInt(vehicleId),
+        recurring: !!repeat,
+        frequency: repeat || null,
+        frequency_value: 1,
       }
       
       let response
@@ -248,6 +255,20 @@ export default function AddVehicleTodo() {
                 className="input"
               />
             </div>
+          </div>
+
+          {/* F15: Repeats — a recurring todo respawns its next occurrence on
+              completion. Needs a due date to advance from. */}
+          <div>
+            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              {t('todo.repeats') || 'Repeats'}
+            </label>
+            <select {...register('repeat')} className="input">
+              <option value="">{t('addReminder.noRepeat') || 'Does not repeat'}</option>
+              <option value="weekly">{t('recurring.weekly') || 'Weekly'}</option>
+              <option value="monthly">{t('recurring.monthly') || 'Monthly'}</option>
+              <option value="yearly">{t('recurring.annual') || 'Yearly'}</option>
+            </select>
           </div>
         </div>
         

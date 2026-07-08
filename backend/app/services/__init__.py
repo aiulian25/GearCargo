@@ -120,6 +120,46 @@ def init_scheduler(app):
         **_job_defaults
     )
 
+    # Consumable "due for replacement" push — daily at 7 AM (F3)
+    scheduler.add_job(
+        id='check_consumables_due',
+        func=check_consumables_due,
+        trigger='cron',
+        hour=7,
+        args=[app],
+        **_job_defaults
+    )
+
+    # Warranty "expiring within 30 days" push — daily at 7 AM (F2)
+    scheduler.add_job(
+        id='check_warranty_expiry',
+        func=check_warranty_expiry,
+        trigger='cron',
+        hour=7,
+        args=[app],
+        **_job_defaults
+    )
+
+    # Materialize due "next service" pointers into reminders — daily at 6 AM (F5)
+    scheduler.add_job(
+        id='process_due_services',
+        func=process_due_services,
+        trigger='cron',
+        hour=6,
+        args=[app],
+        **_job_defaults
+    )
+
+    # Roll expired auto_renew insurance policies into their next term — 6 AM (F6)
+    scheduler.add_job(
+        id='process_auto_renew_insurance',
+        func=process_auto_renew_insurance,
+        trigger='cron',
+        hour=6,
+        args=[app],
+        **_job_defaults
+    )
+
     scheduler.start()
     app.logger.info('Scheduler initialized')
 
@@ -144,6 +184,32 @@ def init_scheduler(app):
     scheduler.add_job(
         id='process_recurring_parking_startup',
         func=process_recurring_parking_entries,
+        trigger='date',
+        run_date=_startup_selfheal_at,
+        args=[app],
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        id='process_due_services_startup',
+        func=process_due_services,
+        trigger='date',
+        run_date=_startup_selfheal_at,
+        args=[app],
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        id='process_auto_renew_insurance_startup',
+        func=process_auto_renew_insurance,
+        trigger='date',
+        run_date=_startup_selfheal_at,
+        args=[app],
+        replace_existing=True,
+    )
+    # Collapse exact-duplicate reminders left behind by the pre-fix LubeLog
+    # importer (which lacked dedup) — see dedupe_duplicate_reminders.
+    scheduler.add_job(
+        id='dedupe_reminders_startup',
+        func=dedupe_duplicate_reminders,
         trigger='date',
         run_date=_startup_selfheal_at,
         args=[app],
@@ -258,8 +324,9 @@ def check_due_reminders(app):
         db.session.commit()
         app.logger.info(f'Checked {len(due_reminders)} due reminders')
 
-    # Piggyback mileage-threshold check onto the hourly reminder tick
+    # Piggyback mileage-threshold checks onto the hourly reminder tick
     _check_mileage_predictions(app)
+    _check_mileage_reminders(app)
 
 
 def _check_mileage_predictions(app):
@@ -319,6 +386,468 @@ def _check_mileage_predictions(app):
         if notified:
             db.session.commit()
             app.logger.info(f'Sent {notified} mileage-threshold push notifications')
+
+
+def _check_mileage_reminders(app):
+    """Push once when a vehicle's odometer crosses a reminder's due_mileage (F7).
+
+    Mirrors _check_mileage_predictions but for user-set Reminder.due_mileage. Uses
+    a dedicated mileage_notified sentinel so it fires exactly once and never
+    interferes with the date-based last_notified_at path. Recurring reminders get
+    a fresh (False) sentinel on their next occurrence, so they fire again next cycle.
+    """
+    with app.app_context():
+        from app.models import Vehicle, Reminder
+        from app import db
+
+        reminders = Reminder.query.filter(
+            Reminder.completed == False,   # noqa: E712
+            Reminder.dismissed == False,   # noqa: E712
+            Reminder.due_mileage.isnot(None),
+            db.or_(Reminder.mileage_notified.is_(None),
+                   Reminder.mileage_notified == False),  # noqa: E712
+        ).all()
+
+        notified = 0
+        for reminder in reminders:
+            if not reminder.vehicle_id:
+                continue
+            vehicle = db.session.get(Vehicle, reminder.vehicle_id)
+            if not vehicle or vehicle.current_mileage is None:
+                continue
+            if vehicle.current_mileage < reminder.due_mileage:
+                continue  # threshold not reached yet
+
+            if reminder.notify_push:
+                try:
+                    from app.routes.push import send_push_to_user
+                    unit = vehicle.distance_unit or 'km'
+                    title = f"Reminder: {reminder.title}"
+                    body = reminder.description or "Odometer threshold reached"
+                    body = f"{body} — {reminder.due_mileage:,} {unit}"
+                    if vehicle.name:
+                        body = f"{body} ({vehicle.name})"
+                    send_push_to_user(
+                        reminder.user_id,
+                        title,
+                        body,
+                        data={
+                            'type': 'reminder_mileage',
+                            'reminder_id': reminder.id,
+                            'vehicle_id': vehicle.id,
+                            'url': f'/reminders/{reminder.id}',
+                        },
+                        tag=f'reminder-mileage-{reminder.id}',
+                    )
+                except Exception as push_exc:
+                    app.logger.warning(
+                        f'Mileage reminder push failed for reminder {reminder.id}: {push_exc}'
+                    )
+
+            # Mark evaluated regardless of push outcome/preference so the crossing
+            # is only ever processed once (prevents re-spam / re-checking hourly).
+            reminder.mileage_notified = True
+            notified += 1
+
+        if notified:
+            db.session.commit()
+            app.logger.info(f'Processed {notified} mileage-reminder crossings')
+
+
+def check_consumables_due(app):
+    """Push a once-only notification when a consumable first reaches 'replace' wear.
+
+    Mirrors _check_mileage_predictions: uses the ConsumableEntry.replace_notified
+    boolean as a sentinel so we never push twice for the same item. Wear is the
+    conservative MAX of mileage- and time-based progress (see wear_estimate), so
+    this also fires for time-expired parts, not just odometer-driven ones.
+    """
+    with app.app_context():
+        from app.models import Vehicle, ConsumableEntry
+        from app import db
+
+        # Only items not yet notified, on the user's non-archived vehicles.
+        consumables = (
+            ConsumableEntry.query.join(Vehicle)
+            .filter(
+                Vehicle.archived == False,  # noqa: E712
+                db.or_(
+                    ConsumableEntry.replace_notified.is_(None),
+                    ConsumableEntry.replace_notified == False,  # noqa: E712
+                ),
+            )
+            .all()
+        )
+
+        notified = 0
+        for c in consumables:
+            vehicle = db.session.get(Vehicle, c.vehicle_id)
+            if not vehicle:
+                continue
+
+            wear = c.wear_estimate(current_mileage=vehicle.current_mileage)
+            if wear.get('status') != 'replace':
+                continue  # only push on the replace crossing (not 'monitor')
+
+            try:
+                from app.routes.push import send_push_to_user
+                vehicle_name = vehicle.name or f"{vehicle.make or ''} {vehicle.model or ''}".strip() or 'Vehicle'
+                label = (c.consumable_type or 'part').replace('_', ' ')
+                percent = wear.get('wear_percent')
+                send_push_to_user(
+                    vehicle.user_id,
+                    f"\U0001f527 {vehicle_name}: {label} due for replacement",
+                    (f"Estimated {percent:.0f}% worn — consider replacing soon."
+                     if percent is not None else "This part is due for replacement."),
+                    data={
+                        'type': 'consumable_due',
+                        'consumable_id': c.id,
+                        'vehicle_id': vehicle.id,
+                        'url': f'/vehicles/{vehicle.id}/consumables',
+                    },
+                    tag=f'consumable-due-{c.id}',
+                )
+            except Exception as push_exc:
+                app.logger.warning(
+                    f'Consumable-due push failed for consumable {c.id}: {push_exc}'
+                )
+
+            # Mark notified regardless of push outcome — prevents re-spam.
+            c.replace_notified = True
+            notified += 1
+
+        if notified:
+            db.session.commit()
+            app.logger.info(f'Sent {notified} consumable-due push notifications')
+
+
+def check_warranty_expiry(app):
+    """Push a once-only notification when a warranty is within 30 days of lapsing.
+
+    Time-based only (a mileage-limited warranty has no calendar date to alert on).
+    Uses the per-model warranty_notified boolean so we never push twice for the
+    same item. Mirrors check_due_reminders / check_consumables_due.
+    """
+    with app.app_context():
+        from app.models import Vehicle, ServiceEntry, RepairEntry, ConsumableEntry
+        from app.services.warranty import compute_item
+        from app import db
+
+        today = date.today()
+        HORIZON_DAYS = 30
+        specs = (('service', ServiceEntry), ('repair', RepairEntry),
+                 ('consumable', ConsumableEntry))
+
+        notified = 0
+        for source_type, Model in specs:
+            candidates = (
+                Model.query.join(Vehicle)
+                .filter(
+                    Vehicle.archived == False,  # noqa: E712
+                    db.or_(Model.warranty_notified.is_(None),
+                           Model.warranty_notified == False),  # noqa: E712
+                )
+                .all()
+            )
+            for entry in candidates:
+                vehicle = db.session.get(Vehicle, entry.vehicle_id)
+                if not vehicle:
+                    continue
+                item = compute_item(entry, source_type,
+                                    current_mileage=vehicle.current_mileage, today=today)
+                if not item or not item['in_force'] or item['days_left'] is None:
+                    continue
+                if not (0 <= item['days_left'] <= HORIZON_DAYS):
+                    continue
+
+                try:
+                    from app.routes.push import send_push_to_user
+                    vehicle_name = vehicle.name or f"{vehicle.make or ''} {vehicle.model or ''}".strip() or 'Vehicle'
+                    send_push_to_user(
+                        vehicle.user_id,
+                        f"\U0001f6e1️ {vehicle_name}: warranty expiring soon",
+                        f"{item['label']} warranty expires in {item['days_left']} day(s).",
+                        data={
+                            'type': 'warranty_expiry',
+                            'source_type': source_type,
+                            'entry_id': entry.id,
+                            'vehicle_id': vehicle.id,
+                            'url': f'/vehicles/{vehicle.id}/health',
+                        },
+                        tag=f'warranty-{source_type}-{entry.id}',
+                    )
+                except Exception as push_exc:
+                    app.logger.warning(
+                        f'Warranty-expiry push failed for {source_type} {entry.id}: {push_exc}'
+                    )
+
+                entry.warranty_notified = True
+                notified += 1
+
+        if notified:
+            db.session.commit()
+            app.logger.info(f'Sent {notified} warranty-expiry push notifications')
+
+
+def process_auto_renew_insurance(app):
+    """Roll an expired auto_renew insurance policy forward into its next term (F6).
+
+    For each active policy that has passed its end_date with auto_renew=True, clone
+    it into a new period (dates rolled forward by the same term length), mark the
+    old one 'expired', link the successor via renewed_from_id, and push a
+    "renewed — confirm premium" notification. Idempotent: skips if a successor
+    already exists (renewed_from_id) so re-runs never duplicate.
+    """
+    with app.app_context():
+        from datetime import timedelta as _td
+        from app.models import Vehicle, InsurancePolicy
+        from app import db
+
+        today = date.today()
+
+        expired = InsurancePolicy.query.filter(
+            InsurancePolicy.auto_renew == True,   # noqa: E712
+            InsurancePolicy.status == 'active',
+            InsurancePolicy.end_date < today,
+        ).all()
+        if not expired:
+            return
+
+        # Preload policy ids that already have a successor (dedup, 1 query).
+        already = {
+            p.renewed_from_id
+            for p in InsurancePolicy.query.filter(
+                InsurancePolicy.renewed_from_id.isnot(None)
+            ).all()
+        }
+
+        renewed = 0
+        for old in expired:
+            if old.id in already:
+                # A successor exists but the old policy is still 'active' — settle
+                # its status so it isn't reconsidered every run.
+                old.status = 'expired'
+                continue
+
+            term_days = (old.end_date - old.start_date).days
+            new_start = old.end_date + _td(days=1)
+            new_end = new_start + _td(days=term_days)
+
+            successor = InsurancePolicy(
+                user_id=old.user_id,
+                vehicle_id=old.vehicle_id,
+                policy_number=old.policy_number,
+                provider=old.provider,
+                policy_type=old.policy_type,
+                coverage_amount=old.coverage_amount,
+                deductible=old.deductible,
+                coverage_details=old.coverage_details,
+                premium=old.premium,
+                payment_frequency=old.payment_frequency,
+                currency=old.currency,
+                start_date=new_start,
+                end_date=new_end,
+                agent_name=old.agent_name,
+                agent_phone=old.agent_phone,
+                agent_email=old.agent_email,
+                claims_phone=old.claims_phone,
+                document_attachment_id=old.document_attachment_id,
+                status='active',
+                auto_renew=True,          # keep renewing in future terms
+                renewed_from_id=old.id,
+                notes=old.notes,
+            )
+            db.session.add(successor)
+            db.session.flush()            # get successor.id for the push link
+            old.status = 'expired'
+            already.add(old.id)
+            renewed += 1
+
+            try:
+                from app.routes.push import send_push_to_user
+                vehicle = db.session.get(Vehicle, old.vehicle_id)
+                vehicle_name = (vehicle.name if vehicle and vehicle.name else 'your vehicle')
+                send_push_to_user(
+                    old.user_id,
+                    f"\U0001f504 Insurance renewed: {old.provider}",
+                    f"{vehicle_name}'s policy was auto-renewed. Please confirm the premium and details.",
+                    data={
+                        'type': 'insurance_renewed',
+                        'policy_id': successor.id,
+                        'vehicle_id': old.vehicle_id,
+                        'url': f'/vehicles/{old.vehicle_id}/expenses',
+                    },
+                    tag=f'insurance-renew-{successor.id}',
+                )
+            except Exception as push_exc:
+                app.logger.warning(
+                    f'Insurance-renewal push failed for policy {old.id}: {push_exc}'
+                )
+
+        db.session.commit()
+        if renewed:
+            app.logger.info(f'Auto-renewed {renewed} insurance policies')
+
+
+def process_due_services(app):
+    """Auto-create a maintenance Reminder when a service's next_due_date arrives
+    or the odometer passes next_due_mileage (F5).
+
+    Idempotent: dedups on Reminder.source_service_id, so each service yields at
+    most one auto-reminder. Non-destructive: the service's next_due_* fields are
+    left intact (the reminder links back via source_service_id). Notification is
+    handled by the existing check_due_reminders pipeline, since the created
+    reminder is due today/past — no separate push here (avoids double-notify).
+    """
+    with app.app_context():
+        from sqlalchemy import func
+        from app.models import Vehicle, ServiceEntry, Reminder
+        from app import db
+
+        today = date.today()
+
+        # Services carrying a next-due pointer, on non-archived vehicles.
+        services = (
+            ServiceEntry.query.join(Vehicle)
+            .filter(
+                Vehicle.archived == False,  # noqa: E712
+                db.or_(ServiceEntry.next_due_date.isnot(None),
+                       ServiceEntry.next_due_mileage.isnot(None)),
+            )
+            .all()
+        )
+
+        # Latest service date per (vehicle, service_type): a next-due pointer is
+        # SUPERSEDED once a newer service of the same type was logged (the job
+        # was done and the newer entry carries the current pointer). Without
+        # this, every historical entry's stale pointer materializes an overdue
+        # reminder ("MOT" x7 on the dashboard).
+        latest_by_type = {
+            (vid, stype): mx
+            for vid, stype, mx in db.session.query(
+                ServiceEntry.vehicle_id, ServiceEntry.service_type,
+                func.max(ServiceEntry.date),
+            ).group_by(ServiceEntry.vehicle_id, ServiceEntry.service_type).all()
+        }
+
+        def _superseded(svc):
+            mx = latest_by_type.get((svc.vehicle_id, svc.service_type))
+            return bool(mx and svc.date and mx > svc.date)
+
+        # Cleanup: dismiss previously auto-created reminders whose source
+        # service has since been superseded (stops stale nagging on existing
+        # installs; dismissed reminders are excluded from feed + notifications).
+        stale_reminders = Reminder.query.filter(
+            Reminder.source_service_id.isnot(None),
+            Reminder.completed == False,   # noqa: E712
+            Reminder.dismissed == False,   # noqa: E712
+        ).all()
+        cleaned = 0
+        if stale_reminders:
+            src_map = {
+                s.id: s
+                for s in ServiceEntry.query.filter(
+                    ServiceEntry.id.in_([r.source_service_id for r in stale_reminders])
+                ).all()
+            }
+            for r in stale_reminders:
+                src = src_map.get(r.source_service_id)
+                if src and _superseded(src):
+                    r.dismissed = True
+                    cleaned += 1
+        if cleaned:
+            db.session.commit()
+            app.logger.info(f'Dismissed {cleaned} superseded auto-created service reminders')
+
+        if not services:
+            return
+
+        # Preload service ids that already have an auto-reminder (dedup, 1 query).
+        already = {
+            r.source_service_id
+            for r in Reminder.query.filter(Reminder.source_service_id.isnot(None)).all()
+        }
+
+        created = 0
+        for svc in services:
+            if svc.id in already or _superseded(svc):
+                continue
+            vehicle = db.session.get(Vehicle, svc.vehicle_id)
+            if not vehicle:
+                continue
+
+            date_due = svc.next_due_date is not None and svc.next_due_date <= today
+            mileage_due = (
+                svc.next_due_mileage is not None
+                and vehicle.current_mileage is not None
+                and vehicle.current_mileage >= svc.next_due_mileage
+            )
+            if not (date_due or mileage_due):
+                continue
+
+            # Label from the service's own data (minimal fallback if it has none).
+            if (svc.title or '').strip():
+                label = svc.title.strip()
+            elif (svc.service_type or '').strip():
+                label = svc.service_type.replace('_', ' ').strip().capitalize()
+            else:
+                label = 'Service'
+            # Due today/past so the standard reminder pipeline notifies it.
+            due_date = svc.next_due_date if (date_due and svc.next_due_date) else today
+
+            reminder = Reminder(
+                user_id=svc.user_id,
+                vehicle_id=svc.vehicle_id,
+                title=label[:255],
+                reminder_type='maintenance',
+                priority='medium',
+                due_date=due_date,
+                due_mileage=svc.next_due_mileage,
+                source_service_id=svc.id,
+            )
+            db.session.add(reminder)
+            already.add(svc.id)
+            created += 1
+
+        if created:
+            db.session.commit()
+            app.logger.info(f'Auto-created {created} maintenance reminders from due services')
+
+
+def dedupe_duplicate_reminders(app):
+    """Self-heal: collapse EXACT duplicate active reminders.
+
+    The pre-fix LubeLog importer created reminders without any deduplication
+    (unlike the ZIP restore), so re-running an import multiplied every reminder
+    — e.g. three identical "MOT" rows per due date. Groups active reminders by
+    (user, vehicle, title, due_date, due_mileage), keeps the OLDEST row and
+    dismisses the extras (non-destructive: they stay visible under the
+    Reminders "dismissed" filter and can be restored there). Idempotent; runs
+    as a startup self-heal.
+    """
+    with app.app_context():
+        from app.models import Reminder
+        from app import db
+
+        rows = Reminder.query.filter(
+            Reminder.completed == False,   # noqa: E712
+            Reminder.dismissed == False,   # noqa: E712
+        ).order_by(Reminder.id.asc()).all()
+
+        seen = set()
+        dismissed = 0
+        for r in rows:
+            key = (r.user_id, r.vehicle_id, (r.title or '').strip().casefold(),
+                   r.due_date, r.due_mileage)
+            if key in seen:
+                r.dismissed = True
+                dismissed += 1
+            else:
+                seen.add(key)
+
+        if dismissed:
+            db.session.commit()
+            app.logger.info(f'Dismissed {dismissed} exact-duplicate reminders (self-heal)')
 
 
 def generate_auto_predictions(app):
@@ -1039,6 +1568,9 @@ def process_recurring_tax_entries(app):
         today = date.today()
         created_count = 0
 
+        # Self-heal: one recurring template per (vehicle, tax_type) series.
+        _consolidate_recurring_templates(app, TaxEntry, 'tax_type')
+
         # Heal entries that are recurring but have next_due_date=NULL (set after creation)
         null_due = TaxEntry.query.filter(
             TaxEntry.recurring == True,
@@ -1098,7 +1630,6 @@ def process_recurring_tax_entries(app):
                     ).first()
 
                     if not exists:
-                        next_occurrence = next_date + step
                         new_entry = TaxEntry(
                             user_id=entry.user_id,
                             vehicle_id=entry.vehicle_id,
@@ -1114,9 +1645,14 @@ def process_recurring_tax_entries(app):
                             paid_date=next_date,
                             reference_number=entry.reference_number,
                             notes=entry.notes,
-                            recurring=True,
-                            recurrence_type=recurrence,
-                            next_due_date=next_occurrence,
+                            # A generated occurrence is a plain booked payment —
+                            # NOT another template. Only the original template
+                            # carries recurring/next_due_date; stamping them here
+                            # multiplied templates every period (one extra
+                            # "Coming up" row and forecast projection per month).
+                            recurring=False,
+                            recurrence_type=None,
+                            next_due_date=None,
                             reminder_days=entry.reminder_days,
                             insurance_policy_id=entry.insurance_policy_id,
                         )
@@ -1135,6 +1671,44 @@ def process_recurring_tax_entries(app):
             db.session.commit()
 
         app.logger.info(f'Recurring tax processing: created {created_count} new entries')
+
+
+def _consolidate_recurring_templates(app, Model, type_attr):
+    """Self-heal: collapse duplicated recurring "templates" to ONE per series.
+
+    Historically the recurring generators stamped every GENERATED occurrence
+    with ``recurring=True`` + ``next_due_date``, so each period added another
+    template for the same (vehicle, type) series. Every template then surfaced
+    in the "Coming up" feed and was double-counted by the F11 forecast. The
+    generators now create plain booked rows, and this pass repairs existing
+    data: per (vehicle_id, <type_attr>) group, keep the template advanced
+    furthest (ties -> the original, lowest id) and demote the rest to
+    non-recurring rows. Idempotent; runs daily + at startup.
+    """
+    from app import db
+
+    rows = Model.query.filter(Model.recurring == True).all()  # noqa: E712
+    groups = {}
+    for r in rows:
+        groups.setdefault((r.vehicle_id, getattr(r, type_attr)), []).append(r)
+
+    demoted = 0
+    for group in groups.values():
+        if len(group) < 2:
+            continue
+        # Max next_due_date first; among equals the lowest id (original) first.
+        group.sort(key=lambda r: (r.next_due_date or date.min, -r.id), reverse=True)
+        for extra in group[1:]:
+            extra.recurring = False
+            extra.next_due_date = None
+            demoted += 1
+
+    if demoted:
+        db.session.commit()
+        app.logger.info(
+            f'Consolidated recurring {Model.__tablename__} templates: '
+            f'demoted {demoted} duplicate template row(s)'
+        )
 
 
 def _recurrence_step(recurrence_type):
@@ -1176,6 +1750,9 @@ def process_recurring_parking_entries(app):
 
         today = date.today()
         created_count = 0
+
+        # Self-heal: one recurring template per (vehicle, parking_type) series.
+        _consolidate_recurring_templates(app, ParkingEntry, 'parking_type')
 
         # Heal recurring rows whose next_due_date was never set (e.g. created
         # without a permit_expires date). Seed it to the first occurrence after
@@ -1230,9 +1807,11 @@ def process_recurring_parking_entries(app):
                                 permit_number=entry.permit_number,
                                 # New occurrence is valid until the following renewal.
                                 permit_expires=next_occurrence if entry.permit_expires else None,
-                                recurring=True,
-                                recurrence_type=entry.recurrence_type,
-                                next_due_date=next_occurrence,
+                                # Plain booked occurrence — never another template
+                                # (see _consolidate_recurring_templates).
+                                recurring=False,
+                                recurrence_type=None,
+                                next_due_date=None,
                                 reminder_days=entry.reminder_days,
                             )
                             db.session.add(new_entry)

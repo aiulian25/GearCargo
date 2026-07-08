@@ -20,7 +20,13 @@ class Todo(db.Model):
     # Scheduling
     due_date = db.Column(db.Date)
     priority = db.Column(db.String(10), default='medium')  # low, medium, high
-    
+
+    # Recurrence (F15 — parity with reminders): a recurring todo respawns its
+    # next occurrence on completion, advancing due_date by frequency×value.
+    recurring = db.Column(db.Boolean, default=False)
+    frequency = db.Column(db.String(20))  # daily, weekly, monthly, yearly
+    frequency_value = db.Column(db.Integer, default=1)  # every X days/weeks/…
+
     # Status
     completed = db.Column(db.Boolean, default=False)
     completed_at = db.Column(db.DateTime)
@@ -71,6 +77,9 @@ class Todo(db.Model):
             'description': self.description,
             'due_date': self.due_date.isoformat() if self.due_date else None,
             'priority': self.priority,
+            'recurring': self.recurring,
+            'frequency': self.frequency,
+            'frequency_value': self.frequency_value,
             'completed': self.completed,
             'completed_at': self.completed_at.isoformat() if self.completed_at else None,
             'is_overdue': self.is_overdue,

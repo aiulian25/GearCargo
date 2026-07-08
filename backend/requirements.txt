@@ -56,6 +56,7 @@ email-validator~=2.1
 # OCR
 pytesseract~=0.3
 Pillow~=12.0
+pillow-heif~=1.0    # decode/transcode iPhone HEIC/HEIF receipt photos (F9); wheels vendor libheif
 numpy~=2.0          # local-illumination normalisation in the OCR preprocessing pipeline
 
 # PDF Generation

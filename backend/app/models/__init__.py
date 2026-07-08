@@ -24,6 +24,7 @@ from app.models.email_consent_log import EmailConsentLog
 from app.models.app_setting import AppSetting
 from app.models.user_session import UserSession
 from app.models.report_share import ReportShare
+from app.models.due_dismissal import DueDismissal
 
 __all__ = [
     'User',
@@ -51,4 +52,5 @@ __all__ = [
     'AppSetting',
     'UserSession',
     'ReportShare',
+    'DueDismissal',
 ]

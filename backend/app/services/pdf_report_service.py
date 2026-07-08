@@ -104,12 +104,19 @@ def get_period_dates(period, year=None, month=None):
     return start_date, end_date, period_label
 
 
-def get_vehicle_entries(vehicle, start_date, end_date, currency='EUR'):
+def get_vehicle_entries(vehicle, start_date, end_date, currency='EUR', rates=None):
     """
     Get all entries for a vehicle within the date range.
-    
-    Returns dict with categorized entries and totals.
+
+    Returns dict with categorized entries and totals. When ``rates`` (an
+    EUR-based dict from get_live_eur_rates) is supplied, every per-entry amount
+    is converted from its own currency into ``currency`` before being summed, so
+    a report never adds mixed currencies as if identical (F1). The original
+    amount+currency is kept in the row detail when a conversion happened. When
+    ``rates`` is None the behaviour is unchanged (no conversion) — backward safe.
     """
+    from app.services.currency import to_display
+
     entries = {
         'fuel': [],
         'service': [],
@@ -124,106 +131,136 @@ def get_vehicle_entries(vehicle, start_date, end_date, currency='EUR'):
             'tax': 0,
             'parking': 0,
             'insurance': 0,
-            'grand_total': 0
+            'grand_total': 0,
+            # F1 flags: converted=False if a rate was unavailable; fx_applied=True
+            # if any amount was logged in a currency other than the report one.
+            'converted': True,
+            'fx_applied': False,
         }
     }
-    
+
+    report_ccy = (currency or 'EUR').upper()
+
+    def convert(amount, entry_ccy):
+        """Convert one amount into the report currency, updating the flags, and
+        return (converted_amount, original_suffix). ``original_suffix`` is a
+        non-empty string like ' (120.00 EUR)' only when a real conversion
+        happened, so it can be appended to the row detail."""
+        amt = float(amount or 0)
+        src = (entry_ccy or 'EUR').upper()
+        if rates is None or src == report_ccy or amt == 0:
+            return amt, ''
+        conv, ok = to_display(amt, src, report_ccy, rates)
+        entries['totals']['fx_applied'] = True
+        if not ok:
+            entries['totals']['converted'] = False
+            return amt, f' ({amt:.2f} {src}, rate n/a)'
+        return conv, f' ({amt:.2f} {src})'
+
     # Fuel entries
     fuel_entries = FuelEntry.query.filter(
         FuelEntry.vehicle_id == vehicle.id,
         FuelEntry.date >= start_date,
         FuelEntry.date <= end_date
     ).order_by(FuelEntry.date).all()
-    
+
     for entry in fuel_entries:
+        amount, suffix = convert(entry.total_price, entry.currency)
+        # Price-per-litre is quoted in the entry's OWN currency, not the report's.
+        unit_ccy = (entry.currency or report_ccy)
         entries['fuel'].append({
             'date': entry.date.strftime('%d/%m/%Y'),
-            'description': f"{entry.liters:.2f}L @ {entry.price_per_liter:.2f} {currency}/L",
+            'description': f"{entry.liters:.2f}L @ {entry.price_per_liter:.2f} {unit_ccy}/L{suffix}",
             'odometer': f"{entry.odometer:,} km" if entry.odometer else '-',
-            'amount': float(entry.total_price) if entry.total_price else 0
+            'amount': amount
         })
-        entries['totals']['fuel'] += float(entry.total_price) if entry.total_price else 0
-    
+        entries['totals']['fuel'] += amount
+
     # Service entries
     service_entries = ServiceEntry.query.filter(
         ServiceEntry.vehicle_id == vehicle.id,
         ServiceEntry.date >= start_date,
         ServiceEntry.date <= end_date
     ).order_by(ServiceEntry.date).all()
-    
+
     for entry in service_entries:
+        amount, suffix = convert(entry.amount, entry.currency)
         entries['service'].append({
             'date': entry.date.strftime('%d/%m/%Y'),
-            'description': entry.service_type or 'Service',
+            'description': (entry.service_type or 'Service') + suffix,
             'odometer': f"{entry.odometer:,} km" if entry.odometer else '-',
-            'amount': float(entry.amount) if entry.amount else 0
+            'amount': amount
         })
-        entries['totals']['service'] += float(entry.amount) if entry.amount else 0
-    
+        entries['totals']['service'] += amount
+
     # Repair entries
     repair_entries = RepairEntry.query.filter(
         RepairEntry.vehicle_id == vehicle.id,
         RepairEntry.date >= start_date,
         RepairEntry.date <= end_date
     ).order_by(RepairEntry.date).all()
-    
+
     for entry in repair_entries:
+        amount, suffix = convert(entry.amount, entry.currency)
         entries['repair'].append({
             'date': entry.date.strftime('%d/%m/%Y'),
-            'description': entry.description or 'Repair',
+            'description': (entry.description or 'Repair') + suffix,
             'odometer': f"{entry.odometer:,} km" if entry.odometer else '-',
-            'amount': float(entry.amount) if entry.amount else 0
+            'amount': amount
         })
-        entries['totals']['repair'] += float(entry.amount) if entry.amount else 0
-    
+        entries['totals']['repair'] += amount
+
     # Tax entries
     tax_entries = TaxEntry.query.filter(
         TaxEntry.vehicle_id == vehicle.id,
         TaxEntry.date >= start_date,
         TaxEntry.date <= end_date
     ).order_by(TaxEntry.date).all()
-    
+
     for entry in tax_entries:
+        amount, suffix = convert(entry.amount, entry.currency)
         entries['tax'].append({
             'date': entry.date.strftime('%d/%m/%Y') if entry.date else '-',
-            'description': entry.tax_type or 'Road Tax',
+            'description': (entry.tax_type or 'Road Tax') + suffix,
             'odometer': '-',
-            'amount': float(entry.amount) if entry.amount else 0
+            'amount': amount
         })
-        entries['totals']['tax'] += float(entry.amount) if entry.amount else 0
-    
+        entries['totals']['tax'] += amount
+
     # Parking entries
     parking_entries = ParkingEntry.query.filter(
         ParkingEntry.vehicle_id == vehicle.id,
         ParkingEntry.date >= start_date,
         ParkingEntry.date <= end_date
     ).order_by(ParkingEntry.date).all()
-    
+
     for entry in parking_entries:
+        amount, suffix = convert(entry.amount, entry.currency)
         entries['parking'].append({
             'date': entry.date.strftime('%d/%m/%Y'),
-            'description': entry.location or 'Parking',
+            'description': (entry.location or 'Parking') + suffix,
             'odometer': '-',
-            'amount': float(entry.amount) if entry.amount else 0
+            'amount': amount
         })
-        entries['totals']['parking'] += float(entry.amount) if entry.amount else 0
-    
+        entries['totals']['parking'] += amount
+
     # Insurance entries (by start date within period)
     insurance_entries = InsurancePolicy.query.filter(
         InsurancePolicy.vehicle_id == vehicle.id,
         InsurancePolicy.start_date >= start_date,
         InsurancePolicy.start_date <= end_date
     ).order_by(InsurancePolicy.start_date).all()
-    
+
     for entry in insurance_entries:
+        amount, suffix = convert(entry.premium, entry.currency)
         entries['insurance'].append({
             'date': entry.start_date.strftime('%d/%m/%Y'),
-            'description': f"{entry.provider or 'Insurance'} - {entry.policy_type or 'Policy'}",
+            'description': f"{entry.provider or 'Insurance'} - {entry.policy_type or 'Policy'}{suffix}",
             'odometer': '-',
-            'amount': float(entry.premium) if entry.premium else 0
+            'amount': amount
         })
-        entries['totals']['insurance'] += float(entry.premium) if entry.premium else 0
-    
+        entries['totals']['insurance'] += amount
+
     # Calculate grand total
     entries['totals']['grand_total'] = sum([
         entries['totals']['fuel'],
@@ -233,7 +270,7 @@ def get_vehicle_entries(vehicle, start_date, end_date, currency='EUR'):
         entries['totals']['parking'],
         entries['totals']['insurance']
     ])
-    
+
     return entries
 
 
@@ -274,7 +311,18 @@ def generate_pdf_report(user, vehicles, period, year=None, month=None, language=
     
     # Get currency from user preferences or default
     currency = getattr(user, 'currency', 'EUR') or 'EUR'
-    
+
+    # F1: fetch EUR-based rates once so every entry amount is converted into the
+    # report currency before it is summed. Guarded so PDF generation never fails
+    # just because rates are unavailable (amounts then pass through unconverted).
+    rates = None
+    try:
+        from flask import current_app
+        from app.services.currency import get_rates_cached
+        rates = get_rates_cached(current_app._get_current_object())
+    except Exception:
+        rates = None
+
     # Create buffer
     buffer = io.BytesIO()
     
@@ -450,7 +498,7 @@ def generate_pdf_report(user, vehicles, period, year=None, month=None, language=
         elements.append(Paragraph(f"🚗 {vehicle_name}", vehicle_title_style))
         
         # Get entries for this vehicle
-        entries = get_vehicle_entries(vehicle, start_date, end_date, currency)
+        entries = get_vehicle_entries(vehicle, start_date, end_date, currency, rates)
         
         # Add to grand totals
         for key in grand_totals:

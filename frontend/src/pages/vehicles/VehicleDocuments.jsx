@@ -294,7 +294,19 @@ export default function VehicleDocuments() {
 
   // ── Upload helpers ─────────────────────────────────────────────────────────
 
-  const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf']
+  // Browser MIME reporting is unreliable for office/ODF files (often empty), so
+  // we accept by MIME OR by extension. The server re-validates via magic bytes.
+  const ALLOWED_TYPES = [
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif',
+    'application/pdf',
+    'application/msword', 'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.oasis.opendocument.text',
+    'application/vnd.oasis.opendocument.spreadsheet',
+    'application/vnd.oasis.opendocument.presentation',
+  ]
+  const ALLOWED_EXT = /\.(jpe?g|png|gif|webp|heic|heif|pdf|docx?|xlsx?|od[tsp])$/i
   const MAX_FILE_SIZE = 10 * 1024 * 1024  // 10 MB
   const UPLOAD_CATEGORIES = ['receipt', 'invoice', 'insurance', 'registration', 'maintenance', 'warranty', 'photo', 'document', 'other']
 
@@ -304,13 +316,15 @@ export default function VehicleDocuments() {
       setUploadError(t('vehicleDocuments.uploadFileTooLarge') || 'File too large. Max 10 MB.')
       return
     }
-    if (!ALLOWED_TYPES.includes(file.type)) {
+    if (!ALLOWED_TYPES.includes(file.type) && !ALLOWED_EXT.test(file.name || '')) {
       setUploadError(t('vehicleDocuments.uploadInvalidType') || 'Invalid file type.')
       return
     }
     setUploadError('')
     setUploadFile(file)
-    setUploadPreview(file.type.startsWith('image/') ? URL.createObjectURL(file) : null)
+    // Inline preview only for browser-renderable images (not HEIC/office/ODF).
+    const renderable = /^image\/(jpeg|png|gif|webp)$/.test(file.type)
+    setUploadPreview(renderable ? URL.createObjectURL(file) : null)
   }
 
   const cancelUpload = () => {
@@ -488,7 +502,7 @@ export default function VehicleDocuments() {
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*,application/pdf"
+              accept="image/*,.heic,.heif,application/pdf,.doc,.docx,.xls,.xlsx,.odt,.ods,.odp"
               className="hidden"
               onChange={e => handleFileSelect(e.target.files?.[0])}
             />

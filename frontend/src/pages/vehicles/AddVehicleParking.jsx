@@ -72,11 +72,15 @@ export default function AddVehicleParking() {
       reminder_days: 7,
       permit_number: '',
       permit_expires: '',
+      fine_reason: '',
+      fine_status: 'pending',
     }
   })
-  
+
   // Watch recurring and parking type
   const isRecurring = useWatch({ control, name: 'recurring' })
+  const parkingType = useWatch({ control, name: 'parking_type' })
+  const isFine = parkingType === 'fine'
   
   useEffect(() => {
     const fetchData = async () => {
@@ -102,6 +106,8 @@ export default function AddVehicleParking() {
             reminder_days: entry.reminder_days || 7,
             permit_number: entry.permit_number || '',
             permit_expires: entry.permit_expires ? entry.permit_expires.split('T')[0] : '',
+            fine_reason: entry.fine_reason || '',
+            fine_status: entry.fine_status || 'pending',
           })
           
           if (entry.attachments && entry.attachments.length > 0) {
@@ -125,10 +131,15 @@ export default function AddVehicleParking() {
     setError('')
     
     try {
+      const isFineEntry = data.parking_type === 'fine'
       const payload = {
         ...data,
         vehicle_id: parseInt(vehicleId),
         amount: parseFloat(data.amount),
+        // Fine fields only apply to fines; a fine is never a recurring permit.
+        fine_reason: isFineEntry ? (data.fine_reason || null) : null,
+        fine_status: isFineEntry ? (data.fine_status || 'pending') : null,
+        recurring: isFineEntry ? false : data.recurring,
       }
       
       let response
@@ -172,6 +183,7 @@ export default function AddVehicleParking() {
     { value: 'monthly', label: t('parkingTypes.monthly') || 'Monthly Permit' },
     { value: 'airport', label: t('parkingTypes.airport') || 'Airport Parking' },
     { value: 'valet', label: t('parkingTypes.valet') || 'Valet' },
+    { value: 'fine', label: t('parkingTypes.fine') || 'Parking Fine' },
     { value: 'other', label: t('parkingTypes.other') || 'Other' },
   ]
   
@@ -291,8 +303,47 @@ export default function AddVehicleParking() {
             />
           </div>
         </div>
-        
+
+        {/* Fine details — only for parking fines (F14) */}
+        {isFine && (
+          <div className="card space-y-4">
+            <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
+              {t('addParking.fineDetails') || 'Fine Details'}
+            </h3>
+
+            <div>
+              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                {t('addParking.fineReason') || 'Reason'}
+              </label>
+              <input
+                type="text"
+                {...register('fine_reason')}
+                className="input"
+                placeholder={t('addParking.fineReasonPlaceholder') || 'e.g. Overstayed parking time'}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                {t('addParking.fineStatus') || 'Status'}
+              </label>
+              <select {...register('fine_status')} className="input">
+                <option value="pending">{t('parking.pending') || 'Unpaid'}</option>
+                <option value="contested">{t('parking.contested') || 'Contested'}</option>
+                <option value="paid">{t('parking.paid') || 'Paid'}</option>
+              </select>
+            </div>
+
+            <div className="bg-orange-500/5 border border-orange-500/20 rounded-xl p-3">
+              <p className="text-xs text-orange-600 dark:text-orange-400">
+                {t('addParking.fineNote') || 'Unpaid fines stay visible on the dashboard until marked as paid.'}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Time */}
+        {!isFine && (
         <div className="card space-y-4">
           <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
             {t('addParking.duration') || 'Duration (Optional)'}
@@ -322,8 +373,10 @@ export default function AddVehicleParking() {
             </div>
           </div>
         </div>
-        
-        {/* Recurring Option - for permits/subscriptions */}
+        )}
+
+        {/* Recurring Option - for permits/subscriptions (not applicable to fines) */}
+        {!isFine && (
         <div className="card space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -412,7 +465,8 @@ export default function AddVehicleParking() {
             </div>
           )}
         </div>
-        
+        )}
+
         {/* Notes */}
         <div className="card space-y-4">
           <div>

@@ -34,6 +34,8 @@ class RepairEntry(Entry):
     warranty_km = db.Column(db.Integer)
     warranty_notes = db.Column(db.Text)
     under_warranty = db.Column(db.Boolean, default=False)  # Covered by existing warranty
+    # F2: set once we've pushed a "warranty expiring soon" notification.
+    warranty_notified = db.Column(db.Boolean, default=False)
     
     # Severity
     severity = db.Column(db.String(20))  # minor, moderate, major, critical
@@ -58,5 +60,7 @@ class RepairEntry(Entry):
             'parts_replaced': self.parts_replaced,
             'severity': self.severity,
             'under_warranty': self.under_warranty,
+            'warranty_months': self.warranty_months,
+            'warranty_km': self.warranty_km,
         })
         return data

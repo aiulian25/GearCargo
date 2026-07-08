@@ -39,15 +39,21 @@ export default function ChatModal({ open, onClose, vehicles = [] }) {
 
   const label = (v) => v.name || [v.year, v.make, v.model].filter(Boolean).join(' ') || `#${v.id}`
 
+  const isFleet = selectedId === 'fleet'
+  const allVehiclesLabel = t('chat.allVehicles') || 'All vehicles'
+
+  // The "All vehicles" (fleet) option only makes sense with >1 vehicle; it sits
+  // at the top of the same accessible inline selector used for single vehicles.
   const selector = vehicles.length > 1 ? (
     <div className="mt-0.5">
       <label htmlFor="chat-vehicle" className="sr-only">{t('chat.selectVehicle') || 'Chat about'}</label>
       <select
         id="chat-vehicle"
         value={selectedId ?? ''}
-        onChange={(e) => setSelectedId(Number(e.target.value))}
+        onChange={(e) => setSelectedId(e.target.value === 'fleet' ? 'fleet' : Number(e.target.value))}
         className="text-2xs bg-transparent text-[var(--color-text-muted)] border-none p-0 pr-4 -ml-0.5 focus:ring-0 focus:outline-none cursor-pointer max-w-[12rem] truncate"
       >
+        <option value="fleet">🚗 {allVehiclesLabel}</option>
         {vehicles.map((v) => (
           <option key={v.id} value={v.id}>{label(v)}</option>
         ))}
@@ -79,7 +85,9 @@ export default function ChatModal({ open, onClose, vehicles = [] }) {
           </div>
         ) : (
           <AssistantChat
-            vehicleId={selectedId}
+            vehicleId={isFleet ? null : selectedId}
+            fleet={isFleet}
+            fleetLabel={allVehiclesLabel}
             variant="modal"
             onClose={onClose}
             selectorSlot={selector}

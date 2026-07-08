@@ -128,6 +128,11 @@ def create_parking_entry(current_user):
         permit_number=data.get('permit_number'),
         permit_expires=permit_expires,
         notes=data.get('notes'),
+        # Fines (F14) — default a fine to 'pending' so it surfaces as unpaid
+        # until the user marks it paid/contested.
+        fine_reason=data.get('fine_reason'),
+        fine_status=(data.get('fine_status')
+                     or ('pending' if data.get('parking_type') == 'fine' else None)),
     )
     
     db.session.add(entry)
@@ -179,7 +184,8 @@ def update_parking_entry(current_user, entry_id):
     allowed = ['entry_date', 'cost', 'location_name', 'location_address',
                'latitude', 'longitude', 'parking_type', 'start_time', 'end_time',
                'duration_minutes', 'is_permit', 'permit_number',
-               'permit_valid_until', 'payment_method', 'notes']
+               'permit_valid_until', 'payment_method', 'notes',
+               'fine_reason', 'fine_status']  # F14
     
     for field in allowed:
         if field in data:
@@ -214,6 +220,68 @@ def delete_parking_entry(current_user, entry_id):
     db.session.commit()
     
     return jsonify({'message': 'Parking entry deleted'})
+
+
+@parking_bp.route('/fines', methods=['GET'])
+@token_required
+def get_parking_fines(current_user):
+    """List parking fines and the total amount owed (F14).
+
+    Default (no ``status``) returns *outstanding* fines — ``pending`` or
+    ``contested`` — plus any ``fine`` whose status was never set (treated as
+    pending, so a forgotten fine is never silently lost). ``?status=`` narrows
+    to an exact status: ``pending`` | ``contested`` | ``paid``.
+
+    Scoped to the current user's vehicles. ``total_owed`` is the naive sum of the
+    outstanding fines' amounts (see note: mixed currencies aren't converted here).
+    """
+    status = (request.args.get('status') or '').strip().lower()
+
+    query = ParkingEntry.query.join(Vehicle).filter(
+        Vehicle.user_id == current_user.id,
+        ParkingEntry.parking_type == 'fine',
+    )
+    if status == 'paid':
+        query = query.filter(ParkingEntry.fine_status == 'paid')
+    elif status == 'contested':
+        query = query.filter(ParkingEntry.fine_status == 'contested')
+    elif status == 'pending':
+        query = query.filter(db.or_(ParkingEntry.fine_status == 'pending',
+                                    ParkingEntry.fine_status.is_(None)))
+    else:  # default → outstanding (unpaid)
+        query = query.filter(db.or_(
+            ParkingEntry.fine_status.in_(('pending', 'contested')),
+            ParkingEntry.fine_status.is_(None),
+        ))
+
+    fines = query.order_by(ParkingEntry.date.desc()).all()
+
+    # Vehicle names in one query (no N+1).
+    vids = {f.vehicle_id for f in fines}
+    vmap = {}
+    if vids:
+        vmap = {
+            v.id: v.name for v in Vehicle.query.filter(
+                Vehicle.id.in_(vids), Vehicle.user_id == current_user.id
+            ).all()
+        }
+
+    items = []
+    total_owed = 0.0
+    for f in fines:
+        d = f.to_dict()
+        d['vehicle_name'] = vmap.get(f.vehicle_id)
+        effective = f.fine_status or 'pending'   # normalise unset → pending
+        d['fine_status'] = effective
+        items.append(d)
+        if effective != 'paid':
+            total_owed += float(f.amount or 0)
+
+    return jsonify({
+        'fines': items,
+        'count': len(items),
+        'total_owed': round(total_owed, 2),
+    })
 
 
 @parking_bp.route('/permits', methods=['GET'])

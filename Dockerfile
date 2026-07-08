@@ -74,6 +74,7 @@ RUN set -eux; \
         ca-certificates curl gnupg xz-utils \
         gcc libpq-dev \
         redis-server cron \
+        libheif1 \
         tesseract-ocr tesseract-ocr-eng tesseract-ocr-ron tesseract-ocr-spa; \
     # --- PostgreSQL 16 from the official PGDG apt repository ---
     install -d /usr/share/postgresql-common/pgdg; \

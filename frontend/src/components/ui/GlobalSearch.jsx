@@ -66,6 +66,20 @@ const AttachmentIcon = () => (
   </svg>
 )
 
+const ReminderIcon = () => (
+  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <path strokeLinecap="round" strokeLinejoin="round"
+      d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+  </svg>
+)
+
+const InsuranceIcon = () => (
+  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <path strokeLinecap="round" strokeLinejoin="round"
+      d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+  </svg>
+)
+
 const SpinnerIcon = () => (
   <div className="w-4 h-4 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
 )
@@ -161,6 +175,9 @@ export default function GlobalSearch({ isOpen, onClose }) {
 
   const handleVehicleClick = (v) => goTo(`/vehicles/${v.id}`)
   const handleEntryClick = (e) => goTo(`/vehicles/${e.vehicle_id}`)
+  const handleReminderClick = () => goTo('/reminders')
+  const handleInsuranceClick = (p) =>
+    goTo(p.vehicle_id ? `/vehicles/${p.vehicle_id}/expenses` : '/vehicles')
   const handleAttachmentClick = (a) => {
     if (a.vehicle_id) {
       // Navigate to the per-vehicle documents page and deep-link directly to
@@ -174,8 +191,10 @@ export default function GlobalSearch({ isOpen, onClose }) {
 
   const hasVehicles = results?.vehicles?.length > 0
   const hasEntries = results?.entries?.length > 0
+  const hasReminders = results?.reminders?.length > 0
+  const hasInsurance = results?.insurance?.length > 0
   const hasAttachments = results?.attachments?.length > 0
-  const hasResults = hasVehicles || hasEntries || hasAttachments
+  const hasResults = hasVehicles || hasEntries || hasReminders || hasInsurance || hasAttachments
   const searchedButEmpty = results !== null && !hasResults
 
   return (
@@ -295,6 +314,57 @@ export default function GlobalSearch({ isOpen, onClose }) {
                           {e.vehicle_name && `${e.vehicle_name} · `}
                           {e.date}
                           {e.amount && ` · ${formatAmount(e.amount, e.currency)}`}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </section>
+              )}
+
+              {/* Reminders */}
+              {hasReminders && (
+                <section>
+                  <h3 className="px-4 pt-3 pb-1 text-2xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
+                    {t('search.groupReminders') || 'Reminders'}
+                  </h3>
+                  {results.reminders.map((r) => (
+                    <button
+                      key={r.id}
+                      onClick={handleReminderClick}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[var(--color-bg-hover,rgba(255,255,255,0.06))] transition-colors text-left"
+                    >
+                      <span className="text-amber-400 flex-shrink-0"><ReminderIcon /></span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">{r.title}</p>
+                        <p className="text-xs text-[var(--color-text-muted)] truncate">
+                          {r.vehicle_name && `${r.vehicle_name} · `}
+                          {r.due_date}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </section>
+              )}
+
+              {/* Insurance */}
+              {hasInsurance && (
+                <section>
+                  <h3 className="px-4 pt-3 pb-1 text-2xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
+                    {t('search.groupInsurance') || 'Insurance'}
+                  </h3>
+                  {results.insurance.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => handleInsuranceClick(p)}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[var(--color-bg-hover,rgba(255,255,255,0.06))] transition-colors text-left"
+                    >
+                      <span className="text-teal-400 flex-shrink-0"><InsuranceIcon /></span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">{p.provider}</p>
+                        <p className="text-xs text-[var(--color-text-muted)] truncate">
+                          {p.vehicle_name && `${p.vehicle_name} · `}
+                          {p.policy_number && `${p.policy_number}`}
+                          {p.end_date && ` · ${p.end_date}`}
                         </p>
                       </div>
                     </button>

@@ -34,7 +34,9 @@ class ServiceEntry(Entry):
     warranty_km = db.Column(db.Integer)
     warranty_notes = db.Column(db.Text)
     warranty_expires = db.Column(db.Date)
-    
+    # F2: set once we've pushed a "warranty expiring soon" notification.
+    warranty_notified = db.Column(db.Boolean, default=False)
+
     # Next service
     next_due_date = db.Column(db.Date)
     next_due_mileage = db.Column(db.Integer)
@@ -57,6 +59,8 @@ class ServiceEntry(Entry):
             'parts_cost': float(self.parts_cost) if self.parts_cost else None,
             'parts_used': self.parts_used,
             'warranty_months': self.warranty_months,
+            'warranty_km': self.warranty_km,
+            'warranty_expires': self.warranty_expires.isoformat() if self.warranty_expires else None,
             'next_due_date': self.next_due_date.isoformat() if self.next_due_date else None,
             'next_due_mileage': self.next_due_mileage,
         })

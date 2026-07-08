@@ -47,6 +47,13 @@ class ConsumableEntry(Entry):
     # Warranty
     warranty_months = db.Column(db.Integer)
 
+    # Sentinel for the daily check_consumables_due job: set True once we have
+    # pushed a "due for replacement" notification, so an item is never notified
+    # twice for the same replace crossing. Internal — not exposed in to_dict().
+    replace_notified = db.Column(db.Boolean, default=False)
+    # F2: set once we've pushed a "warranty expiring soon" notification.
+    warranty_notified = db.Column(db.Boolean, default=False)
+
     __mapper_args__ = {
         'polymorphic_identity': 'consumable'
     }

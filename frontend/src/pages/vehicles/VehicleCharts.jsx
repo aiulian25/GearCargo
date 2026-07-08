@@ -214,6 +214,54 @@ const TrendBadge = ({ trend, t }) => {
   )
 }
 
+// F11 — forward 12-month projected-cost bar chart with a monthly-budget line.
+// One sequential hue for cost; over-budget months switch to a status colour
+// (the "flag"), and the budget is a dashed reference line.
+const ForecastChart = ({ buckets, budget, formatCurrency, monthShort, t }) => {
+  const W = 340, H = 168, PL = 8, PR = 8, PT = 22, PB = 26
+  const n = buckets.length
+  if (!n) return null
+  const maxVal = Math.max(budget || 0, ...buckets.map((b) => b.projected), 1)
+  const cellW = (W - PL - PR) / n
+  const xAt = (i) => PL + (i + 0.5) * cellW
+  const bw = cellW * 0.62
+  const yAt = (v) => (H - PB) - (Math.max(0, v) / maxVal) * (H - PT - PB)
+  const budgetY = budget ? yAt(budget) : null
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img"
+      aria-label={t('forecast.title') || 'Projected monthly costs'}>
+      {buckets.map((b, i) => {
+        const y = yAt(b.projected)
+        const h = Math.max(0, (H - PB) - y)
+        return (
+          <rect key={`b${i}`} x={xAt(i) - bw / 2} y={y} width={bw} height={h} rx="2"
+            fill={b.over_budget ? '#ef4444' : 'var(--color-accent)'}
+            opacity={b.over_budget ? 0.92 : 0.85}>
+            <title>{`${monthShort(b.month)}: ${formatCurrency(b.projected)}${b.over_budget ? ' — ' + (t('forecast.overBudget') || 'over budget') : ''}`}</title>
+          </rect>
+        )
+      })}
+      {budgetY != null && (
+        <g>
+          <line x1={PL} x2={W - PR} y1={budgetY} y2={budgetY}
+            stroke="var(--color-text-muted)" strokeWidth="1.5" strokeDasharray="4 3" />
+          <text x={W - PR} y={Math.max(8, budgetY - 3)} textAnchor="end"
+            className="fill-[var(--color-text-muted)]" style={{ fontSize: '8px', fontWeight: 600 }}>
+            {t('forecast.budgetLine') || 'Budget'} {formatCurrency(budget)}
+          </text>
+        </g>
+      )}
+      {buckets.map((b, i) => (i % 2 === 0) && (
+        <text key={`t${i}`} x={xAt(i)} y={H - 8} textAnchor="middle"
+          className="fill-[var(--color-text-muted)]" style={{ fontSize: '8px' }}>
+          {monthShort(b.month)}
+        </text>
+      ))}
+    </svg>
+  )
+}
+
 export default function VehicleCharts() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -223,6 +271,7 @@ export default function VehicleCharts() {
   const [vehicle, setVehicle] = useState(null)
   const [timeline, setTimeline] = useState([])
   const [analytics, setAnalytics] = useState(null)
+  const [forecast, setForecast] = useState(null)  // F11 — forward cost projection
   const [isLoading, setIsLoading] = useState(true)
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
 
@@ -254,6 +303,16 @@ export default function VehicleCharts() {
     vehicleApi.getCostAnalytics(id)
       .then((res) => { if (active) setAnalytics(res.data) })
       .catch((err) => { console.error('Failed to load cost analytics:', err) })
+    return () => { active = false }
+  }, [id])
+
+  // F11 — forward-looking cost forecast (recurring + predictions vs budget).
+  // Independent fetch so a failure never breaks the rest of the Charts page.
+  useEffect(() => {
+    let active = true
+    vehicleApi.getForecast(id)
+      .then((res) => { if (active) setForecast(res.data) })
+      .catch((err) => { console.error('Failed to load forecast:', err) })
     return () => { active = false }
   }, [id])
 
@@ -412,6 +471,17 @@ export default function VehicleCharts() {
           const hasCpd = analytics.series.some((s) => s.cost_per_distance != null)
           const cpdPoints = analytics.series.map((s) => ({ label: monthShort(s.month), value: s.cost_per_distance }))
           return (
+            <>
+            {(analytics.converted === false || analytics.fx_applied) && (
+              <p className="text-2xs text-[var(--color-text-muted)] flex items-start gap-1.5">
+                <span aria-hidden="true">≈</span>
+                <span>
+                  {analytics.converted === false
+                    ? (t('analytics.rateUnavailable') || 'Some amounts could not be converted — exchange rate unavailable.')
+                    : (t('analytics.approxConverted') || 'Converted from mixed currencies at today’s rates.')}
+                </span>
+              </p>
+            )}
             <div className="grid md:grid-cols-2 gap-4">
               {/* Cost per distance */}
               <div className="bg-[var(--color-bg-secondary)] rounded-2xl p-6">
@@ -472,6 +542,62 @@ export default function VehicleCharts() {
                   </p>
                 </div>
               )}
+            </div>
+            </>
+          )
+        })()}
+
+        {/* F11 — forward 12-month projected-cost forecast (recurring + predictions
+            vs monthly budget). Independent of the year selector; shown only when
+            there is something to project. */}
+        {forecast && forecast.buckets?.some((b) => b.projected > 0) && (() => {
+          const total = forecast.buckets.reduce((a, b) => a + (b.projected || 0), 0)
+          const overCount = forecast.buckets.filter((b) => b.over_budget).length
+          return (
+            <div className="bg-[var(--color-bg-secondary)] rounded-2xl p-6">
+              <div className="flex items-start justify-between gap-3 mb-1">
+                <h2 className="text-sm font-medium text-[var(--color-text-secondary)]">
+                  {t('forecast.title') || 'Projected costs — next 12 months'}
+                </h2>
+                <span className="text-lg font-bold whitespace-nowrap shrink-0">{formatCurrency(total)}</span>
+              </div>
+              <p className="text-2xs text-[var(--color-text-muted)] mb-4">
+                {t('forecast.projected') || 'Recurring taxes, insurance, permits and predicted maintenance'}
+              </p>
+
+              {(forecast.converted === false || forecast.fx_applied) && (
+                <p className="text-2xs text-[var(--color-text-muted)] flex items-start gap-1.5 mb-3">
+                  <span aria-hidden="true">≈</span>
+                  <span>
+                    {forecast.converted === false
+                      ? (t('analytics.rateUnavailable') || 'Some amounts could not be converted — exchange rate unavailable.')
+                      : (t('analytics.approxConverted') || 'Converted from mixed currencies at today’s rates.')}
+                  </span>
+                </p>
+              )}
+
+              <ForecastChart
+                buckets={forecast.buckets}
+                budget={forecast.monthly_budget}
+                formatCurrency={formatCurrency}
+                monthShort={monthShort}
+                t={t}
+              />
+
+              <div className="flex items-center justify-between flex-wrap gap-2 mt-3 text-2xs text-[var(--color-text-muted)]">
+                {forecast.monthly_budget != null ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="inline-block w-3 border-t border-dashed border-[var(--color-text-muted)]" aria-hidden="true" />
+                    {t('forecast.budgetLine') || 'Monthly budget'}: {formatCurrency(forecast.monthly_budget)}
+                  </span>
+                ) : <span />}
+                {overCount > 0 && (
+                  <span className="inline-flex items-center gap-1.5 text-red-500">
+                    <span className="inline-block w-2.5 h-2.5 rounded-sm bg-red-500" aria-hidden="true" />
+                    {(t('forecast.overBudget') || 'Over budget')} · {overCount}
+                  </span>
+                )}
+              </div>
             </div>
           )
         })()}

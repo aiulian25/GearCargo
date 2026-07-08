@@ -701,6 +701,7 @@ def import_lubelog_to_gearcargo(user, zip_data, merge_mode='merge', distance_uni
             'reminders': 0,
             'insurance_policies': 0,
             'attachments': 0,
+            'skipped_duplicates': 0,
         }
 
         vehicle_id_map = {}  # lubelog_id → gearcargo vehicle.id
@@ -832,6 +833,18 @@ def import_lubelog_to_gearcargo(user, zip_data, merge_mode='merge', distance_uni
             start_date = _parse_date(policy_data.get('start_date'))
             end_date = _parse_date(policy_data.get('end_date'))
 
+            # Deduplication (mirrors the ZIP-restore importer): provider +
+            # start_date + vehicle identifies a policy term; re-imports skip it.
+            existing = InsurancePolicy.query.filter_by(
+                user_id=user.id,
+                vehicle_id=vehicle_id,
+                provider=policy_data.get('provider', 'Unknown'),
+                start_date=start_date,
+            ).first()
+            if existing:
+                imported['skipped_duplicates'] += 1
+                continue
+
             policy = InsurancePolicy(
                 user_id=user.id,
                 vehicle_id=vehicle_id,
@@ -852,13 +865,30 @@ def import_lubelog_to_gearcargo(user, zip_data, merge_mode='merge', distance_uni
             vid = rem_data.get('vehicle_lubelog_id', 1)
             vehicle_id = vehicle_id_map.get(vid)
 
+            title = rem_data.get('title', 'Reminder')
+            due_date = _parse_date(rem_data.get('due_date'))
+
+            # Deduplication (mirrors the ZIP-restore importer): re-running the
+            # same LubeLog import must not multiply reminders. Match on
+            # vehicle + title + due_date so distinct occurrences of a recurring
+            # reminder (different dates) still import.
+            existing = Reminder.query.filter_by(
+                user_id=user.id,
+                vehicle_id=vehicle_id,
+                title=title,
+                due_date=due_date,
+            ).first()
+            if existing:
+                imported['skipped_duplicates'] += 1
+                continue
+
             reminder = Reminder(
                 user_id=user.id,
                 vehicle_id=vehicle_id,
-                title=rem_data.get('title', 'Reminder'),
+                title=title,
                 description=rem_data.get('description'),
                 reminder_type=rem_data.get('reminder_type', 'custom'),
-                due_date=_parse_date(rem_data.get('due_date')),
+                due_date=due_date,
                 priority=rem_data.get('priority', 'medium'),
             )
             db.session.add(reminder)

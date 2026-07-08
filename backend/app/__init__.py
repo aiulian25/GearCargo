@@ -534,6 +534,12 @@ def create_app(config_class=None):
         key_func=_ai_rate_key,
         error_message='Too many chat requests. Please wait before sending more messages.')
 
+    # F10: fleet-wide chat shares the same per-user AI chat budget/key.
+    _rate_limit('vehicles.fleet_chat',
+        app.config.get('CHAT_RATE_LIMIT', '15 per minute; 100 per hour'),
+        key_func=_ai_rate_key,
+        error_message='Too many chat requests. Please wait before sending more messages.')
+
     # Global search — 30/minute/user (generous for real-time debounced queries).
     _rate_limit('search.global_search',
         '30 per minute',

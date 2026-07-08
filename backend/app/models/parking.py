@@ -55,5 +55,8 @@ class ParkingEntry(Entry):
             'reminder_days': self.reminder_days,
             'permit_number': self.permit_number,
             'permit_expires': self.permit_expires.isoformat() if self.permit_expires else None,
+            # Fines (F14)
+            'fine_reason': self.fine_reason,
+            'fine_status': self.fine_status,
         })
         return data

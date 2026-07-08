@@ -58,6 +58,9 @@ export default function AddVehicleRepair() {
       total_cost: '',
       shop_name: '',
       notes: '',
+      warranty_months: '',
+      warranty_km: '',
+      warranty_covered: false,
     }
   })
   
@@ -94,6 +97,9 @@ export default function AddVehicleRepair() {
             total_cost: entry.amount || '',
             shop_name: entry.garage_name || entry.provider || '',
             notes: entry.notes || '',
+            warranty_months: entry.warranty_months ?? '',
+            warranty_km: entry.warranty_km ?? '',
+            warranty_covered: entry.under_warranty || false,
           })
           
           // Restore multi-select repair types
@@ -140,6 +146,9 @@ export default function AddVehicleRepair() {
         parts_cost: data.parts_cost ? parseFloat(data.parts_cost) : null,
         labor_cost: data.labor_cost ? parseFloat(data.labor_cost) : null,
         total_cost: data.total_cost ? parseFloat(data.total_cost) : null,
+        warranty_months: data.warranty_months === '' ? null : parseInt(data.warranty_months),
+        warranty_km: data.warranty_km === '' ? null : parseInt(data.warranty_km),
+        warranty_covered: !!data.warranty_covered,
       }
       
       let response
@@ -411,7 +420,54 @@ export default function AddVehicleRepair() {
             />
           </div>
         </div>
-        
+
+        {/* Warranty (F2) — feeds the "Under warranty" ledger in Vehicle Health */}
+        <div className="card space-y-4">
+          <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
+            {t('warranty.section') || 'Warranty'}
+          </h3>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                {t('warranty.months') || 'Warranty (months)'}
+              </label>
+              <input
+                type="number" inputMode="numeric" min="0"
+                {...register('warranty_months')}
+                className="input"
+                placeholder={t('addRepair.optional') || 'Optional'}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                {(t('warranty.distance') || 'Warranty ({unit})').replace('{unit}', vehicle?.distance_unit || 'km')}
+              </label>
+              <input
+                type="number" inputMode="numeric" min="0"
+                {...register('warranty_km')}
+                className="input"
+                placeholder={t('addRepair.optional') || 'Optional'}
+              />
+            </div>
+          </div>
+
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              {...register('warranty_covered')}
+              className="w-4 h-4 accent-[var(--color-accent)]"
+            />
+            <span className="text-sm">
+              {t('warranty.coveredByWarranty') || 'This repair was covered by an existing warranty'}
+            </span>
+          </label>
+          <p className="text-2xs text-[var(--color-text-muted)]">
+            {t('warranty.hint') || 'Optional — whichever limit is reached first ends the coverage.'}
+          </p>
+        </div>
+
         {/* Additional */}
         <div className="card space-y-4">
           <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
