@@ -51,7 +51,7 @@ pywebpush~=1.14
 
 # Validation
 marshmallow~=3.20
-email-validator~=2.1
+email-validator~=2.3
 
 # OCR
 pytesseract~=0.3
