@@ -170,9 +170,12 @@ def test_classifier_down_fails_open_to_main(chat_app, client, user, auth_headers
 
 def test_breaker_open_fast_fails_without_network(chat_app, client, user, auth_headers, monkeypatch):
     # §14.4 — remote recently seen down: return 503 immediately, no Ollama call.
+    # (Probe slot denied — the half-open self-heal path is covered in
+    # test_ollama_breaker.py.)
     with chat_app.app_context():
         vid = _mk_vehicle(user.id)
     monkeypatch.setattr(v, 'ollama_downtime_info', lambda: {'down': True, 'since': 'x', 'duration_min': 3})
+    monkeypatch.setattr(v, 'ollama_breaker_allows_probe', lambda: False)
     called = {'chat': 0}
     monkeypatch.setattr(v, 'ollama_chat', lambda **_k: called.__setitem__('chat', called['chat'] + 1) or {'answer': 'x'})
     monkeypatch.setattr(v, 'resolve_model', lambda *_a, **_k: 'test-model')

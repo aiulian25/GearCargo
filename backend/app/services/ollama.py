@@ -264,16 +264,25 @@ def ai_cache_stats() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 _OLLAMA_OFFLINE_KEY = 'ollama:offline_since'
+_OLLAMA_LAST_FAILURE_KEY = 'ollama:last_failure'   # refreshed on EVERY failure
+_OLLAMA_PROBE_LOCK_KEY = 'ollama:probe_lock'       # single half-open probe slot
 # Keep the marker for up to 4 h after the last failure so the admin banner
 # survives a short Redis restart; cleared immediately on any successful call.
 _OLLAMA_OFFLINE_TTL = 14_400   # 4 h
+# Half-open breaker (self-heal): after this many seconds since the LAST
+# failure, exactly one request is allowed through to probe Ollama.
+_OLLAMA_PROBE_COOLDOWN = 120
+# Probe-slot TTL must outlive the worst-case probe (default 300 s read
+# timeout) so a hung probe can't be joined by a second one.
+_OLLAMA_PROBE_LOCK_TTL = 330
 
 
 def ollama_record_failure() -> None:
     """Record that Ollama is unreachable right now.
 
-    Uses SETNX so the *first* failure timestamp is preserved.
-    TTL is refreshed each time so the key survives repeated failures.
+    Uses SETNX so the *first* failure timestamp is preserved (admin banner);
+    a separate last-failure key is refreshed every time (probe cooldown).
+    TTLs are refreshed each time so the keys survive repeated failures.
     Cleared immediately by ``ollama_record_success()`` on any live response.
     All exceptions are swallowed — tracking is best-effort.
     """
@@ -281,15 +290,21 @@ def ollama_record_failure() -> None:
     if not r:
         return
     try:
+        now_iso = datetime.now(timezone.utc).isoformat()
         # Only set if not already present (preserve first-failure timestamp)
-        r.setnx(_OLLAMA_OFFLINE_KEY, datetime.now(timezone.utc).isoformat())
+        r.setnx(_OLLAMA_OFFLINE_KEY, now_iso)
         r.expire(_OLLAMA_OFFLINE_KEY, _OLLAMA_OFFLINE_TTL)
+        # Last failure — restarts the probe cooldown window.
+        r.set(_OLLAMA_LAST_FAILURE_KEY, now_iso, ex=_OLLAMA_OFFLINE_TTL)
+        # The failed attempt (probe or otherwise) is finished — free the slot
+        # so the NEXT cooldown expiry can probe again.
+        r.delete(_OLLAMA_PROBE_LOCK_KEY)
     except Exception as exc:
         logger.debug('ollama_record_failure Redis error (ignored): %s', exc)
 
 
 def ollama_record_success() -> None:
-    """Record that Ollama is reachable — clear any stored downtime marker.
+    """Record that Ollama is reachable — clear all breaker state.
 
     All exceptions are swallowed — tracking is best-effort.
     """
@@ -297,9 +312,44 @@ def ollama_record_success() -> None:
     if not r:
         return
     try:
-        r.delete(_OLLAMA_OFFLINE_KEY)
+        r.delete(_OLLAMA_OFFLINE_KEY, _OLLAMA_LAST_FAILURE_KEY, _OLLAMA_PROBE_LOCK_KEY)
     except Exception as exc:
         logger.debug('ollama_record_success Redis error (ignored): %s', exc)
+
+
+def ollama_breaker_allows_probe() -> bool:
+    """Half-open circuit breaker: may THIS request probe a down Ollama?
+
+    Called only when the breaker is open (``ollama_downtime_info()['down']``).
+    Returns True for exactly ONE request once ``_OLLAMA_PROBE_COOLDOWN`` has
+    passed since the last recorded failure — that request proceeds normally
+    and its own success/failure updates the breaker (``chat()`` already calls
+    ``ollama_record_success``/``ollama_record_failure``). Every other request
+    keeps fast-failing, so a burst can never stampede a down Ollama and starve
+    the worker pool (§14.4). Previously the breaker could only be cleared by
+    an unrelated successful Ollama call or the 4 h TTL.
+    """
+    r = _get_redis()
+    if not r:
+        return True   # no Redis → no breaker state (down is never True anyway)
+    try:
+        raw = r.get(_OLLAMA_LAST_FAILURE_KEY)
+        if raw:
+            last_str = raw.decode() if isinstance(raw, bytes) else str(raw)
+            last_dt = datetime.fromisoformat(last_str)
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=timezone.utc)
+            elapsed = (datetime.now(timezone.utc) - last_dt).total_seconds()
+            if elapsed < _OLLAMA_PROBE_COOLDOWN:
+                return False
+        # Cooldown elapsed (or legacy marker with no last-failure key, e.g.
+        # written before this feature deployed) — claim the single probe slot.
+        return bool(r.set(_OLLAMA_PROBE_LOCK_KEY,
+                          datetime.now(timezone.utc).isoformat(),
+                          nx=True, ex=_OLLAMA_PROBE_LOCK_TTL))
+    except Exception as exc:
+        logger.debug('ollama_breaker_allows_probe Redis error (ignored): %s', exc)
+        return False  # conservative: keep fast-failing on breaker-state errors
 
 
 def ollama_downtime_info() -> dict[str, Any]:

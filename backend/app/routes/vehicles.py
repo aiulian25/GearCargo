@@ -13,7 +13,7 @@ import requests as req_lib
 from app import db
 from app.models import Vehicle, Entry, FuelEntry, ServiceEntry, RepairEntry
 from app.models.attachment import Attachment
-from app.services.ollama import chat as ollama_chat, OllamaError, resolve_model, ai_cache_get, ai_cache_set, AI_CACHE_TTL, validate_ollama_url, ollama_downtime_info
+from app.services.ollama import chat as ollama_chat, OllamaError, resolve_model, ai_cache_get, ai_cache_set, AI_CACHE_TTL, validate_ollama_url, ollama_downtime_info, ollama_breaker_allows_probe
 from app.services.currency import to_display, sum_to_display, get_rates_cached
 from app.services.warranty import build_vehicle_warranties, warranty_summary
 from app.routes.auth import token_required
@@ -2023,12 +2023,19 @@ def vehicle_chat(current_user, vehicle_id):
     # §14.4 — circuit-breaker fast-fail. If the remote Ollama was recently seen
     # down, return immediately instead of making (two) network calls that would
     # each hang a sync worker for the full timeout and starve the pool.
+    # Half-open self-heal: after a cooldown, ONE request is allowed through as
+    # a probe — its own success/failure updates the breaker.
     if ollama_downtime_info().get('down'):
+        if not ollama_breaker_allows_probe():
+            current_app.logger.info(
+                '[chat-guard] breaker-open fast-fail vehicle=%s user=%s',
+                vehicle_id, current_user.id,
+            )
+            return jsonify({'error': 'AI assistant is unavailable.', 'code': 'ai_unavailable'}), 503
         current_app.logger.info(
-            '[chat-guard] breaker-open fast-fail vehicle=%s user=%s',
+            '[chat-guard] breaker half-open — probe allowed vehicle=%s user=%s',
             vehicle_id, current_user.id,
         )
-        return jsonify({'error': 'AI assistant is unavailable.', 'code': 'ai_unavailable'}), 503
 
     locale = data.get('locale') or 'en-US'
     answer_lang = _CHAT_LANG.get(locale, 'English')
@@ -2238,10 +2245,13 @@ def fleet_chat(current_user):
     if not context:
         return jsonify({'error': 'No vehicles found', 'code': 'no_vehicles'}), 404
 
-    # §14.4 — circuit-breaker fast-fail (identical to the per-vehicle route).
+    # §14.4 — circuit-breaker fast-fail (identical to the per-vehicle route),
+    # with the same half-open probe self-heal.
     if ollama_downtime_info().get('down'):
-        current_app.logger.info('[chat-guard] breaker-open fast-fail fleet user=%s', current_user.id)
-        return jsonify({'error': 'AI assistant is unavailable.', 'code': 'ai_unavailable'}), 503
+        if not ollama_breaker_allows_probe():
+            current_app.logger.info('[chat-guard] breaker-open fast-fail fleet user=%s', current_user.id)
+            return jsonify({'error': 'AI assistant is unavailable.', 'code': 'ai_unavailable'}), 503
+        current_app.logger.info('[chat-guard] breaker half-open — probe allowed fleet user=%s', current_user.id)
 
     locale = data.get('locale') or 'en-US'
     answer_lang = _CHAT_LANG.get(locale, 'English')
