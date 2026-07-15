@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom'
 import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
 import { useForm, useWatch } from 'react-hook-form'
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
@@ -125,7 +125,24 @@ export default function AddVehicleService() {
     
     fetchData()
   }, [vehicleId, editId, isEditMode, navigate, reset])
-  
+
+  // F33 — receipt routed from ShareTarget: apply the AI-parsed fields and
+  // adopt the already-uploaded attachment (linked to the entry after create).
+  const location = useLocation()
+  useEffect(() => {
+    const st = location.state
+    if (!st || isEditMode) return
+    const d = st.prefill || {}
+    if (d.date) setValue('date', d.date)
+    if (d.amount != null) setValue('total_cost', String(d.amount))
+    if (d.vendor) setValue('shop_name', d.vendor)
+    if (d.line_items?.length) {
+      setValue('notes', d.line_items.map(i => i.description).filter(Boolean).join(', '))
+    }
+    if (st.attachmentId) setUploadedAttachmentId(st.attachmentId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useUnsavedChanges(isDirty)
 
   const onSubmit = async (data) => {

@@ -463,11 +463,16 @@ def upload_attachment(current_user):
     if attachment.is_image:
         from app.services.task_queue import enqueue_task
         enqueue_task(run_ocr_task, attachment.id, filepath, description=f'ocr:{attachment.id}')
+    elif _is_pdf_attachment(attachment):
+        # F32 — PDFs get their embedded text layer extracted into the same
+        # ocr_text field, so search and AI parse work exactly like for images.
+        from app.services.task_queue import enqueue_task
+        enqueue_task(run_pdf_text_task, attachment.id, filepath, description=f'pdftext:{attachment.id}')
 
     return jsonify({
         'message': 'File uploaded successfully',
         'attachment': attachment.to_dict(),
-        'ocr_status': 'pending' if attachment.is_image else None,
+        'ocr_status': 'pending' if (attachment.is_image or _is_pdf_attachment(attachment)) else None,
     }), 201
 
 
@@ -697,6 +702,90 @@ def run_ocr_task(attachment_id: int, filepath: str) -> None:
             _throttled_ocr_background(app, attachment_id, filepath)
 
 
+# ── PDF text extraction (F32) ────────────────────────────────────────────────
+
+def _is_pdf_attachment(attachment) -> bool:
+    """True when the stored file is a PDF (by stored filename/filepath)."""
+    name = (attachment.filename or attachment.filepath or '').lower()
+    return name.endswith('.pdf')
+
+
+def _extract_pdf_text(filepath: str):
+    """Extract the embedded text layer from a PDF (first 10 pages).
+
+    Returns cleaned text capped at 10 000 chars, or None when the PDF has no
+    text layer (scanned image-only PDFs) or cannot be parsed. Never raises.
+    """
+    OCR_TEXT_MAX_CHARS = 10_000
+    _CONTROL_CHARS = dict.fromkeys(range(32), None)
+    _CONTROL_CHARS.pop(9)
+    _CONTROL_CHARS.pop(10)
+    _CONTROL_CHARS.pop(13)
+    _STRIP_TABLE = str.maketrans(_CONTROL_CHARS)
+
+    try:
+        import re as _re
+        from pypdf import PdfReader
+
+        reader = PdfReader(filepath)
+        parts = []
+        for page in reader.pages[:10]:
+            try:
+                parts.append(page.extract_text() or '')
+            except Exception:
+                continue  # one bad page must not kill the rest
+        text = '\n'.join(p for p in parts if p).strip()
+        if not text:
+            return None
+        text = text.translate(_STRIP_TABLE)
+        text = _re.sub(r'[ \t]{2,}', ' ', text)
+        text = _re.sub(r'\n{3,}', '\n\n', text)
+        return text[:OCR_TEXT_MAX_CHARS] or None
+    except Exception:
+        return None
+
+
+def _run_pdf_text_background(app, attachment_id: int, filepath: str) -> None:
+    """Extract a PDF's text layer and persist it exactly like image OCR does
+    (same ocr_text/ocr_processed fields, so search and AI parse work unchanged).
+    """
+    text = _extract_pdf_text(filepath)
+    if text is None:
+        app.logger.warning('PDF text extraction found no text for attachment %s', attachment_id)
+
+    with app.app_context():
+        try:
+            attachment = db.session.get(Attachment, attachment_id)
+            if attachment:
+                attachment.ocr_text = text
+                attachment.ocr_processed = True
+                db.session.commit()
+        except Exception:
+            db.session.rollback()
+            app.logger.error(
+                'PDF text DB update failed for attachment %s', attachment_id, exc_info=True
+            )
+        finally:
+            db.session.remove()
+
+
+def run_pdf_text_task(attachment_id: int, filepath: str) -> None:
+    """Backend-agnostic PDF-text entry point for the task queue (thread or RQ).
+
+    Mirrors run_ocr_task (module-level, primitive args → picklable for RQ).
+    pypdf is lightweight, so it doesn't take an OCR semaphore slot.
+    """
+    from flask import current_app, has_app_context
+
+    if has_app_context():
+        _run_pdf_text_background(current_app._get_current_object(), attachment_id, filepath)
+    else:
+        from app import create_app
+        app = create_app()
+        with app.app_context():
+            _run_pdf_text_background(app, attachment_id, filepath)
+
+
 @attachments_bp.route('/<int:attachment_id>', methods=['GET'])
 @token_required
 def get_attachment(current_user, attachment_id):
@@ -728,8 +817,8 @@ def get_ocr_text(current_user, attachment_id):
     if not attachment:
         return jsonify({'error': 'Attachment not found'}), 404
 
-    if not attachment.is_image:
-        return jsonify({'error': 'OCR is only available for image attachments'}), 400
+    if not (attachment.is_image or _is_pdf_attachment(attachment)):
+        return jsonify({'error': 'OCR is only available for image and PDF attachments'}), 400
 
     return jsonify({
         'ocr_processed': bool(attachment.ocr_processed),
@@ -762,8 +851,8 @@ def retry_ocr(current_user, attachment_id):
     if not attachment:
         return jsonify({'error': 'Attachment not found'}), 404
 
-    if not attachment.is_image:
-        return jsonify({'error': 'OCR retry is only available for image attachments'}), 400
+    if not (attachment.is_image or _is_pdf_attachment(attachment)):
+        return jsonify({'error': 'OCR retry is only available for image and PDF attachments'}), 400
 
     if not attachment.filepath or not os.path.exists(attachment.filepath):
         return jsonify({'error': 'Attachment file not found on server'}), 404
@@ -778,11 +867,16 @@ def retry_ocr(current_user, attachment_id):
         current_app.logger.error('OCR retry: DB reset failed for attachment %s', attachment_id, exc_info=True)
         return jsonify({'error': 'Failed to reset OCR state. Please try again.'}), 500
 
-    # Re-enqueue background OCR (fire-and-forget, non-blocking).
-    # Routed through the task queue; still bounded by the global OCR semaphore so
-    # retries compete for the same slots as uploads and backfills.
+    # Re-enqueue the right background task (fire-and-forget, non-blocking).
+    # Images go through the OCR semaphore as before; PDFs use the lightweight
+    # text-layer extractor (F32).
     from app.services.task_queue import enqueue_task
-    enqueue_task(run_ocr_task, attachment.id, attachment.filepath, description=f'ocr-retry:{attachment.id}')
+    if _is_pdf_attachment(attachment):
+        enqueue_task(run_pdf_text_task, attachment.id, attachment.filepath,
+                     description=f'pdftext-retry:{attachment.id}')
+    else:
+        enqueue_task(run_ocr_task, attachment.id, attachment.filepath,
+                     description=f'ocr-retry:{attachment.id}')
 
     return jsonify({'message': 'OCR re-scan started', 'ocr_status': 'pending'}), 202
 
@@ -814,8 +908,8 @@ def parse_ocr_with_ai(current_user, attachment_id):
     if not attachment:
         return jsonify({'error': 'Attachment not found'}), 404
 
-    if not attachment.is_image:
-        return jsonify({'error': 'AI extraction is only available for image attachments'}), 400
+    if not (attachment.is_image or _is_pdf_attachment(attachment)):
+        return jsonify({'error': 'AI extraction is only available for image and PDF attachments'}), 400
 
     if not attachment.ocr_text:
         return jsonify({'error': 'No OCR text available. Wait for scanning to complete.'}), 400

@@ -2,11 +2,22 @@
 
 from datetime import date, timedelta
 
+import pytest
+
 from app import db
 from app.models import User, Vehicle
 from app.models.insurance import InsurancePolicy
 
 TODAY = date.today()
+
+
+@pytest.fixture(autouse=True)
+def _no_fx(monkeypatch):
+    """These tests exercise F12 frequency math, not F28 FX conversion — pin
+    rates to empty (offline, deterministic); policies are created in GBP,
+    the test user's display currency, so conversion is a no-op anyway."""
+    import app.routes.vehicles as vroutes
+    monkeypatch.setattr(vroutes, 'get_rates_cached', lambda app: {})
 
 
 def _mk_vehicle(user_id, name='Focus'):
@@ -21,7 +32,7 @@ def _mk_policy(user_id, vehicle_id, premium, frequency):
     p = InsurancePolicy(
         user_id=user_id, vehicle_id=vehicle_id, provider='Aviva',
         policy_number='POL', premium=premium, payment_frequency=frequency,
-        status='active', start_date=TODAY - timedelta(days=30),
+        currency='GBP', status='active', start_date=TODAY - timedelta(days=30),
         end_date=TODAY + timedelta(days=335))
     db.session.add(p)
     db.session.commit()

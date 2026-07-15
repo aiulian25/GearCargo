@@ -24,6 +24,7 @@ class Vehicle(db.Model):
     
     # Technical specs
     fuel_type = db.Column(db.String(20), default='petrol')  # petrol, diesel, electric, hybrid
+    tank_capacity = db.Column(db.Numeric(5, 1))  # litres (F22)
     engine_cc = db.Column(db.Integer)
     transmission = db.Column(db.String(20))  # manual, automatic
     drivetrain = db.Column(db.String(10))  # fwd, rwd, awd
@@ -52,6 +53,12 @@ class Vehicle(db.Model):
     avg_fuel_efficiency = db.Column(db.Float)  # L/100km or kWh/100km
     maintenance_score = db.Column(db.Integer)  # 0-100
     prediction_accuracy_score = db.Column(db.Float)
+    # F30 — cached from the /health endpoint's overall_score (view-driven).
+    health_score = db.Column(db.Integer)  # 0-100
+    health_computed_at = db.Column(db.DateTime)
+    # F31 — per-vehicle wear-interval overrides {component: interval}, stored in
+    # the vehicle's own distance unit. NULL = all defaults.
+    maintenance_intervals = db.Column(db.JSON)
     
     # Status
     archived = db.Column(db.Boolean, default=False)
@@ -112,9 +119,14 @@ class Vehicle(db.Model):
             'vin': self.vin,
             'license_plate': self.license_plate,
             'fuel_type': self.fuel_type,
+            'tank_capacity': float(self.tank_capacity) if self.tank_capacity else None,
             'engine_cc': self.engine_cc,
             'transmission': self.transmission,
+            'drivetrain': self.drivetrain,
             'color': self.color,
+            # Financial (F23) — captured at create, now round-trips for Edit.
+            'purchase_date': self.purchase_date.isoformat() if self.purchase_date else None,
+            'purchase_price': float(self.purchase_price) if self.purchase_price is not None else None,
             # Dimensions (F17) — captured on Add/Edit, now exposed for display.
             'vehicle_weight_kg': self.vehicle_weight_kg,
             'vehicle_height_cm': self.vehicle_height_cm,
@@ -127,6 +139,11 @@ class Vehicle(db.Model):
             'photo_url': self._signed_photo_url(),
             'archived': self.archived,
             'archived_at': self.archived_at.isoformat() if self.archived_at else None,
+            # F30 — cached health for the garage chip (null until first Health view).
+            'health_score': self.health_score,
+            'health_computed_at': self.health_computed_at.isoformat() if self.health_computed_at else None,
+            # F31 — wear-interval overrides (component -> interval, vehicle's unit).
+            'maintenance_intervals': self.maintenance_intervals,
             'display_order': self.display_order or 0,
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }

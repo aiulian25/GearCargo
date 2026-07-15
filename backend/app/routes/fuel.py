@@ -13,6 +13,8 @@ from sqlalchemy import func
 from app import db
 from app.models import Vehicle, FuelEntry, Entry
 from app.routes.auth import token_required
+from app.services.currency import sum_to_display, get_rates_cached
+from app.services.fuel_efficiency import recalculate_efficiencies
 from app.services.ollama import chat as ollama_chat, OllamaError, resolve_model, ai_cache_get, ai_cache_set, AI_CACHE_TTL, validate_ollama_url
 
 fuel_bp = Blueprint('fuel', __name__)
@@ -355,23 +357,15 @@ def create_fuel_entry(current_user):
         notes=data.get('notes'),
     )
     
-    # Calculate fuel efficiency if we have odometer
-    if entry.odometer:
-        # Get previous fuel entry for this vehicle
-        # FuelEntry inherits from Entry, so we filter directly on FuelEntry fields
-        prev_entry = FuelEntry.query.filter(
-            FuelEntry.vehicle_id == vehicle.id,
-            FuelEntry.date < entry_date
-        ).order_by(FuelEntry.date.desc()).first()
-        
-        if prev_entry and prev_entry.odometer:
-            entry.calculate_efficiency(prev_entry.odometer)
-    
     # Update vehicle mileage if provided
     if entry.odometer and entry.odometer > vehicle.current_mileage:
         vehicle.current_mileage = entry.odometer
-    
+
     db.session.add(entry)
+    # F29 — recompute the vehicle's full-to-full efficiency chain (partials get
+    # no efficiency point; their litres roll into the next full fill). This is
+    # also the lazy backfill: the first write to a vehicle fixes its history.
+    recalculate_efficiencies(vehicle.id, current_user.id)
     db.session.commit()
 
     # Auto-sync to calendar if enabled
@@ -463,9 +457,12 @@ def update_fuel_entry(current_user, entry_id):
         entry.notes = data['notes']
 
     _recalculate_vehicle_current_mileage(current_user.id, entry.vehicle_id)
-    
+    # F29 — odometer/liters/date/full_tank edits shift the full-to-full
+    # windows; recompute this vehicle's chain so no stale figure survives.
+    recalculate_efficiencies(entry.vehicle_id, current_user.id)
+
     db.session.commit()
-    
+
     return jsonify({
         'message': 'Fuel entry updated',
         'entry': entry.to_dict()
@@ -488,9 +485,97 @@ def delete_fuel_entry(current_user, entry_id):
     db.session.delete(entry)
     db.session.flush()
     _recalculate_vehicle_current_mileage(current_user.id, vehicle_id)
+    # F29 — removing a fill merges/breaks full-to-full windows; recompute.
+    recalculate_efficiencies(vehicle_id, current_user.id)
     db.session.commit()
     
     return jsonify({'message': 'Fuel entry deleted'})
+
+
+@fuel_bp.route('/stations', methods=['GET'])
+@token_required
+def get_fuel_stations(current_user):
+    """Per-station price insights from the user's own fill history (F26).
+
+    One grouped query (top 15 stations by visit count) + a bounded loop for
+    each station's last paid price. When a vehicle_id is given, its fuel type
+    is compared against the current national average (cached by the fuel-price
+    service); delta_vs_national_pct is omitted when no live price is available
+    (baseline fallback data is never used as a comparison basis).
+    """
+    vehicle_id = request.args.get('vehicle_id', type=int)
+
+    def _scope(q):
+        q = q.join(Vehicle, FuelEntry.vehicle_id == Vehicle.id).filter(
+            Vehicle.user_id == current_user.id,
+            FuelEntry.station.isnot(None),
+            FuelEntry.station != '',
+            FuelEntry.price_per_liter.isnot(None),
+        )
+        if vehicle_id:
+            q = q.filter(FuelEntry.vehicle_id == vehicle_id)
+        return q
+
+    rows = (
+        _scope(db.session.query(
+            FuelEntry.station,
+            func.count(FuelEntry.id),
+            func.avg(FuelEntry.price_per_liter),
+            func.max(FuelEntry.date),
+        ))
+        .group_by(FuelEntry.station)
+        .order_by(func.count(FuelEntry.id).desc())
+        .limit(15)
+        .all()
+    )
+
+    # National price for the vehicle's fuel type — per-vehicle only (the
+    # "all vehicles" view has no single fuel type to compare against).
+    national_price = None
+    currency_code = None
+    if vehicle_id and rows:
+        vehicle = Vehicle.query.filter_by(id=vehicle_id, user_id=current_user.id).first()
+        fuel_key = {
+            'petrol': 'petrol', 'regular': 'petrol', 'premium': 'premium',
+            'diesel': 'diesel', 'lpg': 'lpg', 'hybrid': 'petrol',
+        }.get((vehicle.fuel_type or '').lower()) if vehicle else None
+        if fuel_key:
+            try:
+                from app.services.fuel_price_service import get_prices
+                country = (current_user.country_preference or 'UK').upper()
+                prices = get_prices(country, current_app._get_current_object())
+                if prices and not prices.get('baseline') and prices.get(fuel_key) is not None:
+                    national_price = float(prices[fuel_key])
+                    currency_code = prices.get('currency_code')
+            except Exception as e:
+                current_app.logger.debug(f'fuel stations: national price unavailable: {e}')
+
+    stations = []
+    for name, fills, avg_price, _last_date in rows:
+        last = (
+            _scope(FuelEntry.query)
+            .filter(FuelEntry.station == name)
+            .order_by(FuelEntry.date.desc(), FuelEntry.id.desc())
+            .first()
+        )
+        avg_val = round(float(avg_price), 3) if avg_price is not None else None
+        item = {
+            'name': name,
+            'fills': int(fills),
+            'avg_price': avg_val,
+            'last_price': float(last.price_per_liter) if last and last.price_per_liter else None,
+            'last_date': last.date.isoformat() if last and last.date else None,
+        }
+        if national_price and avg_val:
+            item['delta_vs_national_pct'] = round(
+                (avg_val - national_price) / national_price * 100, 1)
+        stations.append(item)
+
+    return jsonify({
+        'stations': stations,
+        'national_price': national_price,
+        'currency_code': currency_code,
+    })
 
 
 @fuel_bp.route('/stats', methods=['GET'])
@@ -507,7 +592,9 @@ def get_fuel_stats(current_user):
         query = query.filter(FuelEntry.vehicle_id == vehicle_id)
     
     entries = query.all()
-    
+
+    display_ccy = (getattr(current_user, 'currency', None) or 'GBP').upper()
+
     if not entries:
         return jsonify({
             'total_cost': 0,
@@ -515,19 +602,34 @@ def get_fuel_stats(current_user):
             'entry_count': 0,
             'avg_efficiency': None,
             'avg_price_per_liter': None,
+            'display_currency': display_ccy,
+            'converted': True,
+            'fx_applied': False,
         })
-    
-    total_cost = sum(float(e.total_price or 0) for e in entries)
+
+    # F28 — convert per-currency cost sums into the display currency before
+    # adding (volume/efficiency stay unit-based, no FX involved).
+    rates = get_rates_cached(current_app._get_current_object())
+    per_ccy = {}
+    for e in entries:
+        ccy = (e.currency or 'EUR').upper()
+        per_ccy[ccy] = per_ccy.get(ccy, 0.0) + float(e.total_price or 0)
+    total_cost, converted, fx_applied = sum_to_display(
+        list(per_ccy.items()), display_ccy, rates)
+
     total_liters = sum(float(e.liters or 0) for e in entries)
     efficiencies = [e.fuel_efficiency for e in entries if e.fuel_efficiency]
     prices = [float(e.price_per_liter) for e in entries if e.price_per_liter]
-    
+
     return jsonify({
         'total_cost': total_cost,
         'total_liters': total_liters,
         'entry_count': len(entries),
         'avg_efficiency': sum(efficiencies) / len(efficiencies) if efficiencies else None,
         'avg_price_per_liter': sum(prices) / len(prices) if prices else None,
+        'display_currency': display_ccy,
+        'converted': converted,      # False → a needed FX rate was unavailable
+        'fx_applied': fx_applied,    # True → amounts crossed currencies
     })
 
 

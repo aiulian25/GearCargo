@@ -60,21 +60,11 @@ def get_archived_vehicles(current_user):
     })
 
 
-@vehicles_bp.route('/<int:vehicle_id>/archive', methods=['POST'])
-@token_required
-def archive_vehicle(current_user, vehicle_id):
-    """Archive a vehicle."""
-    vehicle = Vehicle.query.filter_by(
-        id=vehicle_id,
-        user_id=current_user.id
-    ).first()
-    
-    if not vehicle:
-        return jsonify({'error': 'Vehicle not found'}), 404
-    
-    if vehicle.archived:
-        return jsonify({'error': 'Vehicle is already archived'}), 400
-
+def _archive_vehicle(vehicle):
+    """Archive *vehicle*: flag it + cancel active insurance and recurring
+    taxes. Shared by the Archive action and the soft-delete path (F21).
+    Does NOT commit — callers commit.
+    """
     vehicle.archived = True
     vehicle.archived_at = datetime.now(timezone.utc)
 
@@ -82,7 +72,7 @@ def archive_vehicle(current_user, vehicle_id):
     try:
         from app.models import InsurancePolicy
         active_policies = InsurancePolicy.query.filter(
-            InsurancePolicy.vehicle_id == vehicle_id,
+            InsurancePolicy.vehicle_id == vehicle.id,
             InsurancePolicy.status == 'active'
         ).all()
         for policy in active_policies:
@@ -96,7 +86,7 @@ def archive_vehicle(current_user, vehicle_id):
     try:
         from app.models import TaxEntry
         recurring_taxes = TaxEntry.query.filter(
-            TaxEntry.vehicle_id == vehicle_id,
+            TaxEntry.vehicle_id == vehicle.id,
             TaxEntry.recurring == True
         ).all()
         for tax in recurring_taxes:
@@ -105,6 +95,23 @@ def archive_vehicle(current_user, vehicle_id):
     except Exception as e:
         current_app.logger.warning(f'Failed to cancel recurring taxes on archive: {e}')
 
+
+@vehicles_bp.route('/<int:vehicle_id>/archive', methods=['POST'])
+@token_required
+def archive_vehicle(current_user, vehicle_id):
+    """Archive a vehicle."""
+    vehicle = Vehicle.query.filter_by(
+        id=vehicle_id,
+        user_id=current_user.id
+    ).first()
+
+    if not vehicle:
+        return jsonify({'error': 'Vehicle not found'}), 404
+
+    if vehicle.archived:
+        return jsonify({'error': 'Vehicle is already archived'}), 400
+
+    _archive_vehicle(vehicle)
     db.session.commit()
 
     return jsonify({
@@ -172,11 +179,17 @@ def create_vehicle(current_user):
         license_plate=data.get('license_plate') or None,
         color=data.get('color') or None,
         fuel_type=data.get('fuel_type', 'petrol'),
+        tank_capacity=data.get('tank_capacity'),
         engine_cc=data.get('engine_cc'),
         transmission=data.get('transmission'),
         drivetrain=data.get('drivetrain'),
         current_mileage=data.get('current_mileage', 0),
         distance_unit=data.get('distance_unit', 'km'),
+        # F23 — dimensions were silently discarded on create (Add form sends them).
+        vehicle_height_cm=data.get('vehicle_height_cm'),
+        vehicle_width_cm=data.get('vehicle_width_cm'),
+        vehicle_length_cm=data.get('vehicle_length_cm'),
+        vehicle_weight_kg=data.get('vehicle_weight_kg'),
         purchase_date=datetime.fromisoformat(data['purchase_date']).date() if data.get('purchase_date') else None,
         purchase_price=data.get('purchase_price'),
         monthly_budget=data.get('monthly_budget'),
@@ -220,12 +233,13 @@ def update_vehicle(current_user, vehicle_id):
     
     data = request.get_json()
     
-    # Update allowed fields
+    # Update allowed fields — real Vehicle columns only (F21 removed the
+    # phantom drive_type/body_type/notes/is_active/photo_url entries).
     allowed = ['name', 'make', 'model', 'year', 'vin', 'license_plate',
                'color', 'fuel_type', 'engine_cc', 'transmission',
-               'drive_type', 'body_type', 'current_mileage', 'notes',
-               'is_active', 'photo_url', 'distance_unit', 'tank_capacity',
-               'vehicle_height_cm', 'vehicle_width_cm', 'vehicle_weight_kg']
+               'drivetrain', 'current_mileage', 'distance_unit', 'tank_capacity',
+               'vehicle_height_cm', 'vehicle_width_cm', 'vehicle_weight_kg',
+               'vehicle_length_cm', 'purchase_price']
     
     for field in allowed:
         if field in data:
@@ -239,9 +253,32 @@ def update_vehicle(current_user, vehicle_id):
                         'min_allowed_mileage': max_recorded,
                     }), 400
             setattr(vehicle, field, data[field])
-    
+
+    # F23 — purchase_date needs the same ISO parse used at create.
+    if 'purchase_date' in data:
+        raw = data['purchase_date']
+        vehicle.purchase_date = datetime.fromisoformat(raw).date() if raw else None
+
+    # F31 — per-vehicle wear-interval overrides, strictly validated.
+    if 'maintenance_intervals' in data:
+        raw = data['maintenance_intervals']
+        if raw is None:
+            vehicle.maintenance_intervals = None
+        elif not isinstance(raw, dict):
+            return jsonify({'error': 'maintenance_intervals must be an object'}), 400
+        else:
+            cleaned = {}
+            for key, val in raw.items():
+                if key not in MAINTENANCE_INTERVALS:
+                    return jsonify({'error': f'Unknown maintenance component: {key}'}), 400
+                if (not isinstance(val, (int, float)) or isinstance(val, bool)
+                        or not (0 < val <= 500000)):
+                    return jsonify({'error': f'Invalid interval for {key}: must be a positive number ≤ 500000'}), 400
+                cleaned[key] = int(val)
+            vehicle.maintenance_intervals = cleaned or None
+
     db.session.commit()
-    
+
     return jsonify({
         'message': 'Vehicle updated',
         'vehicle': vehicle.to_dict()
@@ -277,12 +314,20 @@ def delete_vehicle(current_user, vehicle_id):
                     pass
         # Cascade delete via SQLAlchemy relationships
         db.session.delete(vehicle)
-    else:
-        vehicle.is_active = False
-    
+        db.session.commit()
+        return jsonify({'message': 'Vehicle deleted'})
+
+    # Soft delete = archive (F21 — previously set a phantom `is_active`
+    # attribute and persisted nothing while claiming "Vehicle deleted").
+    if not vehicle.archived:
+        _archive_vehicle(vehicle)
     db.session.commit()
-    
-    return jsonify({'message': 'Vehicle deleted'})
+
+    return jsonify({
+        'message': 'Vehicle archived',
+        'archived': True,
+        'vehicle': vehicle.to_dict(),
+    })
 
 
 @vehicles_bp.route('/reorder', methods=['POST'])
@@ -349,30 +394,58 @@ def get_vehicle_stats(current_user, vehicle_id):
     current_year = now.year
     current_month = now.month
 
+    # --- Currency normalization (F28): convert per-currency sums into the
+    #     user's display currency BEFORE adding — same idiom as /summary and
+    #     /cost-analytics. Grouping keeps each aggregate a handful of rows.
+    display_ccy = (getattr(current_user, 'currency', None) or 'GBP').upper()
+    rates = get_rates_cached(current_app._get_current_object())
+    fx_converted = True   # False if a needed rate was unavailable
+    fx_applied = False    # True if any amount was in another currency
+
+    def _sum_display(model, col, *filters):
+        """SUM(col) grouped by currency, converted into display_ccy."""
+        nonlocal fx_converted, fx_applied
+        rows = (
+            db.session.query(model.currency, func.coalesce(func.sum(col), 0))
+            .filter(*filters)
+            .group_by(model.currency)
+            .all()
+        )
+        total, ok, applied = sum_to_display(
+            [(ccy, float(amt or 0)) for ccy, amt in rows], display_ccy, rates)
+        if not ok:
+            fx_converted = False
+        if applied:
+            fx_applied = True
+        return total
+
+    def _conv(amount, ccy):
+        """Convert one amount into display_ccy, tracking the FX flags."""
+        nonlocal fx_converted, fx_applied
+        conv, ok = to_display(float(amount or 0), ccy, display_ccy, rates)
+        if not ok:
+            fx_converted = False
+        if (ccy or 'EUR').upper() != display_ccy:
+            fx_applied = True
+        return conv
+
     # ------------------------------------------------------------------
     # FUEL — DB-level aggregates; zero rows fetched into Python memory
     # ------------------------------------------------------------------
-    total_fuel_cost = float(
-        db.session.query(func.coalesce(func.sum(FuelEntry.total_price), 0))
-        .filter(FuelEntry.vehicle_id == vehicle_id)
-        .scalar()
+    total_fuel_cost = _sum_display(
+        FuelEntry, FuelEntry.total_price,
+        FuelEntry.vehicle_id == vehicle_id,
     )
-    ytd_fuel_cost = float(
-        db.session.query(func.coalesce(func.sum(FuelEntry.total_price), 0))
-        .filter(
-            FuelEntry.vehicle_id == vehicle_id,
-            extract('year', FuelEntry.date) == current_year,
-        )
-        .scalar()
+    ytd_fuel_cost = _sum_display(
+        FuelEntry, FuelEntry.total_price,
+        FuelEntry.vehicle_id == vehicle_id,
+        extract('year', FuelEntry.date) == current_year,
     )
-    fuel_month_cost = float(
-        db.session.query(func.coalesce(func.sum(FuelEntry.total_price), 0))
-        .filter(
-            FuelEntry.vehicle_id == vehicle_id,
-            extract('year', FuelEntry.date) == current_year,
-            extract('month', FuelEntry.date) == current_month,
-        )
-        .scalar()
+    fuel_month_cost = _sum_display(
+        FuelEntry, FuelEntry.total_price,
+        FuelEntry.vehicle_id == vehicle_id,
+        extract('year', FuelEntry.date) == current_year,
+        extract('month', FuelEntry.date) == current_month,
     )
     fuel_count = int(
         db.session.query(func.count(FuelEntry.id))
@@ -383,65 +456,51 @@ def get_vehicle_stats(current_user, vehicle_id):
     # ------------------------------------------------------------------
     # SERVICE — aggregate for totals/counts; past-only (date <= today)
     # ------------------------------------------------------------------
-    total_service_cost = float(
-        db.session.query(func.coalesce(func.sum(ServiceEntry.amount), 0))
-        .filter(ServiceEntry.vehicle_id == vehicle_id, ServiceEntry.date <= today)
-        .scalar()
+    total_service_cost = _sum_display(
+        ServiceEntry, ServiceEntry.amount,
+        ServiceEntry.vehicle_id == vehicle_id, ServiceEntry.date <= today,
     )
     service_count = int(
         db.session.query(func.count(ServiceEntry.id))
         .filter(ServiceEntry.vehicle_id == vehicle_id, ServiceEntry.date <= today)
         .scalar() or 0
     )
-    service_month_cost = float(
-        db.session.query(func.coalesce(func.sum(ServiceEntry.amount), 0))
-        .filter(
-            ServiceEntry.vehicle_id == vehicle_id,
-            ServiceEntry.date <= today,
-            extract('year', ServiceEntry.date) == current_year,
-            extract('month', ServiceEntry.date) == current_month,
-        )
-        .scalar()
+    service_month_cost = _sum_display(
+        ServiceEntry, ServiceEntry.amount,
+        ServiceEntry.vehicle_id == vehicle_id,
+        ServiceEntry.date <= today,
+        extract('year', ServiceEntry.date) == current_year,
+        extract('month', ServiceEntry.date) == current_month,
     )
-    service_ytd_cost = float(
-        db.session.query(func.coalesce(func.sum(ServiceEntry.amount), 0))
-        .filter(
-            ServiceEntry.vehicle_id == vehicle_id,
-            ServiceEntry.date <= today,
-            extract('year', ServiceEntry.date) == current_year,
-        )
-        .scalar()
+    service_ytd_cost = _sum_display(
+        ServiceEntry, ServiceEntry.amount,
+        ServiceEntry.vehicle_id == vehicle_id,
+        ServiceEntry.date <= today,
+        extract('year', ServiceEntry.date) == current_year,
     )
 
     # ------------------------------------------------------------------
     # REPAIR — DB-level aggregates
     # ------------------------------------------------------------------
-    total_repair_cost = float(
-        db.session.query(func.coalesce(func.sum(RepairEntry.amount), 0))
-        .filter(RepairEntry.vehicle_id == vehicle_id)
-        .scalar()
+    total_repair_cost = _sum_display(
+        RepairEntry, RepairEntry.amount,
+        RepairEntry.vehicle_id == vehicle_id,
     )
     repair_count = int(
         db.session.query(func.count(RepairEntry.id))
         .filter(RepairEntry.vehicle_id == vehicle_id)
         .scalar() or 0
     )
-    repair_month_cost = float(
-        db.session.query(func.coalesce(func.sum(RepairEntry.amount), 0))
-        .filter(
-            RepairEntry.vehicle_id == vehicle_id,
-            extract('year', RepairEntry.date) == current_year,
-            extract('month', RepairEntry.date) == current_month,
-        )
-        .scalar()
+    repair_month_cost = _sum_display(
+        RepairEntry, RepairEntry.amount,
+        RepairEntry.vehicle_id == vehicle_id,
+        extract('year', RepairEntry.date) == current_year,
+        extract('month', RepairEntry.date) == current_month,
     )
-    repair_ytd_cost = float(
-        db.session.query(func.coalesce(func.sum(RepairEntry.amount), 0))
-        .filter(
-            RepairEntry.vehicle_id == vehicle_id,
-            extract('year', RepairEntry.date) == current_year,
-        )
-        .scalar()
+    repair_ytd_cost = _sum_display(
+        RepairEntry, RepairEntry.amount,
+        RepairEntry.vehicle_id == vehicle_id,
+        extract('year', RepairEntry.date) == current_year,
     )
 
     # ------------------------------------------------------------------
@@ -452,27 +511,20 @@ def get_vehicle_stats(current_user, vehicle_id):
     parking_ytd_cost = 0.0
     try:
         from app.models.parking import ParkingEntry
-        parking_costs = float(
-            db.session.query(func.coalesce(func.sum(ParkingEntry.amount), 0))
-            .filter(ParkingEntry.vehicle_id == vehicle_id)
-            .scalar()
+        parking_costs = _sum_display(
+            ParkingEntry, ParkingEntry.amount,
+            ParkingEntry.vehicle_id == vehicle_id,
         )
-        parking_month_cost = float(
-            db.session.query(func.coalesce(func.sum(ParkingEntry.amount), 0))
-            .filter(
-                ParkingEntry.vehicle_id == vehicle_id,
-                extract('year', ParkingEntry.date) == current_year,
-                extract('month', ParkingEntry.date) == current_month,
-            )
-            .scalar()
+        parking_month_cost = _sum_display(
+            ParkingEntry, ParkingEntry.amount,
+            ParkingEntry.vehicle_id == vehicle_id,
+            extract('year', ParkingEntry.date) == current_year,
+            extract('month', ParkingEntry.date) == current_month,
         )
-        parking_ytd_cost = float(
-            db.session.query(func.coalesce(func.sum(ParkingEntry.amount), 0))
-            .filter(
-                ParkingEntry.vehicle_id == vehicle_id,
-                extract('year', ParkingEntry.date) == current_year,
-            )
-            .scalar()
+        parking_ytd_cost = _sum_display(
+            ParkingEntry, ParkingEntry.amount,
+            ParkingEntry.vehicle_id == vehicle_id,
+            extract('year', ParkingEntry.date) == current_year,
         )
     except Exception:
         pass
@@ -485,27 +537,20 @@ def get_vehicle_stats(current_user, vehicle_id):
     tax_month_cost = 0.0
     try:
         from app.models.tax import TaxEntry
-        tax_costs = float(
-            db.session.query(func.coalesce(func.sum(TaxEntry.amount), 0))
-            .filter(TaxEntry.vehicle_id == vehicle_id)
-            .scalar()
+        tax_costs = _sum_display(
+            TaxEntry, TaxEntry.amount,
+            TaxEntry.vehicle_id == vehicle_id,
         )
-        ytd_tax_costs = float(
-            db.session.query(func.coalesce(func.sum(TaxEntry.amount), 0))
-            .filter(
-                TaxEntry.vehicle_id == vehicle_id,
-                extract('year', TaxEntry.date) == current_year,
-            )
-            .scalar()
+        ytd_tax_costs = _sum_display(
+            TaxEntry, TaxEntry.amount,
+            TaxEntry.vehicle_id == vehicle_id,
+            extract('year', TaxEntry.date) == current_year,
         )
-        tax_month_cost = float(
-            db.session.query(func.coalesce(func.sum(TaxEntry.amount), 0))
-            .filter(
-                TaxEntry.vehicle_id == vehicle_id,
-                extract('year', TaxEntry.date) == current_year,
-                extract('month', TaxEntry.date) == current_month,
-            )
-            .scalar()
+        tax_month_cost = _sum_display(
+            TaxEntry, TaxEntry.amount,
+            TaxEntry.vehicle_id == vehicle_id,
+            extract('year', TaxEntry.date) == current_year,
+            extract('month', TaxEntry.date) == current_month,
         )
     except Exception:
         pass
@@ -521,8 +566,9 @@ def get_vehicle_stats(current_user, vehicle_id):
         insurance_policies = InsurancePolicy.query.filter_by(vehicle_id=vehicle_id).all()
         # F12: normalize each premium to a yearly cost via the single-source
         # annualized_premium property (monthly×12, quarterly×4, semi×2, annual×1).
+        # F28: converted into the display currency before summing.
         for policy in insurance_policies:
-            insurance_annual_cost += policy.annualized_premium
+            insurance_annual_cost += _conv(policy.annualized_premium, policy.currency)
     except Exception:
         pass
 
@@ -553,7 +599,7 @@ def get_vehicle_stats(current_user, vehicle_id):
         )
         if not policy_started or policy_ended:
             continue
-        premium = float(policy.premium or 0)
+        premium = _conv(policy.premium, policy.currency)  # F28
         frequency = policy.payment_frequency or 'annual'
         if frequency == 'monthly':
             payment_day = policy.start_date.day
@@ -582,7 +628,7 @@ def get_vehicle_stats(current_user, vehicle_id):
     for policy in insurance_policies:
         if not policy.start_date:
             continue
-        premium = float(policy.premium or 0)
+        premium = _conv(policy.premium, policy.currency)  # F28
         frequency = policy.payment_frequency or 'annual'
         if frequency == 'monthly':
             payment_day = policy.start_date.day
@@ -738,6 +784,10 @@ def get_vehicle_stats(current_user, vehicle_id):
         'vehicle_id': vehicle_id,
         'distance_unit': vehicle.distance_unit or 'km',
         'fuel_economy_unit': 'mpg' if (vehicle.distance_unit or '').lower() in ('miles', 'mi') else 'L/100km',
+        # F28 — FX flags, mirroring /summary and /cost-analytics.
+        'display_currency': display_ccy,
+        'converted': fx_converted,         # False → a rate was unavailable
+        'fx_applied': fx_applied,          # True → totals crossed currencies
         'total_costs': float(total_costs),
         'ytd_spent': float(ytd_spent),
         'costs_this_month': float(costs_this_month),
@@ -772,6 +822,19 @@ def get_cost_analytics(current_user, vehicle_id):
     regression over complete months. Distance per month is derived from monotonic
     (running-max) odometer deltas, so cost-per-distance is only reported for
     months where real distance is known.
+
+    F24 — the response also carries an ``ownership`` object (or ``None`` when no
+    purchase_price is stored)::
+
+        ownership: {
+            purchase_price:  float,          # as stored (see currency note below)
+            purchase_date:   'YYYY-MM-DD' | None,
+            months_owned:    int | None,     # purchase_date → today
+            total_with_purchase: float,      # running total_cost + purchase_price
+            cost_per_distance_with_purchase: float | None,  # same span guard as
+                                             # cost_per_distance_lifetime
+            avg_monthly_ownership: float | None,
+        }
     """
     from sqlalchemy import extract
 
@@ -898,12 +961,37 @@ def get_cost_analytics(current_user, vehicle_id):
         fx_applied = True
     total_distance = None
     cost_per_distance_lifetime = None
+    span = 0
     if odo_points:
         odo_values = [o for _, o in odo_points]
         span = max(odo_values) - min(odo_values)
         if span > 0:
             total_distance = int(span)
             cost_per_distance_lifetime = round(total_cost / span, 4)
+
+    # --- Cost of ownership (F24): fold the purchase price into lifetime cost.
+    #     Vehicle has NO purchase-currency column — the stored price is treated
+    #     as already being in the user's display currency (no invented FX).
+    ownership = None
+    if vehicle.purchase_price is not None:
+        from dateutil.relativedelta import relativedelta
+        purchase = float(vehicle.purchase_price)
+        months_owned = None
+        if vehicle.purchase_date:
+            delta = relativedelta(today, vehicle.purchase_date)
+            months_owned = max(0, delta.years * 12 + delta.months)
+        total_with_purchase = round(total_cost + purchase, 2)
+        ownership = {
+            'purchase_price': purchase,
+            'purchase_date': vehicle.purchase_date.isoformat() if vehicle.purchase_date else None,
+            'months_owned': months_owned,
+            'total_with_purchase': total_with_purchase,
+            'cost_per_distance_with_purchase':
+                round(total_with_purchase / span, 4) if span > 0 else None,
+            'avg_monthly_ownership':
+                round(total_with_purchase / max(1, months_owned), 2)
+                if months_owned is not None else None,
+        }
 
     # --- Forecast: least-squares linear regression over COMPLETE months.
     # Exclude the current (incomplete) month and any leading zero-cost months
@@ -962,6 +1050,7 @@ def get_cost_analytics(current_user, vehicle_id):
         'cost_per_distance_lifetime': cost_per_distance_lifetime,
         'total_cost': round(total_cost, 2),
         'total_distance': total_distance,
+        'ownership': ownership,            # F24 — None when no purchase_price
         'forecast': forecast,
     })
 
@@ -1286,6 +1375,33 @@ def _build_chat_context(user, vehicle):
                     'wear_percent': wear.get('wear_percent'),
                 })
 
+    # F36 — this vehicle's items from the unified due surface (F4): reminders,
+    # service next-due, tax/insurance/document expiry, permits, consumable wear,
+    # fines. Bounded (≤10) so "what's due?" is answerable regardless of source.
+    due_soon = []
+    try:
+        from app.services.due import build_due_items
+        due_soon = [
+            {'kind': i['kind'], 'title': i['title'], 'due_date': i.get('due_date'),
+             'days_left': i.get('days_left'), 'severity': i.get('severity')}
+            for i in build_due_items(user.id, days=60)
+            if i.get('vehicle_id') == vid
+        ][:10]
+    except Exception:
+        pass
+
+    # F36 — deterministic 3-month cost forecast (F11) for budget questions.
+    forecast_next_3_months = []
+    try:
+        fc = _build_forecast(user, [vehicle], months=3)
+        forecast_next_3_months = [
+            {'month': b['month'], 'projected': b['projected'],
+             'over_budget': b['over_budget']}
+            for b in fc['buckets']
+        ]
+    except Exception:
+        pass
+
     # Per-category lifetime spend + a precomputed TOTAL so the model can answer
     # "how much have I spent in total on <vehicle>?" by reading one number
     # instead of having to sum categories (small models often get that wrong).
@@ -1426,6 +1542,8 @@ def _build_chat_context(user, vehicle):
             'purchase_date': vehicle.purchase_date.isoformat() if vehicle.purchase_date else None,
             'purchase_price': (round(float(vehicle.purchase_price), 2)
                                if vehicle.purchase_price is not None else None),
+            'monthly_budget': (float(vehicle.monthly_budget)
+                               if vehicle.monthly_budget is not None else None),
         }),
         'currency': getattr(user, 'currency', 'EUR') or 'EUR',
         'spend_lifetime': spend_lifetime,
@@ -1438,6 +1556,9 @@ def _build_chat_context(user, vehicle):
         'last_service': last_service_info,
         'upcoming_reminders': upcoming_reminders,
         'consumables_due': consumables_due,
+        # F36 — unified due items (next 60 days) + 3-month cost forecast.
+        'due_soon': due_soon,
+        'forecast_next_3_months': forecast_next_3_months,
         # Detailed recent entries (date, cost, where, parts, odometer) per type.
         'recent': recent,
         # All-time per-category / per-type rollups (counts + totals) for
@@ -1479,13 +1600,44 @@ def _build_fleet_chat_context(user, max_vehicles=6):
     for v in included:
         ctx = _build_chat_context(user, v)
         ctx.pop('other_vehicles', None)  # redundant in fleet mode; avoids O(N²) bloat
+        # F36 — per-vehicle due/forecast are superseded by the fleet-level
+        # versions below; dropping them keeps the prompt bounded.
+        ctx.pop('due_soon', None)
+        ctx.pop('forecast_next_3_months', None)
         fleet.append(ctx)
+
+    # F36 — fleet-level due items (each carries its vehicle_name) + a combined
+    # 3-month forecast across the included vehicles. Both bounded.
+    due_soon = []
+    try:
+        from app.services.due import build_due_items
+        due_soon = [
+            {'kind': i['kind'], 'title': i['title'],
+             'vehicle_name': i.get('vehicle_name'), 'due_date': i.get('due_date'),
+             'days_left': i.get('days_left'), 'severity': i.get('severity')}
+            for i in build_due_items(user.id, days=60)
+        ][:15]
+    except Exception:
+        pass
+
+    forecast_next_3_months = []
+    try:
+        fc = _build_forecast(user, included, months=3)
+        forecast_next_3_months = [
+            {'month': b['month'], 'projected': b['projected'],
+             'over_budget': b['over_budget']}
+            for b in fc['buckets']
+        ]
+    except Exception:
+        pass
 
     context = {
         'currency': getattr(user, 'currency', 'EUR') or 'EUR',
         'vehicle_count': len(vehicles),
         'included_count': len(included),
         'vehicles': fleet,
+        'due_soon': due_soon,
+        'forecast_next_3_months': forecast_next_3_months,
     }
     return context, included
 
@@ -1931,6 +2083,11 @@ def vehicle_chat(current_user, vehicle_id):
         "`spend_lifetime_total`; per type = `spend_lifetime`; fuel by year = "
         "`fuel_spend_by_year` / `fuel_spend_current_year` / `fuel_spend_last_year`. "
         "Reply in ONE short sentence and include the `currency`.\n"
+        "- For 'what is due / expiring / upcoming' questions, read `due_soon` — each "
+        "item has kind (reminder/service/tax/insurance/document/parking/fine/"
+        "consumable), title, due_date, days_left and severity. For budget or "
+        "next-months cost questions, read `forecast_next_3_months` (month, projected, "
+        "over_budget) and the vehicle's `monthly_budget`.\n"
         "- For 'when/where/what did it cost' questions about a specific job (e.g. "
         "'when did I last change the brake pads / battery / tyres, what did it cost, "
         "where?'), use the `recent` lists (service/repair/fuel/tax/parking/"
@@ -2138,6 +2295,10 @@ def fleet_chat(current_user):
         "vehicle (`spend_lifetime_total`, `spend_lifetime`, `fuel_spend_by_year` / "
         "`fuel_spend_current_year` / `fuel_spend_last_year`). Reply concisely and "
         "include the `currency`.\n"
+        "- For 'what is due / expiring / upcoming' questions, read the top-level "
+        "`due_soon` list — each item has kind, title, vehicle_name, due_date, "
+        "days_left and severity. For budget or next-months cost questions, read the "
+        "top-level `forecast_next_3_months` (month, projected, over_budget).\n"
         "- For category 4, you may use general automotive knowledge, but stay concise "
         "(1-3 sentences).\n"
         f"- Always respond in {answer_lang}.\n\n"
@@ -2720,6 +2881,50 @@ BENCHMARK_EFFICIENCY = {
 }
 
 
+# Standard maintenance intervals in KM (F31 — defaults; per-vehicle overrides
+# live in Vehicle.maintenance_intervals, in the vehicle's own distance unit).
+MAINTENANCE_INTERVALS = {
+    'oil_change': 10000,
+    'air_filter': 20000,
+    'cabin_filter': 25000,
+    'brake_pads': 50000,
+    'brake_fluid': 40000,
+    'transmission_fluid': 60000,
+    'coolant': 50000,
+    'spark_plugs': 40000,
+    'timing_belt': 100000,
+    'tires': 50000,
+    'battery': 50000,  # Or 4-5 years
+}
+
+_MILES_PER_KM = 0.621371
+
+
+def _effective_intervals(vehicle):
+    """Wear thresholds for one vehicle, in ITS OWN distance unit (F31).
+
+    Starts from the km defaults (converted ×0.621, rounded to the nearest 500,
+    for miles vehicles), then overlays the vehicle's stored overrides. Stored
+    JSON is never trusted: only known component keys with positive numeric
+    values ≤ 500000 are applied.
+    """
+    is_miles = (vehicle.distance_unit or 'km').lower().startswith('mi')
+    intervals = {}
+    for key, km in MAINTENANCE_INTERVALS.items():
+        if is_miles:
+            intervals[key] = max(500, int(round(km * _MILES_PER_KM / 500.0)) * 500)
+        else:
+            intervals[key] = km
+    overrides = vehicle.maintenance_intervals
+    if isinstance(overrides, dict):
+        for key, val in overrides.items():
+            if (key in MAINTENANCE_INTERVALS
+                    and isinstance(val, (int, float)) and not isinstance(val, bool)
+                    and 0 < val <= 500000):
+                intervals[key] = int(val)
+    return intervals
+
+
 @vehicles_bp.route('/<int:vehicle_id>/health', methods=['GET'])
 @token_required
 def get_vehicle_health(current_user, vehicle_id):
@@ -3016,22 +3221,13 @@ def get_vehicle_health(current_user, vehicle_id):
     
     # Estimate component status based on mileage and service history
     current_mileage = vehicle.current_mileage or 0
-    
-    # Standard maintenance intervals (km)
-    MAINTENANCE_INTERVALS = {
-        'oil_change': 10000,
-        'air_filter': 20000,
-        'cabin_filter': 25000,
-        'brake_pads': 50000,
-        'brake_fluid': 40000,
-        'transmission_fluid': 60000,
-        'coolant': 50000,
-        'spark_plugs': 40000,
-        'timing_belt': 100000,
-        'tires': 50000,
-        'battery': 50000,  # Or 4-5 years
-    }
-    
+
+    # F31 — per-vehicle, unit-aware thresholds (defaults converted for miles
+    # vehicles; user overrides overlaid). current_mileage is in the vehicle's
+    # unit, so wear = distance_since / interval is now unit-consistent.
+    effective_intervals = _effective_intervals(vehicle)
+    vehicle_unit = vehicle.distance_unit or 'km'
+
     # Service keywords to detect
     SERVICE_KEYWORDS = {
         'oil_change': ['oil change', 'oil filter', 'motor oil', 'schimb ulei', 'cambio aceite'],
@@ -3094,7 +3290,7 @@ def get_vehicle_health(current_user, vehicle_id):
         'other': [],
     }
     
-    for component, interval in MAINTENANCE_INTERVALS.items():
+    for component, interval in effective_intervals.items():
         keywords = SERVICE_KEYWORDS.get(component, [])
         
         # Find last service for this component
@@ -3160,7 +3356,11 @@ def get_vehicle_health(current_user, vehicle_id):
         component_status[component] = {
             'wear_percentage': wear_pct,
             'status': status,
+            # F31 — values are in the vehicle's own unit; 'interval' replaces
+            # the misleading 'interval_km' (kept as an alias for one release).
+            'interval': interval,
             'interval_km': interval,
+            'distance_unit': vehicle_unit,
             'km_since_last': km_since_service,
             'last_service_date': last_service_date.isoformat() if last_service_date else None,
             'last_service_mileage': last_service_mileage,
@@ -3247,7 +3447,8 @@ def get_vehicle_health(current_user, vehicle_id):
                 'type': 'maintenance',
                 'component': comp,
                 'title': f'{comp.replace("_", " ").title()} - Overdue',
-                'description': f'Last done {data["km_since_last"]:,} km ago. Recommended interval: {data["interval_km"]:,} km.',
+                'description': (f'Last done {data["km_since_last"]:,} {vehicle_unit} ago. '
+                                f'Recommended interval: {data["interval"]:,} {vehicle_unit}.'),
             })
     
     # Medium priority - due soon
@@ -3290,7 +3491,22 @@ def get_vehicle_health(current_user, vehicle_id):
     # Sort by priority
     priority_order = {'high': 0, 'medium': 1, 'low': 2}
     recommended_actions.sort(key=lambda x: priority_order.get(x['priority'], 3))
-    
+
+    # F30 — persist the computed scores on the Vehicle row so the garage list
+    # and to_dict(include_stats=True) return real values with zero extra
+    # computation. View-driven refresh; a write failure must NEVER break the
+    # health read.
+    try:
+        vehicle.maintenance_score = maintenance_score
+        vehicle.cost_per_km = round(cost_per_km, 4) if cost_per_km else None
+        vehicle.avg_fuel_efficiency = avg_efficiency
+        vehicle.health_score = overall_score
+        vehicle.health_computed_at = datetime.now(timezone.utc)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.warning(f'Health-score persist failed (read unaffected): {e}')
+
     return jsonify({
         'vehicle_id': vehicle_id,
         'vehicle_name': vehicle.name,
@@ -3564,17 +3780,17 @@ def suggest_reminder(current_user, vehicle_id):
     services = ServiceEntry.query.filter_by(
         vehicle_id=vehicle_id, user_id=current_user.id
     ).order_by(
-        ServiceEntry.entry_date.desc()
+        ServiceEntry.date.desc()
     ).limit(15).all()
     repairs = RepairEntry.query.filter_by(
         vehicle_id=vehicle_id, user_id=current_user.id
     ).order_by(
-        RepairEntry.entry_date.desc()
+        RepairEntry.date.desc()
     ).limit(10).all()
     fuel_entries = FuelEntry.query.filter_by(
         vehicle_id=vehicle_id, user_id=current_user.id
     ).order_by(
-        FuelEntry.entry_date.desc()
+        FuelEntry.date.desc()
     ).limit(5).all()
 
     # Cache check — fingerprint is the latest service + repair IDs.
@@ -3593,11 +3809,11 @@ def suggest_reminder(current_user, vehicle_id):
     dist_unit = vehicle.distance_unit or 'km'
 
     def _fmt_svc(e):
-        return (f"  {e.entry_date}: {_sc(getattr(e, 'service_type', ''))} — "
+        return (f"  {e.date}: {_sc(getattr(e, 'service_type', ''))} — "
                 f"{_sc(e.description) or 'N/A'}, mileage: {e.odometer or 'N/A'}")
 
     def _fmt_rep(e):
-        return (f"  {e.entry_date}: {_sc(getattr(e, 'repair_type', ''))} "
+        return (f"  {e.date}: {_sc(getattr(e, 'repair_type', ''))} "
                 f"({_sc(e.severity or '')}) — {_sc(e.description) or 'N/A'}, "
                 f"mileage: {e.odometer or 'N/A'}")
 

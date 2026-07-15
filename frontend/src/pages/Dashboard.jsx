@@ -10,8 +10,36 @@ import ServiceUnavailable from '../components/ui/ServiceUnavailable'
 import { useConfirm } from '../components/ui/ConfirmDialog'
 import ChatModal from '../components/chat/ChatModal'
 
+// F25 — tiny dependency-free sparkline for the weekly price history.
+function Sparkline({ points }) {
+  if (!points || points.length < 2) return null
+  const w = 64, h = 16, pad = 1.5
+  const min = Math.min(...points), max = Math.max(...points)
+  const range = max - min || 1
+  const step = (w - pad * 2) / (points.length - 1)
+  const coords = points.map((v, i) =>
+    `${(pad + i * step).toFixed(1)},${(h - pad - ((v - min) / range) * (h - pad * 2)).toFixed(1)}`
+  ).join(' ')
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="shrink-0" aria-hidden="true">
+      <polyline points={coords} fill="none" stroke="currentColor" strokeWidth="1.5"
+                strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+// Series + % delta vs ~4 weeks back for one fuel type, from the history payload.
+function fuelTrend(history, type) {
+  const values = (history?.points || []).map((p) => p[type]).filter((v) => v != null)
+  if (values.length < 2) return null
+  const last = values[values.length - 1]
+  const prior = values[Math.max(0, values.length - 5)]
+  if (!prior) return null
+  return { values, deltaPct: ((last - prior) / prior) * 100 }
+}
+
 // Fuel Prices Widget
-function FuelPricesWidget({ fuelPrices, currency, t, onRefresh, isRefreshing, lastAutoUpdate, error, onRetry, retrying, onDismiss }) {
+function FuelPricesWidget({ fuelPrices, history, currency, t, onRefresh, isRefreshing, lastAutoUpdate, error, onRetry, retrying, onDismiss }) {
   // Use currency from fuel prices API (based on detected country) or fallback to user's currency
   const fuelCurrency = fuelPrices?.currency || currency.symbol
 
@@ -101,27 +129,40 @@ function FuelPricesWidget({ fuelPrices, currency, t, onRefresh, isRefreshing, la
 
         <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-[var(--color-border)]">
           {[
-            { type: 'diesel', labelKey: 'fuelPrices.diesel', color: 'bg-blue-500' },
-            { type: 'lpg', labelKey: 'fuelPrices.lpg', color: 'bg-green-500' },
-            { type: 'petrol', labelKey: 'fuelPrices.petrol', color: 'bg-yellow-500' },
+            { type: 'diesel', labelKey: 'fuelPrices.diesel', color: 'bg-blue-500', text: 'text-blue-500' },
+            { type: 'lpg', labelKey: 'fuelPrices.lpg', color: 'bg-green-500', text: 'text-green-500' },
+            { type: 'petrol', labelKey: 'fuelPrices.petrol', color: 'bg-yellow-500', text: 'text-yellow-500' },
           ].map((fuel) => {
             const price = fuelPrices?.prices?.[fuel.type]
+            const trend = fuelTrend(history, fuel.type)
             return (
-              <div key={fuel.type} className="flex items-center justify-between gap-2 py-2 sm:py-0 sm:px-4 sm:first:pl-0 sm:last:pr-0">
-                <span className="flex items-center gap-2 min-w-0">
-                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${fuel.color}`} aria-hidden="true"></span>
-                  <span className="text-sm text-[var(--color-text-primary)] truncate">{t(fuel.labelKey)}</span>
-                </span>
-                <span className="flex items-center gap-1.5 whitespace-nowrap">
-                  <span className="font-semibold text-[var(--color-text-primary)] tabular-nums">
-                    {fuelCurrency}{price != null ? price.toFixed(2) : '--'}/L
+              <div key={fuel.type} className="py-2 sm:py-0 sm:px-4 sm:first:pl-0 sm:last:pr-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-2 min-w-0">
+                    <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${fuel.color}`} aria-hidden="true"></span>
+                    <span className="text-sm text-[var(--color-text-primary)] truncate">{t(fuel.labelKey)}</span>
                   </span>
-                  {price != null && (
-                    <svg className="w-3.5 h-3.5 text-[var(--color-text-muted)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  )}
-                </span>
+                  <span className="flex items-center gap-1.5 whitespace-nowrap">
+                    <span className="font-semibold text-[var(--color-text-primary)] tabular-nums">
+                      {fuelCurrency}{price != null ? price.toFixed(2) : '--'}/L
+                    </span>
+                    {price != null && (
+                      <svg className="w-3.5 h-3.5 text-[var(--color-text-muted)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    )}
+                  </span>
+                </div>
+                {/* F25 — 12-week sparkline + delta vs ~4 weeks back */}
+                {trend && (
+                  <div className="mt-1 flex items-center justify-end gap-1.5">
+                    <span className={fuel.text}><Sparkline points={trend.values} /></span>
+                    <span className="text-2xs text-[var(--color-text-muted)] whitespace-nowrap tabular-nums">
+                      {trend.deltaPct > 0.05 ? '↑' : trend.deltaPct < -0.05 ? '↓' : '→'}{' '}
+                      {Math.abs(trend.deltaPct).toFixed(1)}% {t('fuelPrices.trendVsMonth') || 'vs last month'}
+                    </span>
+                  </div>
+                )}
               </div>
             )
           })}
@@ -133,6 +174,11 @@ function FuelPricesWidget({ fuelPrices, currency, t, onRefresh, isRefreshing, la
           {fuelPrices?.source || t('fuelPrices.dataSource')}
           {fuelPrices?.last_update && (
             <span className="ml-1">• {formatLastUpdate(fuelPrices.last_update)}</span>
+          )}
+          {(fuelPrices?.stale || fuelPrices?.baseline) && (
+            <span className="ml-1 text-amber-500">
+              • {t('fuelPrices.staleWarning') || 'Prices may be outdated'}
+            </span>
           )}
         </p>
       </div>
@@ -269,6 +315,30 @@ const DUE_SEVERITY = {
 // explicit, keyboard/touch-friendly "Show N more" toggle so the card stays
 // compact on small PWA viewports. Expansion is pure client state (no refetch).
 const DUE_COLLAPSED_COUNT = 2
+
+// F30 — garage health chip from the cached Vehicle.health_score (same bands
+// and vocabulary as the /health endpoint: excellent/good/fair/needs attention).
+function HealthChip({ score, t, spaced }) {
+  if (score == null) return null
+  const cls =
+    score >= 80 ? 'bg-green-500/15 text-green-600 dark:text-green-400'
+    : score >= 60 ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
+    : score >= 40 ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+    : 'bg-red-500/15 text-red-500'
+  const label =
+    score >= 80 ? (t('vehicleHealth.statusExcellent') || 'Excellent')
+    : score >= 60 ? (t('vehicleHealth.statusGood') || 'Good')
+    : score >= 40 ? (t('vehicleHealth.statusFair') || 'Fair')
+    : (t('vehicleHealth.statusNeedsAttention') || 'Needs Attention')
+  return (
+    <span
+      className={`inline-block px-2.5 py-1 text-xs font-semibold rounded mb-2 ${spaced ? 'ml-1.5' : ''} ${cls}`}
+      title={`${t('vehicleHealth.score') || 'Score'}: ${score}/100`}
+    >
+      {label}
+    </span>
+  )
+}
 
 function DueSoon({ items, loading, error, t, onDismiss }) {
   const [expanded, setExpanded] = useState(false)
@@ -418,6 +488,18 @@ export default function Dashboard() {
   const [dueLoading, setDueLoading] = useState(true)
   const [dueError, setDueError] = useState(false)
   const [fuelPrices, setFuelPrices] = useState(null)
+  // F25 — weekly national price history for the widget sparklines. Fetched
+  // once per resolved country; silent failure just hides the sparklines.
+  const [fuelHistory, setFuelHistory] = useState(null)
+  useEffect(() => {
+    const cc = fuelPrices?.country
+    if (!cc) return
+    let cancelled = false
+    externalApi.history(cc)
+      .then(res => { if (!cancelled) setFuelHistory(res.data) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [fuelPrices?.country])
   const [isRefreshingFuel, setIsRefreshingFuel] = useState(false)
   const [resolvedLocation, setResolvedLocation] = useState(null)
   const [fuelPriceFetchedAt, setFuelPriceFetchedAt] = useState(null)
@@ -1111,7 +1193,7 @@ export default function Dashboard() {
 
       {/* Fuel Prices Widget — full-width banner */}
       <div className="mb-6">
-        <FuelPricesWidget fuelPrices={fuelPrices} currency={currency} t={t} onRefresh={handleRefreshFuelPrices} isRefreshing={isRefreshingFuel} lastAutoUpdate={fuelPriceFetchedAt}
+        <FuelPricesWidget fuelPrices={fuelPrices} history={fuelHistory} currency={currency} t={t} onRefresh={handleRefreshFuelPrices} isRefreshing={isRefreshingFuel} lastAutoUpdate={fuelPriceFetchedAt}
           error={fuelError && !fuelDismissed}
           onRetry={retryFuel}
           retrying={retryingFuel}
@@ -1307,7 +1389,8 @@ export default function Dashboard() {
                         {vehicle.license_plate}
                       </span>
                     )}
-                    
+                    <HealthChip score={vehicle.health_score} t={t} spaced={!!vehicle.license_plate} />
+
                     <p className="text-sm text-[var(--color-text-secondary)]">
                       {t('dashboard.odometer')}: <span className="text-[var(--color-text-primary)] font-semibold">
                         {vehicle.current_mileage?.toLocaleString() || 0} {vehicle.distance_unit || 'km'}
@@ -1393,7 +1476,8 @@ export default function Dashboard() {
                         {vehicle.license_plate}
                       </span>
                     )}
-                    
+                    <HealthChip score={vehicle.health_score} t={t} spaced={!!vehicle.license_plate} />
+
                     <p className="text-sm text-[var(--color-text-secondary)]">
                       {t('dashboard.odometer')}: <span className="text-[var(--color-text-primary)] font-semibold">
                         {vehicle.current_mileage?.toLocaleString() || 0} {vehicle.distance_unit || 'km'}

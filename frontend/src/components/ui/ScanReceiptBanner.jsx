@@ -100,10 +100,14 @@ export default function ScanReceiptBanner({ receiptFile, vehicleId, onPrefill, o
 
   // React to receiptFile changes
   useEffect(() => {
-    // Only process image files (PDF has no useful OCR path here)
-    const isImage = receiptFile && receiptFile.type.startsWith('image/')
+    // Images run tesseract OCR server-side; PDFs get their embedded text
+    // layer extracted (F32) — both land in the same ocr_text field, so the
+    // upload → poll → extract flow is identical.
+    const isScannable = receiptFile && (
+      receiptFile.type.startsWith('image/') || receiptFile.type === 'application/pdf'
+    )
 
-    if (!isImage) {
+    if (!isScannable) {
       if (prevFileRef.current !== receiptFile) {
         prevFileRef.current = receiptFile
         _resetState()

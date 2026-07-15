@@ -5,6 +5,8 @@ import api from '../../services/api'
 import toast from 'react-hot-toast'
 import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
+import { useAuth } from '../../contexts/AuthContext'
+import { usesGallons, litersToDisplayVolume, pricePerLiterToDisplay, volumeUnitLabel } from '../../utils/fuelEconomy'
 import { formatDate } from '../../utils/dateFormat'
 import { Skeleton, SkeletonScreen } from '../../components/ui/Skeleton'
 import AttachmentViewer from '../../components/ui/AttachmentViewer'
@@ -271,12 +273,34 @@ const TabButton = ({ active, icon, label, count, onClick, tabId }) => (
 
 const VALID_TABS = ['fuel', 'service', 'tax', 'parking', 'repair', 'insurance', 'todo', 'reminder']
 
+// F34 — badge for recurring series templates: "Monthly · next 01 Aug". Makes
+// the template visually distinct from generated occurrences so users know
+// which row's "Stop repeating" ends the series.
+function RecurringChip({ entry, t }) {
+  if (!entry.recurring) return null
+  const freq = entry.recurrence_type
+    ? (t(`recurring.${entry.recurrence_type}`) || entry.recurrence_type)
+    : (t('addTax.recurring') || 'Recurring')
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-500/10 text-purple-600 dark:text-purple-400 rounded-full text-xs whitespace-nowrap">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M17 2.1l4 4-4 4"/><path d="M3 12.2v-2a4 4 0 0 1 4-4h12.8"/>
+        <path d="M7 21.9l-4-4 4-4"/><path d="M21 11.8v2a4 4 0 0 1-4 4H4.2"/>
+      </svg>
+      {freq}
+      {entry.next_due_date &&
+        ` · ${(t('recurring.nextOn') || 'next {date}').replace('{date}', formatDate(entry.next_due_date))}`}
+    </span>
+  )
+}
+
 export default function VehicleExpenses() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { t } = useTranslation()
   const { formatCurrency } = useCurrency()
+  const { user } = useAuth()  // F27 — volume unit preference
   
   const [vehicle, setVehicle] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -593,7 +617,8 @@ export default function VehicleExpenses() {
   const handleCancelRecurring = async (type, entryId) => {
     const msg = type === 'insurance'
       ? 'Cancel this insurance policy? This will stop future recurring costs and set the end date to today.'
-      : 'Cancel recurring road tax? Future auto-generated entries will be stopped.'
+      : (t('recurring.stopRepeatingConfirm')
+         || 'Stop this recurring series? Future entries will no longer be auto-generated.')
     if (!confirm(msg)) return
     try {
       if (type === 'insurance') {
@@ -602,6 +627,10 @@ export default function VehicleExpenses() {
       } else if (type === 'tax') {
         const res = await taxApi.cancel(entryId)
         setTaxEntries(prev => prev.map(e => e.id === entryId ? res.data.entry : e))
+      } else if (type === 'parking') {
+        // F34 — stop a recurring permit/subscription series.
+        const res = await parkingApi.cancel(entryId)
+        setParkingEntries(prev => prev.map(e => e.id === entryId ? res.data.entry : e))
       }
     } catch (error) {
       console.error('Failed to cancel recurring:', error)
@@ -753,8 +782,8 @@ export default function VehicleExpenses() {
               <tr className="text-left text-[var(--color-text-secondary)] text-sm border-b border-[var(--color-border)]">
                 <th className="pb-3 px-4">{t('common.date') || 'Date'}</th>
                 <th className="pb-3 px-4">{t('addFuel.odometer') || 'Odometer'}</th>
-                <th className="pb-3 px-4">{t('addFuel.liters') || 'Liters'}</th>
-                <th className="pb-3 px-4">{t('addFuel.pricePerLiter') || 'Price per Liter'}</th>
+                <th className="pb-3 px-4">{usesGallons(user) ? (t('addFuel.gallons') || 'Gallons') : (t('addFuel.liters') || 'Liters')}</th>
+                <th className="pb-3 px-4">{usesGallons(user) ? (t('addFuel.pricePerGallon') || 'Price per Gallon') : (t('addFuel.pricePerLiter') || 'Price per Liter')}</th>
                 <th className="pb-3 px-4">{t('addFuel.totalCost') || 'Total Price'}</th>
                 <th className="pb-3 px-4">{t('addFuel.fuelType') || 'Fuel Type'}</th>
                 <th className="pb-3 px-4">{t('addFuel.station') || 'Station'}</th>
@@ -767,8 +796,12 @@ export default function VehicleExpenses() {
                 <tr key={entry.id} className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)]">
                   <td className="py-3 px-4">{formatDate(entry.date)}</td>
                   <td className="py-3 px-4">{entry.odometer?.toLocaleString()} {vehicle?.distance_unit || 'km'}</td>
-                  <td className="py-3 px-4">{entry.liters} L</td>
-                  <td className="py-3 px-4 text-[var(--color-accent)]">{formatCurrency(entry.price_per_liter)}</td>
+                  <td className="py-3 px-4">
+                    {entry.liters != null ? litersToDisplayVolume(entry.liters, user).toFixed(2) : '--'} {volumeUnitLabel(user, t)}
+                  </td>
+                  <td className="py-3 px-4 text-[var(--color-accent)]">
+                    {formatCurrency(entry.price_per_liter != null ? pricePerLiterToDisplay(entry.price_per_liter, user) : entry.price_per_liter)}
+                  </td>
                   <td className="py-3 px-4 text-[var(--color-accent)] font-medium">{formatCurrency(entry.total_price)}</td>
                   <td className="py-3 px-4">{entry.fuel_type || '-'}</td>
                   <td className="py-3 px-4">{entry.station || '-'}</td>
@@ -888,11 +921,11 @@ export default function VehicleExpenses() {
                       </span>
                     ) : '-'}
                   </td>
-                  <td className="py-3 px-4">{entry.recurring ? '✓' : '-'}</td>
+                  <td className="py-3 px-4">{entry.recurring ? <RecurringChip entry={entry} t={t} /> : '-'}</td>
                   <td className="py-3 px-4">{renderAttachmentButton(entry)}</td>
                   <td className="py-3 px-4">
                     <div className="flex items-center gap-2">
-                      <button 
+                      <button
                         onClick={() => handleEdit('tax', entry.id)}
                         className="text-[var(--color-accent)] hover:text-[var(--color-accent)] p-1"
                         title={t('common.edit') || 'Edit'}
@@ -903,7 +936,7 @@ export default function VehicleExpenses() {
                         <button
                           onClick={() => handleCancelRecurring('tax', entry.id)}
                           className="text-orange-500 hover:text-orange-400 p-1"
-                          title="Cancel recurring tax (stop future auto-generated entries)"
+                          title={t('recurring.stopRepeating') || 'Stop repeating'}
                         >
                           {Icons.cancelRecurring}
                         </button>
@@ -945,20 +978,34 @@ export default function VehicleExpenses() {
                 <tr key={entry.id} className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)]">
                   <td className="py-3 px-4">{formatDate(entry.date)}</td>
                   <td className="py-3 px-4">{entry.location || '-'}</td>
-                  <td className="py-3 px-4">{entry.parking_type || '-'}</td>
+                  <td className="py-3 px-4">
+                    {entry.parking_type || '-'}
+                    {entry.recurring && (
+                      <div className="mt-1"><RecurringChip entry={entry} t={t} /></div>
+                    )}
+                  </td>
                   <td className="py-3 px-4 text-[var(--color-accent)] font-medium">{formatCurrency(entry.amount)}</td>
                   <td className="py-3 px-4">{entry.duration || '-'}</td>
                   <td className="py-3 px-4">{renderAttachmentButton(entry)}</td>
                   <td className="py-3 px-4">
                     <div className="flex items-center gap-2">
-                      <button 
+                      <button
                         onClick={() => handleEdit('parking', entry.id)}
                         className="text-[var(--color-accent)] hover:text-[var(--color-accent)] p-1"
                         title={t('common.edit') || 'Edit'}
                       >
                         {Icons.edit}
                       </button>
-                      <button 
+                      {entry.recurring && (
+                        <button
+                          onClick={() => handleCancelRecurring('parking', entry.id)}
+                          className="text-orange-500 hover:text-orange-400 p-1"
+                          title={t('recurring.stopRepeating') || 'Stop repeating'}
+                        >
+                          {Icons.cancelRecurring}
+                        </button>
+                      )}
+                      <button
                         onClick={() => handleDelete('parking', entry.id)}
                         className="text-red-500 hover:text-red-400 p-1"
                         title={t('common.delete') || 'Delete'}

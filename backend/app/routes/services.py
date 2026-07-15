@@ -2,7 +2,7 @@
 GearCargo - Service Entry Routes
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, date, timezone
 from flask import Blueprint, request, jsonify, current_app
 
 from app import db
@@ -202,17 +202,44 @@ def update_service_entry(current_user, entry_id):
             entry.service_type = service_types_list[0]
             entry.title = ', '.join(service_types_list)
     
-    allowed = ['entry_date', 'mileage', 'cost', 'description',
-               'provider_name', 'provider_location', 'provider_phone',
-               'parts_replaced', 'labor_cost', 'parts_cost',
-               'next_service_mileage', 'next_service_date', 'notes']
+    # F18 — request keys mapped to the REAL model columns. Aliases first,
+    # canonical names last so the canonical value wins when both are sent.
+    field_aliases = {
+        'entry_date': 'date', 'date': 'date',
+        'mileage': 'odometer', 'odometer': 'odometer',
+        'description': 'description',
+        'provider_name': 'provider', 'provider': 'provider',
+        'shop_name': 'garage_name', 'garage_name': 'garage_name',
+        'provider_location': 'garage_address', 'garage_address': 'garage_address',
+        'provider_phone': 'garage_phone', 'garage_phone': 'garage_phone',
+        'parts_replaced': 'parts_used', 'parts_used': 'parts_used',
+        'labor_cost': 'labor_cost', 'parts_cost': 'parts_cost',
+        'next_service_mileage': 'next_due_mileage', 'next_due_mileage': 'next_due_mileage',
+        'next_service_date': 'next_due_date', 'next_due_date': 'next_due_date',
+        'notes': 'notes',
+    }
+    date_columns = {'date', 'next_due_date'}
 
-    for field in allowed:
-        if field in data:
-            if field in ['entry_date', 'next_service_date'] and data[field]:
-                setattr(entry, field, datetime.fromisoformat(data[field]))
-            else:
-                setattr(entry, field, data[field])
+    for key, column in field_aliases.items():
+        if key not in data:
+            continue
+        value = data[key]
+        if column in date_columns:
+            if value:
+                setattr(entry, column,
+                        datetime.fromisoformat(value.replace('Z', '+00:00')).date())
+            elif column != 'date':      # entries.date is NOT NULL — never clear it
+                setattr(entry, column, None)
+        elif column in ('odometer', 'next_due_mileage'):
+            setattr(entry, column, _opt_int(value))
+        else:
+            setattr(entry, column, value)
+
+    # Mirror create's mileage bump — vehicle mileage only ever increases.
+    if entry.odometer:
+        vehicle = db.session.get(Vehicle, entry.vehicle_id)
+        if vehicle and entry.odometer > (vehicle.current_mileage or 0):
+            vehicle.current_mileage = entry.odometer
 
     # F2 — warranty fields, mapped to the real columns.
     if 'warranty_months' in data:
@@ -268,14 +295,14 @@ def get_upcoming_services(current_user):
     
     query = ServiceEntry.query.join(Vehicle).filter(
         Vehicle.user_id == current_user.id,
-        ServiceEntry.next_service_date.isnot(None),
-        ServiceEntry.next_service_date >= datetime.now(timezone.utc)
+        ServiceEntry.next_due_date.isnot(None),
+        ServiceEntry.next_due_date >= date.today()
     )
-    
+
     if vehicle_id:
         query = query.filter(ServiceEntry.vehicle_id == vehicle_id)
-    
-    entries = query.order_by(ServiceEntry.next_service_date.asc()).limit(10).all()
+
+    entries = query.order_by(ServiceEntry.next_due_date.asc()).limit(10).all()
     
     return jsonify({
         'entries': [e.to_dict() for e in entries]
@@ -297,10 +324,10 @@ def get_service_stats(current_user):
     
     entries = query.all()
     
-    total_cost = sum(e.cost or 0 for e in entries)
-    total_labor = sum(e.labor_cost or 0 for e in entries)
-    total_parts = sum(e.parts_cost or 0 for e in entries)
-    
+    total_cost = sum(float(e.amount or 0) for e in entries)
+    total_labor = sum(float(e.labor_cost or 0) for e in entries)
+    total_parts = sum(float(e.parts_cost or 0) for e in entries)
+
     # Service types breakdown
     by_type = {}
     for entry in entries:
@@ -308,7 +335,7 @@ def get_service_stats(current_user):
         if stype not in by_type:
             by_type[stype] = {'count': 0, 'cost': 0}
         by_type[stype]['count'] += 1
-        by_type[stype]['cost'] += float(entry.cost or 0)
+        by_type[stype]['cost'] += float(entry.amount or 0)
     
     return jsonify({
         'total_cost': float(total_cost),

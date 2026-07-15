@@ -27,7 +27,17 @@ export default function ShareTarget() {
   const [vehicleId, setVehicleId] = useState('')
   const [started, setStarted] = useState(false)
   const [uploadedId, setUploadedId] = useState(null)
+  const [parsed, setParsed] = useState(null)   // F33 — AI-extracted fields incl. category
   const [loading, setLoading] = useState(true)
+
+  // F33 — the parse classifier's category → the matching Add form route.
+  // insurance/other have no receipt-shaped Add form; they keep the default flow.
+  const CATEGORY_ROUTES = {
+    fuel: 'fuel/add', service: 'service/add', repair: 'repair/add',
+    parking: 'parking/add', tax: 'tax/add',
+  }
+  const parsedCategory = (parsed?.category || '').toLowerCase()
+  const continueRoute = CATEGORY_ROUTES[parsedCategory]
 
   // Read the shared file the SW stashed, then remove it from cache (privacy).
   useEffect(() => {
@@ -155,6 +165,7 @@ export default function ShareTarget() {
               receiptFile={file}
               vehicleId={parseInt(vehicleId, 10)}
               onUploadComplete={setUploadedId}
+              onPrefill={setParsed}
             />
           )}
 
@@ -166,6 +177,22 @@ export default function ShareTarget() {
                   ? (t('shareTarget.savedFor') || 'Receipt saved to {vehicle}.').replace('{vehicle}', selectedVehicle.name)
                   : t('shareTarget.saved')}
               </p>
+
+              {/* F33 — category-driven continuation: land the parsed fields and
+                  the already-uploaded attachment in the matching Add form. */}
+              {parsed && continueRoute && (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/vehicles/${vehicleId}/${continueRoute}`, {
+                    state: { prefill: parsed, attachmentId: uploadedId },
+                  })}
+                  className="btn btn-primary w-full"
+                >
+                  {(t('shareTarget.continueAs') || 'Continue: add as {type}')
+                    .replace('{type}', t(`expenses.${parsedCategory}`) || parsedCategory)}
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => navigate(`/vehicles/${vehicleId}/search`)}

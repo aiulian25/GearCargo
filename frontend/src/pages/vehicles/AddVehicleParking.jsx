@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom'
 import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
 import { useForm, useWatch } from 'react-hook-form'
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
@@ -58,7 +58,7 @@ export default function AddVehicleParking() {
   const [receiptFile, setReceiptFile] = useState(null)
   const [existingAttachments, setExistingAttachments] = useState([])
   
-  const { register, handleSubmit, formState: { errors, isDirty }, control, reset } = useForm({
+  const { register, handleSubmit, formState: { errors, isDirty }, control, reset, setValue } = useForm({
     defaultValues: {
       date: new Date().toISOString().split('T')[0],
       parking_type: '',
@@ -123,7 +123,20 @@ export default function AddVehicleParking() {
     
     fetchData()
   }, [vehicleId, editId, isEditMode, navigate, reset])
-  
+
+  // F33 — receipt routed from ShareTarget: apply the AI-parsed fields; the
+  // already-uploaded attachment is linked to the entry after create.
+  const location = useLocation()
+  const sharedAttachmentId = !isEditMode ? location.state?.attachmentId : null
+  useEffect(() => {
+    const d = location.state?.prefill
+    if (!d || isEditMode) return
+    if (d.date) setValue('date', d.date)
+    if (d.amount != null) setValue('amount', String(d.amount))
+    if (d.vendor) setValue('location', d.vendor)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useUnsavedChanges(isDirty)
 
   const onSubmit = async (data) => {
@@ -151,7 +164,14 @@ export default function AddVehicleParking() {
       
       // Upload receipt if selected (only for new entries or if new file selected)
       const entryId = isEditMode ? editId : response.data?.entry?.id
-      if (receiptFile && entryId) {
+      if (sharedAttachmentId && entryId) {
+        // F33 — attachment already uploaded via ShareTarget; just link it.
+        try {
+          await attachmentApi.update(sharedAttachmentId, { entry_id: entryId })
+        } catch (linkErr) {
+          console.error('Failed to link attachment:', linkErr)
+        }
+      } else if (receiptFile && entryId) {
         try {
           await attachmentApi.upload(receiptFile, {
             vehicleId: parseInt(vehicleId),
@@ -162,7 +182,7 @@ export default function AddVehicleParking() {
           console.error('Failed to upload receipt:', uploadErr)
         }
       }
-      
+
       navigate(`/vehicles/${vehicleId}`)
     } catch (err) {
       if (isOfflineWriteError(err)) {

@@ -74,7 +74,7 @@ export default function AddVehicleReminder() {
             due_mileage: entry.due_mileage || '',
             repeat_interval: entry.repeat_interval || '',
             repeat_mileage: entry.repeat_mileage || '',
-            notes: entry.notes || '',
+            notes: entry.notes || entry.description || '',
           })
           
           if (entry.attachments && entry.attachments.length > 0) {

@@ -736,7 +736,7 @@ export default function VehicleHealth() {
                     <StatusBadge status={comp.status} t={t} />
                   </div>
                   <p className="text-xs text-[var(--color-text-secondary)] mt-1">
-                    {comp.km_since_last?.toLocaleString() || 0} km / {comp.interval_km?.toLocaleString()} km {t('vehicleHealth.interval') || 'interval'}
+                    {comp.km_since_last?.toLocaleString() || 0} {comp.distance_unit || 'km'} / {(comp.interval ?? comp.interval_km)?.toLocaleString()} {comp.distance_unit || 'km'} {t('vehicleHealth.interval') || 'interval'}
                   </p>
                 </div>
                 <div className="w-24 ml-4">

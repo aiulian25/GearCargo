@@ -25,6 +25,7 @@ from app.models.app_setting import AppSetting
 from app.models.user_session import UserSession
 from app.models.report_share import ReportShare
 from app.models.due_dismissal import DueDismissal
+from app.models.fuel_price_history import FuelPriceHistory
 
 __all__ = [
     'User',
@@ -53,4 +54,5 @@ __all__ = [
     'UserSession',
     'ReportShare',
     'DueDismissal',
+    'FuelPriceHistory',
 ]

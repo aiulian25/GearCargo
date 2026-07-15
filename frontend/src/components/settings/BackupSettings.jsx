@@ -963,7 +963,7 @@ export default function BackupSettings() {
             {t('backup.csvType') || 'Data type'}
           </label>
           <div className="grid grid-cols-3 gap-2">
-            {['fuel', 'service', 'repair', 'tax', 'parking'].map((type) => (
+            {['fuel', 'service', 'repair', 'tax', 'parking', 'consumable'].map((type) => (
               <button
                 key={type}
                 type="button"

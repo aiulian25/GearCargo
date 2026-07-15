@@ -1,11 +1,21 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { vehicleApi } from '../../services/api'
+import { vehicleApi, externalApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { useConfirm } from '../../components/ui/ConfirmDialog'
 import { formatDate } from '../../utils/dateFormat'
 import { formatFuelEconomy, resolveFuelSystem } from '../../utils/fuelEconomy'
+
+// F22 — map vehicle.fuel_type onto the fuel-price payload keys (hybrids fill
+// with petrol; electric has no per-litre price, so the cost tile hides).
+const FUEL_PRICE_KEY = {
+  petrol: 'petrol',
+  diesel: 'diesel',
+  lpg: 'lpg',
+  hybrid: 'petrol',
+  plugin_hybrid: 'petrol',
+}
 
 // SVG Icons
 const Icons = {
@@ -202,7 +212,21 @@ export default function VehicleDetail() {
     
     fetchData()
   }, [id, navigate])
-  
+
+  // F22 — national fuel prices for the full-tank cost tile. Fetched only when
+  // the vehicle has a tank capacity and a priceable fuel type; silent failure
+  // simply hides the cost tile (offline-safe, never blocks the page).
+  const [tankPrices, setTankPrices] = useState(null)
+  const tankFuelKey = FUEL_PRICE_KEY[(vehicle?.fuel_type || '').toLowerCase()]
+  useEffect(() => {
+    if (!vehicle?.tank_capacity || !tankFuelKey) return
+    let cancelled = false
+    externalApi.getFuelPrices(user?.country_preference || 'UK')
+      .then(res => { if (!cancelled) setTankPrices(res.data) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [vehicle?.tank_capacity, tankFuelKey, user?.country_preference])
+
   const handleDelete = async () => {
     const name = vehicle?.name || `${vehicle?.make || ''} ${vehicle?.model || ''}`.trim()
     const ok = await confirm({
@@ -443,6 +467,15 @@ export default function VehicleDetail() {
     { id: 'weight', label: t('vehicles.dimWeight') || 'Weight', value: vehicle.vehicle_weight_kg, unit: 'kg' },
   ].filter(d => d.value != null && d.value !== '')
 
+  // Tank figures (F22) — derived client-side from data already on the page.
+  const tankPricePerL = (tankFuelKey && tankPrices?.prices?.[tankFuelKey] != null)
+    ? tankPrices.prices[tankFuelKey] : null
+  const fullTankCost = (vehicle.tank_capacity && tankPricePerL != null)
+    ? tankPricePerL * vehicle.tank_capacity : null
+  // avg_consumption is L/100 distance-units, so range lands in the vehicle's unit.
+  const tankRange = (vehicle.tank_capacity && stats?.avg_consumption > 0)
+    ? (vehicle.tank_capacity / stats.avg_consumption) * 100 : null
+
   // Action buttons configuration
   const actionButtons = [
     { id: 'search', label: t('vehicleDetail.search') || 'Search', icon: Icons.search, to: `/vehicles/${id}/search` },
@@ -667,6 +700,39 @@ export default function VehicleDetail() {
                   )}
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Tank Section (F22) — hidden entirely when no capacity is set */}
+        {vehicle.tank_capacity != null && (
+          <div className="card">
+            <h3 className="text-base font-semibold mb-3">{t('tank.title') || 'Tank'}</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="rounded-lg p-3 bg-[var(--color-bg-tertiary)]">
+                <p className="text-xs text-[var(--color-text-muted)]">{t('tank.capacity') || 'Tank capacity'}</p>
+                <p className="text-sm font-bold tabular-nums whitespace-nowrap">
+                  {Number(vehicle.tank_capacity).toLocaleString()} <span className="font-medium text-[var(--color-text-secondary)]">L</span>
+                </p>
+              </div>
+
+              {fullTankCost != null && (
+                <div className="rounded-lg p-3 bg-[var(--color-bg-tertiary)]">
+                  <p className="text-xs text-[var(--color-text-muted)]">{t('tank.fullTankCost') || 'Full tank at national average'}</p>
+                  <p className="text-sm font-bold tabular-nums whitespace-nowrap">
+                    {tankPrices?.currency || ''}{fullTankCost.toFixed(2)}
+                  </p>
+                </div>
+              )}
+
+              {tankRange != null && (
+                <div className="rounded-lg p-3 bg-[var(--color-bg-tertiary)]">
+                  <p className="text-xs text-[var(--color-text-muted)]">{t('tank.estimatedRange') || 'Estimated range per tank'}</p>
+                  <p className="text-sm font-bold tabular-nums whitespace-nowrap">
+                    {Math.round(tankRange).toLocaleString()} <span className="font-medium text-[var(--color-text-secondary)]">{vehicle.distance_unit || 'km'}</span>
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}

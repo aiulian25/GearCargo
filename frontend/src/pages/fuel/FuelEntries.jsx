@@ -4,7 +4,7 @@ import { fuelApi, vehicleApi } from '../../services/api'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTranslation } from '../../contexts/LanguageContext'
 import { formatDate } from '../../utils/dateFormat'
-import { formatFuelEconomy, getFuelEconomyUnit, resolveFuelSystem } from '../../utils/fuelEconomy'
+import { formatFuelEconomy, getFuelEconomyUnit, resolveFuelSystem, litersToDisplayVolume, volumeUnitLabel } from '../../utils/fuelEconomy'
 import EmptyState from '../../components/ui/EmptyState'
 
 export default function FuelEntries() {
@@ -17,6 +17,9 @@ export default function FuelEntries() {
   const [selectedVehicle, setSelectedVehicle] = useState(vehicleId || 'all')
   const [isLoading, setIsLoading] = useState(true)
   const [stats, setStats] = useState(null)
+  // F26 — per-station insights (collapsible card above the entries list).
+  const [stations, setStations] = useState([])
+  const [showStations, setShowStations] = useState(true)
   const { user } = useAuth()
 
   const getVehicleDistanceUnit = (id) => {
@@ -66,6 +69,22 @@ export default function FuelEntries() {
     
     fetchEntries()
   }, [selectedVehicle])
+
+  // F26 — station aggregation; silent failure just hides the card.
+  useEffect(() => {
+    let cancelled = false
+    fuelApi.getStations(selectedVehicle === 'all' ? null : selectedVehicle)
+      .then(res => { if (!cancelled) setStations(res.data.stations || []) })
+      .catch(() => { if (!cancelled) setStations([]) })
+    return () => { cancelled = true }
+  }, [selectedVehicle])
+
+  // Best value = lowest average price among stations visited at least twice.
+  const cheapestName = (() => {
+    const eligible = stations.filter(s => s.fills >= 2 && s.avg_price != null)
+    if (!eligible.length) return null
+    return eligible.reduce((a, b) => (a.avg_price <= b.avg_price ? a : b)).name
+  })()
   
   return (
     <div className="p-4">
@@ -105,9 +124,10 @@ export default function FuelEntries() {
           </div>
           <div className="card text-center py-3">
             <p className="text-lg font-bold">
-              {stats.total_liters?.toFixed(0) || 0}
+              {stats.total_liters != null
+                ? litersToDisplayVolume(stats.total_liters, user).toFixed(0) : 0}
             </p>
-            <p className="text-2xs text-[var(--color-text-muted)]">Liters</p>
+            <p className="text-2xs text-[var(--color-text-muted)]">{volumeUnitLabel(user, t)}</p>
           </div>
           <div className="card text-center py-3">
             <p className="text-lg font-bold">
@@ -118,6 +138,61 @@ export default function FuelEntries() {
         </div>
       )}
       
+      {/* Stations (F26) — the user's own per-station price picture */}
+      {stations.length > 0 && (
+        <div className="card mb-4">
+          <button
+            type="button"
+            onClick={() => setShowStations(!showStations)}
+            className="w-full flex items-center justify-between py-1"
+            aria-expanded={showStations}
+          >
+            <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
+              {t('stations.title') || 'Your stations'}
+            </h3>
+            <span className={`material-icons-outlined icon-sm text-[var(--color-text-muted)] transition-transform ${showStations ? 'rotate-180' : ''}`}>
+              expand_more
+            </span>
+          </button>
+
+          {showStations && (
+            <div className="mt-2 divide-y divide-[var(--color-border)]">
+              {stations.map(s => (
+                <div key={s.name} className="flex items-center gap-3 py-2.5">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">
+                      {s.name}
+                      {s.name === cheapestName && (
+                        <span className="ml-1.5 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-2xs font-semibold bg-green-500/15 text-green-600 dark:text-green-400 align-middle">
+                          ★ {t('stations.cheapest') || 'Best value'}
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-2xs text-[var(--color-text-muted)]">
+                      {s.fills} {t('stations.fills') || 'fills'}
+                      {s.last_date && ` • ${formatDate(s.last_date)}`}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-semibold tabular-nums whitespace-nowrap">
+                      {s.avg_price != null ? s.avg_price.toFixed(2) : '--'}/L
+                      <span className="ml-1 text-2xs font-normal text-[var(--color-text-muted)]">
+                        {t('stations.avgPrice') || 'avg price'}
+                      </span>
+                    </p>
+                    {s.delta_vs_national_pct != null && (
+                      <p className={`text-2xs tabular-nums whitespace-nowrap ${s.delta_vs_national_pct <= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {s.delta_vs_national_pct > 0 ? '+' : ''}{s.delta_vs_national_pct.toFixed(1)}% {t('stations.vsNational') || 'vs national avg'}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Entries List */}
       {isLoading ? (
         <div className="space-y-2">
@@ -149,7 +224,9 @@ export default function FuelEntries() {
               
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium">{entry.liters} L</p>
+                  <p className="text-sm font-medium">
+                    {entry.liters != null ? litersToDisplayVolume(entry.liters, user).toFixed(2) : '--'} {volumeUnitLabel(user, t)}
+                  </p>
                   {entry.is_full_tank && (
                     <span className="badge badge-sm bg-green-500/10 text-green-500">Full</span>
                   )}

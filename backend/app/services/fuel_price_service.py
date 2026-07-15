@@ -18,7 +18,7 @@ import csv
 import json
 import re
 import io
-from datetime import datetime, timezone
+from datetime import datetime, date, timezone
 import requests
 import redis as redis_mod
 
@@ -316,6 +316,73 @@ def _redis_set(country, data, app):
 #  Public API
 # ──────────────────────────────────────────────
 
+def record_price_history(country, data, app):
+    """Persist one weekly national price point (F25) — idempotent per
+    (country, last_update date). Called after successful live fetches only;
+    baseline fallback data is NEVER recorded. Any failure is logged and
+    swallowed so history can never break price serving.
+    """
+    try:
+        raw = data.get('last_update')
+        if not raw:
+            return
+        price_date = datetime.strptime(_normalize_date(str(raw)), '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        return
+
+    from flask import has_app_context
+    from app import db
+
+    def _upsert():
+        from app.models import FuelPriceHistory
+        row = FuelPriceHistory.query.filter_by(
+            country=country, price_date=price_date).first()
+        if row is None:
+            row = FuelPriceHistory(country=country, price_date=price_date)
+            db.session.add(row)
+        row.diesel = data.get('diesel')
+        row.petrol = data.get('petrol')
+        row.lpg = data.get('lpg')
+        row.premium = data.get('premium')
+        row.currency_code = data.get('currency_code')
+        row.source = (data.get('source') or '')[:64] or None
+        db.session.commit()
+
+    try:
+        if has_app_context():
+            _upsert()
+        else:
+            with app.app_context():
+                _upsert()
+    except Exception as e:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        app.logger.warning(f"Fuel price history record failed for {country}: {e}")
+
+
+def _tag_freshness(data, baseline=False):
+    """Return a tagged copy with machine-readable freshness markers (F20).
+
+    ``baseline`` marks hardcoded fallback data; ``stale`` is computed at
+    return time (never persisted) from ``last_update`` being older than 14
+    days — so a cached entry's staleness is re-judged on every read.
+    """
+    out = dict(data)
+    out['baseline'] = bool(baseline)
+    stale = False
+    raw = out.get('last_update')
+    if raw:
+        try:
+            updated = datetime.strptime(_normalize_date(str(raw)), '%Y-%m-%d').date()
+            stale = (date.today() - updated).days > 14
+        except ValueError:
+            pass  # unparseable date — don't guess
+    out['stale'] = stale
+    return out
+
+
 def get_prices(country, app, force=False):
     """
     Get fuel prices for a country with multi-level fallback.
@@ -330,7 +397,7 @@ def get_prices(country, app, force=False):
         cached = _redis_get(country, app)
         if cached:
             app.logger.debug(f"Fuel prices [{country}]: Redis cache hit")
-            return cached
+            return _tag_freshness(cached)
 
     # 2. Live API fetch
     fetched = None
@@ -342,15 +409,17 @@ def get_prices(country, app, force=False):
 
         if fetched:
             _redis_set(country, fetched, app)
+            record_price_history(country, fetched, app)   # F25 — live data only
             # Also update GB/UK alias
             if country in ('UK', 'GB'):
                 alias = 'GB' if country == 'UK' else 'UK'
                 _redis_set(alias, fetched, app)
+                record_price_history(alias, fetched, app)
             app.logger.info(
                 f"Fuel prices [{country}]: fresh data fetched, "
                 f"last_update={fetched.get('last_update')}"
             )
-            return fetched
+            return _tag_freshness(fetched)
     except Exception as e:
         app.logger.warning(f"Fuel prices [{country}]: API fetch failed — {e}")
 
@@ -359,11 +428,12 @@ def get_prices(country, app, force=False):
         cached = _redis_get(country, app)
         if cached:
             app.logger.info(f"Fuel prices [{country}]: using stale Redis after fetch failure")
-            return cached
+            return _tag_freshness(cached)
 
     # 4. Baseline hardcoded data
     app.logger.info(f"Fuel prices [{country}]: using baseline data")
-    return BASELINE_PRICES.get(country, BASELINE_PRICES.get('UK', {}))
+    return _tag_freshness(BASELINE_PRICES.get(country, BASELINE_PRICES.get('UK', {})),
+                          baseline=True)
 
 
 def refresh_all_prices(app):
@@ -381,6 +451,8 @@ def refresh_all_prices(app):
         if data:
             _redis_set('UK', data, app)
             _redis_set('GB', data, app)
+            record_price_history('UK', data, app)   # F25 — accrue the series
+            record_price_history('GB', data, app)
             updated += 1
     except Exception as e:
         app.logger.warning(f"Scheduled refresh failed for UK: {e}")
@@ -392,6 +464,7 @@ def refresh_all_prices(app):
         if eu_data:
             for cc, prices in eu_data.items():
                 _redis_set(cc, prices, app)
+                record_price_history(cc, prices, app)   # F25
                 updated += 1
         else:
             failed += len(EU_COUNTRY_NAMES)

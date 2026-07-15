@@ -264,10 +264,10 @@ def get_expiring_taxes(current_user):
     
     entries = TaxEntry.query.join(Vehicle).filter(
         Vehicle.user_id == current_user.id,
-        TaxEntry.valid_until.isnot(None),
-        TaxEntry.valid_until <= cutoff,
-        TaxEntry.valid_until >= date.today()
-    ).order_by(TaxEntry.valid_until.asc()).all()
+        TaxEntry.due_date.isnot(None),
+        TaxEntry.due_date <= cutoff,
+        TaxEntry.due_date >= date.today()
+    ).order_by(TaxEntry.due_date.asc()).all()
     
     return jsonify({
         'entries': [e.to_dict() for e in entries]
@@ -289,8 +289,8 @@ def get_tax_stats(current_user):
     
     entries = query.all()
     
-    total_cost = sum(e.cost or 0 for e in entries)
-    
+    total_cost = sum(float(e.amount or 0) for e in entries)
+
     # By type
     by_type = {}
     for entry in entries:
@@ -298,15 +298,15 @@ def get_tax_stats(current_user):
         if ttype not in by_type:
             by_type[ttype] = {'count': 0, 'cost': 0}
         by_type[ttype]['count'] += 1
-        by_type[ttype]['cost'] += float(entry.cost or 0)
-    
+        by_type[ttype]['cost'] += float(entry.amount or 0)
+
     # Yearly breakdown
     yearly = {}
     for entry in entries:
-        year = entry.entry_date.year
+        year = entry.date.year
         if year not in yearly:
             yearly[year] = 0
-        yearly[year] += float(entry.cost or 0)
+        yearly[year] += float(entry.amount or 0)
     
     return jsonify({
         'total_cost': float(total_cost),

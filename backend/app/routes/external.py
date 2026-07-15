@@ -139,9 +139,18 @@ def get_fuel_prices(current_user):
 
     cache_key = f"fuel_prices_{country}"
 
-    # On force refresh, clear in-memory cache so we go to the service
+    # On force refresh, invalidate the route-level cache (Redis entry and the
+    # in-process fallback) so get_cached must call the service again (F20 —
+    # this previously referenced a deleted `_cache` dict and 500'd).
     if force_refresh:
-        _cache.pop(cache_key, None)
+        rc = _get_redis()
+        if rc is not None:
+            try:
+                rc.delete(_REDIS_PREFIX + cache_key)
+            except Exception as e:
+                current_app.logger.debug(f"extcache redis delete failed for {cache_key}: {e}")
+        with _fallback_lock:
+            _fallback_cache.pop(cache_key, None)
 
     def fetch_fuel_prices():
         return get_prices(country, current_app._get_current_object(), force=force_refresh)
@@ -165,7 +174,40 @@ def get_fuel_prices(current_user):
         },
         'source': prices.get('source', 'EU Weekly Oil Bulletin'),
         'last_update': prices.get('last_update'),
+        # F20 — machine-readable freshness markers set by the service.
+        'stale': bool(prices.get('stale')),
+        'baseline': bool(prices.get('baseline')),
         'fetched_at': datetime.now(timezone.utc).isoformat()
+    })
+
+
+@external_bp.route('/fuel-prices/history', methods=['GET'])
+@token_required
+def get_fuel_price_history(current_user):
+    """Stored weekly national price points for one country (F25).
+
+    Accrues automatically from the Monday refresh job — zero external calls
+    here. ?country= (default UK), ?weeks= (default 12, clamped 1..52).
+    """
+    from datetime import timedelta, date as date_cls
+    from app.models import FuelPriceHistory
+
+    country = (request.args.get('country') or 'UK').strip().upper()[:2]
+    weeks = request.args.get('weeks', 12, type=int) or 12
+    weeks = max(1, min(52, weeks))
+    cutoff = date_cls.today() - timedelta(weeks=weeks)
+
+    rows = (
+        FuelPriceHistory.query
+        .filter(FuelPriceHistory.country == country,
+                FuelPriceHistory.price_date >= cutoff)
+        .order_by(FuelPriceHistory.price_date.asc())
+        .all()
+    )
+    return jsonify({
+        'country': country,
+        'weeks': weeks,
+        'points': [r.to_dict() for r in rows],
     })
 
 

@@ -204,6 +204,32 @@ def update_parking_entry(current_user, entry_id):
     })
 
 
+@parking_bp.route('/<int:entry_id>/cancel', methods=['POST'])
+@token_required
+def cancel_parking_entry(current_user, entry_id):
+    """Cancel a recurring parking entry (permit/subscription), stopping future
+    auto-generated payments (F34 — mirrors POST /taxes/<id>/cancel)."""
+    entry = ParkingEntry.query.join(Vehicle).filter(
+        ParkingEntry.id == entry_id,
+        Vehicle.user_id == current_user.id
+    ).first()
+
+    if not entry:
+        return jsonify({'error': 'Entry not found'}), 404
+
+    if not entry.recurring:
+        return jsonify({'error': 'Entry is not recurring'}), 400
+
+    entry.recurring = False
+    entry.next_due_date = None
+    db.session.commit()
+
+    return jsonify({
+        'message': 'Recurring parking cancelled',
+        'entry': entry.to_dict()
+    })
+
+
 @parking_bp.route('/<int:entry_id>', methods=['DELETE'])
 @token_required
 def delete_parking_entry(current_user, entry_id):
@@ -290,12 +316,19 @@ def get_active_permits(current_user):
     """Get active parking permits."""
     from datetime import date
     
+    # A permit is either typed as one ('permit'/'subscription' from imports,
+    # 'monthly' from the app's own form) or carries a permit expiry date.
     entries = ParkingEntry.query.join(Vehicle).filter(
         Vehicle.user_id == current_user.id,
-        ParkingEntry.is_permit == True,
-        (ParkingEntry.permit_valid_until.is_(None)) | 
-        (ParkingEntry.permit_valid_until >= date.today())
-    ).order_by(ParkingEntry.permit_valid_until.asc()).all()
+        db.or_(
+            ParkingEntry.parking_type.in_(('permit', 'subscription', 'monthly')),
+            ParkingEntry.permit_expires.isnot(None),
+        ),
+        db.or_(
+            ParkingEntry.permit_expires.is_(None),
+            ParkingEntry.permit_expires >= date.today(),
+        ),
+    ).order_by(ParkingEntry.permit_expires.asc().nullslast()).all()
     
     return jsonify({
         'permits': [e.to_dict() for e in entries]
@@ -317,9 +350,9 @@ def get_parking_stats(current_user):
     
     entries = query.all()
     
-    total_cost = sum(e.cost or 0 for e in entries)
+    total_cost = sum(float(e.amount or 0) for e in entries)
     total_duration = sum(e.duration_minutes or 0 for e in entries)
-    
+
     # By type
     by_type = {}
     for entry in entries:
@@ -327,17 +360,17 @@ def get_parking_stats(current_user):
         if ptype not in by_type:
             by_type[ptype] = {'count': 0, 'cost': 0, 'duration': 0}
         by_type[ptype]['count'] += 1
-        by_type[ptype]['cost'] += float(entry.cost or 0)
+        by_type[ptype]['cost'] += float(entry.amount or 0)
         by_type[ptype]['duration'] += entry.duration_minutes or 0
-    
+
     # Top locations
     locations = {}
     for entry in entries:
-        loc = entry.location_name or 'Unknown'
+        loc = entry.location or 'Unknown'
         if loc not in locations:
             locations[loc] = {'count': 0, 'cost': 0}
         locations[loc]['count'] += 1
-        locations[loc]['cost'] += float(entry.cost or 0)
+        locations[loc]['cost'] += float(entry.amount or 0)
     
     top_locations = sorted(
         locations.items(),

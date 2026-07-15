@@ -90,3 +90,120 @@ def test_single_vehicle_has_empty_other_vehicles(app, user):
         v = _vehicle(user.id, 'Only')
         ctx = _build_chat_context(user, db.session.get(Vehicle, v.id))
         assert ctx['other_vehicles'] == []
+
+
+# --- F36: due feed + forecast grounding --------------------------------------
+
+def test_due_soon_and_forecast_in_vehicle_context(app, user):
+    from datetime import timedelta
+    from app.models.insurance import InsurancePolicy
+    today = date.today()
+
+    with app.app_context():
+        v = _vehicle(user.id, 'DueCar', monthly_budget=100)
+        db.session.add(InsurancePolicy(
+            user_id=user.id, vehicle_id=v.id, provider='Acme', status='active',
+            premium=420, start_date=today - timedelta(days=353),
+            end_date=today + timedelta(days=12)))
+        db.session.commit()
+
+        ctx = _build_chat_context(user, db.session.get(Vehicle, v.id))
+
+    kinds = {i['kind'] for i in ctx['due_soon']}
+    assert 'insurance' in kinds
+    ins = next(i for i in ctx['due_soon'] if i['kind'] == 'insurance')
+    assert ins['days_left'] == 12
+    assert ins['due_date'] == (today + timedelta(days=12)).isoformat()
+
+    assert len(ctx['forecast_next_3_months']) == 3
+    bucket = ctx['forecast_next_3_months'][0]
+    assert set(bucket) == {'month', 'projected', 'over_budget'}
+    assert ctx['vehicle']['monthly_budget'] == 100.0
+
+
+def test_due_soon_is_vehicle_scoped_and_capped(app, user):
+    from datetime import timedelta
+    from app.models import Reminder
+    today = date.today()
+
+    with app.app_context():
+        mine = _vehicle(user.id, 'Mine')
+        other = _vehicle(user.id, 'OtherCar')
+        db.session.add(Reminder(user_id=user.id, vehicle_id=other.id,
+                                title='Other MOT', due_date=today + timedelta(days=5)))
+        for n in range(12):  # more than the 10-item cap
+            db.session.add(Reminder(user_id=user.id, vehicle_id=mine.id,
+                                    title=f'Task {n}', due_date=today + timedelta(days=n + 1)))
+        db.session.commit()
+
+        ctx = _build_chat_context(user, db.session.get(Vehicle, mine.id))
+
+    titles = [i['title'] for i in ctx['due_soon']]
+    assert 'Other MOT' not in titles          # other vehicle's item excluded
+    assert len(ctx['due_soon']) == 10         # capped
+
+
+def test_fleet_context_has_toplevel_due_and_forecast(app, user):
+    from datetime import timedelta
+    from app.models import Reminder
+    from app.routes.vehicles import _build_fleet_chat_context
+    today = date.today()
+
+    with app.app_context():
+        a = _vehicle(user.id, 'FleetA')
+        b = _vehicle(user.id, 'FleetB')
+        db.session.add(Reminder(user_id=user.id, vehicle_id=a.id,
+                                title='MOT A', due_date=today + timedelta(days=3)))
+        db.session.add(Reminder(user_id=user.id, vehicle_id=b.id,
+                                title='Tax B', due_date=today + timedelta(days=9)))
+        db.session.commit()
+
+        ctx, included = _build_fleet_chat_context(user)
+
+    assert len(included) == 2
+    names = {(i['title'], i['vehicle_name']) for i in ctx['due_soon']}
+    assert ('MOT A', 'FleetA') in names and ('Tax B', 'FleetB') in names
+    assert len(ctx['forecast_next_3_months']) == 3
+    # Per-vehicle copies are dropped — the fleet-level versions supersede them.
+    for vctx in ctx['vehicles']:
+        assert 'due_soon' not in vctx
+        assert 'forecast_next_3_months' not in vctx
+
+
+def test_chat_prompt_contains_due_soon(app, client, user, auth_headers, monkeypatch):
+    """Acceptance — the serialized prompt sent to the model carries due_soon."""
+    from datetime import timedelta
+    from app.models import Reminder
+    import app.routes.vehicles as v
+
+    with app.app_context():
+        veh = _vehicle(user.id, 'PromptCar')
+        db.session.add(Reminder(user_id=user.id, vehicle_id=veh.id,
+                                title='MOT-PROMPT-MARKER',
+                                due_date=date.today() + timedelta(days=7)))
+        db.session.commit()
+        vid = veh.id
+
+    app.config['OLLAMA_ENABLED'] = True
+    app.config['OLLAMA_BASE_URL'] = 'http://localhost:11434'
+    captured = []
+    try:
+        monkeypatch.setattr(v, 'resolve_model', lambda *a, **k: 'test-model')
+        monkeypatch.setattr(v, 'ai_cache_get', lambda *a, **k: None)
+        monkeypatch.setattr(v, 'ai_cache_set', lambda *a, **k: None)
+
+        def _capture(**kwargs):
+            captured.append(kwargs.get('prompt') or '')
+            raise v.OllamaError('stop here — prompt captured')
+
+        monkeypatch.setattr(v, 'ollama_chat', _capture)
+        client.post(f'/api/vehicles/{vid}/chat', json={'question': 'What is due soon?'},
+                    headers=auth_headers(user.id))
+    finally:
+        app.config['OLLAMA_ENABLED'] = False
+
+    assert captured, 'model was never called'
+    joined = '\n'.join(captured)
+    assert 'due_soon' in joined
+    assert 'MOT-PROMPT-MARKER' in joined
+    assert 'forecast_next_3_months' in joined

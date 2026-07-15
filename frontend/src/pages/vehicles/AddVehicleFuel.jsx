@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom'
 import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
 import { useForm } from 'react-hook-form'
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import { fuelApi, vehicleApi, attachmentApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
-import { normalizeDistanceUnit } from '../../utils/fuelEconomy'
+import { useAuth } from '../../contexts/AuthContext'
+import {
+  normalizeDistanceUnit, usesGallons, litersToDisplayVolume,
+  displayVolumeToLiters, pricePerLiterToDisplay, displayPriceToPerLiter,
+} from '../../utils/fuelEconomy'
 import ReceiptUpload from '../../components/ReceiptUpload'
 import ScanReceiptBanner from '../../components/ui/ScanReceiptBanner'
 
@@ -36,6 +40,8 @@ export default function AddVehicleFuel() {
   const isEditMode = !!editId
   const navigate = useNavigate()
   const { t } = useTranslation()
+  const { user } = useAuth()
+  const gallons = usesGallons(user)  // F27 — input/labels in the user's unit
   const { currency } = useCurrency()
   
   const [vehicle, setVehicle] = useState(null)
@@ -86,8 +92,11 @@ export default function AddVehicleFuel() {
           reset({
             date: entry.date ? entry.date.split('T')[0] : new Date().toISOString().split('T')[0],
             mileage: entry.odometer || '',
-            liters: entry.liters || '',
-            price_per_liter: entry.price_per_liter || '',
+            // F27 — stored litres shown in the user's volume unit.
+            liters: entry.liters != null
+              ? Math.round(litersToDisplayVolume(entry.liters, user) * 100) / 100 : '',
+            price_per_liter: entry.price_per_liter != null
+              ? Math.round(pricePerLiterToDisplay(entry.price_per_liter, user) * 1000) / 1000 : '',
             total_cost: entry.total_price || '',
             is_full_tank: entry.full_tank ?? true,
             fuel_type: entry.fuel_type || '',
@@ -113,7 +122,21 @@ export default function AddVehicleFuel() {
     
     fetchData()
   }, [vehicleId, editId, isEditMode, navigate, setValue, reset])
-  
+
+  // F33 — receipt routed from ShareTarget: apply the AI-parsed fields and
+  // adopt the already-uploaded attachment (linked to the entry after create).
+  const location = useLocation()
+  useEffect(() => {
+    const st = location.state
+    if (!st || isEditMode) return
+    const d = st.prefill || {}
+    if (d.date) setValue('date', d.date)
+    if (d.amount != null) setValue('total_cost', String(d.amount))
+    if (d.vendor) setValue('station_name', d.vendor)
+    if (st.attachmentId) setUploadedAttachmentId(st.attachmentId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useUnsavedChanges(isDirty)
 
   const onSubmit = async (data) => {
@@ -125,8 +148,9 @@ export default function AddVehicleFuel() {
         ...data,
         vehicle_id: parseInt(vehicleId),
         mileage: parseInt(data.mileage),
-        liters: parseFloat(data.liters),
-        price_per_liter: parseFloat(data.price_per_liter),
+        // F27 — storage is always litres; convert from the user's unit.
+        liters: displayVolumeToLiters(parseFloat(data.liters), user),
+        price_per_liter: displayPriceToPerLiter(parseFloat(data.price_per_liter), user),
         total_cost: parseFloat(data.total_cost),
       }
       
@@ -280,12 +304,12 @@ export default function AddVehicleFuel() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-[var(--color-text-muted)] mb-1">
-                {t('addFuel.liters') || 'Liters'} *
+                {gallons ? (t('addFuel.gallons') || 'Gallons') : (t('addFuel.liters') || 'Liters')} *
               </label>
               <input
                 type="number" inputMode="decimal"
                 step="0.01"
-                {...register('liters', { 
+                {...register('liters', {
                   required: t('addFuel.litersRequired') || 'Liters is required',
                   min: { value: 0.01, message: t('addFuel.invalidAmount') || 'Invalid amount' }
                 })}
@@ -299,7 +323,7 @@ export default function AddVehicleFuel() {
             
             <div>
               <label className="block text-xs text-[var(--color-text-muted)] mb-1">
-                {t('addFuel.pricePerLiter') || 'Price/Liter'} ({currency.symbol}) *
+                {gallons ? (t('addFuel.pricePerGallon') || 'Price/Gallon') : (t('addFuel.pricePerLiter') || 'Price/Liter')} ({currency.symbol}) *
               </label>
               <input
                 type="number" inputMode="decimal"

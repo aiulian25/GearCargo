@@ -4,6 +4,19 @@ import { useForm } from 'react-hook-form'
 import { vehicleApi } from '../../services/api'
 import { useLanguage } from '../../contexts/LanguageContext'
 
+// F31 — component keys + km defaults, mirroring the backend wear table.
+// Placeholders show the effective default in the vehicle's own unit.
+const MAINTENANCE_COMPONENTS = [
+  ['oil_change', 10000], ['air_filter', 20000], ['cabin_filter', 25000],
+  ['brake_pads', 50000], ['brake_fluid', 40000], ['transmission_fluid', 60000],
+  ['coolant', 50000], ['spark_plugs', 40000], ['timing_belt', 100000],
+  ['tires', 50000], ['battery', 50000],
+]
+const defaultIntervalFor = (km, unit) =>
+  (unit || 'km').toLowerCase().startsWith('mi')
+    ? Math.max(500, Math.round(km * 0.621371 / 500) * 500)
+    : km
+
 export default function EditVehicle() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -15,6 +28,7 @@ export default function EditVehicle() {
   const [photoFile, setPhotoFile] = useState(null)
   const [photoChanged, setPhotoChanged] = useState(false)
   const [showDimensions, setShowDimensions] = useState(false)
+  const [showIntervals, setShowIntervals] = useState(false)
   const [distanceUnit, setDistanceUnit] = useState('km')
   const fileInputRef = useRef(null)
   const cameraInputRef = useRef(null)
@@ -42,7 +56,14 @@ export default function EditVehicle() {
           engine_cc: vehicle.engine_cc || '',
           vehicle_height_cm: vehicle.vehicle_height_cm || '',
           vehicle_width_cm: vehicle.vehicle_width_cm || '',
+          vehicle_length_cm: vehicle.vehicle_length_cm || '',
           vehicle_weight_kg: vehicle.vehicle_weight_kg || '',
+          drivetrain: vehicle.drivetrain || '',
+          purchase_date: vehicle.purchase_date ? vehicle.purchase_date.split('T')[0] : '',
+          purchase_price: vehicle.purchase_price ?? '',
+          // F31 — maintenance-interval overrides (empty = use default).
+          ...Object.fromEntries(MAINTENANCE_COMPONENTS.map(([key]) =>
+            [`mi_${key}`, vehicle.maintenance_intervals?.[key] ?? ''])),
         })
         
         // Set distance unit from vehicle data
@@ -58,6 +79,11 @@ export default function EditVehicle() {
         // Show dimensions section if any dimension is set
         if (vehicle.vehicle_height_cm || vehicle.vehicle_width_cm || vehicle.vehicle_weight_kg) {
           setShowDimensions(true)
+        }
+
+        // Show intervals section if any override is set (F31)
+        if (vehicle.maintenance_intervals && Object.keys(vehicle.maintenance_intervals).length > 0) {
+          setShowIntervals(true)
         }
       } catch (err) {
         console.error('Failed to load vehicle:', err)
@@ -104,8 +130,22 @@ export default function EditVehicle() {
         engine_cc: data.engine_cc ? parseInt(data.engine_cc) : null,
         vehicle_height_cm: data.vehicle_height_cm ? parseInt(data.vehicle_height_cm) : null,
         vehicle_width_cm: data.vehicle_width_cm ? parseInt(data.vehicle_width_cm) : null,
+        vehicle_length_cm: data.vehicle_length_cm ? parseInt(data.vehicle_length_cm) : null,
         vehicle_weight_kg: data.vehicle_weight_kg ? parseInt(data.vehicle_weight_kg) : null,
+        drivetrain: data.drivetrain || null,
+        purchase_date: data.purchase_date || null,
+        purchase_price: data.purchase_price !== '' && data.purchase_price != null
+          ? parseFloat(data.purchase_price) : null,
         distance_unit: distanceUnit,
+        // F31 — only non-empty overrides are sent; null clears them all.
+        maintenance_intervals: (() => {
+          const overrides = {}
+          for (const [key] of MAINTENANCE_COMPONENTS) {
+            const v = data[`mi_${key}`]
+            if (v !== '' && v != null) overrides[key] = parseInt(v)
+          }
+          return Object.keys(overrides).length ? overrides : null
+        })(),
       })
       
       // Handle photo changes
@@ -431,6 +471,45 @@ export default function EditVehicle() {
               placeholder={t('vehicles.engineSizePlaceholder')}
             />
           </div>
+
+          <div>
+            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              {t('vehicles.drivetrain') || 'Drivetrain'}
+            </label>
+            <select {...register('drivetrain')} className="input">
+              <option value="">{t('vehicles.selectDrivetrain') || 'Select drivetrain'}</option>
+              <option value="fwd">{t('vehicles.drivetrainFwd') || 'Front-wheel drive (FWD)'}</option>
+              <option value="rwd">{t('vehicles.drivetrainRwd') || 'Rear-wheel drive (RWD)'}</option>
+              <option value="awd">{t('vehicles.drivetrainAwd') || 'All-wheel drive (AWD)'}</option>
+            </select>
+          </div>
+
+          {/* Purchase info (F23) — stored at create, now visible and editable */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                {t('vehicles.purchaseDate') || 'Purchase date'}
+              </label>
+              <input
+                type="date"
+                {...register('purchase_date')}
+                className="input"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                {t('vehicles.purchasePrice') || 'Purchase price'}
+              </label>
+              <input
+                type="number" inputMode="decimal"
+                step="0.01"
+                {...register('purchase_price', { min: 0 })}
+                className="input"
+                placeholder="0.00"
+              />
+            </div>
+          </div>
         </div>
         
         {/* Dimensions (Collapsible) */}
@@ -478,18 +557,70 @@ export default function EditVehicle() {
                     placeholder={t('vehicles.widthPlaceholder')}
                   />
                 </div>
+
+                <div>
+                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                    {t('vehicles.length') || 'Length (cm)'}
+                  </label>
+                  <input
+                    type="number" inputMode="decimal"
+                    {...register('vehicle_length_cm', { min: 0 })}
+                    className="input"
+                    placeholder={t('vehicles.lengthPlaceholder') || 'e.g., 430'}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                    {t('vehicles.weight')}
+                  </label>
+                  <input
+                    type="number" inputMode="decimal"
+                    {...register('vehicle_weight_kg', { min: 0 })}
+                    className="input"
+                    placeholder={t('vehicles.weightPlaceholder')}
+                  />
+                </div>
               </div>
-              
-              <div>
-                <label className="block text-xs text-[var(--color-text-muted)] mb-1">
-                  {t('vehicles.weight')}
-                </label>
-                <input
-                  type="number" inputMode="decimal"
-                  {...register('vehicle_weight_kg', { min: 0 })}
-                  className="input"
-                  placeholder={t('vehicles.weightPlaceholder')}
-                />
+            </div>
+          )}
+        </div>
+
+        {/* Maintenance intervals (F31, collapsible) — per-vehicle wear thresholds */}
+        <div className="card">
+          <button
+            type="button"
+            onClick={() => setShowIntervals(!showIntervals)}
+            className="w-full flex items-center justify-between py-1"
+          >
+            <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
+              {t('maintenance.intervalsTitle') || 'Maintenance intervals'}
+            </h3>
+            <span className={`material-icons-outlined icon-sm text-[var(--color-text-muted)] transition-transform ${showIntervals ? 'rotate-180' : ''}`}>
+              expand_more
+            </span>
+          </button>
+
+          {showIntervals && (
+            <div className="space-y-4 mt-4 pt-4 border-t border-[var(--color-border)]">
+              <p className="text-xs text-[var(--color-text-muted)]">
+                {(t('maintenance.intervalsHint') || 'Leave empty to use the default')} ({distanceUnit})
+              </p>
+
+              <div className="grid grid-cols-2 gap-3">
+                {MAINTENANCE_COMPONENTS.map(([key, km]) => (
+                  <div key={key}>
+                    <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                      {t(`vehicleHealth.components_${key}`) || key.replace(/_/g, ' ')}
+                    </label>
+                    <input
+                      type="number" inputMode="numeric" min="1"
+                      {...register(`mi_${key}`)}
+                      className="input"
+                      placeholder={String(defaultIntervalFor(km, distanceUnit))}
+                    />
+                  </div>
+                ))}
               </div>
             </div>
           )}

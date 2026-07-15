@@ -139,6 +139,8 @@ export const fuelApi = {
     return api.get(`/fuel?${params}`)
   },
   getByVehicle: (vehicleId, page = 1) => api.get(`/fuel?vehicle_id=${vehicleId}&page=${page}`),
+  // F26 — per-station price insights from the user's own fills.
+  getStations: (vehicleId) => api.get(vehicleId ? `/fuel/stations?vehicle_id=${vehicleId}` : '/fuel/stations'),
   get: (id) => api.get(`/fuel/${id}`),
   create: (data) => api.post('/fuel', data),
   update: (id, data) => api.put(`/fuel/${id}`, data),
@@ -160,7 +162,6 @@ export const serviceApi = {
   create: (data) => api.post('/services', data),
   update: (id, data) => api.put(`/services/${id}`, data),
   delete: (id) => api.delete(`/services/${id}`),
-  getUpcoming: () => api.get('/services/upcoming'),
 }
 
 export const repairApi = {
@@ -199,7 +200,6 @@ export const reminderApi = {
   delete: (id) => api.delete(`/reminders/${id}`),
   complete: (id, mileage = null) => api.post(`/reminders/${id}/complete`, { mileage }),
   snooze: (id, days) => api.post(`/reminders/${id}/snooze`, { days }),
-  getUpcoming: (days = 7) => api.get(`/reminders/upcoming?days=${days}`),
   getOverdue: () => api.get('/reminders/overdue'),
   getStats: () => api.get('/reminders/stats'),
 }
@@ -221,6 +221,8 @@ export const forecastApi = {
 export const parkingApi = {
   getByVehicle: (vehicleId, page = 1) => api.get(`/parking?vehicle_id=${vehicleId}&page=${page}`),
   update: (id, data) => api.put(`/parking/${id}`, data),
+  // F34 — stop a recurring permit/subscription series (mirrors taxApi.cancel).
+  cancel: (id) => api.post(`/parking/${id}/cancel`),
   // F14 — outstanding parking fines (+ total_owed). status: pending|contested|paid, or omit for all outstanding.
   getFines: (status) => api.get(status ? `/parking/fines?status=${status}` : '/parking/fines'),
 }
@@ -448,17 +450,6 @@ export const predictionApi = {
   resetChecklist: (checklistId) => api.post(`/predictions/checklists/${checklistId}/reset`),
 }
 
-export const dashboardApi = {
-  getSummary: () => api.get('/dashboard/summary'),
-  getOverdueReminders: () => api.get('/dashboard/overdue'),
-  getUpcomingReminders: (days = 30) => api.get(`/dashboard/upcoming?days=${days}`),
-  getRecentActivity: (limit = 10) => api.get(`/dashboard/activity?limit=${limit}`),
-  getCostsByMonth: (year = null) => {
-    const params = year ? `?year=${year}` : ''
-    return api.get(`/dashboard/costs-by-month${params}`)
-  },
-}
-
 export const externalApi = {
   getFuelPrices: (country = 'UK', location = '', lat = null, lon = null, forceRefresh = false) => {
     const params = new URLSearchParams({ country })
@@ -468,6 +459,9 @@ export const externalApi = {
     if (forceRefresh) params.append('force_refresh', 'true')
     return api.get(`/external/fuel-prices?${params}`)
   },
+  // F25 — stored weekly national price points (accrued by the Monday refresh).
+  history: (country = 'UK', weeks = 12) =>
+    api.get(`/external/fuel-prices/history?country=${encodeURIComponent(country)}&weeks=${weeks}`),
   getCurrencyRates: () => api.get('/external/currency-rates'),
 }
 

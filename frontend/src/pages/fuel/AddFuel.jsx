@@ -5,7 +5,10 @@ import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import { fuelApi, vehicleApi } from '../../services/api'
 import { useTranslation } from '../../contexts/LanguageContext'
 import { useAuth } from '../../contexts/AuthContext'
-import { normalizeDistanceUnit } from '../../utils/fuelEconomy'
+import {
+  normalizeDistanceUnit, usesGallons,
+  displayVolumeToLiters, displayPriceToPerLiter,
+} from '../../utils/fuelEconomy'
 
 export default function AddFuel() {
   const navigate = useNavigate()
@@ -80,8 +83,9 @@ export default function AddFuel() {
         ...data,
         vehicle_id: parseInt(data.vehicle_id),
         mileage: parseInt(data.mileage),
-        liters: parseFloat(data.liters),
-        price_per_liter: parseFloat(data.price_per_liter),
+        // F27 — storage is always litres; convert from the user's unit.
+        liters: displayVolumeToLiters(parseFloat(data.liters), user),
+        price_per_liter: displayPriceToPerLiter(parseFloat(data.price_per_liter), user),
         total_cost: parseFloat(data.total_cost),
       })
       
@@ -198,7 +202,7 @@ export default function AddFuel() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-[var(--color-text-muted)] mb-1">
-                {t('addFuel.liters') || 'Liters'} *
+                {usesGallons(user) ? (t('addFuel.gallons') || 'Gallons') : (t('addFuel.liters') || 'Liters')} *
               </label>
               <input
                 type="number" inputMode="decimal"
@@ -217,7 +221,7 @@ export default function AddFuel() {
             
             <div>
               <label className="block text-xs text-[var(--color-text-muted)] mb-1">
-                {t('addFuel.pricePerLiter') || 'Price/Liter'} *
+                {usesGallons(user) ? (t('addFuel.pricePerGallon') || 'Price/Gallon') : (t('addFuel.pricePerLiter') || 'Price/Liter')} *
               </label>
               <input
                 type="number" inputMode="decimal"

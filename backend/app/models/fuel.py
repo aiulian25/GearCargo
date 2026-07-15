@@ -35,7 +35,10 @@ class FuelEntry(Entry):
     }
     
     def calculate_efficiency(self, previous_odometer):
-        """Calculate fuel efficiency from previous fill."""
+        """SUPERSEDED (F29) — naive previous-fill calculation, blind to partial
+        fills. Kept for backwards compatibility only; the app now computes
+        full-to-full figures via services/fuel_efficiency.recalculate_efficiencies.
+        """
         if previous_odometer and self.odometer and self.liters:
             distance = self.odometer - previous_odometer
             if distance > 0:
@@ -48,6 +51,7 @@ class FuelEntry(Entry):
         data.update({
             'liters': float(self.liters) if self.liters else None,
             'price_per_liter': float(self.price_per_liter) if self.price_per_liter else None,
+            'station_address': self.station_address,
             'total_price': float(self.total_price) if self.total_price else None,
             'fuel_type': self.fuel_type,
             'station': self.station,

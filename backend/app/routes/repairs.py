@@ -166,12 +166,6 @@ def update_repair_entry(current_user, entry_id):
     
     data = request.get_json()
     
-    allowed = ['entry_date', 'mileage', 'cost', 'repair_type', 'repair_types', 'description',
-               'diagnosis', 'parts_replaced', 'labor_cost', 'parts_cost',
-               'provider_name', 'provider_location', 'provider_phone',
-               'severity', 'is_recurring',
-               'insurance_covered', 'insurance_claim_number', 'notes']
-    
     # Handle multi-select repair_types
     if 'repair_types' in data:
         types_list = data['repair_types']
@@ -183,13 +177,52 @@ def update_repair_entry(current_user, entry_id):
         entry.repair_type = data['repair_type']
         entry.repair_types = [data['repair_type']]
         entry.title = data['repair_type']
-    
-    for field in allowed:
-        if field in data and field not in ('repair_type', 'repair_types'):
-            if field == 'entry_date' and data[field]:
-                setattr(entry, field, datetime.fromisoformat(data[field]))
-            else:
-                setattr(entry, field, data[field])
+
+    # F18 — request keys mapped to the REAL model columns. Aliases first,
+    # canonical names last so the canonical value wins when both are sent.
+    # (is_recurring / insurance_* / provider_phone have no RepairEntry columns.)
+    field_aliases = {
+        'entry_date': 'date', 'date': 'date',
+        'mileage': 'odometer', 'odometer': 'odometer',
+        'description': 'description',
+        'diagnosis': 'diagnosis', 'symptoms': 'symptoms',
+        'provider_name': 'provider', 'shop_name': 'provider', 'provider': 'provider',
+        'provider_location': 'garage_address', 'garage_address': 'garage_address',
+        'parts_replaced': 'parts_replaced',
+        'labor_cost': 'labor_cost', 'parts_cost': 'parts_cost',
+        'severity': 'severity',
+        'notes': 'notes',
+    }
+
+    for key, column in field_aliases.items():
+        if key not in data:
+            continue
+        value = data[key]
+        if column == 'date':
+            if value:
+                entry.date = datetime.fromisoformat(value.replace('Z', '+00:00')).date()
+        elif column == 'odometer':
+            entry.odometer = _opt_int(value)
+        else:
+            setattr(entry, column, value)
+
+    # The shop field names both the provider and the garage (mirrors create).
+    if data.get('shop_name') or data.get('provider_name'):
+        entry.garage_name = data.get('shop_name') or data.get('provider_name')
+
+    # Recalculate amount (mirrors update_service_entry — was missing here).
+    if 'cost' in data or 'total_cost' in data:
+        entry.amount = data.get('total_cost') or data.get('cost') or 0
+    elif 'labor_cost' in data or 'parts_cost' in data:
+        labor = float(entry.labor_cost or 0)
+        parts = float(entry.parts_cost or 0)
+        entry.amount = labor + parts
+
+    # Mirror create's mileage bump — vehicle mileage only ever increases.
+    if entry.odometer:
+        vehicle = db.session.get(Vehicle, entry.vehicle_id)
+        if vehicle and entry.odometer > (vehicle.current_mileage or 0):
+            vehicle.current_mileage = entry.odometer
 
     # F2 — warranty fields, mapped to the real columns.
     if 'warranty_covered' in data or 'under_warranty' in data:
@@ -240,17 +273,19 @@ def get_repair_stats(current_user):
     
     entries = query.all()
     
-    total_cost = sum(e.cost or 0 for e in entries)
-    warranty_savings = sum(e.cost or 0 for e in entries if e.warranty_covered)
-    insurance_claims = sum(e.cost or 0 for e in entries if e.insurance_covered)
-    
+    total_cost = sum(float(e.amount or 0) for e in entries)
+    # 'Savings' = cost of repairs that were covered by an existing warranty.
+    warranty_savings = sum(float(e.amount or 0) for e in entries if e.under_warranty)
+    # RepairEntry has no insurance columns — keep the response shape stable.
+    insurance_claims = 0.0
+
     # By severity
     by_severity = {'low': 0, 'medium': 0, 'high': 0, 'critical': 0}
     for entry in entries:
         severity = entry.severity or 'medium'
         if severity in by_severity:
             by_severity[severity] += 1
-    
+
     # By type
     by_type = {}
     for entry in entries:
@@ -259,7 +294,7 @@ def get_repair_stats(current_user):
             if rtype not in by_type:
                 by_type[rtype] = {'count': 0, 'cost': 0}
             by_type[rtype]['count'] += 1
-            by_type[rtype]['cost'] += float(entry.cost or 0)
+            by_type[rtype]['cost'] += float(entry.amount or 0)
     
     return jsonify({
         'total_cost': float(total_cost),

@@ -1,7 +1,7 @@
 /* eslint-disable no-restricted-globals */
 
 // CACHE VERSION - increment to force update
-const CACHE_VERSION = 'v2.0.1'
+const CACHE_VERSION = 'v2.0.2'
 
 // Dev-only logger — compiled to a no-op in production builds by Vite
 // so no internal details leak to the browser console in production.
@@ -210,12 +210,13 @@ registerRoute(
 // Queue failed requests when offline and retry when back online
 // ============================================================
 
-// §14.7 — the AI vehicle chat is request/response and must NEVER be queued or
-// replayed offline: a replayed question would run remote inference later with no
-// UI to show the answer (wasted + confusing). Match it FIRST as plain NetworkOnly
+// §14.7 — the AI chat (per-vehicle /vehicles/<id>/chat AND the F10 fleet-wide
+// /vehicles/chat) is request/response and must NEVER be queued or replayed
+// offline: a replayed question would run remote inference later with no UI to
+// show the answer (wasted + confusing). Match it FIRST as plain NetworkOnly
 // (no background sync) so it fails fast offline instead of being queued.
 registerRoute(
-  ({ url, request }) => request.method === 'POST' && /^\/api\/vehicles\/\d+\/chat$/.test(url.pathname),
+  ({ url, request }) => request.method === 'POST' && /^\/api\/vehicles\/(\d+\/)?chat$/.test(url.pathname),
   new NetworkOnly(),
   'POST'
 )

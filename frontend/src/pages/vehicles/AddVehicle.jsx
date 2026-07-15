@@ -30,6 +30,7 @@ export default function AddVehicle() {
       engine_cc: '',
       vehicle_height_cm: '',
       vehicle_width_cm: '',
+      vehicle_length_cm: '',
       vehicle_weight_kg: '',
     }
   })
@@ -60,6 +61,7 @@ export default function AddVehicle() {
         engine_cc: data.engine_cc ? parseInt(data.engine_cc) : null,
         vehicle_height_cm: data.vehicle_height_cm ? parseInt(data.vehicle_height_cm) : null,
         vehicle_width_cm: data.vehicle_width_cm ? parseInt(data.vehicle_width_cm) : null,
+        vehicle_length_cm: data.vehicle_length_cm ? parseInt(data.vehicle_length_cm) : null,
         vehicle_weight_kg: data.vehicle_weight_kg ? parseInt(data.vehicle_weight_kg) : null,
         distance_unit: distanceUnit,
       })
@@ -404,18 +406,30 @@ export default function AddVehicle() {
                     placeholder={t('vehicles.widthPlaceholder')}
                   />
                 </div>
-              </div>
-              
-              <div>
-                <label className="block text-xs text-[var(--color-text-muted)] mb-1">
-                  {t('vehicles.weight')}
-                </label>
-                <input
-                  type="number" inputMode="decimal"
-                  {...register('vehicle_weight_kg', { min: 0 })}
-                  className="input"
-                  placeholder={t('vehicles.weightPlaceholder')}
-                />
+
+                <div>
+                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                    {t('vehicles.length') || 'Length (cm)'}
+                  </label>
+                  <input
+                    type="number" inputMode="decimal"
+                    {...register('vehicle_length_cm', { min: 0 })}
+                    className="input"
+                    placeholder={t('vehicles.lengthPlaceholder') || 'e.g., 430'}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                    {t('vehicles.weight')}
+                  </label>
+                  <input
+                    type="number" inputMode="decimal"
+                    {...register('vehicle_weight_kg', { min: 0 })}
+                    className="input"
+                    placeholder={t('vehicles.weightPlaceholder')}
+                  />
+                </div>
               </div>
             </div>
           )}

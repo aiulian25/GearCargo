@@ -6,6 +6,8 @@ export const translations = {
     // Measurement units
     units: {
       mpgUk: 'MPG',        // Imperial (UK) gallon
+      liters: 'L',
+      gallons: 'gal',
       mpgUs: 'MPG (US)',   // US gallon
     },
     // Global Search
@@ -322,6 +324,31 @@ export const translations = {
       expiresOn: 'Warranty expires on',
       hint: 'Optional — whichever limit is reached first ends the coverage.',
       coveredByWarranty: 'This repair was covered by an existing warranty',
+    },
+    tank: {
+      title: 'Tank',
+      capacity: 'Tank capacity',
+      fullTankCost: 'Full tank at national average',
+      estimatedRange: 'Estimated range per tank',
+    },
+    ownership: {
+      title: 'Cost of ownership',
+      totalWithPurchase: 'Total incl. purchase',
+      perMonth: 'Per month owned',
+      perDistanceWithPurchase: 'Per {unit} incl. purchase',
+      addPurchaseHint: 'Add a purchase price to see ownership costs',
+      months: 'months',
+    },
+    maintenance: {
+      intervalsTitle: 'Maintenance intervals',
+      intervalsHint: 'Leave empty to use the default',
+    },
+    stations: {
+      title: 'Your stations',
+      fills: 'fills',
+      avgPrice: 'avg price',
+      vsNational: 'vs national avg',
+      cheapest: 'Best value',
     },
 
     // Charts Page
@@ -680,6 +707,8 @@ export const translations = {
       litersRequired: 'Liters is required',
       invalidAmount: 'Invalid amount',
       pricePerLiter: 'Price/Liter',
+      pricePerGallon: 'Price per gallon',
+      gallons: 'Gallons',
       priceRequired: 'Price is required',
       invalidPrice: 'Invalid price',
       totalCost: 'Total Cost',
@@ -953,6 +982,9 @@ export const translations = {
       taxDescription: 'Automatically remind you when this tax is due again',
       parkingPermit: 'Parking Permit/Subscription',
       parkingDescription: 'For monthly permits or recurring parking subscriptions',
+      stopRepeating: 'Stop repeating',
+      stopRepeatingConfirm: 'Stop this recurring series? Future entries will no longer be auto-generated.',
+      nextOn: 'next {date}',
       frequency: 'Frequency',
       weekly: 'Weekly',
       monthly: 'Monthly',
@@ -1226,6 +1258,9 @@ export const translations = {
       petrol: 'Petrol (95)',
       dataSource: 'Data from EU Weekly Oil Bulletin',
       autoRefreshing: 'Refreshing...',
+      staleWarning: 'Prices may be outdated',
+      trendVsMonth: 'vs last month',
+      historyUnavailable: 'No history yet',
       updatedJustNow: 'Updated just now',
       updatedAgo: 'Updated {n} min ago',
     },
@@ -1279,6 +1314,15 @@ export const translations = {
       widthPlaceholder: 'e.g., 180',
       weight: 'Weight (kg)',
       weightPlaceholder: 'e.g., 1500',
+      length: 'Length (cm)',
+      lengthPlaceholder: 'e.g., 430',
+      drivetrain: 'Drivetrain',
+      selectDrivetrain: 'Select drivetrain',
+      drivetrainFwd: 'Front-wheel drive (FWD)',
+      drivetrainRwd: 'Rear-wheel drive (RWD)',
+      drivetrainAwd: 'All-wheel drive (AWD)',
+      purchaseDate: 'Purchase date',
+      purchasePrice: 'Purchase price',
       // Photo
       camera: 'Camera',
       gallery: 'Gallery',
@@ -2482,6 +2526,7 @@ export const translations = {
       saved: 'Receipt saved.',
       savedFor: 'Receipt saved to {vehicle}.',
       viewDocuments: 'View documents',
+      continueAs: 'Continue: add as {type}',
     },
     pwa: {
       installTitle: 'Install GearCargo',
@@ -2641,6 +2686,7 @@ export const translations = {
       csvType_repair: 'Repair',
       csvType_tax: 'Tax',
       csvType_parking: 'Parking',
+      csvType_consumable: 'Consumables',
       csvExport: 'Export CSV',
       csvImport: 'Import CSV',
       csvExportComplete: 'CSV exported',
@@ -2714,6 +2760,8 @@ export const translations = {
     // Measurement units
     units: {
       mpgUk: 'MPG',          // galon imperial (UK)
+      liters: 'L',
+      gallons: 'gal',
       mpgUs: 'MPG (SUA)',    // galon SUA
     },
     // Global Search
@@ -3032,6 +3080,31 @@ export const translations = {
       expiresOn: 'Garanția expiră la',
       hint: 'Opțional — acoperirea se încheie la prima limită atinsă.',
       coveredByWarranty: 'Această reparație a fost acoperită de o garanție existentă',
+    },
+    tank: {
+      title: 'Rezervor',
+      capacity: 'Capacitate rezervor',
+      fullTankCost: 'Plin la preț mediu național',
+      estimatedRange: 'Autonomie estimată pe plin',
+    },
+    ownership: {
+      title: 'Cost total de deținere',
+      totalWithPurchase: 'Total incl. achiziția',
+      perMonth: 'Pe lună de deținere',
+      perDistanceWithPurchase: 'Pe {unit} incl. achiziția',
+      addPurchaseHint: 'Adaugă prețul de achiziție pentru costul de deținere',
+      months: 'luni',
+    },
+    maintenance: {
+      intervalsTitle: 'Intervale de întreținere',
+      intervalsHint: 'Lasă gol pentru valoarea implicită',
+    },
+    stations: {
+      title: 'Stațiile tale',
+      fills: 'alimentări',
+      avgPrice: 'preț mediu',
+      vsNational: 'față de media națională',
+      cheapest: 'Cel mai avantajos',
     },
 
     // Charts Page
@@ -3391,6 +3464,8 @@ export const translations = {
       litersRequired: 'Litrii sunt obligatorii',
       invalidAmount: 'Cantitate invalidă',
       pricePerLiter: 'Preț/Litru',
+      pricePerGallon: 'Preț pe galon',
+      gallons: 'Galoane',
       priceRequired: 'Prețul este obligatoriu',
       invalidPrice: 'Preț invalid',
       totalCost: 'Cost Total',
@@ -3664,6 +3739,9 @@ export const translations = {
       taxDescription: 'Reamintește-mi automat când această taxă este din nou scadentă',
       parkingPermit: 'Abonament/Permis Parcare',
       parkingDescription: 'Pentru abonamente lunare sau permise de parcare recurente',
+      stopRepeating: 'Oprește repetarea',
+      stopRepeatingConfirm: 'Oprești această serie recurentă? Intrările viitoare nu vor mai fi generate automat.',
+      nextOn: 'următoarea {date}',
       frequency: 'Frecvență',
       weekly: 'Săptămânal',
       monthly: 'Lunar',
@@ -3937,6 +4015,9 @@ export const translations = {
       petrol: 'Benzină (95)',
       dataSource: 'Date din Buletinul Săptămânal al UE pentru Petrol',
       autoRefreshing: 'Se actualizează...',
+      staleWarning: 'Prețurile pot fi învechite',
+      trendVsMonth: 'față de luna trecută',
+      historyUnavailable: 'Încă fără istoric',
       updatedJustNow: 'Actualizat acum',
       updatedAgo: 'Actualizat acum {n} min',
     },
@@ -3990,6 +4071,15 @@ export const translations = {
       widthPlaceholder: 'ex., 180',
       weight: 'Greutate (kg)',
       weightPlaceholder: 'ex., 1500',
+      length: 'Lungime (cm)',
+      lengthPlaceholder: 'ex., 430',
+      drivetrain: 'Tracțiune',
+      selectDrivetrain: 'Selectează tracțiunea',
+      drivetrainFwd: 'Tracțiune față (FWD)',
+      drivetrainRwd: 'Tracțiune spate (RWD)',
+      drivetrainAwd: 'Tracțiune integrală (AWD)',
+      purchaseDate: 'Data achiziției',
+      purchasePrice: 'Preț de achiziție',
       // Photo
       camera: 'Cameră',
       gallery: 'Galerie',
@@ -5210,6 +5300,7 @@ export const translations = {
       saved: 'Bon salvat.',
       savedFor: 'Bon salvat la {vehicle}.',
       viewDocuments: 'Vezi documentele',
+      continueAs: 'Continuă: adaugă ca {type}',
     },
     pwa: {
       installTitle: 'Instalează GearCargo',
@@ -5369,6 +5460,7 @@ export const translations = {
       csvType_repair: 'Reparație',
       csvType_tax: 'Taxă',
       csvType_parking: 'Parcare',
+      csvType_consumable: 'Consumabile',
       csvExport: 'Exportă CSV',
       csvImport: 'Importă CSV',
       csvExportComplete: 'CSV exportat',
@@ -5442,6 +5534,8 @@ export const translations = {
     // Measurement units
     units: {
       mpgUk: 'MPG',            // galón imperial (Reino Unido)
+      liters: 'L',
+      gallons: 'gal',
       mpgUs: 'MPG (EE. UU.)',  // galón estadounidense
     },
     // Global Search
@@ -5758,6 +5852,31 @@ export const translations = {
       expiresOn: 'La garantía vence el',
       hint: 'Opcional — la cobertura termina con el primer límite alcanzado.',
       coveredByWarranty: 'Esta reparación estaba cubierta por una garantía existente',
+    },
+    tank: {
+      title: 'Depósito',
+      capacity: 'Capacidad del depósito',
+      fullTankCost: 'Depósito lleno a precio medio nacional',
+      estimatedRange: 'Autonomía estimada por depósito',
+    },
+    ownership: {
+      title: 'Coste de propiedad',
+      totalWithPurchase: 'Total incl. compra',
+      perMonth: 'Por mes de propiedad',
+      perDistanceWithPurchase: 'Por {unit} incl. compra',
+      addPurchaseHint: 'Añade el precio de compra para ver el coste de propiedad',
+      months: 'meses',
+    },
+    maintenance: {
+      intervalsTitle: 'Intervalos de mantenimiento',
+      intervalsHint: 'Deja vacío para usar el valor predeterminado',
+    },
+    stations: {
+      title: 'Tus gasolineras',
+      fills: 'repostajes',
+      avgPrice: 'precio medio',
+      vsNational: 'vs media nacional',
+      cheapest: 'Mejor precio',
     },
 
     // Charts Page
@@ -6117,6 +6236,8 @@ export const translations = {
       litersRequired: 'Los litros son obligatorios',
       invalidAmount: 'Cantidad inválida',
       pricePerLiter: 'Precio/Litro',
+      pricePerGallon: 'Precio por galón',
+      gallons: 'Galones',
       priceRequired: 'El precio es obligatorio',
       invalidPrice: 'Precio inválido',
       totalCost: 'Costo Total',
@@ -6390,6 +6511,9 @@ export const translations = {
       taxDescription: 'Recuérdame automáticamente cuando este impuesto venza de nuevo',
       parkingPermit: 'Permiso/Abono de Parking',
       parkingDescription: 'Para abonos mensuales o permisos de parking recurrentes',
+      stopRepeating: 'Detener repetición',
+      stopRepeatingConfirm: '¿Detener esta serie recurrente? Las entradas futuras ya no se generarán automáticamente.',
+      nextOn: 'próxima {date}',
       frequency: 'Frecuencia',
       weekly: 'Semanal',
       monthly: 'Mensual',
@@ -6663,6 +6787,9 @@ export const translations = {
       petrol: 'Gasolina (95)',
       dataSource: 'Datos del Boletín Semanal de Petróleo de la UE',
       autoRefreshing: 'Actualizando...',
+      staleWarning: 'Los precios pueden estar desactualizados',
+      trendVsMonth: 'vs el mes pasado',
+      historyUnavailable: 'Aún sin historial',
       updatedJustNow: 'Actualizado ahora mismo',
       updatedAgo: 'Actualizado hace {n} min',
     },
@@ -6716,6 +6843,15 @@ export const translations = {
       widthPlaceholder: 'ej., 180',
       weight: 'Peso (kg)',
       weightPlaceholder: 'ej., 1500',
+      length: 'Longitud (cm)',
+      lengthPlaceholder: 'ej., 430',
+      drivetrain: 'Tracción',
+      selectDrivetrain: 'Seleccionar tracción',
+      drivetrainFwd: 'Tracción delantera (FWD)',
+      drivetrainRwd: 'Tracción trasera (RWD)',
+      drivetrainAwd: 'Tracción total (AWD)',
+      purchaseDate: 'Fecha de compra',
+      purchasePrice: 'Precio de compra',
       // Photo
       camera: 'Cámara',
       gallery: 'Galería',
@@ -7941,6 +8077,7 @@ export const translations = {
       saved: 'Recibo guardado.',
       savedFor: 'Recibo guardado en {vehicle}.',
       viewDocuments: 'Ver documentos',
+      continueAs: 'Continuar: añadir como {type}',
     },
     pwa: {
       installTitle: 'Instalar GearCargo',
@@ -8100,6 +8237,7 @@ export const translations = {
       csvType_repair: 'Reparación',
       csvType_tax: 'Impuesto',
       csvType_parking: 'Aparcamiento',
+      csvType_consumable: 'Consumibles',
       csvExport: 'Exportar CSV',
       csvImport: 'Importar CSV',
       csvExportComplete: 'CSV exportado',

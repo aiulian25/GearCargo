@@ -105,6 +105,18 @@ class Reminder(db.Model):
             return delta.days
         return None
     
+    def _repeat_interval_token(self):
+        """UI 'Repeats' token derived from the recurrence columns (F18)."""
+        if not self.recurring or not self.frequency:
+            return ''
+        return {
+            ('monthly', 1): '1_month',
+            ('monthly', 3): '3_months',
+            ('monthly', 6): '6_months',
+            ('yearly', 1): '1_year',
+            ('yearly', 2): '2_years',
+        }.get((self.frequency, self.frequency_value or 1), '')
+
     def to_dict(self, **kwargs):
         """Convert to dictionary."""
         return {
@@ -117,6 +129,11 @@ class Reminder(db.Model):
             'priority': self.priority,
             'recurring': self.recurring,
             'frequency': self.frequency,
+            'frequency_value': self.frequency_value,
+            'repeat_interval': self._repeat_interval_token(),
+            'notify_days_before': self.notify_days_before,
+            'notify_push': self.notify_push,
+            'notify_email': self.notify_email,
             'completed': self.completed,
             'completed_at': self.completed_at.isoformat() if self.completed_at else None,
             'dismissed': self.dismissed,

@@ -72,6 +72,22 @@ def homepage_widget(current_user):
                 label: Reminders
               - field: next_reminder
                 label: Next Reminder
+              - field: due_soon
+                label: Due (14d)
+              - field: next_due
+                label: Next Due
+              - field: fines_owed
+                label: Fines Owed
+              - field: fuel_price
+                label: Fuel Price
+
+    F38 fields: `due_soon` counts unified due items (reminders, service
+    next-due, tax/insurance/document expiry, permits, consumable wear, fines)
+    in the next 14 days; `next_due` describes the most urgent one;
+    `fines_owed` sums outstanding parking fines; `fuel_price` is this week's
+    national DIESEL price for the user's preferred country (one line is all
+    Gethomepage shows — diesel chosen as the documented default). Each field
+    degrades independently ('None'/'N/A') — the widget never 500s a homepage.
     """
     vehicles = Vehicle.query.filter_by(
         user_id=current_user.id,
@@ -117,12 +133,69 @@ def homepage_widget(current_user):
     if vehicle_count > 3:
         subtitle += f' +{vehicle_count - 3} more'
 
+    # --- F38: actionable signals. Each block is independently guarded so a
+    #     failure degrades to 'None'/'N/A' — the widget must never 500 a
+    #     homelab homepage.
+
+    # Unified due items in the next 14 days (F4 feed).
+    due_soon = 0
+    next_due = 'None'
+    try:
+        from app.services.due import build_due_items
+        items = build_due_items(current_user.id, days=14)
+        due_soon = len(items)
+        if items:
+            top = items[0]
+            label = (top.get('title') or '')[:40]
+            if top.get('vehicle_name'):
+                label += f" — {top['vehicle_name']}"
+            if top.get('days_left') is not None:
+                label += f" ({top['days_left']}d)"
+            next_due = label
+    except Exception:
+        pass
+
+    # Outstanding parking fines (same filter as GET /parking/fines, F14).
+    fines_owed = 'N/A'
+    try:
+        from app.models import ParkingEntry
+        fine_rows = ParkingEntry.query.join(Vehicle).filter(
+            Vehicle.user_id == current_user.id,
+            ParkingEntry.parking_type == 'fine',
+            db.or_(
+                ParkingEntry.fine_status.in_(('pending', 'contested')),
+                ParkingEntry.fine_status.is_(None),
+            ),
+        ).all()
+        total_owed = sum(float(r.amount or 0) for r in fine_rows)
+        fines_owed = f"{total_owed:.2f} {getattr(current_user, 'currency', 'GBP') or 'GBP'}"
+    except Exception:
+        pass
+
+    # This week's national diesel price for the user's preferred country
+    # (Redis-cached weekly data; baseline fallback keeps this populated).
+    fuel_price = 'N/A'
+    try:
+        from flask import current_app
+        from app.services.fuel_price_service import get_prices
+        country = (current_user.country_preference or 'UK').upper()
+        prices = get_prices(country, current_app._get_current_object())
+        if prices and prices.get('diesel') is not None:
+            fuel_price = f"diesel {prices['diesel']} {prices.get('currency', '')}/L"
+    except Exception:
+        pass
+
     return jsonify({
         'vehicles': vehicle_count,
         'service_records': service_count + repair_count,
         'reminders': reminder_count,
         'next_reminder': next_reminder_text,
         'subtitle': subtitle,
+        # F38 — actionable fleet state.
+        'due_soon': due_soon,
+        'next_due': next_due,
+        'fines_owed': fines_owed,
+        'fuel_price': fuel_price,
     })
 
 

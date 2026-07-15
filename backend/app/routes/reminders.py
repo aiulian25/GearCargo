@@ -11,6 +11,36 @@ from app.routes.auth import token_required
 
 reminders_bp = Blueprint('reminders', __name__)
 
+# UI "Repeats" values (AddVehicleReminder.jsx) ↔ (frequency, frequency_value).
+_REPEAT_INTERVALS = {
+    '1_month': ('monthly', 1),
+    '3_months': ('monthly', 3),
+    '6_months': ('monthly', 6),
+    '1_year': ('yearly', 1),
+    '2_years': ('yearly', 2),
+}
+
+
+def _opt_int(value):
+    """Coerce an optional numeric field to int, treating ''/invalid as None."""
+    try:
+        return int(value) if value not in (None, '') else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _apply_repeat_interval(reminder, raw):
+    """Apply the form's repeat_interval value onto the recurrence columns."""
+    if raw:
+        mapped = _REPEAT_INTERVALS.get(raw)
+        if mapped:
+            reminder.recurring = True
+            reminder.frequency, reminder.frequency_value = mapped
+    else:  # '' / null → does not repeat
+        reminder.recurring = False
+        reminder.frequency = None
+        reminder.frequency_value = None
+
 
 @reminders_bp.route('', methods=['GET'])
 @token_required
@@ -111,7 +141,14 @@ def create_reminder(current_user):
         title_translations=data.get('title_translations'),
         description_translations=data.get('description_translations'),
     )
-    
+
+    # The reminder form sends 'notes' and 'repeat_interval' — map them to the
+    # real columns (F18).
+    if data.get('notes') and not data.get('description'):
+        reminder.description = data['notes']
+    if 'repeat_interval' in data:
+        _apply_repeat_interval(reminder, data['repeat_interval'])
+
     db.session.add(reminder)
     db.session.commit()
     
@@ -158,18 +195,38 @@ def update_reminder(current_user, reminder_id):
     
     data = request.get_json()
     
-    allowed = ['title', 'description', 'reminder_type', 'due_date', 'due_mileage',
-               'priority', 'status', 'is_recurring', 'recurrence_pattern',
-               'recurrence_interval', 'recurrence_unit', 'notify_days_before',
-               'notify_via_push', 'notify_via_email', 'sync_to_calendar',
-               'title_translations', 'description_translations']
-    
-    for field in allowed:
-        if field in data:
-            if field == 'due_date' and data[field]:
-                setattr(reminder, field, datetime.fromisoformat(data[field]).date())
-            else:
-                setattr(reminder, field, data[field])
+    # F18 — request keys mapped to the REAL model columns. Aliases first,
+    # canonical names last so the canonical value wins when both are sent.
+    # ('status' and 'recurrence_unit' were dropped — no such columns.)
+    field_aliases = {
+        'title': 'title',
+        'notes': 'description', 'description': 'description',
+        'reminder_type': 'reminder_type',
+        'priority': 'priority',
+        'is_recurring': 'recurring', 'recurring': 'recurring',
+        'recurrence_pattern': 'frequency', 'frequency': 'frequency',
+        'recurrence_interval': 'frequency_value', 'frequency_value': 'frequency_value',
+        'notify_days_before': 'notify_days_before',
+        'notify_via_push': 'notify_push', 'notify_push': 'notify_push',
+        'notify_via_email': 'notify_email', 'notify_email': 'notify_email',
+        'sync_to_calendar': 'calendar_sync', 'calendar_sync': 'calendar_sync',
+        'title_translations': 'title_translations',
+        'description_translations': 'description_translations',
+    }
+
+    for key, column in field_aliases.items():
+        if key in data:
+            setattr(reminder, column, data[key])
+
+    if 'due_date' in data and data['due_date']:
+        reminder.due_date = datetime.fromisoformat(
+            data['due_date'].replace('Z', '+00:00')).date()
+    if 'due_mileage' in data:
+        reminder.due_mileage = _opt_int(data['due_mileage'])
+    # The reminder form's "Repeats" select (F18) — applied last so it wins
+    # over any alias-provided recurrence fields.
+    if 'repeat_interval' in data:
+        _apply_repeat_interval(reminder, data['repeat_interval'])
     
     db.session.commit()
     
@@ -343,7 +400,8 @@ def get_mileage_reminders(current_user):
     reminders = Reminder.query.filter(
         Reminder.user_id == current_user.id,
         Reminder.vehicle_id == vehicle_id,
-        Reminder.status == 'pending',
+        Reminder.completed == False,  # noqa: E712
+        Reminder.dismissed == False,  # noqa: E712
         Reminder.due_mileage.isnot(None),
         Reminder.due_mileage <= vehicle.current_mileage + threshold
     ).order_by(Reminder.due_mileage.asc()).all()

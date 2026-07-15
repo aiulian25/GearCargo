@@ -83,3 +83,59 @@ export function formatFuelEconomy(valueLPer100Km, distanceUnit, decimals = 1, op
 
   return `${value.toFixed(decimals)} L/100km`
 }
+
+// ── Volume unit (F27) ────────────────────────────────────────────────────────
+// Storage is ALWAYS litres (single canonical unit, like km for distance).
+// These helpers convert at the display/input boundary when the user's
+// volume_unit preference is 'gallons'; the gallon system (UK 4.54609 L vs
+// US 3.78541 L) follows the same resolveFuelSystem signals as MPG (F16).
+
+export const LITERS_PER_GALLON_UK = 4.54609
+export const LITERS_PER_GALLON_US = 3.78541
+
+export function usesGallons(user) {
+  return user?.volume_unit === 'gallons'
+}
+
+function gallonFactor(user) {
+  const system = resolveFuelSystem({
+    country: user?.country_preference,
+    currency: user?.currency,
+  })
+  return system === 'us' ? LITERS_PER_GALLON_US : LITERS_PER_GALLON_UK
+}
+
+/** Stored litres → the user's display volume (litres pass through). */
+export function litersToDisplayVolume(liters, user) {
+  const v = Number(liters)
+  if (!Number.isFinite(v)) return null
+  return usesGallons(user) ? v / gallonFactor(user) : v
+}
+
+/** Form input in the user's unit → litres for the API payload. */
+export function displayVolumeToLiters(value, user) {
+  const v = Number(value)
+  if (!Number.isFinite(v)) return null
+  return usesGallons(user) ? v * gallonFactor(user) : v
+}
+
+/** Stored price-per-litre → the user's per-unit price (per gallon if active). */
+export function pricePerLiterToDisplay(price, user) {
+  const v = Number(price)
+  if (!Number.isFinite(v)) return null
+  return usesGallons(user) ? v * gallonFactor(user) : v
+}
+
+/** Form per-unit price → price-per-litre for the API payload. */
+export function displayPriceToPerLiter(price, user) {
+  const v = Number(price)
+  if (!Number.isFinite(v)) return null
+  return usesGallons(user) ? v / gallonFactor(user) : v
+}
+
+/** Localized short unit label: 'L' or 'gal'. */
+export function volumeUnitLabel(user, t) {
+  return usesGallons(user)
+    ? ((t && t('units.gallons')) || 'gal')
+    : ((t && t('units.liters')) || 'L')
+}

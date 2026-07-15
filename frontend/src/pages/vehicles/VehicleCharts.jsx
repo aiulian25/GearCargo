@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { vehicleApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 
@@ -541,6 +541,62 @@ export default function VehicleCharts() {
                     {t('charts.forecastDisclaimer') || 'Estimate based on past spending — actual costs may vary.'}
                   </p>
                 </div>
+              )}
+            </div>
+
+            {/* Cost of ownership (F24) — purchase price folded into lifetime cost */}
+            <div className="bg-[var(--color-bg-secondary)] rounded-2xl p-6">
+              <h2 className="text-sm font-medium text-[var(--color-text-secondary)] mb-1">
+                {t('ownership.title') || 'Cost of ownership'}
+              </h2>
+              {analytics.ownership ? (
+                <>
+                  <p className="text-2xs text-[var(--color-text-muted)] mb-4">
+                    {formatCurrency(analytics.ownership.purchase_price)}
+                    {analytics.ownership.purchase_date && ` • ${analytics.ownership.purchase_date}`}
+                    {analytics.ownership.months_owned != null &&
+                      ` • ${analytics.ownership.months_owned} ${t('ownership.months') || 'months'}`}
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="rounded-lg p-3 bg-[var(--color-bg-tertiary)]">
+                      <p className="text-xs text-[var(--color-text-muted)]">
+                        {t('ownership.totalWithPurchase') || 'Total incl. purchase'}
+                      </p>
+                      <p className="text-lg font-bold tabular-nums whitespace-nowrap">
+                        {formatCurrency(analytics.ownership.total_with_purchase)}
+                      </p>
+                    </div>
+
+                    {analytics.ownership.avg_monthly_ownership != null && (
+                      <div className="rounded-lg p-3 bg-[var(--color-bg-tertiary)]">
+                        <p className="text-xs text-[var(--color-text-muted)]">
+                          {t('ownership.perMonth') || 'Per month owned'}
+                        </p>
+                        <p className="text-lg font-bold tabular-nums whitespace-nowrap">
+                          {formatCurrency(analytics.ownership.avg_monthly_ownership)}
+                        </p>
+                      </div>
+                    )}
+
+                    {analytics.ownership.cost_per_distance_with_purchase != null && (
+                      <div className="rounded-lg p-3 bg-[var(--color-bg-tertiary)]">
+                        <p className="text-xs text-[var(--color-text-muted)]">
+                          {(t('ownership.perDistanceWithPurchase') || 'Per {unit} incl. purchase').replace('{unit}', unit)}
+                        </p>
+                        <p className="text-lg font-bold tabular-nums whitespace-nowrap">
+                          {formatPerDistance(analytics.ownership.cost_per_distance_with_purchase)}
+                          <span className="text-xs text-[var(--color-text-secondary)] font-normal">/{unit}</span>
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  <Link to={`/vehicles/${id}/edit`} className="underline hover:text-[var(--color-text-primary)]">
+                    {t('ownership.addPurchaseHint') || 'Add a purchase price to see ownership costs'}
+                  </Link>
+                </p>
               )}
             </div>
             </>
