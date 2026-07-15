@@ -62,7 +62,7 @@ numpy~=2.0          # local-illumination normalisation in the OCR preprocessing 
 # PDF Generation
 reportlab~=4.0
 pypdf~=4.0
-weasyprint~=68.0
+weasyprint~=69.0
 
 # Scheduling
 APScheduler~=3.10
