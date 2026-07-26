@@ -20,6 +20,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { vehicleApi, attachmentApi } from '../../services/api'
 import { useTranslation } from '../../contexts/LanguageContext'
+import { formatDate } from '../../utils/dateFormat'
 import AttachmentViewer from '../../components/ui/AttachmentViewer'
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
@@ -73,6 +74,12 @@ const Icons = {
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
       <polyline points="17 8 12 3 7 8"/>
       <line x1="12" y1="3" x2="12" y2="15"/>
+    </svg>
+  ),
+  edit: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"/>
     </svg>
   ),
   close: (
@@ -183,6 +190,42 @@ export default function VehicleDocuments() {
   const [uploadError, setUploadError] = useState('')
   // OCR toast — appears after upload+scan completes with text found
   const [ocrToast, setOcrToast] = useState(null) // { id, filename }
+
+  // F42 — edit-details modal (description / category / expiry date).
+  const [editAtt, setEditAtt] = useState(null)   // the attachment being edited
+  const [editForm, setEditForm] = useState({ description: '', category: 'document', expires_at: '' })
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState('')
+
+  const openEdit = useCallback((a) => {
+    setEditError('')
+    setEditAtt(a)
+    setEditForm({
+      description: a.description || '',
+      category: a.category || 'document',
+      expires_at: a.expires_at ? a.expires_at.split('T')[0] : '',
+    })
+  }, [])
+
+  const saveEdit = useCallback(async () => {
+    if (!editAtt) return
+    setEditSaving(true)
+    setEditError('')
+    try {
+      const res = await attachmentApi.update(editAtt.id, {
+        description: editForm.description || null,
+        category: editForm.category || null,
+        expires_at: editForm.expires_at || null,   // '' clears it (backend re-arms sentinel)
+      })
+      const updated = res.data?.attachment || res.data
+      setAttachments((prev) => prev.map((x) => (x.id === editAtt.id ? { ...x, ...updated } : x)))
+      setEditAtt(null)
+    } catch {
+      setEditError(t('documents.saveError') || 'Could not save — please try again')
+    } finally {
+      setEditSaving(false)
+    }
+  }, [editAtt, editForm, t])
 
   // Load vehicle metadata once
   useEffect(() => {
@@ -684,6 +727,19 @@ export default function VehicleDocuments() {
                         t={t}
                         onClick={(e) => { e.stopPropagation(); openViewer(a, true) }}
                       />
+                      {/* F42 — expiry chip: amber within 30 days / overdue, else muted */}
+                      {a.expires_at && (() => {
+                        const days = Math.ceil((new Date(a.expires_at.replace(/-/g, '/')) - new Date()) / 86400000)
+                        const soon = days <= 30
+                        return (
+                          <span
+                            className={`text-[10px] px-1.5 py-0.5 rounded ${soon ? 'bg-amber-500/15 text-amber-500' : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]'}`}
+                            title={(t('documents.expiresOn') || 'Expires {date}').replace('{date}', formatDate(a.expires_at))}
+                          >
+                            {(t('documents.expiresOn') || 'Expires {date}').replace('{date}', formatDate(a.expires_at))}
+                          </span>
+                        )
+                      })()}
                       {a.file_size && (
                         <span className="text-[10px] text-[var(--color-text-muted)]">
                           {fmtSize(a.file_size)}
@@ -703,6 +759,17 @@ export default function VehicleDocuments() {
                       </p>
                     )}
                   </div>
+
+                  {/* F42 — edit details (category / expiry / description) */}
+                  <button
+                    type="button"
+                    onClick={() => openEdit(a)}
+                    className="flex-shrink-0 p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-tertiary)] touch-manipulation"
+                    aria-label={t('documents.editDetails') || 'Edit details'}
+                    title={t('documents.editDetails') || 'Edit details'}
+                  >
+                    {Icons.edit}
+                  </button>
                 </div>
               )
             })}
@@ -722,6 +789,90 @@ export default function VehicleDocuments() {
           </div>
         )}
       </div>
+
+      {/* F42 — Edit details modal */}
+      {editAtt && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4"
+          role="dialog" aria-modal="true"
+          onClick={() => !editSaving && setEditAtt(null)}
+        >
+          <div
+            className="w-full sm:max-w-md bg-[var(--color-bg-card)] rounded-t-2xl sm:rounded-2xl border border-[var(--color-border)] p-4 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">{t('documents.editDetails') || 'Edit details'}</h3>
+              <button type="button" onClick={() => setEditAtt(null)} className="btn-icon" aria-label={t('common.close') || 'Close'}>
+                {Icons.close}
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                {t('documents.category') || 'Category'}
+              </label>
+              <select
+                value={editForm.category}
+                onChange={(e) => setEditForm((f) => ({ ...f, category: e.target.value }))}
+                className="input"
+              >
+                <option value="receipt">{t('documents.categoryReceipt') || 'Receipt'}</option>
+                <option value="document">{t('documents.categoryDocument') || 'Document'}</option>
+                <option value="photo">{t('documents.categoryPhoto') || 'Photo'}</option>
+                <option value="manual">{t('documents.categoryManual') || 'Manual'}</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                {t('documents.expiryDate') || 'Expiry date'}
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={editForm.expires_at}
+                  onChange={(e) => setEditForm((f) => ({ ...f, expires_at: e.target.value }))}
+                  className="input flex-1"
+                />
+                {editForm.expires_at && (
+                  <button
+                    type="button"
+                    onClick={() => setEditForm((f) => ({ ...f, expires_at: '' }))}
+                    className="btn btn-secondary btn-sm shrink-0"
+                  >
+                    {t('documents.noExpiry') || 'No expiry'}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                {t('addFuel.notes') || 'Notes'}
+              </label>
+              <textarea
+                value={editForm.description}
+                onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
+                rows={2}
+                className="input resize-none"
+                placeholder={t('common.optional') || 'Optional'}
+              />
+            </div>
+
+            {editError && <p className="text-xs text-red-500">{editError}</p>}
+
+            <div className="flex gap-2 pt-1">
+              <button type="button" onClick={() => setEditAtt(null)} disabled={editSaving} className="btn btn-secondary flex-1">
+                {t('common.cancel') || 'Cancel'}
+              </button>
+              <button type="button" onClick={saveEdit} disabled={editSaving} className="btn btn-primary flex-1">
+                {editSaving ? Icons.spinner : (t('common.save') || 'Save')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Attachment Viewer */}
       <AttachmentViewer

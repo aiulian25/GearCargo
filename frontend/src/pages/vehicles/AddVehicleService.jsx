@@ -5,9 +5,11 @@ import { useForm, useWatch } from 'react-hook-form'
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import { serviceApi, vehicleApi, attachmentApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
+import { useAuth } from '../../contexts/AuthContext'
 import { normalizeDistanceUnit } from '../../utils/fuelEconomy'
 import ReceiptUpload from '../../components/ReceiptUpload'
 import ScanReceiptBanner from '../../components/ui/ScanReceiptBanner'
+import CurrencySelect from '../../components/ui/CurrencySelect'
 
 // SVG Icons
 const Icons = {
@@ -36,6 +38,7 @@ export default function AddVehicleService() {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { currency } = useCurrency()
+  const { user } = useAuth()
   
   const [vehicle, setVehicle] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -56,6 +59,9 @@ export default function AddVehicleService() {
       parts_cost: '',
       labor_cost: '',
       total_cost: '',
+      currency: user?.currency || 'EUR',
+      work_order_number: '',
+      labor_hours: '',
       shop_name: '',
       notes: '',
       next_due_date: '',
@@ -97,6 +103,9 @@ export default function AddVehicleService() {
             parts_cost: entry.parts_cost || '',
             labor_cost: entry.labor_cost || '',
             total_cost: entry.amount || '',
+            currency: entry.currency || user?.currency || 'EUR',
+            work_order_number: entry.work_order_number || '',
+            labor_hours: entry.labor_hours ?? '',
             shop_name: entry.garage_name || entry.provider || '',
             notes: entry.notes || '',
             next_due_date: entry.next_due_date ? entry.next_due_date.split('T')[0] : '',
@@ -165,6 +174,8 @@ export default function AddVehicleService() {
         mileage: data.mileage ? parseInt(data.mileage) : null,
         parts_cost: data.parts_cost ? parseFloat(data.parts_cost) : null,
         labor_cost: data.labor_cost ? parseFloat(data.labor_cost) : null,
+        labor_hours: data.labor_hours ? parseFloat(data.labor_hours) : null,
+        work_order_number: data.work_order_number || null,
         total_cost: data.total_cost ? parseFloat(data.total_cost) : null,
         next_due_date: data.next_due_date || null,
         warranty_months: data.warranty_months === '' ? null : parseInt(data.warranty_months),
@@ -421,17 +432,47 @@ export default function AddVehicleService() {
             </div>
           </div>
           
-          <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
-              {t('addService.totalCost') || 'Total Cost'} ({currency.symbol})
-            </label>
-            <input
-              type="number" inputMode="decimal"
-              step="0.01"
-              {...register('total_cost')}
-              className="input"
-              placeholder="0.00"
-            />
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                {t('addService.totalCost') || 'Total Cost'} ({currency.symbol})
+              </label>
+              <input
+                type="number" inputMode="decimal"
+                step="0.01"
+                {...register('total_cost')}
+                className="input"
+                placeholder="0.00"
+              />
+            </div>
+            <CurrencySelect register={register} className="w-28 flex-shrink-0" />
+          </div>
+
+          {/* F56 — structured workshop fields (previously only fit in notes) */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                {t('addService.workOrder') || 'Work order #'}
+              </label>
+              <input
+                type="text"
+                {...register('work_order_number')}
+                className="input"
+                placeholder={t('addService.workOrder') || 'Work order #'}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                {t('addService.laborHours') || 'Labor hours'}
+              </label>
+              <input
+                type="number" inputMode="decimal"
+                step="0.5" min="0"
+                {...register('labor_hours')}
+                className="input"
+                placeholder="0"
+              />
+            </div>
           </div>
         </div>
 

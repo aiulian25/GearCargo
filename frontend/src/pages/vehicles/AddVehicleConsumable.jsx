@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom'
 import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
 import { useForm } from 'react-hook-form'
 import { vehicleApi, consumableApi, attachmentApi } from '../../services/api'
@@ -32,6 +32,7 @@ export default function AddVehicleConsumable() {
   const editId = searchParams.get('edit')
   const isEditMode = !!editId
   const navigate = useNavigate()
+  const location = useLocation()
   const { t } = useTranslation()
   const { currency } = useCurrency()
 
@@ -77,9 +78,24 @@ export default function AddVehicleConsumable() {
             warranty_months: entry.warranty_months ?? '',
             notes: entry.notes || '',
           })
-        } else if (response.data?.current_mileage) {
-          // Pre-fill odometer with the vehicle's current reading for convenience.
-          reset((prev) => ({ ...prev, odometer: response.data.current_mileage }))
+        } else {
+          // Create mode. Pre-fill the odometer with the vehicle's current
+          // reading for convenience, and — F43 "Replace now" — carry over the
+          // worn part's type/brand/lifespans from router state so replacing is
+          // two taps (the new entry then supersedes the old one, F43 due.py).
+          const prefill = location.state?.prefill
+          reset((prev) => ({
+            ...prev,
+            ...(response.data?.current_mileage ? { odometer: response.data.current_mileage } : {}),
+            ...(prefill ? {
+              consumable_type: prefill.consumable_type ?? prev.consumable_type,
+              brand: prefill.brand ?? '',
+              quantity: prefill.quantity ?? 1,
+              expected_lifespan_km: prefill.expected_lifespan_km ?? '',
+              expected_lifespan_months: prefill.expected_lifespan_months ?? '',
+              warranty_months: prefill.warranty_months ?? '',
+            } : {}),
+          }))
         }
       } catch (err) {
         console.error('Failed to fetch data:', err)

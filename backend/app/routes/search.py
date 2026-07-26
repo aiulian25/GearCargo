@@ -2,9 +2,10 @@
 GearCargo - Global Search Route
 
 GET /api/search?q=<query>
-ILIKE search across vehicles, entries (all types, including service garage name
-and parking location), reminders, insurance policies, and attachment OCR text.
-All results are strictly scoped to the authenticated user's data only.
+ILIKE search across vehicles, entries (all types, including service garage name,
+parking location, fuel station, consumable brand, tax reference number, and
+repair diagnosis/symptoms), reminders, insurance policies, todos, and attachment
+OCR text. All results are strictly scoped to the authenticated user's data only.
 
 Security notes:
   - Input sanitised: control characters stripped, length capped at 100 chars.
@@ -19,7 +20,8 @@ from flask import Blueprint, request, jsonify
 from app import db
 from app.models import (
     Vehicle, Entry, Attachment, Reminder, InsurancePolicy,
-    ServiceEntry, ParkingEntry,
+    ServiceEntry, ParkingEntry, FuelEntry, ConsumableEntry,
+    TaxEntry, RepairEntry, Todo,
 )
 from app.routes.auth import token_required
 
@@ -55,7 +57,7 @@ def global_search(current_user):
             'query': q,
             'results': {
                 'vehicles': [], 'entries': [], 'attachments': [],
-                'reminders': [], 'insurance': [],
+                'reminders': [], 'insurance': [], 'todos': [],
             },
             'total': 0,
         })
@@ -103,7 +105,39 @@ def global_search(current_user):
             ParkingEntry.location.ilike(pattern),
         ).limit(_MAX_PER_GROUP).all()
     }
-    entry_ids = base_ids | service_ids | parking_ids
+    # Subtype-specific place/identifier columns not present on the base Entry
+    # table — fuel station, consumable brand, tax reference, repair diagnosis /
+    # symptoms. Collected per-table and merged so a hit on any of them surfaces
+    # the entry with its correct concrete type (F49).
+    fuel_ids = {
+        row.id for row in db.session.query(FuelEntry.id).filter(
+            FuelEntry.user_id == uid,
+            FuelEntry.station.ilike(pattern),
+        ).limit(_MAX_PER_GROUP).all()
+    }
+    consumable_ids = {
+        row.id for row in db.session.query(ConsumableEntry.id).filter(
+            ConsumableEntry.user_id == uid,
+            ConsumableEntry.brand.ilike(pattern),
+        ).limit(_MAX_PER_GROUP).all()
+    }
+    tax_ids = {
+        row.id for row in db.session.query(TaxEntry.id).filter(
+            TaxEntry.user_id == uid,
+            TaxEntry.reference_number.ilike(pattern),
+        ).limit(_MAX_PER_GROUP).all()
+    }
+    repair_ids = {
+        row.id for row in db.session.query(RepairEntry.id).filter(
+            RepairEntry.user_id == uid,
+            db.or_(
+                RepairEntry.diagnosis.ilike(pattern),
+                RepairEntry.symptoms.ilike(pattern),
+            ),
+        ).limit(_MAX_PER_GROUP).all()
+    }
+    entry_ids = (base_ids | service_ids | parking_ids
+                 | fuel_ids | consumable_ids | tax_ids | repair_ids)
     entries = (
         Entry.query.filter(Entry.id.in_(entry_ids))
         .order_by(Entry.date.desc()).limit(_MAX_PER_GROUP).all()
@@ -130,6 +164,15 @@ def global_search(current_user):
         )
     ).order_by(InsurancePolicy.end_date.desc()).limit(_MAX_PER_GROUP).all()
 
+    # ── Todos (title + description) ──────────────────────────────────────────
+    todos = Todo.query.filter(
+        Todo.user_id == uid,
+        db.or_(
+            Todo.title.ilike(pattern),
+            Todo.description.ilike(pattern),
+        )
+    ).order_by(Todo.due_date.desc().nullslast()).limit(_MAX_PER_GROUP).all()
+
     # ── Attachments (OCR text + filename + description) ──────────────────────
     attachments = Attachment.query.filter(
         Attachment.user_id == uid,
@@ -146,6 +189,7 @@ def global_search(current_user):
         | {a.vehicle_id for a in attachments if a.vehicle_id}
         | {r.vehicle_id for r in reminders if r.vehicle_id}
         | {p.vehicle_id for p in policies if p.vehicle_id}
+        | {td.vehicle_id for td in todos if td.vehicle_id}
     )
     if all_vehicle_ids:
         vehicle_map = {
@@ -212,6 +256,17 @@ def global_search(current_user):
             'vehicle_name': vehicle_map.get(p.vehicle_id) if p.vehicle_id else None,
         }
 
+    def _todo_result(td: Todo) -> dict:
+        return {
+            'id': td.id,
+            'title': td.title,
+            'due_date': td.due_date.isoformat() if td.due_date else None,
+            'priority': td.priority,
+            'completed': bool(td.completed),
+            'vehicle_id': td.vehicle_id,
+            'vehicle_name': vehicle_map.get(td.vehicle_id) if td.vehicle_id else None,
+        }
+
     results = {
         'vehicles': [
             {
@@ -227,6 +282,7 @@ def global_search(current_user):
         'entries': [_entry_result(e) for e in entries],
         'reminders': [_reminder_result(r) for r in reminders],
         'insurance': [_insurance_result(p) for p in policies],
+        'todos': [_todo_result(td) for td in todos],
         'attachments': [_attachment_result(a) for a in attachments],
     }
 
@@ -234,5 +290,5 @@ def global_search(current_user):
         'query': q,
         'results': results,
         'total': (len(vehicles) + len(entries) + len(reminders)
-                  + len(policies) + len(attachments)),
+                  + len(policies) + len(todos) + len(attachments)),
     })

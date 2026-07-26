@@ -28,15 +28,20 @@ per-type endpoints filter columns that do not exist on the current models
 without depending on them.
 """
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import func
 
 from app import db
 from app.models import (
-    Vehicle, Reminder, ServiceEntry, TaxEntry, InsurancePolicy,
-    Attachment, ParkingEntry, ConsumableEntry, DueDismissal,
+    User, Vehicle, Reminder, ServiceEntry, TaxEntry, InsurancePolicy,
+    Attachment, ParkingEntry, ConsumableEntry, DueDismissal, PredictionAlert,
 )
+from app.models.todo import Todo
+
+# How close (in the vehicle's distance unit) a mileage-based prediction must be
+# to the current odometer before it surfaces on the feed (F45).
+PREDICTION_PROXIMITY = 1000
 
 # Items due within this many days count as "warning" (amber); further out is
 # informational. Overdue (days_left < 0) is always "critical".
@@ -64,15 +69,25 @@ def _days_left(due, today):
     return (due - today).days if due else None
 
 
-def build_due_items(user_id, days=30, today=None):
+def build_due_items(user_id, days=None, today=None):
     """Assemble the ranked "due & expiring" list for one user.
 
-    ``days`` sets the FORWARD horizon (default 30). Overdue items are always
-    included regardless of how far past — an unresolved overdue reminder or an
-    expired policy still needs attention — matching the existing ``/overdue``
-    semantics. The final list is capped at ``MAX_ITEMS`` after urgency sorting.
+    ``days`` sets the FORWARD horizon. When None (the default), it falls back to
+    the user's ``alert_days_before`` preference (default 14 on the model, itself
+    falling back to 30 if unset) — F53's single "how far ahead to warn me" knob,
+    shared by the dashboard, widget and email digest. An explicit ``days`` (e.g.
+    chat's wider 60-day window, or ``?days=`` on the endpoint) always overrides.
+
+    Overdue items are always included regardless of how far past — an unresolved
+    overdue reminder or an expired policy still needs attention — matching the
+    existing ``/overdue`` semantics. The final list is capped at ``MAX_ITEMS``
+    after urgency sorting.
     """
     today = today or date.today()
+    if days is None:
+        # One lightweight lookup for the user's preferred horizon.
+        u = User.query.get(user_id)
+        days = (u.alert_days_before if u and u.alert_days_before else 30)
     cutoff = today + timedelta(days=max(0, days))
 
     # --- vehicle lookup (one query) -------------------------------------------
@@ -98,11 +113,12 @@ def build_due_items(user_id, days=30, today=None):
 
     items = []
 
-    def add(kind, ref_id, title, vehicle_id, due, link, days_left=None, severity=None):
+    def add(kind, ref_id, title, vehicle_id, due, link, days_left=None,
+            severity=None, extra=None):
         if (kind, ref_id, due) in dismissed:
             return
         dl = days_left if days_left is not None else _days_left(due, today)
-        items.append({
+        item = {
             'kind': kind,
             'ref_id': ref_id,
             'title': title,
@@ -112,21 +128,43 @@ def build_due_items(user_id, days=30, today=None):
             'days_left': dl,
             'severity': severity or _severity(dl),
             'link': link,
-        })
+        }
+        if extra:
+            item.update(extra)
+        items.append(item)
 
     # --- 1. Reminders (overdue + upcoming, user-scoped) -----------------------
+    # F52 — a snoozed reminder is silent until snoozed_until passes (matches the
+    # push job + email digest so snooze means the same thing on every surface).
     reminders = Reminder.query.filter(
         Reminder.user_id == user_id,
         Reminder.completed == False,   # noqa: E712
         Reminder.dismissed == False,   # noqa: E712
+        db.or_(Reminder.snoozed_until.is_(None),
+               Reminder.snoozed_until <= datetime.now(timezone.utc)),
         Reminder.due_date.isnot(None),
         Reminder.due_date <= cutoff,
     ).all()
     for r in reminders:
         add('reminder', r.id, r.title, r.vehicle_id, r.due_date, '/reminders')
 
+    # --- 1b. Todos (F44) — user-scoped, dated, incomplete. Todos may be
+    # standalone (no vehicle) or vehicle-bound, so they belong in the
+    # user-scoped group alongside reminders, before the no-vehicles early-out.
+    # Dismissal is occurrence-scoped via DueDismissal (todos have no native
+    # dismissed flag), pinned to due_date by _resolve_due_ref.
+    todos = Todo.query.filter(
+        Todo.user_id == user_id,
+        Todo.completed == False,   # noqa: E712
+        Todo.due_date.isnot(None),
+        Todo.due_date <= cutoff,
+    ).all()
+    for t in todos:
+        link = f'/vehicles/{t.vehicle_id}/expenses?tab=todo' if t.vehicle_id else '/vehicles'
+        add('todo', t.id, t.title, t.vehicle_id, t.due_date, link)
+
     if not active_ids:
-        # No non-archived vehicles → only user-scoped reminders can apply.
+        # No non-archived vehicles → only user-scoped reminders/todos can apply.
         return _finalize(items)
 
     # --- 2. Service next-due --------------------------------------------------
@@ -188,7 +226,7 @@ def build_due_items(user_id, days=30, today=None):
     ).all()
     for p in policies:
         add('insurance', p.id, p.provider or 'Insurance', p.vehicle_id, p.end_date,
-            f'/vehicles/{p.vehicle_id}/expenses')
+            f'/vehicles/{p.vehicle_id}/expenses?tab=insurance')
 
     # --- 5. Document expiry (attachments) -------------------------------------
     docs = Attachment.query.filter(
@@ -256,7 +294,23 @@ def build_due_items(user_id, days=30, today=None):
     consumables = ConsumableEntry.query.filter(
         ConsumableEntry.vehicle_id.in_(active_ids),
     ).all()
+    # A consumable is SUPERSEDED once a newer same-type entry exists for the
+    # same vehicle (F43 — fitting new tyres retires the old 'tire' row so it
+    # stops nagging forever). Newest = max(install_date, else entry date),
+    # mirroring the service/permit supersede logic above.
+    latest_cons = {
+        (vid, ctype): mx
+        for vid, ctype, mx in db.session.query(
+            ConsumableEntry.vehicle_id, ConsumableEntry.consumable_type,
+            func.max(func.coalesce(ConsumableEntry.install_date, ConsumableEntry.date)),
+        ).filter(ConsumableEntry.vehicle_id.in_(active_ids))
+        .group_by(ConsumableEntry.vehicle_id, ConsumableEntry.consumable_type).all()
+    } if consumables else {}
     for c in consumables:
+        own = c.install_date or c.date
+        mx = latest_cons.get((c.vehicle_id, c.consumable_type))
+        if mx and own and mx > own:
+            continue  # a newer same-type consumable exists → this one is history
         v = active.get(c.vehicle_id)
         wear = c.wear_estimate(current_mileage=v.current_mileage if v else None)
         status = wear.get('status')
@@ -267,6 +321,40 @@ def build_due_items(user_id, days=30, today=None):
         add('consumable', c.id, title, c.vehicle_id, None,
             f'/vehicles/{c.vehicle_id}/consumables',
             days_left=None, severity=severity)
+
+    # --- 8. AI predictions (F45, no due_date) ---------------------------------
+    # Surface an active alert when it's high-urgency, OR when its predicted
+    # mileage is within PREDICTION_PROXIMITY of the vehicle's odometer — so a
+    # "brake pads at 92,000 km" alert appears as the car approaches it. Uses the
+    # native dismissed flag (no DueDismissal row) so a dismissal here and on the
+    # VehicleAlerts page are one and the same state.
+    predictions = PredictionAlert.query.filter(
+        PredictionAlert.user_id == user_id,
+        PredictionAlert.vehicle_id.in_(active_ids),
+        PredictionAlert.dismissed == False,   # noqa: E712
+        PredictionAlert.actioned == False,    # noqa: E712
+    ).all()
+    for p in predictions:
+        v = active.get(p.vehicle_id)
+        current = (v.current_mileage or 0) if v else 0
+        is_high = (p.urgency or '').lower() == 'high'
+        near_mileage = (
+            p.predicted_mileage is not None
+            and current >= p.predicted_mileage - PREDICTION_PROXIMITY
+        )
+        if not (is_high or near_mileage):
+            continue
+        mileage_passed = p.predicted_mileage is not None and current >= p.predicted_mileage
+        severity = 'critical' if (is_high or mileage_passed) else 'warning'
+        extra = None
+        if p.predicted_mileage is not None:
+            extra = {
+                'distance_left': max(0, p.predicted_mileage - current),
+                'distance_unit': (v.distance_unit if v else None) or 'km',
+            }
+        add('prediction', p.id, p.title or 'Prediction', p.vehicle_id, None,
+            f'/vehicles/{p.vehicle_id}/alerts',
+            days_left=None, severity=severity, extra=extra)
 
     return _finalize(items)
 

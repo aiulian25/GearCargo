@@ -73,7 +73,24 @@ const Icons = {
       <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
     </svg>
   ),
+  gear: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+    </svg>
+  ),
+  plus: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    </svg>
+  ),
 }
+
+// Month keys for the state-inspection month picker (1-12 → calendar.months.*)
+const MONTH_KEYS = [
+  'january', 'february', 'march', 'april', 'may', 'june',
+  'july', 'august', 'september', 'october', 'november', 'december',
+]
 
 // Checklist configurations with icons and colors
 const CHECKLIST_CONFIG = {
@@ -104,9 +121,9 @@ const CHECKLIST_CONFIG = {
 }
 
 // Single Checklist Item Component
-function ChecklistItem({ item, checklistId, onToggle, t }) {
+function ChecklistItem({ item, checklistId, onToggle, onRemove, t }) {
   const [isLoading, setIsLoading] = useState(false)
-  
+
   const handleToggle = async () => {
     setIsLoading(true)
     try {
@@ -115,42 +132,81 @@ function ChecklistItem({ item, checklistId, onToggle, t }) {
       setIsLoading(false)
     }
   }
-  
+
+  // Custom items carry their own label; built-ins are translated by id.
+  const label = item.custom ? item.label : (t(`seasonalChecklists.items.${item.id}`) || item.id)
+
   return (
-    <button
-      onClick={handleToggle}
-      disabled={isLoading}
-      className={`
-        w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200
-        ${item.completed 
-          ? 'bg-green-500/10 text-[var(--color-text-secondary)]' 
-          : 'bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)]'
-        }
-        ${isLoading ? 'opacity-50 cursor-wait' : 'cursor-pointer'}
-        touch-manipulation
-      `}
-    >
-      <div className={`
-        w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 transition-all
-        ${item.completed 
-          ? 'bg-green-500 text-white' 
-          : 'border-2 border-[var(--color-border)]'
-        }
-      `}>
-        {item.completed && Icons.check}
-      </div>
-      <span className={`text-sm ${item.completed ? 'line-through opacity-60' : ''}`}>
-        {t(`seasonalChecklists.items.${item.id}`) || item.id}
-      </span>
-    </button>
+    <div className="flex items-center gap-2">
+      <button
+        onClick={handleToggle}
+        disabled={isLoading}
+        className={`
+          flex-1 min-w-0 flex items-center gap-3 p-3 rounded-lg transition-all duration-200
+          ${item.completed
+            ? 'bg-green-500/10 text-[var(--color-text-secondary)]'
+            : 'bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)]'
+          }
+          ${isLoading ? 'opacity-50 cursor-wait' : 'cursor-pointer'}
+          touch-manipulation
+        `}
+      >
+        <div className={`
+          w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 transition-all
+          ${item.completed
+            ? 'bg-green-500 text-white'
+            : 'border-2 border-[var(--color-border)]'
+          }
+        `}>
+          {item.completed && Icons.check}
+        </div>
+        <span className={`text-sm text-left ${item.completed ? 'line-through opacity-60' : ''}`}>
+          {label}
+        </span>
+      </button>
+      {item.custom && onRemove && (
+        <button
+          onClick={() => onRemove(checklistId, item.id)}
+          className="p-2 rounded-lg text-[var(--color-text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors flex-shrink-0 touch-manipulation"
+          aria-label={t('seasonalChecklists.removeItem') || 'Remove item'}
+          title={t('seasonalChecklists.removeItem') || 'Remove item'}
+        >
+          {Icons.x}
+        </button>
+      )}
+    </div>
   )
 }
 
 // Single Checklist Card Component
-function ChecklistCard({ checklist, onToggleItem, onReset, onDismiss, t, defaultExpanded = false }) {
+function ChecklistCard({ checklist, onToggleItem, onReset, onDismiss, onAddItem, onRemoveItem, onUpdateMonths, t, defaultExpanded = false }) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded)
   const [showActions, setShowActions] = useState(false)
-  
+  const [showMonths, setShowMonths] = useState(false)
+  const [newItemLabel, setNewItemLabel] = useState('')
+  const [addingItem, setAddingItem] = useState(false)
+
+  const configurable = checklist.id === 'state_inspection'
+  const selectedMonths = checklist.season_months || []
+
+  const handleAddItem = async () => {
+    const label = newItemLabel.trim()
+    if (!label || addingItem) return
+    setAddingItem(true)
+    try {
+      await onAddItem(checklist.id, label)
+      setNewItemLabel('')
+    } finally {
+      setAddingItem(false)
+    }
+  }
+
+  const toggleMonth = (m) => {
+    const set = new Set(selectedMonths)
+    if (set.has(m)) set.delete(m); else set.add(m)
+    onUpdateMonths(checklist.id, Array.from(set).sort((a, b) => a - b))
+  }
+
   const config = CHECKLIST_CONFIG[checklist.id] || CHECKLIST_CONFIG.state_inspection
   const title = t(`seasonalChecklists.${checklist.id}.title`) || checklist.id
   const description = t(`seasonalChecklists.${checklist.id}.description`) || ''
@@ -234,7 +290,48 @@ function ChecklistCard({ checklist, onToggleItem, onReset, onDismiss, t, default
               {description}
             </p>
           )}
-          
+
+          {/* F54 — Inspection-months picker (state_inspection only) */}
+          {configurable && (
+            <div className="mb-3">
+              <button
+                onClick={() => setShowMonths(v => !v)}
+                className="flex items-center gap-2 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors touch-manipulation"
+              >
+                {Icons.gear}
+                {t('seasonalChecklists.inspectionMonths') || 'Inspection months'}
+                {selectedMonths.length > 0 && (
+                  <span className="text-2xs px-1.5 py-0.5 rounded-full bg-[var(--color-accent)]/15 text-[var(--color-accent)]">
+                    {selectedMonths.length}
+                  </span>
+                )}
+              </button>
+              {showMonths && (
+                <div className="mt-2 grid grid-cols-6 gap-1.5">
+                  {MONTH_KEYS.map((key, idx) => {
+                    const month = idx + 1
+                    const active = selectedMonths.includes(month)
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => toggleMonth(month)}
+                        aria-pressed={active}
+                        className={`
+                          py-1.5 rounded-lg text-2xs font-medium capitalize transition-colors touch-manipulation
+                          ${active
+                            ? 'bg-[var(--color-accent)] text-white'
+                            : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] hover:bg-[var(--color-bg-tertiary)]'}
+                        `}
+                      >
+                        {(t(`calendar.months.${key}`) || key).slice(0, 3)}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Checklist Items */}
           <div className="space-y-2">
             {checklist.items.map(item => (
@@ -243,11 +340,33 @@ function ChecklistCard({ checklist, onToggleItem, onReset, onDismiss, t, default
                 item={item}
                 checklistId={checklist.id}
                 onToggle={onToggleItem}
+                onRemove={onRemoveItem}
                 t={t}
               />
             ))}
           </div>
-          
+
+          {/* F54 — Add custom item */}
+          <div className="flex items-center gap-2 pt-1">
+            <input
+              type="text"
+              value={newItemLabel}
+              onChange={(e) => setNewItemLabel(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddItem() } }}
+              maxLength={80}
+              placeholder={t('seasonalChecklists.addItem') || 'Add item'}
+              className="flex-1 min-w-0 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+            />
+            <button
+              onClick={handleAddItem}
+              disabled={!newItemLabel.trim() || addingItem}
+              className="flex items-center gap-1 px-3 py-2 rounded-lg bg-[var(--color-accent)]/10 text-[var(--color-accent)] text-xs font-medium hover:bg-[var(--color-accent)]/20 disabled:opacity-50 whitespace-nowrap touch-manipulation"
+            >
+              {Icons.plus}
+              {t('seasonalChecklists.addItem') || 'Add item'}
+            </button>
+          </div>
+
           {/* Actions */}
           <div className="flex items-center justify-between pt-3 mt-3 border-t border-[var(--color-border)]">
             <button
@@ -353,11 +472,60 @@ export default function SeasonalChecklists({ compact = false, showOnlyInSeason =
   const handleDismiss = async (checklistId, dismissed) => {
     try {
       await predictionApi.dismissChecklist(checklistId, dismissed)
-      setChecklists(prev => prev.map(cl => 
+      setChecklists(prev => prev.map(cl =>
         cl.id === checklistId ? { ...cl, dismissed } : cl
       ))
     } catch (err) {
       console.error('Failed to dismiss checklist:', err)
+    }
+  }
+
+  // F54 — add a custom item, then refetch so the new row (with its server id) appears
+  const handleAddItem = async (checklistId, label) => {
+    try {
+      await predictionApi.addChecklistItem(checklistId, label)
+      await fetchChecklists()
+    } catch (err) {
+      console.error('Failed to add checklist item:', err)
+    }
+  }
+
+  // F54 — remove a custom item (optimistic)
+  const handleRemoveItem = async (checklistId, itemId) => {
+    setChecklists(prev => prev.map(cl => {
+      if (cl.id !== checklistId) return cl
+      const newItems = cl.items.filter(i => i.id !== itemId)
+      const completedCount = newItems.filter(i => i.completed).length
+      const total = newItems.length
+      return {
+        ...cl, items: newItems, completed_count: completedCount, total_count: total,
+        progress_percent: total > 0 ? Math.round((completedCount / total) * 100) : 0,
+      }
+    }))
+    try {
+      await predictionApi.removeChecklistItem(checklistId, itemId)
+    } catch (err) {
+      console.error('Failed to remove checklist item:', err)
+      fetchChecklists()
+    }
+  }
+
+  // F54 — update the state-inspection months (optimistic; drives is_in_season)
+  const handleUpdateMonths = async (checklistId, months) => {
+    setChecklists(prev => prev.map(cl => {
+      if (cl.id !== checklistId) return cl
+      const isSeasonal = months.length > 0
+      const currentMonth = new Date().getMonth() + 1
+      return {
+        ...cl, season_months: months, is_seasonal: isSeasonal,
+        is_in_season: !isSeasonal || months.includes(currentMonth),
+      }
+    }))
+    try {
+      await predictionApi.updateChecklistSettings({ state_inspection_months: months })
+    } catch (err) {
+      console.error('Failed to update inspection months:', err)
+      fetchChecklists()
     }
   }
   
@@ -454,6 +622,9 @@ export default function SeasonalChecklists({ compact = false, showOnlyInSeason =
             onToggleItem={handleToggleItem}
             onReset={handleReset}
             onDismiss={handleDismiss}
+            onAddItem={handleAddItem}
+            onRemoveItem={handleRemoveItem}
+            onUpdateMonths={handleUpdateMonths}
             t={t}
             defaultExpanded={false}
           />

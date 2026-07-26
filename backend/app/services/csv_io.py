@@ -60,6 +60,7 @@ _EXTRA = {
         ('total_price', 'total_price', 'float'),
         ('fuel_type', 'fuel_type', 'str'),
         ('station', 'station', 'str'),
+        ('station_address', 'station_address', 'str'),
         ('full_tank', 'full_tank', 'bool'),
         ('trip_distance', 'trip_distance', 'int'),
     ],

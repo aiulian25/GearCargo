@@ -656,6 +656,9 @@ def get_reminder_alerts(user_id: int, days_ahead: int = 30) -> List[Dict]:
         Reminder.completed == False,
         Reminder.dismissed == False,
         Reminder.notify_email == True,
+        # F52 — snoozed reminders stay out of the digest until snoozed_until passes.
+        db.or_(Reminder.snoozed_until.is_(None),
+               Reminder.snoozed_until <= datetime.now(timezone.utc)),
         Reminder.due_date.isnot(None),
         Reminder.due_date >= date.today(),
         Reminder.due_date <= cutoff,

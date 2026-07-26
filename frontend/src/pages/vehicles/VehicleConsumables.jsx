@@ -199,6 +199,26 @@ export default function VehicleConsumables() {
                     {pct !== null && <div className={`h-full ${style.bar} transition-all`} style={{ width: `${barWidth}%` }} />}
                   </div>
                 </div>
+
+                {/* F43 — one-tap replace for worn parts: opens a pre-filled Add
+                    form (same type/brand/lifespans); saving supersedes this row. */}
+                {(wear.status === 'monitor' || wear.status === 'replace') && (
+                  <button
+                    onClick={() => navigate(`/vehicles/${id}/consumable/add`, {
+                      state: { prefill: {
+                        consumable_type: entry.consumable_type,
+                        brand: entry.brand,
+                        quantity: entry.quantity,
+                        expected_lifespan_km: entry.expected_lifespan_km,
+                        expected_lifespan_months: entry.expected_lifespan_months,
+                        warranty_months: entry.warranty_months,
+                      } },
+                    })}
+                    className="mt-3 w-full btn btn-secondary btn-sm"
+                  >
+                    {t('consumables.replaceNow') || 'Replace now'}
+                  </button>
+                )}
               </li>
             )
           })}

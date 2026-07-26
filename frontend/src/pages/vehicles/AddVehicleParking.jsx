@@ -5,8 +5,10 @@ import { useForm, useWatch } from 'react-hook-form'
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import { vehicleApi, attachmentApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
+import { useAuth } from '../../contexts/AuthContext'
 import api from '../../services/api'
 import ReceiptUpload from '../../components/ReceiptUpload'
+import CurrencySelect from '../../components/ui/CurrencySelect'
 
 // SVG Icons
 const Icons = {
@@ -50,6 +52,7 @@ export default function AddVehicleParking() {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { currency } = useCurrency()
+  const { user } = useAuth()
   
   const [vehicle, setVehicle] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -64,6 +67,7 @@ export default function AddVehicleParking() {
       parking_type: '',
       location: '',
       amount: '',
+      currency: user?.currency || 'EUR',
       start_time: '',
       end_time: '',
       notes: '',
@@ -98,8 +102,12 @@ export default function AddVehicleParking() {
             parking_type: entry.parking_type || '',
             location: entry.location || '',
             amount: entry.amount || '',
-            start_time: entry.start_time || '',
-            end_time: entry.end_time || '',
+            currency: entry.currency || user?.currency || 'EUR',
+            // F41 — the form's time inputs are HH:MM; the API stores/returns
+            // start_datetime / end_datetime. Derive HH:MM from those (the old
+            // entry.start_time/end_time keys were never returned → always blank).
+            start_time: entry.start_datetime ? entry.start_datetime.slice(11, 16) : '',
+            end_time: entry.end_datetime ? entry.end_datetime.slice(11, 16) : '',
             notes: entry.notes || '',
             recurring: entry.recurring || false,
             recurrence_type: entry.recurrence_type || 'monthly',
@@ -291,14 +299,15 @@ export default function AddVehicleParking() {
               />
             </div>
             
-            <div>
+            <div className="flex gap-3">
+              <div className="flex-1">
               <label className="block text-xs text-[var(--color-text-muted)] mb-1">
                 {t('addParking.amount') || 'Amount'} ({currency.symbol}) *
               </label>
               <input
                 type="number" inputMode="decimal"
                 step="0.01"
-                {...register('amount', { 
+                {...register('amount', {
                   required: t('addParking.amountRequired') || 'Amount is required',
                   min: { value: 0.01, message: t('addParking.invalidAmount') || 'Invalid amount' }
                 })}
@@ -308,6 +317,8 @@ export default function AddVehicleParking() {
               {errors.amount && (
                 <p className="text-xs text-red-500 mt-1">{errors.amount.message}</p>
               )}
+              </div>
+              <CurrencySelect register={register} className="w-28 flex-shrink-0" />
             </div>
           </div>
           

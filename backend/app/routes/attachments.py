@@ -1143,11 +1143,19 @@ def update_attachment(current_user, attachment_id):
     data = request.get_json()
     
     allowed = ['description', 'category', 'tags', 'expires_at', 'entry_id']
-    
+
     for field in allowed:
         if field in data:
-            if field == 'expires_at' and data[field]:
-                setattr(attachment, field, datetime.fromisoformat(data[field]).date())
+            if field == 'expires_at':
+                # F42 — set or CLEAR the expiry (null clears it); either way,
+                # re-arm the once-only push sentinel so a new/changed date can
+                # notify again.
+                raw = data['expires_at']
+                attachment.expires_at = (
+                    datetime.fromisoformat(str(raw).replace('Z', '+00:00')).date()
+                    if raw else None
+                )
+                attachment.expiry_notified = False
             elif field == 'entry_id':
                 entry_id_val = data['entry_id']
                 if entry_id_val is None:

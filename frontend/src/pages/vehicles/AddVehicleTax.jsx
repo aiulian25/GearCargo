@@ -5,7 +5,9 @@ import { useForm, useWatch } from 'react-hook-form'
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import { taxApi, vehicleApi, attachmentApi, insuranceApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
+import { useAuth } from '../../contexts/AuthContext'
 import ReceiptUpload from '../../components/ReceiptUpload'
+import CurrencySelect from '../../components/ui/CurrencySelect'
 
 // SVG Icons
 const Icons = {
@@ -48,6 +50,7 @@ export default function AddVehicleTax() {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { currency } = useCurrency()
+  const { user } = useAuth()
   
   const [vehicle, setVehicle] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -62,7 +65,8 @@ export default function AddVehicleTax() {
       date: new Date().toISOString().split('T')[0],
       tax_type: '',
       amount: '',
-      valid_from: new Date().toISOString().split('T')[0],
+      currency: user?.currency || 'EUR',
+      status: 'paid',
       valid_until: '',
       reference_number: '',
       notes: '',
@@ -97,8 +101,11 @@ export default function AddVehicleTax() {
             date: entry.date ? entry.date.split('T')[0] : new Date().toISOString().split('T')[0],
             tax_type: entry.tax_type || '',
             amount: entry.amount || '',
-            valid_from: entry.valid_from ? entry.valid_from.split('T')[0] : '',
-            valid_until: entry.valid_until ? entry.valid_until.split('T')[0] : '',
+            currency: entry.currency || user?.currency || 'EUR',
+            status: entry.status || 'paid',
+            // F41 — "Valid until" is stored as due_date; the API never returned
+            // valid_until, so edit mode always reopened blank. Read due_date.
+            valid_until: entry.due_date ? entry.due_date.split('T')[0] : '',
             reference_number: entry.reference_number || '',
             notes: entry.notes || '',
             recurring: entry.recurring || false,
@@ -281,55 +288,57 @@ export default function AddVehicleTax() {
               />
             </div>
             
-            <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
-                {t('addTax.amount') || 'Amount'} ({currency.symbol}) *
-              </label>
-              <input
-                type="number" inputMode="decimal"
-                step="0.01"
-                {...register('amount', { 
-                  required: t('addTax.amountRequired') || 'Amount is required',
-                  min: { value: 0.01, message: t('addTax.invalidAmount') || 'Invalid amount' }
-                })}
-                className="input"
-                placeholder="0.00"
-              />
-              {errors.amount && (
-                <p className="text-xs text-red-500 mt-1">{errors.amount.message}</p>
-              )}
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                  {t('addTax.amount') || 'Amount'} ({currency.symbol}) *
+                </label>
+                <input
+                  type="number" inputMode="decimal"
+                  step="0.01"
+                  {...register('amount', {
+                    required: t('addTax.amountRequired') || 'Amount is required',
+                    min: { value: 0.01, message: t('addTax.invalidAmount') || 'Invalid amount' }
+                  })}
+                  className="input"
+                  placeholder="0.00"
+                />
+                {errors.amount && (
+                  <p className="text-xs text-red-500 mt-1">{errors.amount.message}</p>
+                )}
+              </div>
+              <CurrencySelect register={register} className="w-28 flex-shrink-0" />
             </div>
           </div>
+
+          {/* F47 — payment status. 'paid' keeps today's behaviour; 'pending'
+              creates an unpaid tax that ranks in the Coming-up feed until paid. */}
+          <div>
+            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              {t('taxes.status') || 'Status'}
+            </label>
+            <select {...register('status')} className="input">
+              <option value="paid">{t('taxes.paid') || 'Paid'}</option>
+              <option value="pending">{t('taxes.unpaid') || 'Unpaid'}</option>
+            </select>
+          </div>
         </div>
-        
+
         {/* Validity Period */}
         <div className="card space-y-4">
           <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
             {t('addTax.validityPeriod') || 'Validity Period'}
           </h3>
           
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
-                {t('addTax.validFrom') || 'Valid From'}
-              </label>
-              <input
-                type="date"
-                {...register('valid_from')}
-                className="input"
-              />
-            </div>
-            
-            <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
-                {t('addTax.validUntil') || 'Valid Until'}
-              </label>
-              <input
-                type="date"
-                {...register('valid_until')}
-                className="input"
-              />
-            </div>
+          <div>
+            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              {t('addTax.validUntil') || 'Valid Until'}
+            </label>
+            <input
+              type="date"
+              {...register('valid_until')}
+              className="input"
+            />
           </div>
         </div>
         

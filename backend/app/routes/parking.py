@@ -2,7 +2,7 @@
 GearCargo - Parking Entry Routes
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, time as time_class, timezone
 from flask import Blueprint, request, jsonify, current_app
 
 from app import db
@@ -10,6 +10,23 @@ from app.models import Vehicle, ParkingEntry
 from app.routes.auth import token_required
 
 parking_bp = Blueprint('parking', __name__)
+
+
+def _parse_time_field(time_str, base_date):
+    """Parse a parking start/end value into a datetime (F41).
+
+    Accepts an ISO datetime string OR a simple 'HH:MM' combined with the
+    entry's date — mirroring the parsing in create_parking_entry. Returns None
+    on malformed input rather than raising, so a bad value can't 500 an edit.
+    """
+    try:
+        s = str(time_str)
+        if 'T' in s or len(s) > 5:      # ISO datetime
+            return datetime.fromisoformat(s.replace('Z', '+00:00'))
+        hour, minute = map(int, s.split(':'))
+        return datetime.combine(base_date, time_class(hour, minute))
+    except (ValueError, TypeError):
+        return None
 
 
 @parking_bp.route('', methods=['GET'])
@@ -113,6 +130,7 @@ def create_parking_entry(current_user):
         vehicle_id=vehicle.id,
         date=entry_date,
         amount=data.get('total_cost') or data.get('cost') or data.get('amount', 0),
+        currency=data.get('currency') or current_user.currency or 'EUR',
         title=data.get('location_name') or data.get('location'),
         description=data.get('notes'),
         parking_type=data.get('parking_type', 'hourly'),
@@ -180,22 +198,61 @@ def update_parking_entry(current_user, entry_id):
         return jsonify({'error': 'Entry not found'}), 404
     
     data = request.get_json()
-    
-    allowed = ['entry_date', 'cost', 'location_name', 'location_address',
-               'latitude', 'longitude', 'parking_type', 'start_time', 'end_time',
-               'duration_minutes', 'is_permit', 'permit_number',
-               'permit_valid_until', 'payment_method', 'notes',
-               'fine_reason', 'fine_status']  # F14
-    
-    for field in allowed:
-        if field in data:
-            if field in ['entry_date', 'start_time', 'end_time'] and data[field]:
-                setattr(entry, field, datetime.fromisoformat(data[field]))
-            elif field == 'permit_valid_until' and data[field]:
-                setattr(entry, field, datetime.fromisoformat(data[field]).date())
+
+    # F41 — request keys mapped to the REAL ParkingEntry columns (same alias-map
+    # idiom F18 applied to services/repairs). The previous allowed-list wrote
+    # phantom names (cost, location_name, latitude, longitude, is_permit,
+    # permit_valid_until, payment_method) that setattr silently discarded —
+    # editing a parking entry's date/amount/location/permit-expiry persisted
+    # nothing. Aliases first, canonical names last.
+    field_aliases = {
+        'entry_date': 'date', 'date': 'date',
+        'cost': 'amount', 'amount': 'amount',
+        'currency': 'currency',
+        'location_name': 'location', 'location': 'location',
+        'location_address': 'location_address',
+        'parking_type': 'parking_type',
+        'duration_minutes': 'duration_minutes',
+        'permit_number': 'permit_number',
+        'permit_valid_until': 'permit_expires', 'permit_expires': 'permit_expires',
+        'reminder_days': 'reminder_days',
+        'recurring': 'recurring', 'recurrence_type': 'recurrence_type',
+        'notes': 'notes',
+        'fine_reason': 'fine_reason', 'fine_status': 'fine_status',  # F14
+    }
+    date_columns = {'date', 'permit_expires', 'next_due_date'}
+
+    for key, column in field_aliases.items():
+        if key not in data:
+            continue
+        value = data[key]
+        if column in date_columns:
+            if value:
+                setattr(entry, column,
+                        datetime.fromisoformat(str(value).replace('Z', '+00:00')).date())
+            elif column != 'date':
+                setattr(entry, column, None)
+        elif column == 'amount':
+            if value is not None:
+                entry.amount = float(value)
+        elif column == 'duration_minutes':
+            try:
+                entry.duration_minutes = int(value) if value not in (None, '') else None
+            except (TypeError, ValueError):
+                entry.duration_minutes = None
+        else:
+            setattr(entry, column, value)
+
+    # start_time / end_time — the form sends HH:MM (or an ISO datetime); parse
+    # into the real start_datetime / end_datetime columns exactly as create does.
+    for key, column in (('start_time', 'start_datetime'), ('end_time', 'end_datetime')):
+        if key in data:
+            raw = data[key]
+            if raw:
+                setattr(entry, column, _parse_time_field(raw, entry.date))
             else:
-                setattr(entry, field, data[field])
-    
+                setattr(entry, column, None)
+
     db.session.commit()
     
     return jsonify({

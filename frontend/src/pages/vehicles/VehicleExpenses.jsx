@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, Fragment } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { vehicleApi, fuelApi, serviceApi, repairApi, taxApi, reminderApi, insuranceApi, parkingApi } from '../../services/api'
 import api from '../../services/api'
@@ -94,6 +94,28 @@ const Icons = {
       <polyline points="4 7 4 4 7 4"/><polyline points="4 17 4 20 7 20"/>
       <polyline points="17 4 20 4 20 7"/><polyline points="17 20 20 20 20 17"/>
       <line x1="4" y1="12" x2="20" y2="12"/>
+    </svg>
+  ),
+  chevronDown: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="6 9 12 15 18 9"/>
+    </svg>
+  ),
+  copy: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+    </svg>
+  ),
+  phone: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+    </svg>
+  ),
+  mail: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+      <polyline points="22,6 12,13 2,6"/>
     </svg>
   ),
 }
@@ -325,6 +347,7 @@ export default function VehicleExpenses() {
   const [todoEntries, setTodoEntries] = useState([])
   const [reminderEntries, setReminderEntries] = useState([])
   const [outstandingFines, setOutstandingFines] = useState([])  // F14
+  const [expandedInsurance, setExpandedInsurance] = useState(null)  // F55
 
   useEffect(() => {
     fetchAllData()
@@ -719,6 +742,38 @@ export default function VehicleExpenses() {
     }
   }
 
+  // F47 — settle a pending tax (optimistic, offline-tolerant). Sets status
+  // 'paid' + paid_date today so it drops out of the Coming-up feed.
+  const handleMarkTaxPaid = async (entry) => {
+    const previous = taxEntries
+    const today = new Date().toISOString().split('T')[0]
+    setTaxEntries(prev => prev.map(e =>
+      e.id === entry.id ? { ...e, status: 'paid', paid_date: today } : e
+    ))
+    try {
+      await taxApi.update(entry.id, { status: 'paid', paid_date: today })
+      toast.success(t('taxes.markedPaid') || 'Tax marked as paid')
+    } catch (err) {
+      if (isOfflineWriteError(err)) {
+        announceOfflineSaved(t)
+        return
+      }
+      setTaxEntries(previous)
+      toast.error(t('taxes.markPaidError') || 'Could not update tax — try again')
+    }
+  }
+
+  // F55 — copy a policy number to the clipboard from the insurance contact card.
+  const copyPolicyNumber = async (value) => {
+    if (!value) return
+    try {
+      await navigator.clipboard.writeText(value)
+      toast.success(t('reportShare.copied') || 'Copied')
+    } catch {
+      toast.error(t('reportShare.copyFailed') || 'Could not copy')
+    }
+  }
+
   // Open attachment viewer
   const openAttachmentViewer = (attachments, index = 0, showOcr = false) => {
     if (attachments && attachments.length > 0) {
@@ -860,11 +915,20 @@ export default function VehicleExpenses() {
                   <td className="py-3 px-4">{formatCurrency(entry.parts_cost || 0)}</td>
                   <td className="py-3 px-4">{formatCurrency(entry.labor_cost || 0)}</td>
                   <td className="py-3 px-4 text-[var(--color-accent)] font-medium">{formatCurrency(entry.amount)}</td>
-                  <td className="py-3 px-4">{entry.provider || '-'}</td>
+                  <td className="py-3 px-4">
+                    <div title={entry.work_order_number ? `${t('addService.workOrder') || 'Work order #'}: ${entry.work_order_number}` : undefined}>
+                      <span>{entry.provider || '-'}</span>
+                      {entry.work_order_number && (
+                        <span className="block text-xs text-[var(--color-text-muted)]">
+                          #{entry.work_order_number}
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="py-3 px-4">{renderAttachmentButton(entry)}</td>
                   <td className="py-3 px-4">
                     <div className="flex items-center gap-2">
-                      <button 
+                      <button
                         onClick={() => handleEdit('service', entry.id)}
                         className="text-[var(--color-accent)] hover:text-[var(--color-accent)] p-1"
                         title={t('common.edit') || 'Edit'}
@@ -908,7 +972,16 @@ export default function VehicleExpenses() {
               {taxEntries.map(entry => (
                 <tr key={entry.id} className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)]">
                   <td className="py-3 px-4">{formatDate(entry.date)}</td>
-                  <td className="py-3 px-4">{entry.tax_type || entry.title || '-'}</td>
+                  <td className="py-3 px-4">
+                    <span className="inline-flex items-center gap-2">
+                      {entry.tax_type || entry.title || '-'}
+                      {entry.status === 'pending' && (
+                        <span className="inline-flex items-center px-2 py-0.5 bg-amber-500/15 text-amber-600 dark:text-amber-400 rounded-full text-xs font-medium">
+                          {t('taxes.unpaid') || 'Unpaid'}
+                        </span>
+                      )}
+                    </span>
+                  </td>
                   <td className="py-3 px-4 text-[var(--color-accent)] font-medium">{formatCurrency(entry.amount)}</td>
                   <td className="py-3 px-4">{formatDate(entry.due_date)}</td>
                   <td className="py-3 px-4">
@@ -925,6 +998,14 @@ export default function VehicleExpenses() {
                   <td className="py-3 px-4">{renderAttachmentButton(entry)}</td>
                   <td className="py-3 px-4">
                     <div className="flex items-center gap-2">
+                      {entry.status === 'pending' && (
+                        <button
+                          onClick={() => handleMarkTaxPaid(entry)}
+                          className="px-2 py-1 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 hover:bg-amber-500/25 text-xs font-medium whitespace-nowrap transition-colors"
+                        >
+                          {t('taxes.markPaid') || 'Mark paid'}
+                        </button>
+                      )}
                       <button
                         onClick={() => handleEdit('tax', entry.id)}
                         className="text-[var(--color-accent)] hover:text-[var(--color-accent)] p-1"
@@ -1043,7 +1124,16 @@ export default function VehicleExpenses() {
               {repairEntries.map(entry => (
                 <tr key={entry.id} className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)]">
                   <td className="py-3 px-4">{formatDate(entry.date)}</td>
-                  <td className="py-3 px-4">{entry.repair_type || entry.title || '-'}</td>
+                  <td className="py-3 px-4">
+                    <div title={entry.root_cause ? `${t('addRepair.rootCause') || 'Root cause'}: ${entry.root_cause}` : undefined}>
+                      <span>{entry.repair_type || entry.title || '-'}</span>
+                      {entry.root_cause && (
+                        <span className="block text-xs text-[var(--color-text-muted)] max-w-xs truncate">
+                          {entry.root_cause}
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="py-3 px-4">{entry.odometer?.toLocaleString()} {vehicle?.distance_unit || 'km'}</td>
                   <td className="py-3 px-4">{formatCurrency(entry.parts_cost || 0)}</td>
                   <td className="py-3 px-4">{formatCurrency(entry.labor_cost || 0)}</td>
@@ -1095,10 +1185,27 @@ export default function VehicleExpenses() {
               </tr>
             </thead>
             <tbody>
-              {insuranceEntries.map(entry => (
-                <tr key={entry.id} className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)]">
+              {insuranceEntries.map(entry => {
+                const isOpen = expandedInsurance === entry.id
+                const hasContact = entry.claims_phone || entry.agent_phone || entry.agent_email ||
+                  entry.agent_name || entry.policy_number || entry.coverage_amount != null || entry.deductible != null
+                return (
+                <Fragment key={entry.id}>
+                <tr className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)]">
                   <td className="py-3 px-4 font-medium">
-                    {entry.provider}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setExpandedInsurance(isOpen ? null : entry.id)}
+                        className="text-[var(--color-text-muted)] hover:text-[var(--color-accent)] p-0.5 flex-shrink-0 transition-transform"
+                        style={{ transform: isOpen ? 'rotate(180deg)' : 'none' }}
+                        aria-expanded={isOpen}
+                        aria-label={t('insurance.contactDetails') || 'Contact details'}
+                        title={t('insurance.contactDetails') || 'Contact details'}
+                      >
+                        {Icons.chevronDown}
+                      </button>
+                      <span>{entry.provider}</span>
+                    </div>
                     {entry.renewed_from_id && (
                       <span className="mt-1 block text-2xs font-normal text-amber-600 dark:text-amber-400">
                         {t('insurance.autoRenewed') || 'Auto-renewed'} · {t('insurance.confirmPremium') || 'confirm premium'}
@@ -1141,7 +1248,7 @@ export default function VehicleExpenses() {
                           {Icons.cancelRecurring}
                         </button>
                       )}
-                      <button 
+                      <button
                         onClick={() => handleDelete('insurance', entry.id)}
                         className="text-red-500 hover:text-red-400 p-1"
                         title={t('common.delete') || 'Delete'}
@@ -1151,7 +1258,77 @@ export default function VehicleExpenses() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                {isOpen && (
+                  <tr className="border-b border-[var(--color-border)] bg-[var(--color-bg-tertiary)]/40">
+                    <td colSpan={10} className="px-4 py-4">
+                      {hasContact ? (
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 text-sm">
+                          {/* Policy number + copy */}
+                          {entry.policy_number && (
+                            <div>
+                              <p className="text-2xs uppercase tracking-wide text-[var(--color-text-muted)] mb-0.5">{t('addInsurance.policyNumber') || 'Policy #'}</p>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono break-all">{entry.policy_number}</span>
+                                <button
+                                  onClick={() => copyPolicyNumber(entry.policy_number)}
+                                  className="text-[var(--color-text-muted)] hover:text-[var(--color-accent)] flex-shrink-0"
+                                  aria-label={t('insurance.copyPolicyNumber') || 'Copy policy number'}
+                                  title={t('insurance.copyPolicyNumber') || 'Copy policy number'}
+                                >
+                                  {Icons.copy}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                          {/* Claims line */}
+                          {entry.claims_phone && (
+                            <div>
+                              <p className="text-2xs uppercase tracking-wide text-[var(--color-text-muted)] mb-0.5">{t('insurance.claimsPhone') || 'Claims line'}</p>
+                              <a href={`tel:${entry.claims_phone}`} className="inline-flex items-center gap-1.5 text-[var(--color-accent)] hover:underline">
+                                <span className="flex-shrink-0">{Icons.phone}</span>{entry.claims_phone}
+                              </a>
+                            </div>
+                          )}
+                          {/* Agent */}
+                          {(entry.agent_name || entry.agent_phone || entry.agent_email) && (
+                            <div>
+                              <p className="text-2xs uppercase tracking-wide text-[var(--color-text-muted)] mb-0.5">{t('insurance.agent') || 'Agent'}</p>
+                              {entry.agent_name && <p className="text-[var(--color-text-secondary)]">{entry.agent_name}</p>}
+                              {entry.agent_phone && (
+                                <a href={`tel:${entry.agent_phone}`} className="inline-flex items-center gap-1.5 text-[var(--color-accent)] hover:underline">
+                                  <span className="flex-shrink-0">{Icons.phone}</span>{entry.agent_phone}
+                                </a>
+                              )}
+                              {entry.agent_email && (
+                                <a href={`mailto:${entry.agent_email}`} className="mt-0.5 flex items-center gap-1.5 text-[var(--color-accent)] hover:underline break-all">
+                                  <span className="flex-shrink-0">{Icons.mail}</span>{entry.agent_email}
+                                </a>
+                              )}
+                            </div>
+                          )}
+                          {/* Coverage / deductible */}
+                          {entry.coverage_amount != null && (
+                            <div>
+                              <p className="text-2xs uppercase tracking-wide text-[var(--color-text-muted)] mb-0.5">{t('addInsurance.coverageAmount') || 'Coverage'}</p>
+                              <span>{formatCurrency(entry.coverage_amount)}</span>
+                            </div>
+                          )}
+                          {entry.deductible != null && (
+                            <div>
+                              <p className="text-2xs uppercase tracking-wide text-[var(--color-text-muted)] mb-0.5">{t('addInsurance.deductible') || 'Deductible'}</p>
+                              <span>{formatCurrency(entry.deductible)}</span>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-[var(--color-text-muted)]">{t('insurance.noContactDetails') || 'No contact details saved for this policy.'}</p>
+                      )}
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
+                )
+              })}
               {insuranceEntries.length === 0 && (
                 <tr><td colSpan={10} className="py-8 text-center text-[var(--color-text-muted)]">{t('expenses.noEntries') || 'No entries found'}</td></tr>
               )}

@@ -54,9 +54,11 @@ export function UpdateProvider({ children }) {
       const date = info.build_date || ''
 
       // Newer-release hint (evaluated regardless of the feature/security result
-      // below, so a pinned deployment still surfaces it).
+      // below, so a pinned deployment still surfaces it). F51 — never fire on a
+      // dev build: its 0.0.0/'dev' manifest would always look "behind" a real
+      // release (belt-and-braces; the server also omits latest_release for dev).
       const rel = info.latest_release
-      if (rel && rel.version && isNewerVersion(rel.version, info.version || BUILD.version)
+      if (!info.is_dev && rel && rel.version && isNewerVersion(rel.version, info.version || BUILD.version)
           && releaseDismissedRef.current !== rel.version) {
         setNewerRelease({ version: rel.version, url: rel.url || '', publishedAt: rel.published_at || '' })
       } else {

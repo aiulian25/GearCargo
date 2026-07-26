@@ -802,6 +802,9 @@ def get_event_data_for_entry(entry_type: str, entry: Any, vehicle_name: str) -> 
         title = f"🅿️ Parking: {vehicle_name}"
         if location:
             title += f" @ {location}"
+        # Show the cost in the title, mirroring the fuel event (F58 follow-up).
+        if amount:
+            title += f" ({float(amount):.2f})"
 
         event_date = getattr(entry, 'date', None)
         if not event_date:

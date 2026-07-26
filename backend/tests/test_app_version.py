@@ -60,13 +60,55 @@ def test_latest_release_absent_when_check_disabled(app, client, user, auth_heade
 def test_latest_release_included_when_enabled(app, client, user, auth_headers, monkeypatch):
     _reset_cache()
     app.config['UPDATE_CHECK_ENABLED'] = True
+    # F51 — a real (non-dev) baked manifest so the release check actually runs
+    # (dev builds now skip it).
+    monkeypatch.setattr(system, '_load_build_info', lambda: {
+        'version': '1.2.0', 'git_sha': 'abc1234', 'build_date': '2026-07-01',
+        'patched_packages': [],
+    })
     monkeypatch.setattr(system, '_fetch_latest_release',
                         lambda: {'version': '1.3.0',
                                  'url': 'https://github.com/aiulian25/GearCargo/releases/tag/v1.3.0',
                                  'published_at': '2026-08-01T00:00:00Z'})
     body = client.get('/api/app-version', headers=auth_headers(user.id)).get_json()
+    assert body['is_dev'] is False
     assert body['latest_release']['version'] == '1.3.0'
     assert 'releases/tag/v1.3.0' in body['latest_release']['url']
+
+
+# --- F51: dev builds are exempt from the release comparison -------------------
+
+def test_dev_build_flags_is_dev_and_skips_release_check(app, client, user, auth_headers, monkeypatch):
+    """No build-info file → dev default; the release lookup must be skipped and
+    never even called, so a dev rebuild can't produce a false update prompt."""
+    _reset_cache()
+    monkeypatch.setenv('BUILD_INFO_PATH', '/nonexistent/build-info.json')
+    app.config['UPDATE_CHECK_ENABLED'] = True
+    app.config['UPDATE_CHECK_REPO'] = 'aiulian25/GearCargo'
+
+    called = []
+    monkeypatch.setattr(system, '_fetch_latest_release',
+                        lambda: called.append(1) or {'version': '9.9.9', 'url': 'x'})
+
+    body = client.get('/api/app-version', headers=auth_headers(user.id)).get_json()
+    assert body['is_dev'] is True
+    assert body['git_sha'] == 'dev'
+    assert 'latest_release' not in body
+    assert called == []                          # _fetch_latest_release NOT called
+
+
+def test_version_zero_is_treated_as_dev(app, client, user, auth_headers, monkeypatch):
+    """A manifest with a real git_sha but version 0.0.0 still counts as dev."""
+    _reset_cache()
+    monkeypatch.setattr(system, '_load_build_info', lambda: {
+        'version': '0.0.0', 'git_sha': 'somesha', 'build_date': '', 'patched_packages': [],
+    })
+    app.config['UPDATE_CHECK_ENABLED'] = True
+    monkeypatch.setattr(system, '_fetch_latest_release',
+                        lambda: {'version': '9.9.9', 'url': 'x'})
+    body = client.get('/api/app-version', headers=auth_headers(user.id)).get_json()
+    assert body['is_dev'] is True
+    assert 'latest_release' not in body
 
 
 def test_fetch_latest_release_rejects_bad_repo(app):

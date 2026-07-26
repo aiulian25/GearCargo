@@ -52,6 +52,7 @@ class RepairEntry(Entry):
             'repair_types': self.repair_types or ([self.repair_type] if self.repair_type else []),
             'diagnosis': self.diagnosis,
             'symptoms': self.symptoms,
+            'root_cause': self.root_cause,
             'provider': self.provider,
             'garage_name': self.garage_name,
             'labor_hours': float(self.labor_hours) if self.labor_hours else None,

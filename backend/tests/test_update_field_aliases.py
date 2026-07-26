@@ -11,7 +11,7 @@ alias now lands on the real column and round-trips through GET.
 from datetime import date, timedelta
 
 from app import db
-from app.models import Vehicle, ServiceEntry, RepairEntry, Reminder
+from app.models import Vehicle, ServiceEntry, RepairEntry, Reminder, TaxEntry, ParkingEntry
 
 TODAY = date.today()
 
@@ -120,6 +120,61 @@ def test_repair_edit_persists_date_odometer_and_cost(app, client, user, auth_hea
         assert db.session.get(Vehicle, vid).current_mileage == 53000
 
 
+# --- F56: workshop record — work order #, labor hours, root cause ------------
+
+def test_service_roundtrips_work_order_and_labor_hours(app, client, user, auth_headers):
+    with app.app_context():
+        v = _mk_vehicle(user.id)
+        vid = v.id
+
+    created = client.post('/api/services', json={
+        'vehicle_id': vid, 'service_types': ['oil_change'],
+        'date': TODAY.isoformat(), 'total_cost': 80,
+        'work_order_number': 'WO-2026-118', 'labor_hours': 2.5,
+    }, headers=auth_headers(user.id))
+    assert created.status_code == 201
+    entry = created.get_json()['entry']
+    # Present on create response (proves both the constructor and to_dict).
+    assert entry['work_order_number'] == 'WO-2026-118'
+    assert entry['labor_hours'] == 2.5
+    sid = entry['id']
+
+    resp = client.put(f'/api/services/{sid}', json={
+        'work_order_number': 'WO-2026-999', 'labor_hours': 3,
+    }, headers=auth_headers(user.id))
+    assert resp.status_code == 200
+
+    got = client.get(f'/api/services/{sid}', headers=auth_headers(user.id)).get_json()
+    assert got['work_order_number'] == 'WO-2026-999'
+    assert got['labor_hours'] == 3.0
+
+
+def test_repair_roundtrips_root_cause_and_labor_hours(app, client, user, auth_headers):
+    with app.app_context():
+        v = _mk_vehicle(user.id)
+        vid = v.id
+
+    created = client.post('/api/repairs', json={
+        'vehicle_id': vid, 'repair_types': ['brakes'],
+        'date': TODAY.isoformat(), 'total_cost': 200,
+        'root_cause': 'Seized caliper piston', 'labor_hours': 1.5,
+    }, headers=auth_headers(user.id))
+    assert created.status_code == 201
+    entry = created.get_json()['entry']
+    assert entry['root_cause'] == 'Seized caliper piston'
+    assert entry['labor_hours'] == 1.5
+    rid = entry['id']
+
+    resp = client.put(f'/api/repairs/{rid}', json={
+        'root_cause': 'Corroded brake line', 'labor_hours': 2,
+    }, headers=auth_headers(user.id))
+    assert resp.status_code == 200
+
+    got = client.get(f'/api/repairs/{rid}', headers=auth_headers(user.id)).get_json()
+    assert got['root_cause'] == 'Corroded brake line'
+    assert got['labor_hours'] == 2.0
+
+
 def test_reminder_edit_persists_recurrence_and_notify_flags(app, client, user, auth_headers):
     with app.app_context():
         v = _mk_vehicle(user.id)
@@ -203,3 +258,86 @@ def test_reminder_repeat_interval_maps_to_recurrence(app, client, user, auth_hea
     got = client.put(f'/api/reminders/{rid}', json={'repeat_interval': 'weekly_ish'},
                      headers=auth_headers(user.id)).get_json()['reminder']
     assert got['recurring'] is False
+
+
+# --- F41: taxes + parking (the two types F18 didn't cover) --------------------
+
+def test_tax_edit_persists_date_amount_and_due_date(app, client, user, auth_headers):
+    with app.app_context():
+        v = _mk_vehicle(user.id)
+        vid = v.id
+
+    created = client.post('/api/taxes', json={
+        'vehicle_id': vid, 'tax_type': 'road_tax',
+        'date': TODAY.isoformat(), 'amount': 100, 'status': 'paid',
+    }, headers=auth_headers(user.id))
+    assert created.status_code == 201
+    tid = created.get_json()['entry']['id']
+
+    new_date = (TODAY - timedelta(days=4)).isoformat()
+    valid_until = (TODAY + timedelta(days=365)).isoformat()
+    resp = client.put(f'/api/taxes/{tid}', json={
+        'cost': 200,                 # legacy alias for amount
+        'valid_until': valid_until,  # legacy alias for due_date
+        'entry_date': new_date,      # legacy alias for date
+        'reference_number': 'RT-2027',
+        'status': 'pending',
+    }, headers=auth_headers(user.id))
+    assert resp.status_code == 200
+
+    got = client.get(f'/api/taxes/{tid}', headers=auth_headers(user.id)).get_json()
+    assert got['amount'] == 200
+    assert got['date'] == new_date
+    assert got['due_date'] == valid_until
+    assert got['reference_number'] == 'RT-2027'
+    assert got['status'] == 'pending'
+
+    with app.app_context():
+        tx = db.session.get(TaxEntry, tid)
+        assert float(tx.amount) == 200
+        assert tx.date.isoformat() == new_date
+        assert tx.due_date.isoformat() == valid_until
+        # No phantom legacy attributes leaked onto the column set.
+        assert not hasattr(type(tx), 'valid_from')
+        assert not hasattr(type(tx), 'payment_method')
+
+
+def test_parking_edit_persists_date_amount_location(app, client, user, auth_headers):
+    with app.app_context():
+        v = _mk_vehicle(user.id)
+        vid = v.id
+
+    created = client.post('/api/parking', json={
+        'vehicle_id': vid, 'parking_type': 'street',
+        'date': TODAY.isoformat(), 'amount': 5, 'location': 'High St',
+    }, headers=auth_headers(user.id))
+    assert created.status_code == 201
+    pid = created.get_json()['entry']['id']
+
+    new_date = (TODAY - timedelta(days=2)).isoformat()
+    permit_exp = (TODAY + timedelta(days=30)).isoformat()
+    resp = client.put(f'/api/parking/{pid}', json={
+        'cost': 12,                          # legacy alias for amount
+        'location_name': 'Multi-storey B2',  # legacy alias for location
+        'entry_date': new_date,              # legacy alias for date
+        'parking_type': 'permit',
+        'permit_valid_until': permit_exp,    # legacy alias for permit_expires
+        'start_time': '09:30',
+    }, headers=auth_headers(user.id))
+    assert resp.status_code == 200
+
+    got = client.get(f'/api/parking/{pid}', headers=auth_headers(user.id)).get_json()
+    assert got['amount'] == 12
+    assert got['location'] == 'Multi-storey B2'
+    assert got['date'] == new_date
+    assert got['parking_type'] == 'permit'
+    assert got['permit_expires'] == permit_exp
+    assert got['start_datetime'] and got['start_datetime'][11:16] == '09:30'
+
+    with app.app_context():
+        pk = db.session.get(ParkingEntry, pid)
+        assert float(pk.amount) == 12
+        assert pk.location == 'Multi-storey B2'
+        assert pk.permit_expires.isoformat() == permit_exp
+        assert not hasattr(type(pk), 'location_name')
+        assert not hasattr(type(pk), 'permit_valid_until')

@@ -346,7 +346,7 @@ def create_fuel_entry(current_user):
         date=entry_date,
         odometer=data.get('odometer') or data.get('mileage'),
         amount=total_price,
-        currency=data.get('currency', 'EUR'),
+        currency=data.get('currency') or current_user.currency or 'EUR',
         liters=liters,
         price_per_liter=price_per_liter,
         total_price=total_price,
@@ -455,6 +455,12 @@ def update_fuel_entry(current_user, entry_id):
     
     if 'notes' in data:
         entry.notes = data['notes']
+
+    # F48 — allow editing the per-entry currency (ignore blank so it never
+    # clears an existing value). Codes are validated client-side; the FX
+    # pipeline treats any unknown code as a 1:1 rate, so this is safe.
+    if data.get('currency'):
+        entry.currency = data['currency']
 
     _recalculate_vehicle_current_mileage(current_user.id, entry.vehicle_id)
     # F29 — odometer/liters/date/full_tank edits shift the full-to-full

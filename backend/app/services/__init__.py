@@ -140,6 +140,16 @@ def init_scheduler(app):
         **_job_defaults
     )
 
+    # Document "expiring within 14 days" push — daily at 7 AM (F42)
+    scheduler.add_job(
+        id='check_document_expiry',
+        func=check_document_expiry,
+        trigger='cron',
+        hour=7,
+        args=[app],
+        **_job_defaults
+    )
+
     # Materialize due "next service" pointers into reminders — daily at 6 AM (F5)
     scheduler.add_job(
         id='process_due_services',
@@ -238,10 +248,14 @@ def check_due_reminders(app):
         
         today = date.today()
         
-        # Get reminders due today or overdue (not completed, not dismissed)
+        # Get reminders due today or overdue (not completed, not dismissed).
+        # F52 — skip snoozed reminders until snoozed_until passes (same rule as
+        # the Coming up feed + email digest).
         due_reminders = Reminder.query.filter(
             Reminder.completed == False,
             Reminder.dismissed == False,
+            db.or_(Reminder.snoozed_until.is_(None),
+                   Reminder.snoozed_until <= datetime.now(timezone.utc)),
             Reminder.due_date.isnot(None),
             Reminder.due_date <= today
         ).all()
@@ -465,6 +479,7 @@ def check_consumables_due(app):
     with app.app_context():
         from app.models import Vehicle, ConsumableEntry
         from app import db
+        from sqlalchemy import func
 
         # Only items not yet notified, on the user's non-archived vehicles.
         consumables = (
@@ -479,11 +494,27 @@ def check_consumables_due(app):
             .all()
         )
 
+        # F43 — supersede map: newest same-type entry per vehicle. A replaced
+        # consumable (a fresh same-type entry) must not push for the old row.
+        latest_cons = {
+            (vid, ctype): mx
+            for vid, ctype, mx in db.session.query(
+                ConsumableEntry.vehicle_id, ConsumableEntry.consumable_type,
+                func.max(func.coalesce(ConsumableEntry.install_date, ConsumableEntry.date)),
+            ).join(Vehicle).filter(Vehicle.archived == False)  # noqa: E712
+            .group_by(ConsumableEntry.vehicle_id, ConsumableEntry.consumable_type).all()
+        } if consumables else {}
+
         notified = 0
         for c in consumables:
             vehicle = db.session.get(Vehicle, c.vehicle_id)
             if not vehicle:
                 continue
+
+            own = c.install_date or c.date
+            mx = latest_cons.get((c.vehicle_id, c.consumable_type))
+            if mx and own and mx > own:
+                continue  # superseded by a newer same-type entry
 
             wear = c.wear_estimate(current_mileage=vehicle.current_mileage)
             if wear.get('status') != 'replace':
@@ -587,6 +618,76 @@ def check_warranty_expiry(app):
         if notified:
             db.session.commit()
             app.logger.info(f'Sent {notified} warranty-expiry push notifications')
+
+
+def check_document_expiry(app):
+    """Push a once-only notification when a document is within 14 days of expiry.
+
+    F42 — the Attachment.expires_at / expiry_notified columns and the due-feed
+    'document' kind already existed; this closes the loop with a scheduled push,
+    mirroring check_warranty_expiry / check_consumables_due. The sentinel is
+    re-armed in the attachments PUT whenever expires_at changes, so a renewed
+    document can notify again.
+    """
+    with app.app_context():
+        from app.models import Attachment, Vehicle
+        from app import db
+
+        today = date.today()
+        HORIZON_DAYS = 14
+        cutoff = today + timedelta(days=HORIZON_DAYS)
+
+        candidates = (
+            Attachment.query
+            .filter(
+                Attachment.expires_at.isnot(None),
+                Attachment.expires_at <= cutoff,
+                db.or_(Attachment.expiry_notified.is_(None),
+                       Attachment.expiry_notified == False),  # noqa: E712
+            )
+            .all()
+        )
+
+        notified = 0
+        for att in candidates:
+            days_left = (att.expires_at - today).days
+            label = att.original_filename or att.filename or att.category or 'Document'
+            vehicle = db.session.get(Vehicle, att.vehicle_id) if att.vehicle_id else None
+            # A document on an archived vehicle is not actionable.
+            if vehicle is not None and vehicle.archived:
+                continue
+            try:
+                from app.routes.push import send_push_to_user
+                where = f' ({vehicle.name})' if vehicle and vehicle.name else ''
+                body = (
+                    f'{label}{where} expires in {days_left} day(s).'
+                    if days_left >= 0 else
+                    f'{label}{where} expired {abs(days_left)} day(s) ago.'
+                )
+                send_push_to_user(
+                    att.user_id,
+                    "\U0001f4c4 Document expiring soon",
+                    body,
+                    data={
+                        'type': 'document_expiry',
+                        'attachment_id': att.id,
+                        'vehicle_id': att.vehicle_id,
+                        'url': (f'/vehicles/{att.vehicle_id}/documents'
+                                if att.vehicle_id else '/settings'),
+                    },
+                    tag=f'doc-expiry-{att.id}',
+                )
+            except Exception as push_exc:
+                app.logger.warning(
+                    f'Document-expiry push failed for attachment {att.id}: {push_exc}'
+                )
+
+            att.expiry_notified = True
+            notified += 1
+
+        if notified:
+            db.session.commit()
+            app.logger.info(f'Sent {notified} document-expiry push notifications')
 
 
 def process_auto_renew_insurance(app):

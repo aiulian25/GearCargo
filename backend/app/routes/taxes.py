@@ -109,6 +109,7 @@ def create_tax_entry(current_user):
         vehicle_id=vehicle.id,
         date=entry_date,
         amount=data.get('total_cost') or data.get('cost') or data.get('amount', 0),
+        currency=data.get('currency') or current_user.currency or 'EUR',
         title=data.get('tax_type'),
         description=data.get('description'),
         tax_type=data['tax_type'],
@@ -171,37 +172,60 @@ def update_tax_entry(current_user, entry_id):
         return jsonify({'error': 'Entry not found'}), 404
     
     data = request.get_json()
-    
-    allowed = ['entry_date', 'cost', 'tax_type', 'description', 'valid_from',
-               'valid_until', 'reference_number', 'payment_method', 'status',
-               'filed_online', 'notes', 'recurring', 'recurrence_type', 'reminder_days',
-               'insurance_policy_id', 'amount', 'date']
-    
-    for field in allowed:
-        if field in data:
-            if field == 'entry_date' and data[field]:
-                setattr(entry, field, datetime.fromisoformat(data[field]))
-            elif field == 'date' and data[field]:
-                setattr(entry, field, datetime.fromisoformat(data[field].replace('Z', '+00:00')).date())
-            elif field in ['valid_from', 'valid_until'] and data[field]:
-                setattr(entry, field, datetime.fromisoformat(data[field]).date())
-            elif field == 'insurance_policy_id':
-                # Validate insurance policy belongs to user and vehicle
-                if data[field]:
-                    policy = InsurancePolicy.query.filter_by(
-                        id=data[field],
-                        user_id=current_user.id,
-                        vehicle_id=entry.vehicle_id
-                    ).first()
-                    if policy:
-                        setattr(entry, field, policy.id)
-                else:
-                    setattr(entry, field, None)
-            elif field == 'amount' and data[field] is not None:
-                setattr(entry, field, float(data[field]))
-            else:
-                setattr(entry, field, data[field])
-    
+
+    # F41 — request keys mapped to the REAL TaxEntry columns (same alias-map
+    # idiom F18 applied to services/repairs). The previous allowed-list wrote
+    # phantom names (valid_from, cost, entry_date, payment_method, filed_online)
+    # that setattr silently discarded on commit — editing a tax's date/amount/
+    # valid-until persisted nothing. Aliases first, canonical names last so the
+    # canonical value wins when both are sent.
+    field_aliases = {
+        'entry_date': 'date', 'date': 'date',
+        'cost': 'amount', 'amount': 'amount',
+        'currency': 'currency',
+        'tax_type': 'tax_type', 'tax_year': 'tax_year', 'tax_period': 'tax_period',
+        'description': 'description',
+        'valid_until': 'due_date', 'due_date': 'due_date',
+        'paid_date': 'paid_date', 'filing_date': 'filing_date',
+        'next_due_date': 'next_due_date',
+        'reference_number': 'reference_number',
+        'status': 'status',
+        'recurring': 'recurring', 'recurrence_type': 'recurrence_type',
+        'reminder_days': 'reminder_days',
+        'notes': 'notes',
+    }
+    # entries.date is NOT NULL — never clear it; the other dates are nullable.
+    date_columns = {'date', 'due_date', 'paid_date', 'filing_date', 'next_due_date'}
+
+    for key, column in field_aliases.items():
+        if key not in data:
+            continue
+        value = data[key]
+        if column in date_columns:
+            if value:
+                setattr(entry, column,
+                        datetime.fromisoformat(str(value).replace('Z', '+00:00')).date())
+            elif column != 'date':
+                setattr(entry, column, None)
+        elif column == 'amount':
+            if value is not None:
+                entry.amount = float(value)
+        else:
+            setattr(entry, column, value)
+
+    # insurance_policy_id — ownership-validated (kept from the original handler).
+    if 'insurance_policy_id' in data:
+        if data['insurance_policy_id']:
+            policy = InsurancePolicy.query.filter_by(
+                id=data['insurance_policy_id'],
+                user_id=current_user.id,
+                vehicle_id=entry.vehicle_id,
+            ).first()
+            if policy:
+                entry.insurance_policy_id = policy.id
+        else:
+            entry.insurance_policy_id = None
+
     db.session.commit()
     
     return jsonify({

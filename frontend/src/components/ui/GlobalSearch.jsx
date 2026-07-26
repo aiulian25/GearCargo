@@ -73,6 +73,13 @@ const ReminderIcon = () => (
   </svg>
 )
 
+const TodoIcon = () => (
+  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <path strokeLinecap="round" strokeLinejoin="round"
+      d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+)
+
 const InsuranceIcon = () => (
   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
     <path strokeLinecap="round" strokeLinejoin="round"
@@ -174,10 +181,17 @@ export default function GlobalSearch({ isOpen, onClose }) {
   }
 
   const handleVehicleClick = (v) => goTo(`/vehicles/${v.id}`)
-  const handleEntryClick = (e) => goTo(`/vehicles/${e.vehicle_id}`)
+  // Deep-link straight to the record on the vehicle Timeline, which scrolls to
+  // and briefly highlights ?focus=<id> for its ?type=<type> filter (F49).
+  const handleEntryClick = (e) =>
+    goTo(e.vehicle_id
+      ? `/vehicles/${e.vehicle_id}/timeline?type=${e.type}&focus=${e.id}`
+      : '/vehicles')
   const handleReminderClick = () => goTo('/reminders')
   const handleInsuranceClick = (p) =>
-    goTo(p.vehicle_id ? `/vehicles/${p.vehicle_id}/expenses` : '/vehicles')
+    goTo(p.vehicle_id ? `/vehicles/${p.vehicle_id}/expenses?tab=insurance` : '/vehicles')
+  const handleTodoClick = (td) =>
+    goTo(td.vehicle_id ? `/vehicles/${td.vehicle_id}/expenses?tab=todo` : '/vehicles')
   const handleAttachmentClick = (a) => {
     if (a.vehicle_id) {
       // Navigate to the per-vehicle documents page and deep-link directly to
@@ -193,8 +207,9 @@ export default function GlobalSearch({ isOpen, onClose }) {
   const hasEntries = results?.entries?.length > 0
   const hasReminders = results?.reminders?.length > 0
   const hasInsurance = results?.insurance?.length > 0
+  const hasTodos = results?.todos?.length > 0
   const hasAttachments = results?.attachments?.length > 0
-  const hasResults = hasVehicles || hasEntries || hasReminders || hasInsurance || hasAttachments
+  const hasResults = hasVehicles || hasEntries || hasReminders || hasInsurance || hasTodos || hasAttachments
   const searchedButEmpty = results !== null && !hasResults
 
   return (
@@ -339,6 +354,33 @@ export default function GlobalSearch({ isOpen, onClose }) {
                         <p className="text-xs text-[var(--color-text-muted)] truncate">
                           {r.vehicle_name && `${r.vehicle_name} · `}
                           {r.due_date}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </section>
+              )}
+
+              {/* Todos */}
+              {hasTodos && (
+                <section>
+                  <h3 className="px-4 pt-3 pb-1 text-2xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
+                    {t('search.groupTodos') || 'To-dos'}
+                  </h3>
+                  {results.todos.map((td) => (
+                    <button
+                      key={td.id}
+                      onClick={() => handleTodoClick(td)}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[var(--color-bg-hover,rgba(255,255,255,0.06))] transition-colors text-left"
+                    >
+                      <span className="text-green-400 flex-shrink-0"><TodoIcon /></span>
+                      <div className="min-w-0 flex-1">
+                        <p className={`text-sm font-medium truncate ${td.completed ? 'line-through text-[var(--color-text-muted)]' : 'text-[var(--color-text-primary)]'}`}>
+                          {td.title}
+                        </p>
+                        <p className="text-xs text-[var(--color-text-muted)] truncate">
+                          {td.vehicle_name && `${td.vehicle_name} · `}
+                          {td.due_date}
                         </p>
                       </div>
                     </button>

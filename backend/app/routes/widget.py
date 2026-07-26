@@ -142,7 +142,8 @@ def homepage_widget(current_user):
     next_due = 'None'
     try:
         from app.services.due import build_due_items
-        items = build_due_items(current_user.id, days=14)
+        # F53 — follow the user's alert_days_before horizon (default 14).
+        items = build_due_items(current_user.id, days=current_user.alert_days_before or 14)
         due_soon = len(items)
         if items:
             top = items[0]

@@ -206,7 +206,9 @@ export const reminderApi = {
 
 // F4 — unified "Due & Expiring" surface: one ranked feed across every source.
 export const dueApi = {
-  get: (days = 30) => api.get(`/due?days=${days}`),
+  // F53 — omit days to follow the user's alert_days_before horizon server-side;
+  // pass an explicit number to override.
+  get: (days) => api.get(days != null ? `/due?days=${days}` : '/due'),
   // F40 — dismiss one occurrence of an item (reminders flip their native
   // dismissed flag; other kinds store an occurrence-scoped dismissal).
   dismiss: (kind, refId) => api.post('/due/dismiss', { kind, ref_id: refId }),
@@ -237,6 +239,8 @@ export const pushApi = {
   subscribe: (subscription, deviceInfo = {}) => api.post('/push/subscribe', { subscription, ...deviceInfo }),
   unsubscribe: (endpoint) => api.post('/push/unsubscribe', { endpoint }),
   test: () => api.post('/push/test', {}),
+  // F58 — read-only delivery history (push + email) for the current user.
+  getHistory: (page = 1) => api.get('/push/history?page=' + page),
 }
 
 export const authApi = {
@@ -448,6 +452,10 @@ export const predictionApi = {
     return api[method](`/predictions/checklists/${checklistId}/dismiss`)
   },
   resetChecklist: (checklistId) => api.post(`/predictions/checklists/${checklistId}/reset`),
+  // F54 — user-configurable checklists
+  updateChecklistSettings: (settings) => api.put('/predictions/checklists/settings', settings),
+  addChecklistItem: (checklistId, label) => api.post(`/predictions/checklists/${checklistId}/custom-items`, { label }),
+  removeChecklistItem: (checklistId, itemId) => api.delete(`/predictions/checklists/${checklistId}/custom-items`, { data: { id: itemId } }),
 }
 
 export const externalApi = {

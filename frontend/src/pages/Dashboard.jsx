@@ -300,6 +300,8 @@ const DUE_KIND = {
   parking:    { color: 'text-purple-500', bg: 'bg-purple-500/10', icon: <><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 17V7h4a3 3 0 0 1 0 6H9" /></> },
   consumable: { color: 'text-cyan-500',   bg: 'bg-cyan-500/10',   icon: <><path d="M21 8V21H3V8M1 3h22v5H1zM10 12h4" /></> },
   fine:       { color: 'text-orange-500', bg: 'bg-orange-500/10', icon: <><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></> },
+  todo:       { color: 'text-sky-500',    bg: 'bg-sky-500/10',    icon: <><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></> },
+  prediction: { color: 'text-violet-500', bg: 'bg-violet-500/10', icon: <path d="M9.8 15.9L9 18.8l-.8-2.9a4.5 4.5 0 0 0-3.1-3.1L2.3 12l2.8-.8a4.5 4.5 0 0 0 3.1-3.1L9 5.3l.8 2.8a4.5 4.5 0 0 0 3.1 3.1L15.8 12l-2.9.8a4.5 4.5 0 0 0-3.1 3.1zM18.3 8.7L18 9.8l-.3-1.1a3.4 3.4 0 0 0-2.4-2.4L14.3 6l1-.3a3.4 3.4 0 0 0 2.4-2.4L18 2.3l.3 1a3.4 3.4 0 0 0 2.5 2.4L21.8 6l-1 .3a3.4 3.4 0 0 0-2.5 2.4z" /> },
 }
 const _DEFAULT_DUE = { color: 'text-gray-500', bg: 'bg-gray-500/10', icon: <><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h0" /></> }
 
@@ -344,6 +346,14 @@ function DueSoon({ items, loading, error, t, onDismiss }) {
   const [expanded, setExpanded] = useState(false)
 
   const dueLabel = (it) => {
+    // F45 — a mileage-based prediction shows "in ~400 km" (only predictions
+    // carry distance_left). Zero/negative means the mileage was reached → fall
+    // through to the severity label below.
+    if (it.distance_left != null && it.distance_left > 0) {
+      return (t('due.inDistance') || 'in ~{n} {unit}')
+        .replace('{n}', it.distance_left.toLocaleString())
+        .replace('{unit}', it.distance_unit || 'km')
+    }
     if (it.days_left == null) {
       return it.severity === 'critical'
         ? (t('due.replaceNow') || 'Replace now')
@@ -715,7 +725,7 @@ export default function Dashboard() {
     let cancelled = false
     const fetchDue = async () => {
       try {
-        const res = await dueApi.get(30)
+        const res = await dueApi.get()
         if (cancelled) return
         setDueItems(res.data.items || [])
         setDueError(false)
@@ -747,7 +757,7 @@ export default function Dashboard() {
               toast.dismiss(tst.id)
               try {
                 await dueApi.undismiss(item.kind, item.ref_id)
-                const res = await dueApi.get(30)
+                const res = await dueApi.get()
                 setDueItems(res.data.items || [])
               } catch {
                 toast.error(t('due.dismissError') || 'Could not update — try again')
@@ -766,7 +776,7 @@ export default function Dashboard() {
       }
       toast.error(t('due.dismissError') || 'Could not update — try again')
       try {
-        const res = await dueApi.get(30)
+        const res = await dueApi.get()
         setDueItems(res.data.items || [])
       } catch { /* keep optimistic state; next visit refetches */ }
     }

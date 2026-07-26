@@ -130,3 +130,65 @@ def test_check_consumables_due_no_push_when_only_monitor(app, monkeypatch):
 
     check_consumables_due(app)
     assert calls == []                           # monitor does not push
+
+
+# --- F43: a replaced consumable supersedes the old worn one -------------------
+
+from datetime import timedelta  # noqa: E402
+
+
+def _mk_dated_consumable(user_id, vehicle_id, ctype, install_odo, expected_km,
+                         install_date, amount=200):
+    c = ConsumableEntry(
+        user_id=user_id, vehicle_id=vehicle_id, date=install_date,
+        install_date=install_date, consumable_type=ctype,
+        install_odometer=install_odo, odometer=install_odo,
+        expected_lifespan_km=expected_km, amount=amount)
+    db.session.add(c)
+    db.session.commit()
+    db.session.refresh(c)
+    return c
+
+
+def test_replaced_consumable_superseded_in_feed(app, client, user, auth_headers):
+    with app.app_context():
+        v = _mk_vehicle(user.id, mileage=60000)
+        # Old tyres: fitted 400 days ago at 50k, long past their 1k-km wear.
+        _mk_dated_consumable(user.id, v.id, 'tire', 50000, 1000,
+                             date.today() - timedelta(days=400))
+        # New tyres: fitted today at 60k, fresh (40k-km lifespan).
+        _mk_dated_consumable(user.id, v.id, 'tire', 60000, 40000, date.today())
+        # A DIFFERENT worn type (battery) still surfaces — supersede is per-type.
+        _mk_dated_consumable(user.id, v.id, 'battery', 50000, 1000,
+                             date.today() - timedelta(days=300))
+        db.session.commit()
+
+    items = client.get('/api/due?days=30', headers=auth_headers(user.id)).get_json()['items']
+    cons = [it for it in items if it['kind'] == 'consumable']
+    titles = {it['title'] for it in cons}
+    assert 'tire' not in titles          # old tyres retired by the fresh set
+    assert 'battery' in titles           # unreplaced type still nags
+
+
+def test_check_consumables_due_skips_superseded(app, monkeypatch):
+    """The push job must not fire for an old consumable that was replaced."""
+    from app.services import check_consumables_due
+    import app.routes.push as push_mod
+
+    calls = []
+    monkeypatch.setattr(push_mod, 'send_push_to_user',
+                        lambda *a, **k: calls.append(1) or 1)
+
+    with app.app_context():
+        u = User(email='sup@example.com', username='superseded', is_active=True)
+        u.set_password('Str0ng!Passw0rd')
+        db.session.add(u)
+        db.session.commit()
+        v = _mk_vehicle(u.id, 'Focus', mileage=60000)
+        # Old worn brake pads (would push) + a fresh replacement of the same type.
+        _mk_dated_consumable(u.id, v.id, 'brake_pads', 50000, 1000,
+                             date.today() - timedelta(days=400))
+        _mk_dated_consumable(u.id, v.id, 'brake_pads', 60000, 40000, date.today())
+
+    check_consumables_due(app)
+    assert calls == []                   # the superseded old pads never push

@@ -24,9 +24,18 @@ export const translations = {
       groupEntries: 'Entries',
       groupReminders: 'Reminders',
       groupInsurance: 'Insurance',
+      groupTodos: 'To-dos',
       groupAttachments: 'Scanned Documents',
       selectHint: 'to open',
       closeHint: 'to close',
+    },
+    // Notification delivery history (F58)
+    notifications: {
+      historyTitle: 'Notification history',
+      historyDesc: 'What GearCargo has sent you (push & email).',
+      historyEmpty: 'No notifications yet.',
+      deliveryFailed: 'Failed',
+      loadMore: 'Load more',
     },
 
     // Navigation
@@ -57,6 +66,12 @@ export const translations = {
       entriesThisMonth: 'Entries this month',
       noEntries: 'No entries for this day',
       loadError: 'Failed to load calendar entries',
+      subscribeTitle: 'Subscribe in your calendar app',
+      subscribeHint: 'Read-only feed of your GearCargo events. Link is valid for 90 days.',
+      subscribeWhere: 'Google: Settings → Add calendar → From URL. Apple: File → New Calendar Subscription.',
+      generateLink: 'Generate link',
+      generateNewLink: 'Generate new link',
+      copyLink: 'Copy',
       months: {
         january: 'January',
         february: 'February',
@@ -145,6 +160,20 @@ export const translations = {
       uploadInvalidType: 'Invalid file type.',
       ocrToast: 'Receipt scanned — extract data?',
       ocrToastView: 'View',
+    },
+
+    // Document details (F42 — edit category / expiry / notes)
+    documents: {
+      editDetails: 'Edit details',
+      category: 'Category',
+      categoryReceipt: 'Receipt',
+      categoryDocument: 'Document',
+      categoryPhoto: 'Photo',
+      categoryManual: 'Manual',
+      expiryDate: 'Expiry date',
+      expiresOn: 'Expires {date}',
+      noExpiry: 'No expiry',
+      saveError: 'Could not save — please try again',
     },
 
     // Vehicle Detail Page
@@ -257,7 +286,10 @@ export const translations = {
         parking: 'Parking permit',
         consumable: 'Consumable',
         fine: 'Parking fine',
+        todo: 'To-do',
+        prediction: 'AI alert',
       },
+      inDistance: 'in ~{n} {unit}',
     },
     parking: {
       unpaidFines: 'Unpaid fines',
@@ -527,6 +559,9 @@ export const translations = {
       hideHidden: 'Hide hidden',
       hiddenInfo: 'Hidden checklists will not appear until restored.',
       restoreAll: 'Restore all hidden',
+      addItem: 'Add item',
+      removeItem: 'Remove item',
+      inspectionMonths: 'Inspection months',
       // Checklist Titles & Descriptions
       winter: {
         title: 'Winter Preparation',
@@ -743,6 +778,8 @@ export const translations = {
       serviceDetails: 'Service Details',
       description: 'Description',
       descriptionPlaceholder: 'What was done...',
+      workOrder: 'Work order #',
+      laborHours: 'Labor hours',
       costs: 'Costs',
       partsCost: 'Parts Cost',
       laborCost: 'Labor Cost',
@@ -790,6 +827,9 @@ export const translations = {
       description: 'Description',
       descRequired: 'Description is required',
       descPlaceholder: 'What was repaired...',
+      rootCause: 'Root cause',
+      rootCausePlaceholder: 'What caused the fault…',
+      laborHours: 'Labor hours',
       costs: 'Costs',
       partsCost: 'Parts Cost',
       laborCost: 'Labor Cost',
@@ -832,6 +872,15 @@ export const translations = {
       other: 'Other',
     },
     
+    // Tax status (F47)
+    taxes: {
+      status: 'Status',
+      paid: 'Paid',
+      unpaid: 'Unpaid',
+      markPaid: 'Mark paid',
+      markedPaid: 'Tax marked as paid',
+      markPaidError: 'Could not update tax — try again',
+    },
     // Add Tax Form
     addTax: {
       title: 'Add Tax/Fee',
@@ -866,6 +915,11 @@ export const translations = {
     insurance: {
       autoRenewed: 'Auto-renewed',
       confirmPremium: 'confirm premium',
+      claimsPhone: 'Claims line',
+      agent: 'Agent',
+      copyPolicyNumber: 'Copy policy number',
+      contactDetails: 'Contact details',
+      noContactDetails: 'No contact details saved for this policy.',
       perYear: '/yr',
       frequency: {
         monthly: 'monthly',
@@ -1051,6 +1105,7 @@ export const translations = {
       statusReplace: 'Replace soon',
       statusUnknown: 'No estimate',
       remainingKm: '{km} {unit} left',
+      replaceNow: 'Replace now',
     },
     reportShare: {
       title: 'Share a read-only link',
@@ -2778,9 +2833,18 @@ export const translations = {
       groupEntries: 'Înregistrări',
       groupReminders: 'Mementouri',
       groupInsurance: 'Asigurări',
+      groupTodos: 'De făcut',
       groupAttachments: 'Documente scanate',
       selectHint: 'pentru deschidere',
       closeHint: 'pentru închidere',
+    },
+    // Notification delivery history (F58)
+    notifications: {
+      historyTitle: 'Istoric notificări',
+      historyDesc: 'Ce ți-a trimis GearCargo (push și e-mail).',
+      historyEmpty: 'Nicio notificare încă.',
+      deliveryFailed: 'Eșuat',
+      loadMore: 'Încarcă mai multe',
     },
 
     // Navigation
@@ -2811,6 +2875,12 @@ export const translations = {
       entriesThisMonth: 'Înregistrări în această lună',
       noEntries: 'Nicio înregistrare pentru această zi',
       loadError: 'Nu s-au putut încărca înregistrările din calendar',
+      subscribeTitle: 'Abonează-te în aplicația ta de calendar',
+      subscribeHint: 'Flux doar-citire cu evenimentele tale GearCargo. Linkul e valabil 90 de zile.',
+      subscribeWhere: 'Google: Setări → Adaugă calendar → De la URL. Apple: Fișier → Abonament calendar nou.',
+      generateLink: 'Generează link',
+      generateNewLink: 'Generează link nou',
+      copyLink: 'Copiază',
       months: {
         january: 'Ianuarie',
         february: 'Februarie',
@@ -2900,6 +2970,20 @@ export const translations = {
       uploadInvalidType: 'Tip de fișier invalid.',
       ocrToast: 'Chitanță scanată — extragi datele?',
       ocrToastView: 'Vizualizează',
+    },
+
+    // Document details (F42)
+    documents: {
+      editDetails: 'Editează detaliile',
+      category: 'Categorie',
+      categoryReceipt: 'Chitanță',
+      categoryDocument: 'Document',
+      categoryPhoto: 'Fotografie',
+      categoryManual: 'Manual',
+      expiryDate: 'Data expirării',
+      expiresOn: 'Expiră {date}',
+      noExpiry: 'Fără expirare',
+      saveError: 'Salvarea a eșuat — încearcă din nou',
     },
 
     // Vehicle Detail Page
@@ -3013,7 +3097,10 @@ export const translations = {
         parking: 'Permis de parcare',
         consumable: 'Consumabil',
         fine: 'Amendă de parcare',
+        todo: 'De făcut',
+        prediction: 'Alertă AI',
       },
+      inDistance: 'în ~{n} {unit}',
     },
     parking: {
       unpaidFines: 'Amenzi neplătite',
@@ -3284,6 +3371,9 @@ export const translations = {
       hideHidden: 'Ascunde ascunse',
       hiddenInfo: 'Listele ascunse nu vor apărea până nu sunt restaurate.',
       restoreAll: 'Restaurează toate ascunse',
+      addItem: 'Adaugă element',
+      removeItem: 'Elimină element',
+      inspectionMonths: 'Lunile inspecției',
       // Checklist Titles & Descriptions
       winter: {
         title: 'Pregătire pentru Iarnă',
@@ -3500,6 +3590,8 @@ export const translations = {
       serviceDetails: 'Detalii Service',
       description: 'Descriere',
       descriptionPlaceholder: 'Ce s-a făcut...',
+      workOrder: 'Nr. deviz',
+      laborHours: 'Ore manoperă',
       costs: 'Costuri',
       partsCost: 'Cost Piese',
       laborCost: 'Cost Manoperă',
@@ -3547,6 +3639,9 @@ export const translations = {
       description: 'Descriere',
       descRequired: 'Descrierea este obligatorie',
       descPlaceholder: 'Ce s-a reparat...',
+      rootCause: 'Cauza principală',
+      rootCausePlaceholder: 'Ce a cauzat defecțiunea…',
+      laborHours: 'Ore manoperă',
       costs: 'Costuri',
       partsCost: 'Cost Piese',
       laborCost: 'Cost Manoperă',
@@ -3589,6 +3684,15 @@ export const translations = {
       other: 'Altele',
     },
     
+    // Tax status (F47)
+    taxes: {
+      status: 'Stare',
+      paid: 'Plătită',
+      unpaid: 'Neplătită',
+      markPaid: 'Marchează plătită',
+      markedPaid: 'Taxă marcată ca plătită',
+      markPaidError: 'Taxa nu a putut fi actualizată — încearcă din nou',
+    },
     // Add Tax Form
     addTax: {
       title: 'Adaugă Taxă/Impozit',
@@ -3623,6 +3727,11 @@ export const translations = {
     insurance: {
       autoRenewed: 'Reînnoit automat',
       confirmPremium: 'confirmă prima',
+      claimsPhone: 'Linie daune',
+      agent: 'Agent',
+      copyPolicyNumber: 'Copiază numărul poliței',
+      contactDetails: 'Detalii de contact',
+      noContactDetails: 'Nu sunt salvate detalii de contact pentru această poliță.',
       perYear: '/an',
       frequency: {
         monthly: 'lunar',
@@ -3808,6 +3917,7 @@ export const translations = {
       statusReplace: 'De înlocuit curând',
       statusUnknown: 'Fără estimare',
       remainingKm: '{km} {unit} rămași',
+      replaceNow: 'Înlocuiește acum',
     },
     reportShare: {
       title: 'Partajează un link doar pentru citire',
@@ -5552,9 +5662,18 @@ export const translations = {
       groupEntries: 'Registros',
       groupReminders: 'Recordatorios',
       groupInsurance: 'Seguros',
+      groupTodos: 'Pendientes',
       groupAttachments: 'Documentos escaneados',
       selectHint: 'para abrir',
       closeHint: 'para cerrar',
+    },
+    // Notification delivery history (F58)
+    notifications: {
+      historyTitle: 'Historial de notificaciones',
+      historyDesc: 'Lo que GearCargo te ha enviado (push y correo).',
+      historyEmpty: 'Aún no hay notificaciones.',
+      deliveryFailed: 'Fallido',
+      loadMore: 'Cargar más',
     },
 
     // Navigation
@@ -5585,6 +5704,12 @@ export const translations = {
       entriesThisMonth: 'Entradas este mes',
       noEntries: 'Sin entradas para este día',
       loadError: 'Error al cargar las entradas del calendario',
+      subscribeTitle: 'Suscríbete en tu app de calendario',
+      subscribeHint: 'Feed de solo lectura con tus eventos de GearCargo. El enlace es válido 90 días.',
+      subscribeWhere: 'Google: Configuración → Añadir calendario → Desde URL. Apple: Archivo → Nueva suscripción de calendario.',
+      generateLink: 'Generar enlace',
+      generateNewLink: 'Generar enlace nuevo',
+      copyLink: 'Copiar',
       months: {
         january: 'Enero',
         february: 'Febrero',
@@ -5673,6 +5798,20 @@ export const translations = {
       uploadInvalidType: 'Tipo de archivo no válido.',
       ocrToast: 'Recibo escaneado — ¿extraer datos?',
       ocrToastView: 'Ver',
+    },
+
+    // Document details (F42)
+    documents: {
+      editDetails: 'Editar detalles',
+      category: 'Categoría',
+      categoryReceipt: 'Recibo',
+      categoryDocument: 'Documento',
+      categoryPhoto: 'Foto',
+      categoryManual: 'Manual',
+      expiryDate: 'Fecha de vencimiento',
+      expiresOn: 'Vence {date}',
+      noExpiry: 'Sin vencimiento',
+      saveError: 'No se pudo guardar — inténtalo de nuevo',
     },
 
     // Vehicle Detail Page
@@ -5785,7 +5924,10 @@ export const translations = {
         parking: 'Permiso de aparcamiento',
         consumable: 'Consumible',
         fine: 'Multa de aparcamiento',
+        todo: 'Pendiente',
+        prediction: 'Alerta IA',
       },
+      inDistance: 'en ~{n} {unit}',
     },
     parking: {
       unpaidFines: 'Multas pendientes',
@@ -6056,6 +6198,9 @@ export const translations = {
       hideHidden: 'Ocultar ocultas',
       hiddenInfo: 'Las listas ocultas no aparecerán hasta que se restauren.',
       restoreAll: 'Restaurar todas las ocultas',
+      addItem: 'Añadir elemento',
+      removeItem: 'Eliminar elemento',
+      inspectionMonths: 'Meses de inspección',
       // Checklist Titles & Descriptions
       winter: {
         title: 'Preparación para Invierno',
@@ -6272,6 +6417,8 @@ export const translations = {
       serviceDetails: 'Detalles del Servicio',
       description: 'Descripción',
       descriptionPlaceholder: 'Qué se hizo...',
+      workOrder: 'N.º de orden',
+      laborHours: 'Horas de mano de obra',
       costs: 'Costos',
       partsCost: 'Costo de Piezas',
       laborCost: 'Costo de Mano de Obra',
@@ -6319,6 +6466,9 @@ export const translations = {
       description: 'Descripción',
       descRequired: 'La descripción es obligatoria',
       descPlaceholder: 'Qué se reparó...',
+      rootCause: 'Causa raíz',
+      rootCausePlaceholder: 'Qué causó la avería…',
+      laborHours: 'Horas de mano de obra',
       costs: 'Costos',
       partsCost: 'Costo de Piezas',
       laborCost: 'Costo de Mano de Obra',
@@ -6361,6 +6511,15 @@ export const translations = {
       other: 'Otro',
     },
     
+    // Tax status (F47)
+    taxes: {
+      status: 'Estado',
+      paid: 'Pagado',
+      unpaid: 'Impagado',
+      markPaid: 'Marcar pagado',
+      markedPaid: 'Impuesto marcado como pagado',
+      markPaidError: 'No se pudo actualizar el impuesto — inténtalo de nuevo',
+    },
     // Add Tax Form
     addTax: {
       title: 'Añadir Impuesto/Tasa',
@@ -6395,6 +6554,11 @@ export const translations = {
     insurance: {
       autoRenewed: 'Renovado automáticamente',
       confirmPremium: 'confirmar prima',
+      claimsPhone: 'Línea de siniestros',
+      agent: 'Agente',
+      copyPolicyNumber: 'Copiar número de póliza',
+      contactDetails: 'Datos de contacto',
+      noContactDetails: 'No hay datos de contacto guardados para esta póliza.',
       perYear: '/año',
       frequency: {
         monthly: 'mensual',
@@ -6580,6 +6744,7 @@ export const translations = {
       statusReplace: 'Reemplazar pronto',
       statusUnknown: 'Sin estimación',
       remainingKm: '{km} {unit} restantes',
+      replaceNow: 'Reemplazar ahora',
     },
     reportShare: {
       title: 'Compartir un enlace de solo lectura',

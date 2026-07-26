@@ -207,3 +207,21 @@ def test_chat_prompt_contains_due_soon(app, client, user, auth_headers, monkeypa
     assert 'due_soon' in joined
     assert 'MOT-PROMPT-MARKER' in joined
     assert 'forecast_next_3_months' in joined
+
+
+def test_due_soon_includes_todos_F44(app, user):
+    """F44 — a dated incomplete todo surfaces in the chat context's due_soon."""
+    from datetime import date, timedelta
+    from app.models import Todo
+    from app.routes.vehicles import _build_chat_context
+
+    with app.app_context():
+        v = _vehicle(user.id, 'FitCar')
+        db.session.add(Todo(user_id=user.id, vehicle_id=v.id, title='Swap winter tyres',
+                            due_date=date.today() + timedelta(days=4), completed=False))
+        db.session.commit()
+        ctx = _build_chat_context(user, db.session.get(Vehicle, v.id))
+
+    kinds = {i['kind'] for i in ctx['due_soon']}
+    assert 'todo' in kinds
+    assert any(i['title'] == 'Swap winter tyres' for i in ctx['due_soon'])

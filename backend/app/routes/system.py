@@ -141,7 +141,13 @@ def app_version(current_user):
     patched_packages) so the client can detect updates. Includes ``latest_release``
     when the optional GitHub update check is enabled."""
     data = dict(_load_build_info())
-    if current_app.config.get('UPDATE_CHECK_ENABLED', False):
+    # F51 — a dev image has no real build manifest (git_sha 'dev' / version
+    # '0.0.0'), so comparing it against the GitHub latest release produces a
+    # bogus "Update available — you're on v0.0.0" prompt on every rebuild.
+    # Flag it and skip the release lookup entirely for dev builds.
+    is_dev = data.get('git_sha') == 'dev' or data.get('version') == '0.0.0'
+    data['is_dev'] = is_dev
+    if not is_dev and current_app.config.get('UPDATE_CHECK_ENABLED', False):
         rel = _fetch_latest_release()
         if rel:
             data['latest_release'] = rel
@@ -157,13 +163,16 @@ def get_due_surface(current_user):
     expiry, parking-permit expiry, and consumable replacement into one ranked
     feed, each item deep-linking to its record. Scoped to the current user.
 
-    Query: ``?days=30`` sets the forward horizon (clamped to 1..365). Overdue
-    items are always included.
+    Query: ``?days=`` sets the forward horizon (clamped to 1..365). When
+    omitted, the horizon follows the user's ``alert_days_before`` preference
+    (F53). Overdue items are always included.
     """
-    days = request.args.get('days', 30, type=int) or 30
-    days = max(1, min(days, 365))
+    days = request.args.get('days', type=int)
+    if days is not None:
+        days = max(1, min(days, 365))
 
     from app.services.due import build_due_items
+    # days=None → build_due_items resolves the per-user alert_days_before horizon.
     items = build_due_items(current_user.id, days=days)
     return jsonify({'items': items, 'count': len(items)})
 
@@ -172,8 +181,13 @@ def get_due_surface(current_user):
 # the kinds emitted by app.services.due.build_due_items.
 _DISMISSIBLE_KINDS = frozenset((
     'reminder', 'service', 'tax', 'insurance', 'document',
-    'parking', 'fine', 'consumable',
+    'parking', 'fine', 'consumable', 'todo', 'prediction',
 ))
+
+# Kinds that carry their OWN ``dismissed`` boolean column, so a feed dismissal
+# flips that flag directly (keeping other views consistent) instead of writing
+# an occurrence-scoped DueDismissal row. Reminders and F45 AI predictions.
+_NATIVE_DISMISS_KINDS = frozenset(('reminder', 'prediction'))
 
 
 def _resolve_due_ref(user, kind, ref_id):
@@ -190,9 +204,21 @@ def _resolve_due_ref(user, kind, ref_id):
         Reminder, ServiceEntry, TaxEntry, InsurancePolicy,
         Attachment, ParkingEntry, ConsumableEntry,
     )
+    from app.models.todo import Todo
+    from app.models import PredictionAlert
 
     if kind == 'reminder':
         obj = Reminder.query.filter_by(id=ref_id, user_id=user.id).first()
+        return obj, (obj.due_date if obj else None)
+    if kind == 'prediction':
+        # F45 — native dismissed flag (no due date); dismissal matches the
+        # VehicleAlerts page exactly.
+        obj = PredictionAlert.query.filter_by(id=ref_id, user_id=user.id).first()
+        return obj, None
+    if kind == 'todo':
+        # F44 — occurrence-scoped dismissal pinned to the todo's due_date
+        # (todos have no native dismissed flag).
+        obj = Todo.query.filter_by(id=ref_id, user_id=user.id).first()
         return obj, (obj.due_date if obj else None)
     if kind == 'service':
         obj = ServiceEntry.query.filter_by(id=ref_id, user_id=user.id).first()
@@ -251,8 +277,11 @@ def dismiss_due_item(current_user):
     if obj is None:
         return jsonify({'error': 'Item not found'}), 404
 
-    if kind == 'reminder':
+    if kind in _NATIVE_DISMISS_KINDS:
         obj.dismissed = True
+        if hasattr(obj, 'dismissed_at'):
+            from datetime import datetime, timezone
+            obj.dismissed_at = datetime.now(timezone.utc)
     else:
         exists = DueDismissal.query.filter_by(
             user_id=current_user.id, kind=kind, ref_id=ref_id, due_date=due,
@@ -280,8 +309,10 @@ def undismiss_due_item(current_user):
     if obj is None:
         return jsonify({'error': 'Item not found'}), 404
 
-    if kind == 'reminder':
+    if kind in _NATIVE_DISMISS_KINDS:
         obj.dismissed = False
+        if hasattr(obj, 'dismissed_at'):
+            obj.dismissed_at = None
     else:
         DueDismissal.query.filter_by(
             user_id=current_user.id, kind=kind, ref_id=ref_id,

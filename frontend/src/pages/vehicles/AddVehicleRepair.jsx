@@ -5,9 +5,11 @@ import { useForm, useWatch } from 'react-hook-form'
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import { repairApi, vehicleApi, attachmentApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
+import { useAuth } from '../../contexts/AuthContext'
 import { normalizeDistanceUnit } from '../../utils/fuelEconomy'
 import ReceiptUpload from '../../components/ReceiptUpload'
 import ScanReceiptBanner from '../../components/ui/ScanReceiptBanner'
+import CurrencySelect from '../../components/ui/CurrencySelect'
 
 // SVG Icons
 const Icons = {
@@ -36,6 +38,7 @@ export default function AddVehicleRepair() {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { currency } = useCurrency()
+  const { user } = useAuth()
   
   const [vehicle, setVehicle] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -53,9 +56,12 @@ export default function AddVehicleRepair() {
       date: new Date().toISOString().split('T')[0],
       mileage: '',
       description: '',
+      root_cause: '',
       parts_cost: '',
       labor_cost: '',
+      labor_hours: '',
       total_cost: '',
+      currency: user?.currency || 'EUR',
       shop_name: '',
       notes: '',
       warranty_months: '',
@@ -92,9 +98,12 @@ export default function AddVehicleRepair() {
             date: entry.date ? entry.date.split('T')[0] : new Date().toISOString().split('T')[0],
             mileage: entry.odometer || '',
             description: entry.description || '',
+            root_cause: entry.root_cause || '',
             parts_cost: entry.parts_cost || '',
             labor_cost: entry.labor_cost || '',
+            labor_hours: entry.labor_hours ?? '',
             total_cost: entry.amount || '',
+            currency: entry.currency || user?.currency || 'EUR',
             shop_name: entry.garage_name || entry.provider || '',
             notes: entry.notes || '',
             warranty_months: entry.warranty_months ?? '',
@@ -160,6 +169,8 @@ export default function AddVehicleRepair() {
         mileage: data.mileage ? parseInt(data.mileage) : null,
         parts_cost: data.parts_cost ? parseFloat(data.parts_cost) : null,
         labor_cost: data.labor_cost ? parseFloat(data.labor_cost) : null,
+        labor_hours: data.labor_hours ? parseFloat(data.labor_hours) : null,
+        root_cause: data.root_cause || null,
         total_cost: data.total_cost ? parseFloat(data.total_cost) : null,
         warranty_months: data.warranty_months === '' ? null : parseInt(data.warranty_months),
         warranty_km: data.warranty_km === '' ? null : parseInt(data.warranty_km),
@@ -386,8 +397,21 @@ export default function AddVehicleRepair() {
               <p className="text-xs text-red-500 mt-1">{errors.description.message}</p>
             )}
           </div>
+
+          {/* F56 — root cause: what actually caused the fault (vs. the symptom) */}
+          <div>
+            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              {t('addRepair.rootCause') || 'Root cause'}
+            </label>
+            <textarea
+              {...register('root_cause')}
+              className="input resize-none"
+              rows={2}
+              placeholder={t('addRepair.rootCausePlaceholder') || 'What caused the fault…'}
+            />
+          </div>
         </div>
-        
+
         {/* Costs */}
         <div className="card space-y-4">
           <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
@@ -422,7 +446,8 @@ export default function AddVehicleRepair() {
             </div>
           </div>
           
-          <div>
+          <div className="flex gap-3">
+            <div className="flex-1">
             <label className="block text-xs text-[var(--color-text-muted)] mb-1">
               {t('addRepair.totalCost') || 'Total Cost'} ({currency.symbol})
             </label>
@@ -432,6 +457,22 @@ export default function AddVehicleRepair() {
               {...register('total_cost')}
               className="input"
               placeholder="0.00"
+            />
+            </div>
+            <CurrencySelect register={register} className="w-28 flex-shrink-0" />
+          </div>
+
+          {/* F56 — labor hours (structured; was only expressible in notes) */}
+          <div>
+            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              {t('addRepair.laborHours') || 'Labor hours'}
+            </label>
+            <input
+              type="number" inputMode="decimal"
+              step="0.5" min="0"
+              {...register('labor_hours')}
+              className="input"
+              placeholder="0"
             />
           </div>
         </div>

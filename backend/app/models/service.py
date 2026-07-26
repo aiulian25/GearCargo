@@ -54,6 +54,7 @@ class ServiceEntry(Entry):
             'provider': self.provider,
             'garage_name': self.garage_name,
             'garage_address': self.garage_address,
+            'work_order_number': self.work_order_number,
             'labor_hours': float(self.labor_hours) if self.labor_hours else None,
             'labor_cost': float(self.labor_cost) if self.labor_cost else None,
             'parts_cost': float(self.parts_cost) if self.parts_cost else None,

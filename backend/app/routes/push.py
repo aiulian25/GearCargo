@@ -213,6 +213,51 @@ def get_subscriptions(current_user):
     })
 
 
+@push_bp.route('/history', methods=['GET'])
+@token_required
+def notification_history(current_user):
+    """F58 — read-only notification-delivery history for the current user.
+
+    Returns the user's own NotificationLog rows (push + email), newest first,
+    paginated. Strictly user-scoped — a user can only ever see their own
+    delivery history; there is no write access to these records here.
+    """
+    try:
+        page = int(request.args.get('page', 1))
+    except (TypeError, ValueError):
+        page = 1
+    page = max(page, 1)
+    per_page = 50  # hard cap — never let the client request an unbounded page
+
+    pagination = (NotificationLog.query
+                  .filter_by(user_id=current_user.id)
+                  .order_by(NotificationLog.created_at.desc())
+                  .paginate(page=page, per_page=per_page, error_out=False))
+
+    def _serialize(log):
+        body = log.body or ''
+        return {
+            'id': log.id,
+            'notification_type': log.notification_type,
+            'title': log.title,
+            'body': body[:200],
+            'channel': log.channel,
+            'status': log.status,
+            # Own data — surfaced so the UI can explain a failed delivery.
+            'error_message': log.error_message if log.status == 'failed' else None,
+            'vehicle_id': log.vehicle_id,
+            'created_at': log.created_at.isoformat() if log.created_at else None,
+        }
+
+    return jsonify({
+        'items': [_serialize(x) for x in pagination.items],
+        'page': pagination.page,
+        'pages': pagination.pages,
+        'total': pagination.total,
+        'has_more': pagination.has_next,
+    })
+
+
 @push_bp.route('/subscriptions/<int:sub_id>', methods=['DELETE'])
 @token_required
 def delete_subscription(current_user, sub_id):

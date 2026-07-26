@@ -12,6 +12,7 @@ import {
 } from '../../utils/fuelEconomy'
 import ReceiptUpload from '../../components/ReceiptUpload'
 import ScanReceiptBanner from '../../components/ui/ScanReceiptBanner'
+import CurrencySelect from '../../components/ui/CurrencySelect'
 
 // SVG Icons
 const Icons = {
@@ -59,6 +60,7 @@ export default function AddVehicleFuel() {
       liters: '',
       price_per_liter: '',
       total_cost: '',
+      currency: user?.currency || 'EUR',
       is_full_tank: true,
       fuel_type: '',
       station_name: '',
@@ -98,6 +100,7 @@ export default function AddVehicleFuel() {
             price_per_liter: entry.price_per_liter != null
               ? Math.round(pricePerLiterToDisplay(entry.price_per_liter, user) * 1000) / 1000 : '',
             total_cost: entry.total_price || '',
+            currency: entry.currency || user?.currency || 'EUR',
             is_full_tank: entry.full_tank ?? true,
             fuel_type: entry.fuel_type || '',
             station_name: entry.station || '',
@@ -111,6 +114,9 @@ export default function AddVehicleFuel() {
           if (vehicleRes.data.current_mileage) {
             setValue('mileage', vehicleRes.data.current_mileage)
           }
+          // F48 — default the currency to the user's display currency once
+          // auth has resolved (guards against a null user at useForm init).
+          if (user?.currency) setValue('currency', user.currency)
         }
       } catch (error) {
         console.error('Failed to fetch data:', error)
@@ -341,17 +347,20 @@ export default function AddVehicleFuel() {
             </div>
           </div>
           
-          <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
-              {t('addFuel.totalCost') || 'Total Cost'} ({currency.symbol})
-            </label>
-            <input
-              type="number" inputMode="decimal"
-              step="0.01"
-              {...register('total_cost')}
-              className="input bg-[var(--color-bg-tertiary)]"
-              placeholder={t('addFuel.calculatedAuto') || 'Calculated automatically'}
-            />
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                {t('addFuel.totalCost') || 'Total Cost'} ({currency.symbol})
+              </label>
+              <input
+                type="number" inputMode="decimal"
+                step="0.01"
+                {...register('total_cost')}
+                className="input bg-[var(--color-bg-tertiary)]"
+                placeholder={t('addFuel.calculatedAuto') || 'Calculated automatically'}
+              />
+            </div>
+            <CurrencySelect register={register} className="w-28 flex-shrink-0" />
           </div>
           
           <div className="flex items-center gap-3">

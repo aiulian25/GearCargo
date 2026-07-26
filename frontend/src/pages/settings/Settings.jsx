@@ -4,7 +4,7 @@ import { DISPLAY_VERSION } from '../../config/build'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { useLanguage, useTranslation } from '../../contexts/LanguageContext'
-import { backupApi, vehicleApi, authApi, calendarApi, reportsApi, attachmentApi } from '../../services/api'
+import { backupApi, vehicleApi, authApi, calendarApi, reportsApi, attachmentApi, pushApi } from '../../services/api'
 import { usePushNotifications } from '../../hooks/usePushNotifications'
 import { useConfirm } from '../../components/ui/ConfirmDialog'
 import UserManagement from '../../components/admin/UserManagement'
@@ -258,6 +258,10 @@ export default function Settings() {
   const [calendarSyncing, setCalendarSyncing] = useState(false)
   const [availableCalendars, setAvailableCalendars] = useState([])
   const [showSetupGuide, setShowSetupGuide] = useState(false)
+  // F46 — ICS subscribe feed (read-only, 90-day JWT). Not persisted: the URL
+  // embeds the token, so we hold it only in memory after the user generates it.
+  const [feedUrl, setFeedUrl] = useState('')
+  const [feedLoading, setFeedLoading] = useState(false)
   
   // Reports settings
   const [showReportsSection, setShowReportsSection] = useState(false)
@@ -290,6 +294,12 @@ export default function Settings() {
   })
   const [expiringLoading, setExpiringLoading] = useState(true)
   const [showExpiringSection, setShowExpiringSection] = useState(false)
+  // F58 — notification-delivery history (lazy-loaded on first expand)
+  const [showHistory, setShowHistory] = useState(false)
+  const [history, setHistory] = useState([])
+  const [historyPage, setHistoryPage] = useState(0)
+  const [historyHasMore, setHistoryHasMore] = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(false)
   
   const isAdmin = user?.is_admin === true
   
@@ -556,6 +566,28 @@ export default function Settings() {
     }
   }
   
+  // F58 — load a page of notification history (append for "Load more").
+  const loadHistory = async (page) => {
+    setHistoryLoading(true)
+    try {
+      const res = await pushApi.getHistory(page)
+      const data = res.data || {}
+      setHistory((prev) => (page === 1 ? (data.items || []) : [...prev, ...(data.items || [])]))
+      setHistoryPage(data.page || page)
+      setHistoryHasMore(!!data.has_more)
+    } catch {
+      toast.error(t('common.error') || 'Error')
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  const toggleHistory = () => {
+    const next = !showHistory
+    setShowHistory(next)
+    if (next && history.length === 0) loadHistory(1)
+  }
+
   const handleTestNotification = async () => {
     const success = await sendTestNotification()
     if (success) {
@@ -981,6 +1013,20 @@ export default function Settings() {
     }
   }
 
+  // F46 — issue (or rotate) the ICS subscribe URL. Generating a new link mints a
+  // fresh 90-day JWT; the previous one keeps working until it expires naturally.
+  const handleGenerateFeed = async () => {
+    setFeedLoading(true)
+    try {
+      const res = await calendarApi.getFeedToken()
+      setFeedUrl(res.data.feed_url || '')
+    } catch {
+      toast.error(t('common.error') || 'Error')
+    } finally {
+      setFeedLoading(false)
+    }
+  }
+
   // Load existing share links when the Reports section is opened.
   useEffect(() => {
     if (showReportsSection) loadShares()
@@ -1288,7 +1334,82 @@ export default function Settings() {
           </div>
         </div>
       </div>
-      
+
+      {/* F58 — Notification history (delivery log) - Collapsible */}
+      <div className="card mb-4">
+        <button
+          onClick={toggleHistory}
+          className="w-full flex items-center justify-between"
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-[var(--color-text-muted)]">{SettingsIcons.clock}</span>
+            <div className="text-left">
+              <h3 className="text-sm font-medium">{t('notifications.historyTitle') || 'Notification history'}</h3>
+              <p className="text-2xs text-[var(--color-text-muted)]">
+                {t('notifications.historyDesc') || 'What GearCargo has sent you (push & email).'}
+              </p>
+            </div>
+          </div>
+          <span className="text-[var(--color-text-muted)]">
+            {showHistory ? SettingsIcons.chevronUp : SettingsIcons.chevronDown}
+          </span>
+        </button>
+
+        {showHistory && (
+          <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+            {historyLoading && history.length === 0 ? (
+              <p className="text-2xs text-[var(--color-text-muted)] py-4 text-center">
+                {t('common.loading') || 'Loading…'}
+              </p>
+            ) : history.length === 0 ? (
+              <p className="text-2xs text-[var(--color-text-muted)] py-4 text-center">
+                {t('notifications.historyEmpty') || 'No notifications yet.'}
+              </p>
+            ) : (
+              <ul className="space-y-1">
+                {history.map((n) => (
+                  <li key={n.id} className="flex items-start gap-3 py-2 border-b border-[var(--color-border)] last:border-0">
+                    <span
+                      className="text-[var(--color-text-muted)] flex-shrink-0 mt-0.5"
+                      title={n.channel === 'email' ? (t('settings.email') || 'Email') : (t('settings.pushNotifications') || 'Push')}
+                    >
+                      {n.channel === 'email' ? SettingsIcons.email : SettingsIcons.bell}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">{n.title}</p>
+                        {n.status === 'failed' && (
+                          <span
+                            className="inline-flex items-center px-1.5 py-0.5 rounded-full text-2xs font-medium bg-red-500/15 text-red-600 dark:text-red-400 flex-shrink-0"
+                            title={n.error_message || undefined}
+                          >
+                            {t('notifications.deliveryFailed') || 'Failed'}
+                          </span>
+                        )}
+                      </div>
+                      {n.body && (
+                        <p className="text-xs text-[var(--color-text-muted)] line-clamp-2">{n.body}</p>
+                      )}
+                      <p className="text-2xs text-[var(--color-text-muted)] mt-0.5">{formatDateTime(n.created_at)}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {historyHasMore && (
+              <button
+                onClick={() => loadHistory(historyPage + 1)}
+                disabled={historyLoading}
+                className="w-full mt-3 text-xs text-[var(--color-accent)] hover:underline disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] rounded py-1"
+              >
+                {historyLoading ? (t('common.loading') || 'Loading…') : (t('notifications.loadMore') || t('common.loadMore') || 'Load more')}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Email Notifications - Collapsible */}
       <div className="card mb-4">
         <button
@@ -1882,11 +2003,82 @@ export default function Settings() {
               )}
                 </>
               )}
+
+              {/* F46 — Subscribe (ICS) feed for Google/Apple Calendar */}
+              <div className="pt-4 border-t border-[var(--color-border)]">
+                <h4 className="text-sm font-medium mb-1">
+                  {t('calendar.subscribeTitle') || 'Subscribe in your calendar app'}
+                </h4>
+                <p className="text-2xs text-[var(--color-text-muted)] mb-3">
+                  {t('calendar.subscribeHint') || 'Read-only feed of your GearCargo events. Link is valid for 90 days.'}
+                </p>
+
+                {!feedUrl ? (
+                  <button
+                    onClick={handleGenerateFeed}
+                    disabled={feedLoading}
+                    className="w-full bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-4 py-2 text-sm font-medium hover:bg-[var(--color-bg-secondary)] disabled:opacity-50"
+                  >
+                    {feedLoading ? (t('common.loading') || 'Loading…') : (t('calendar.generateLink') || 'Generate link')}
+                  </button>
+                ) : (
+                  <div className="space-y-3">
+                    {/* https:// URL + copy */}
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={feedUrl}
+                        readOnly
+                        onFocus={(e) => e.target.select()}
+                        className="input flex-1 min-w-0 text-xs font-mono"
+                        aria-label={t('calendar.subscribeTitle') || 'Subscribe in your calendar app'}
+                      />
+                      <button
+                        onClick={() => copyShareLink(feedUrl)}
+                        className="px-3 py-2 rounded-lg bg-[var(--color-accent)]/10 text-[var(--color-accent)] text-xs font-medium hover:bg-[var(--color-accent)]/20 whitespace-nowrap"
+                      >
+                        {t('reportShare.copy') || t('calendar.copyLink') || 'Copy'}
+                      </button>
+                    </div>
+
+                    {/* webcal:// variant — one-tap subscribe on Apple/Outlook */}
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={feedUrl.replace(/^https?:\/\//, 'webcal://')}
+                        readOnly
+                        onFocus={(e) => e.target.select()}
+                        className="input flex-1 min-w-0 text-xs font-mono"
+                        aria-label="webcal"
+                      />
+                      <button
+                        onClick={() => copyShareLink(feedUrl.replace(/^https?:\/\//, 'webcal://'))}
+                        className="px-3 py-2 rounded-lg bg-[var(--color-accent)]/10 text-[var(--color-accent)] text-xs font-medium hover:bg-[var(--color-accent)]/20 whitespace-nowrap"
+                      >
+                        {t('reportShare.copy') || t('calendar.copyLink') || 'Copy'}
+                      </button>
+                    </div>
+
+                    {/* Where to paste it */}
+                    <p className="text-2xs text-[var(--color-text-muted)]">
+                      {t('calendar.subscribeWhere') || 'Google: Settings → Add calendar → From URL. Apple: File → New Calendar Subscription.'}
+                    </p>
+
+                    <button
+                      onClick={handleGenerateFeed}
+                      disabled={feedLoading}
+                      className="text-xs text-[var(--color-accent)] hover:underline disabled:opacity-50"
+                    >
+                      {t('calendar.generateNewLink') || 'Generate new link'}
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
       </div>
-      
+
       {/* PDF Reports - Collapsible */}
       <div className="card mb-4">
         <button

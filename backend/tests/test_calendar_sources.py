@@ -123,3 +123,29 @@ def test_calendar_settings_preserve_existing_password_when_omitted(client, app, 
         stored_sources = preferences.get("calendar_sources") or []
         assert stored_sources[0]["password"]
         assert stored_sources[0]["password"] != "initial-secret"
+
+
+# --- F46: ICS subscribe feed (token → public feed serves VCALENDAR) ----------
+
+def test_feed_token_issues_url_and_serves_vcalendar(client, user, auth_headers):
+    """POST /calendar/feed-token returns a feed_url whose public GET serves an
+    ICS body beginning with BEGIN:VCALENDAR — the automated form of the F46
+    `curl <feed_url> | head -3` acceptance check."""
+    resp = client.post('/api/calendar/feed-token', headers=auth_headers(user.id))
+    assert resp.status_code == 200
+    body = resp.get_json()
+    feed_url = body['feed_url']
+    assert '/api/calendar/feed/' in feed_url
+
+    # The feed is PUBLIC (token in the path) — no auth header needed.
+    path = feed_url[feed_url.index('/api/'):]
+    feed = client.get(path)
+    assert feed.status_code == 200
+    assert feed.mimetype == 'text/calendar'
+    assert feed.get_data(as_text=True).startswith('BEGIN:VCALENDAR')
+
+
+def test_feed_rejects_tampered_token(client):
+    """A garbage token must not serve calendar data."""
+    resp = client.get('/api/calendar/feed/not-a-real-token')
+    assert resp.status_code == 401

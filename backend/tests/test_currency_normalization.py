@@ -268,3 +268,88 @@ def test_fuel_stats_empty_keeps_stable_shape(client, user, auth_headers):
     data = resp.get_json()
     assert data['total_cost'] == 0
     assert data['converted'] is True and data['fx_applied'] is False
+
+
+# --- F48: per-entry currency picker ----------------------------------------
+
+def test_fuel_create_defaults_to_user_currency(app, client, user, auth_headers):
+    """A GBP user's fill-up sent WITHOUT a currency must store 'GBP', not 'EUR'.
+
+    Previously the create hardcoded 'EUR', so a GBP fill was mislabelled and the
+    FX pipeline "converted" it as if it were euros.
+    """
+    with app.app_context():
+        u = db.session.get(User, user.id)
+        u.currency = 'GBP'
+        db.session.commit()
+        v = _mk_vehicle(user.id)
+        vid = v.id
+
+    resp = client.post('/api/fuel', headers=auth_headers(user.id), json={
+        'vehicle_id': vid, 'liters': 40, 'price_per_liter': 1.5,
+        'fuel_type': 'petrol',
+    })
+    assert resp.status_code == 201, resp.get_data(as_text=True)
+    assert resp.get_json()['entry']['currency'] == 'GBP'
+
+
+def test_fuel_create_honours_explicit_currency_and_converts(app, client, user, auth_headers):
+    """A RON fill by a GBP user stores 'RON' and /stats converts it via EUR."""
+    with app.app_context():
+        u = db.session.get(User, user.id)
+        u.currency = 'GBP'
+        db.session.commit()
+        v = _mk_vehicle(user.id)
+        vid = v.id
+
+    resp = client.post('/api/fuel', headers=auth_headers(user.id), json={
+        'vehicle_id': vid, 'liters': 50, 'total_cost': 350,
+        'currency': 'RON', 'fuel_type': 'diesel',
+    })
+    assert resp.status_code == 201, resp.get_data(as_text=True)
+    assert resp.get_json()['entry']['currency'] == 'RON'
+
+    stats = client.get(f'/api/vehicles/{vid}/stats',
+                       headers=auth_headers(user.id)).get_json()
+    # 350 RON -> EUR (/5.0) -> GBP (*0.86)
+    assert round(stats['fuel_costs'], 2) == round(350 / 5.0 * 0.86, 2)
+    assert stats['display_currency'] == 'GBP'
+    assert stats['fx_applied'] is True
+
+
+def test_fuel_edit_updates_currency(app, client, user, auth_headers):
+    """Editing an entry's currency round-trips through the PUT handler."""
+    with app.app_context():
+        u = db.session.get(User, user.id)
+        u.currency = 'GBP'
+        db.session.commit()
+        v = _mk_vehicle(user.id)
+        vid = v.id
+
+    created = client.post('/api/fuel', headers=auth_headers(user.id), json={
+        'vehicle_id': vid, 'liters': 30, 'total_cost': 45, 'fuel_type': 'petrol',
+    }).get_json()['entry']
+    assert created['currency'] == 'GBP'
+
+    resp = client.put(f"/api/fuel/{created['id']}", headers=auth_headers(user.id),
+                      json={'currency': 'USD'})
+    assert resp.status_code == 200
+    assert resp.get_json()['entry']['currency'] == 'USD'
+
+
+def test_service_create_defaults_to_user_currency(app, client, user, auth_headers):
+    """Non-fuel entries (previously silent Entry default 'EUR') also default to
+    the user's currency now."""
+    with app.app_context():
+        u = db.session.get(User, user.id)
+        u.currency = 'RON'
+        db.session.commit()
+        v = _mk_vehicle(user.id)
+        vid = v.id
+
+    resp = client.post('/api/services', headers=auth_headers(user.id), json={
+        'vehicle_id': vid, 'service_types': ['oil_change'], 'total_cost': 200,
+        'date': date.today().isoformat(),
+    })
+    assert resp.status_code == 201, resp.get_data(as_text=True)
+    assert resp.get_json()['entry']['currency'] == 'RON'
