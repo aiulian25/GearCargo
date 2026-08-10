@@ -32,8 +32,30 @@ def test_api_get_or_404_returns_json_not_html(app, client, auth_headers):
     assert b"<!doctype html" not in resp.data.lower()
 
 
-def test_unknown_non_api_route_still_serves_spa_shell(app, client):
-    """Client-side routes still get index.html — the SPA fallback is intact."""
-    resp = client.get("/some/client/side/route")
-    assert resp.status_code == 200
-    assert b"<!doctype html" in resp.data.lower() or b"<html" in resp.data.lower()
+def test_unknown_non_api_route_serves_spa_shell(app, client):
+    """A non-/api/ 404 routes to the SPA handler and serves the index.html shell
+    (200 HTML), never the API JSON 404.
+
+    The SPA fallback needs a built index.html to serve. The release image bundles
+    it, but a backend-only CI checkout has no frontend build — so we ensure a
+    minimal index.html exists (cleaning up only what we create) to make this
+    deterministic in both environments.
+    """
+    import os
+
+    index_path = os.path.join(app.static_folder, "index.html")
+    created = False
+    if not os.path.exists(index_path):
+        os.makedirs(app.static_folder, exist_ok=True)
+        with open(index_path, "w", encoding="utf-8") as fh:
+            fh.write("<!doctype html><html><head><title>GearCargo</title></head><body></body></html>")
+        created = True
+
+    try:
+        resp = client.get("/some/client/side/route")
+        assert resp.status_code == 200, resp.data[:200]
+        assert not resp.is_json  # never the API JSON 404 (the M3 regression)
+        assert b"<!doctype html" in resp.data.lower() or b"<html" in resp.data.lower()
+    finally:
+        if created:
+            os.remove(index_path)
