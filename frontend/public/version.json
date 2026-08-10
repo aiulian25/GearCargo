@@ -1,24 +1,30 @@
 {
-  "version": "1.2.0",
-  "date": "2026-07-06",
+  "version": "1.3.0",
+  "date": "2026-08-10",
   "notes": {
     "en": [
-      { "type": "new", "title": "Recent Transactions on your dashboard", "desc": "See your latest fuel, service, tax and parking across every vehicle at a glance — tap any row to jump to it." },
-      { "type": "new", "title": "Assistant moved to the dashboard", "desc": "Open the AI assistant from the home screen with one tap (when your server has it enabled)." },
-      { "type": "new", "title": "Now open-source (MIT)", "desc": "GearCargo is released under the MIT license." },
-      { "type": "fix", "title": "Cleaner, focused dashboard", "desc": "Removed the weather widget and made sure Recent shows only spending that has already happened." }
+      { "type": "new", "title": "Workshop records & maintenance checklists", "desc": "Log service and repair visits in detail — with checklists, parts and warranty tracking." },
+      { "type": "new", "title": "Warranty ledger & parking fines", "desc": "Track active warranties and outstanding fines, all in one Due & Expiring feed." },
+      { "type": "new", "title": "Richer analytics & smarter receipts", "desc": "Clearer cost breakdowns and improved receipt scanning." },
+      { "type": "fix", "title": "Stronger account security", "desc": "Failed 2FA codes now count toward lockout, turning off 2FA requires a current code, and changing your email re-verifies it." },
+      { "type": "fix", "title": "Faster dashboards", "desc": "Statistics load straight from the database, so pages open quickly even with lots of history." },
+      { "type": "fix", "title": "A more trustworthy history & offline sync", "desc": "Your vehicle timeline no longer shows duplicates or misses insurance, and pending offline changes are reported accurately." }
     ],
     "ro": [
-      { "type": "new", "title": "Tranzacții recente pe tabloul de bord", "desc": "Vezi cele mai noi cheltuieli — carburant, service, taxe și parcare — pentru toate vehiculele; atinge un rând pentru a-l deschide." },
-      { "type": "new", "title": "Asistentul a fost mutat pe tabloul de bord", "desc": "Deschide asistentul AI de pe ecranul principal cu o singură atingere (dacă serverul tău îl are activat)." },
-      { "type": "new", "title": "Acum open-source (MIT)", "desc": "GearCargo este publicat sub licența MIT." },
-      { "type": "fix", "title": "Tablou de bord mai curat și mai clar", "desc": "Am eliminat widget-ul meteo și ne-am asigurat că lista Recente afișează doar cheltuieli deja efectuate." }
+      { "type": "new", "title": "Fișe de atelier și liste de verificare", "desc": "Înregistrează detaliat vizitele de service și reparații — cu liste de verificare, piese și urmărirea garanției." },
+      { "type": "new", "title": "Registru de garanții și amenzi de parcare", "desc": "Urmărește garanțiile active și amenzile neplătite, toate într-un singur flux Scadente și Care Expiră." },
+      { "type": "new", "title": "Analize mai bogate și bonuri mai inteligente", "desc": "Defalcări de costuri mai clare și scanare îmbunătățită a bonurilor." },
+      { "type": "fix", "title": "Securitate mai bună a contului", "desc": "Codurile 2FA greșite contează acum la blocare, dezactivarea 2FA cere un cod curent, iar schimbarea emailului îl reverifică." },
+      { "type": "fix", "title": "Tablouri de bord mai rapide", "desc": "Statisticile se încarcă direct din baza de date, așa că paginile se deschid rapid chiar și cu mult istoric." },
+      { "type": "fix", "title": "Istoric și sincronizare offline mai de încredere", "desc": "Cronologia vehiculului nu mai afișează duplicate și nu mai omite asigurările, iar modificările offline în așteptare sunt raportate corect." }
     ],
     "es": [
-      { "type": "new", "title": "Transacciones recientes en tu panel", "desc": "Consulta tus últimos gastos —combustible, servicio, impuestos y aparcamiento— de todos los vehículos; toca cualquier fila para abrirla." },
-      { "type": "new", "title": "El asistente ahora en el panel", "desc": "Abre el asistente de IA desde la pantalla de inicio con un solo toque (si tu servidor lo tiene activado)." },
-      { "type": "new", "title": "Ahora de código abierto (MIT)", "desc": "GearCargo se publica bajo la licencia MIT." },
-      { "type": "fix", "title": "Panel más limpio y enfocado", "desc": "Quitamos el widget del tiempo y nos aseguramos de que Recientes muestre solo gastos ya realizados." }
+      { "type": "new", "title": "Registros de taller y listas de verificación", "desc": "Registra las visitas de servicio y reparación en detalle, con listas de verificación, piezas y seguimiento de garantía." },
+      { "type": "new", "title": "Registro de garantías y multas de aparcamiento", "desc": "Controla las garantías activas y las multas pendientes, todo en un único listado de Vencimientos y Caducidades." },
+      { "type": "new", "title": "Análisis más completos y recibos más inteligentes", "desc": "Desgloses de costes más claros y escaneo de recibos mejorado." },
+      { "type": "fix", "title": "Mayor seguridad de la cuenta", "desc": "Los códigos 2FA fallidos ahora cuentan para el bloqueo, desactivar 2FA requiere un código vigente y cambiar tu correo lo vuelve a verificar." },
+      { "type": "fix", "title": "Paneles más rápidos", "desc": "Las estadísticas se cargan directamente desde la base de datos, así las páginas se abren rápido incluso con mucho historial." },
+      { "type": "fix", "title": "Un historial y una sincronización sin conexión más fiables", "desc": "La cronología de tu vehículo ya no muestra duplicados ni omite seguros, y los cambios sin conexión pendientes se informan con precisión." }
     ]
   }
 }
