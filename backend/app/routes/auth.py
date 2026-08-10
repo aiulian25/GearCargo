@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from functools import wraps
 
 from flask import Blueprint, request, jsonify, current_app
+from markupsafe import escape  # M10: HTML-escape user-controlled values in f-string email bodies
 import jwt
 
 from app import db, redis_client
@@ -1725,16 +1726,35 @@ def login():
                 user.two_factor_backup_codes = remaining_codes if remaining_codes else None
         
         if not code_valid:
+            # M7: count the failed 2FA attempt toward the email-keyed account
+            # lockout. The password was already correct to reach here, so without
+            # this an attacker who phished the password could brute-force the
+            # 6-digit TOTP, bounded only by the global per-IP rate limit (trivially
+            # spread across IPs). record_failed_login shares the SAME counter as
+            # password failures (Redis fast path + DB fallback, both email-keyed);
+            # a successful 2FA below clears it via clear_failed_logins(email).
+            is_locked, lockout_time, attempts = record_failed_login(email)
+
             # Log failed 2FA attempt
             ActivityLog.log(
                 event_type='2fa_failed',
                 event_category='auth',
                 user_id=user.id,
-                description=f'Failed 2FA verification for: {email}',
+                description=f'Failed 2FA verification for: {email} (attempt {attempts}/{MAX_LOGIN_ATTEMPTS})',
                 success=False,
                 error_message='Invalid 2FA code'
             )
             security_audit.two_factor_failed(user.id, user.email)
+
+            # Mirror the password branch's lockout response so 2FA brute force is
+            # capped the same way (429 + retry_after).
+            if is_locked:
+                return jsonify({
+                    'error': f'Too many failed attempts. Account locked for {LOCKOUT_DURATION // 60} minutes.',
+                    'locked': True,
+                    'retry_after': lockout_time
+                }), 429
+
             return jsonify({'error': 'Invalid 2FA code'}), 401
     
     # Clear failed login attempts on successful login
@@ -1889,10 +1909,29 @@ def refresh_token():
                 # the new session will set the wall going forward.
                 absolute_expires_at = None
 
-        # Generate new tokens but don't invalidate existing session (same session continues)
+        # H4: rotate the session. Mint a NEW session (new jti), then REVOKE the
+        # one presented on this refresh so the previous refresh+access token pair
+        # cannot be replayed after rotation. The new session inherits the same
+        # 48h absolute wall (absolute_expires_at above), so rotation never slides
+        # the window. invalidate_existing=False so only THIS jti is revoked, not
+        # every other device the user is signed in on.
+        old_jti = token_jti
         access_token, new_refresh = generate_tokens(user, invalidate_existing=False, absolute_expires_at=absolute_expires_at)
 
-        # Deliver via cookies (S05) — also echo in JSON body for non-browser clients.
+        # Revoke the old session AFTER the new one exists, so a failure here can
+        # never leave the user with zero valid sessions. Redis fast path + the
+        # durable DB mirror (so revocation holds even if Redis is/goes down);
+        # both are idempotent. A concurrent double-refresh is de-duplicated on
+        # the client (single-flight refresh in services/api.js) so the 2nd..Nth
+        # request never presents this just-revoked token (A4).
+        if redis_client:
+            try:
+                redis_client.delete(f'session:{user.id}:{old_jti}')
+            except Exception:
+                pass
+        _db_revoke_session(user.id, old_jti)
+
+        # Deliver via cookies only (S05); non-browser clients read Set-Cookie.
         resp = jsonify({'message': 'Token refreshed'})
         _set_auth_cookies(resp, access_token, new_refresh)
         return resp
@@ -2009,8 +2048,12 @@ def update_profile(current_user):
             if not totp.verify(totp_code, valid_window=1):
                 return jsonify({'error': 'Invalid 2FA code'}), 401
     
-    # Updateable profile fields
-    profile_fields = ['first_name', 'last_name', 'username']
+    # Updateable profile fields.
+    # M11: 'username' is deliberately NOT here — it is validated/applied only by
+    # the dedicated block below. The generic loop applies values unvalidated, so
+    # including 'username' let a blank "" through (clearing the identity and
+    # risking a unique-constraint 500 on the next empty write).
+    profile_fields = ['first_name', 'last_name']
     
     # Updateable preference fields - these persist user settings
     preference_fields = [
@@ -2055,8 +2098,31 @@ def update_profile(current_user):
             if existing:
                 return jsonify({'error': 'Email is already in use'}), 400
             current_user.email = new_email
-    
+
+            # M1: "verified" is an assertion about a SPECIFIC address — it must
+            # not carry over to the new one (otherwise the Profile UI shows a
+            # false green "verified" and password-reset/notification mail would
+            # go to an address the system wrongly treats as confirmed). Clear the
+            # flag + any stale token, and (if mail is on) send a fresh
+            # verification. Best-effort: a mail failure must never break the
+            # profile update (the frontend surfaces the unverified state and a
+            # Resend button regardless).
+            current_user.email_verified = False
+            current_user.email_verification_token = None
+            current_user.email_verification_expires = None
+            if current_app.config.get('MAIL_ENABLED'):
+                try:
+                    from app.services.email_service import email_verification_service
+                    token = current_user.generate_verification_token()
+                    email_verification_service.send_verification_email(current_user, token)
+                except Exception as e:
+                    current_app.logger.warning(f'Verification email on address change failed: {e}')
+
     # Handle username update with validation
+    # M11: reject blank/whitespace-only usernames outright (400) before any
+    # write. This is now the ONLY path that mutates the username.
+    if 'username' in data and not (data['username'] or '').strip():
+        return jsonify({'error': 'Username cannot be empty'}), 400
     if 'username' in data and data['username']:
         new_username = data['username'].strip()
         if new_username != current_user.username:
@@ -2375,13 +2441,59 @@ def verify_2fa(current_user):
 @auth_bp.route('/2fa/disable', methods=['POST'])
 @token_required
 def disable_2fa(current_user):
-    """Disable 2FA."""
-    data = request.get_json()
+    """Disable 2FA.
+
+    L7: turning off the second factor requires BOTH the account password AND a
+    valid second factor — a live TOTP code or an unused backup code. Password
+    alone meant a phished password plus a hijacked session could strip 2FA,
+    which is exactly the attack 2FA is meant to stop. A user who lost their
+    authenticator uses one of the 10 backup codes issued at setup (the standard
+    recovery path).
+    """
+    data = request.get_json() or {}
     password = data.get('password')
-    
+
     if not password or not current_user.check_password(password):
         return jsonify({'error': 'Password verification failed'}), 401
-    
+
+    # Second-factor challenge. Only meaningful while 2FA is actually enabled; if
+    # it is already off, this endpoint stays an idempotent no-op.
+    if current_user.two_factor_enabled:
+        totp_code = data.get('totp_code')
+        backup_code = (
+            data.get('backup_code', '').upper().replace('-', '').replace(' ', '')
+            if data.get('backup_code') else None
+        )
+
+        code_valid = False
+
+        # Live TOTP first (valid_window=1 tolerates minor clock skew, matching
+        # the other sensitive-action gates in this module).
+        if totp_code and current_user.two_factor_secret:
+            code_valid = pyotp.TOTP(_get_totp_secret(current_user)).verify(
+                totp_code, valid_window=1
+            )
+
+        # Fall back to a one-time backup code (same hash loop as login). No need
+        # to persist the "remaining" set here — every backup code is wiped below.
+        if not code_valid and backup_code and current_user.two_factor_backup_codes:
+            from werkzeug.security import check_password_hash
+            for hashed_code in current_user.two_factor_backup_codes:
+                if check_password_hash(hashed_code, backup_code):
+                    code_valid = True
+                    break
+
+        if not code_valid:
+            # Do not reveal which factor failed. Audit the rejected attempt.
+            ActivityLog.log(
+                event_type='2fa_disable_denied',
+                event_category='auth',
+                user_id=current_user.id,
+                description=f'2FA disable denied (invalid/missing second factor) for: {current_user.email}',
+                success=False
+            )
+            return jsonify({'error': 'Invalid or missing 2FA code'}), 401
+
     current_user.two_factor_enabled = False
     current_user.two_factor_secret = None
     current_user.two_factor_backup_codes = None
@@ -2767,7 +2879,7 @@ def set_notification_email(current_user):
         <p class="header-subtitle">Confirm your email address</p>
     </div>
     <div class="content">
-        <p>Hi {current_user.display_name},</p>
+        <p>Hi {escape(current_user.display_name)},</p>
         <p>You requested to receive GearCargo notifications at this email address.</p>
         <p style="color: #94a3b8; font-size: 13px;">
             By clicking the button below, you confirm that:<br>
@@ -2819,8 +2931,9 @@ def verify_notification_email(current_user):
     if current_user.notification_email_token != token:
         return jsonify({'error': 'Invalid verification token'}), 401
 
+    from app.models.user import _as_utc
     if not current_user.notification_email_token_exp or \
-       current_user.notification_email_token_exp < datetime.now(timezone.utc):
+       _as_utc(current_user.notification_email_token_exp) < datetime.now(timezone.utc):
         return jsonify({'error': 'Verification token has expired. Please request a new one.'}), 401
 
     # Mark as verified
@@ -2963,7 +3076,7 @@ def resend_notification_verification(current_user):
         <p class="header-subtitle">Confirm your email address</p>
     </div>
     <div class="content">
-        <p>Hi {current_user.display_name},</p>
+        <p>Hi {escape(current_user.display_name)},</p>
         <p>Please verify this email address to receive GearCargo notifications.</p>
         <a href="{verify_url}" class="btn">Verify Email Address</a>
         <p style="margin-top: 20px; color: #64748b; font-size: 12px;">
@@ -3563,10 +3676,18 @@ def verify_recovery_answers():
     
     client_ip = get_real_client_ip()
 
-    # --- S21: per-IP rate check (20 attempts / 15 min across all target emails) ---
+    # S21's per-email/per-IP counters live only in Redis. M8: when Redis is
+    # unavailable (down at boot → redis_client is None, or a live call raises),
+    # fall back to the shared DB login-lockout so security answers can't be
+    # brute-forced without limit during an outage — mirroring how password login
+    # already fails over to the DB.
     ip_attempts_key = f'security_answer_attempts:ip:{client_ip}'
-    if redis_client:
+    attempts_key = f'security_answer_attempts:{email}'
+    redis_ok = bool(redis_client)
+
+    if redis_ok:
         try:
+            # --- S21 per-IP check (20 attempts / 15 min across all target emails) ---
             ip_attempts = redis_client.get(ip_attempts_key)
             if ip_attempts and int(ip_attempts) >= 20:
                 current_app.logger.warning(
@@ -3576,13 +3697,7 @@ def verify_recovery_answers():
                     'error': 'Too many failed attempts. Please try again later.',
                     'locked': True
                 }), 429
-        except Exception as e:
-            current_app.logger.error(f"Redis error checking IP answer attempts: {e}")
-
-    # --- Per-email rate check (5 attempts / 15 min for this specific account) ---
-    attempts_key = f'security_answer_attempts:{email}'
-    if redis_client:
-        try:
+            # --- S21 per-email check (5 attempts / 15 min for this specific account) ---
             attempts = redis_client.get(attempts_key)
             if attempts and int(attempts) >= 5:
                 return jsonify({
@@ -3591,21 +3706,51 @@ def verify_recovery_answers():
                 }), 429
         except Exception as e:
             current_app.logger.error(f"Redis error checking answer attempts: {e}")
-    
+            redis_ok = False  # fall through to the DB pre-check below
+
+    if not redis_ok:
+        # M8 fallback: reuse the per-account DB lockout (MAX_LOGIN_ATTEMPTS /
+        # LOCKOUT_DURATION — the SAME counter/columns as password login, so a
+        # lockout here also locks login, and vice versa; that is acceptable
+        # under attack and is flagged in the review). The per-IP, cross-account
+        # limit is Redis-only and is NOT replicated here (it would need new
+        # columns); the per-account limit is the key protection against
+        # brute-forcing one account's low-entropy answers.
+        current_app.logger.warning(
+            '[Security] Redis unavailable for security-answer rate limit — '
+            'using DB login-lockout fallback (M8)'
+        )
+        locked, _remaining = _db_is_account_locked(email)
+        if locked:
+            return jsonify({
+                'error': 'Too many failed attempts. Please try again later.',
+                'locked': True
+            }), 429
+
+    def _record_failed_answer():
+        """Count one failed verification: Redis S21 counters when available,
+        else the shared DB login-lockout (M8). A no-op DB call for unknown
+        emails (no row to lock) is fine — the brute-force target is a real
+        account's answers."""
+        if redis_client:
+            try:
+                redis_client.incr(attempts_key)
+                redis_client.expire(attempts_key, 900)  # 15 min window
+                redis_client.incr(ip_attempts_key)
+                redis_client.expire(ip_attempts_key, 900)
+                return
+            except Exception as e:
+                current_app.logger.error(f"Redis error recording answer attempt: {e}")
+        _db_record_failed_login(email)
+
     user = User.query.filter_by(email=email).first()
     
     if not user:
         # Record attempt even for non-existent users (prevents enumeration).
         # S21: increment both counters so IP-cycling through fake emails still
-        # burns the IP's global budget.
-        if redis_client:
-            try:
-                redis_client.incr(attempts_key)
-                redis_client.expire(attempts_key, 900)  # 15 min lockout
-                redis_client.incr(ip_attempts_key)
-                redis_client.expire(ip_attempts_key, 900)
-            except:
-                pass
+        # burns the IP's global budget. M8: under a Redis outage this is a DB
+        # no-op (no account row), which is acceptable — see _record_failed_answer.
+        _record_failed_answer()
         return jsonify({'error': 'Verification failed'}), 401
     
     if not user.has_security_questions():
@@ -3613,16 +3758,10 @@ def verify_recovery_answers():
     
     # Verify the answers
     if not user.verify_security_answers(answers):
-        # Record failed attempt — both email and IP counters (S21).
-        if redis_client:
-            try:
-                redis_client.incr(attempts_key)
-                redis_client.expire(attempts_key, 900)
-                redis_client.incr(ip_attempts_key)
-                redis_client.expire(ip_attempts_key, 900)
-            except:
-                pass
-        
+        # Record failed attempt — Redis S21 counters, or the DB login-lockout
+        # fallback (M8) when Redis is unavailable.
+        _record_failed_answer()
+
         # Log failed verification
         security_audit.log(
             security_audit.EVENT_PASSWORD_RESET_REQUEST,

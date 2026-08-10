@@ -386,7 +386,15 @@ export default function Profile() {
   const handleProfileUpdate = async (data) => {
     setError('')
     setSuccess('')
-    
+
+    // M11: username must not be blank/whitespace (mirrors the server-side guard).
+    // Catch it here with a localized message and skip the round-trip (and the
+    // spurious password-verification prompt a blank would otherwise trigger).
+    if ('username' in data && !String(data.username || '').trim()) {
+      setError(t('profile.usernameEmpty') || 'Username cannot be empty')
+      return
+    }
+
     // Check if sensitive changes require verification
     if (hasSensitiveChanges(data)) {
       setPendingProfileData(data)

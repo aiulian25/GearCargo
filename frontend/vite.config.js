@@ -144,5 +144,13 @@ export default defineConfig({
         }
       }
     }
+  },
+  // Vitest config (T2). jsdom so @testing-library/react works for future
+  // component tests; the current suites are pure-function unit tests. Vitest
+  // reads this same vite.config, so the PWA/react plugins are shared.
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    include: ['src/**/*.{test,spec}.{js,jsx}'],
   }
 })

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { vehicleApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
@@ -161,6 +161,11 @@ export default function VehicleTimeline() {
 
   const [vehicle, setVehicle] = useState(null)
   const [entries, setEntries] = useState([])
+  // Insurance policies are a small (< ~20) set the server delivers whole on
+  // page 1 of the combined feed (M2). Kept separate from the paginated
+  // `entries` so re-fetching a page can never double-count them, then merged
+  // into the rendered list below.
+  const [insurancePolicies, setInsurancePolicies] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [filter, setFilter] = useState(_VALID_FILTERS.includes(initialType) ? initialType : 'all')
@@ -170,6 +175,17 @@ export default function VehicleTimeline() {
   const [currentPage, setCurrentPage] = useState(1)
   const [hasMore, setHasMore] = useState(false)
   const [total, setTotal] = useState(0)
+
+  // Rendered feed = paginated entries + the page-1 insurance set, re-sorted
+  // newest-first so policies interleave by their start date (M2). When there
+  // are no policies this is just `entries` (referentially stable). Array.sort
+  // is stable, so equal-dated entries keep the server's order.
+  const timelineItems = useMemo(() => {
+    if (insurancePolicies.length === 0) return entries
+    return [...entries, ...insurancePolicies].sort(
+      (a, b) => String(b.date || '').localeCompare(String(a.date || ''))
+    )
+  }, [entries, insurancePolicies])
 
   const filterOptions = [
     { id: 'all', label: t('timeline.all') || 'All' },
@@ -203,6 +219,13 @@ export default function VehicleTimeline() {
       const pageTotal   = timelineRes.data?.total   || 0
 
       setEntries(prev => reset || page === 1 ? pageEntries : [...prev, ...pageEntries])
+      // Page 1 carries the full insurance set under `insurance`; later pages and
+      // filtered views omit it. Setting on every page-1 fetch also clears it
+      // when the user switches to a filter that returns no policies.
+      if (page === 1) {
+        const pageInsurance = timelineRes.data?.insurance
+        setInsurancePolicies(Array.isArray(pageInsurance) ? pageInsurance : [])
+      }
       setHasMore(pageHasNext)
       setTotal(pageTotal)
       setCurrentPage(page)
@@ -223,8 +246,8 @@ export default function VehicleTimeline() {
   // After the first page loads, scroll to + briefly highlight the deep-linked
   // entry (?focus=). Runs once; honours reduced-motion preferences.
   useEffect(() => {
-    if (didFocusRef.current || !focusId || isLoading || entries.length === 0) return
-    const target = entries.find(e => String(e.id) === String(focusId))
+    if (didFocusRef.current || !focusId || isLoading || timelineItems.length === 0) return
+    const target = timelineItems.find(e => String(e.id) === String(focusId))
     if (!target) { didFocusRef.current = true; return }
     didFocusRef.current = true
     setHighlightId(target.id)
@@ -237,12 +260,13 @@ export default function VehicleTimeline() {
     })
     const timer = setTimeout(() => setHighlightId(null), 2600)
     return () => clearTimeout(timer)
-  }, [focusId, isLoading, entries])
+  }, [focusId, isLoading, timelineItems])
 
   // Filter change: reset and re-fetch from server
   const handleFilterChange = (newFilter) => {
     setFilter(newFilter)
     setEntries([])
+    setInsurancePolicies([])
     setCurrentPage(1)
     fetchPage(1, newFilter, true)
   }
@@ -293,7 +317,7 @@ export default function VehicleTimeline() {
       .map(([, value]) => value)
   }
   
-  const groupedTimeline = groupByMonth(entries)
+  const groupedTimeline = groupByMonth(timelineItems)
   
   if (isLoading) {
     return (

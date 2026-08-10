@@ -4,6 +4,7 @@ GearCargo - Parking Entry Routes
 
 from datetime import datetime, time as time_class, timezone
 from flask import Blueprint, request, jsonify, current_app
+from sqlalchemy import func
 
 from app import db
 from app.models import Vehicle, ParkingEntry
@@ -398,47 +399,70 @@ def get_parking_stats(current_user):
     """Get parking statistics."""
     vehicle_id = request.args.get('vehicle_id', type=int)
     
-    query = ParkingEntry.query.join(Vehicle).filter(
-        Vehicle.user_id == current_user.id
-    )
-    
+    # M9: DB aggregation instead of loading every parking row into memory.
+    filters = [Vehicle.user_id == current_user.id]
     if vehicle_id:
-        query = query.filter(ParkingEntry.vehicle_id == vehicle_id)
-    
-    entries = query.all()
-    
-    total_cost = sum(float(e.amount or 0) for e in entries)
-    total_duration = sum(e.duration_minutes or 0 for e in entries)
+        filters.append(ParkingEntry.vehicle_id == vehicle_id)
 
-    # By type
+    entry_count, total_cost, total_duration = (
+        db.session.query(
+            func.count(ParkingEntry.id),
+            func.coalesce(func.sum(ParkingEntry.amount), 0),
+            func.coalesce(func.sum(ParkingEntry.duration_minutes), 0),
+        )
+        .join(Vehicle).filter(*filters)
+        .one()
+    )
+
+    # By type — grouped; NULL/'' → 'other'.
     by_type = {}
-    for entry in entries:
-        ptype = entry.parking_type or 'other'
+    for ptype_raw, cnt, cost, dur in (
+        db.session.query(
+            ParkingEntry.parking_type,
+            func.count(ParkingEntry.id),
+            func.coalesce(func.sum(ParkingEntry.amount), 0),
+            func.coalesce(func.sum(ParkingEntry.duration_minutes), 0),
+        )
+        .join(Vehicle).filter(*filters)
+        .group_by(ParkingEntry.parking_type)
+        .all()
+    ):
+        ptype = ptype_raw or 'other'
         if ptype not in by_type:
             by_type[ptype] = {'count': 0, 'cost': 0, 'duration': 0}
-        by_type[ptype]['count'] += 1
-        by_type[ptype]['cost'] += float(entry.amount or 0)
-        by_type[ptype]['duration'] += entry.duration_minutes or 0
+        by_type[ptype]['count'] += cnt
+        by_type[ptype]['cost'] += float(cost or 0)
+        by_type[ptype]['duration'] += int(dur or 0)
 
-    # Top locations
+    # Top locations — group by location, fold NULL/'' → 'Unknown' (merging any
+    # separate rows), then take the 5 highest by count. Tie-break by earliest id
+    # (min(id) asc) to reproduce the old stable-sort-by-first-occurrence order.
+    loc_rows = (
+        db.session.query(
+            ParkingEntry.location,
+            func.count(ParkingEntry.id),
+            func.coalesce(func.sum(ParkingEntry.amount), 0),
+            func.min(ParkingEntry.id),
+        )
+        .join(Vehicle).filter(*filters)
+        .group_by(ParkingEntry.location)
+        .all()
+    )
     locations = {}
-    for entry in entries:
-        loc = entry.location or 'Unknown'
+    for loc_raw, cnt, cost, min_id in loc_rows:
+        loc = loc_raw or 'Unknown'
         if loc not in locations:
-            locations[loc] = {'count': 0, 'cost': 0}
-        locations[loc]['count'] += 1
-        locations[loc]['cost'] += float(entry.amount or 0)
-    
-    top_locations = sorted(
-        locations.items(),
-        key=lambda x: x[1]['count'],
-        reverse=True
-    )[:5]
-    
+            locations[loc] = {'count': 0, 'cost': 0, '_min_id': min_id}
+        locations[loc]['count'] += cnt
+        locations[loc]['cost'] += float(cost or 0)
+        locations[loc]['_min_id'] = min(locations[loc]['_min_id'], min_id)
+    top = sorted(locations.items(), key=lambda kv: (-kv[1]['count'], kv[1]['_min_id']))[:5]
+    top_locations = {loc: {'count': v['count'], 'cost': v['cost']} for loc, v in top}
+
     return jsonify({
-        'total_cost': float(total_cost),
-        'total_duration_minutes': total_duration,
-        'entry_count': len(entries),
+        'total_cost': float(total_cost or 0),
+        'total_duration_minutes': int(total_duration or 0),
+        'entry_count': entry_count,
         'by_type': by_type,
-        'top_locations': dict(top_locations),
+        'top_locations': top_locations,
     })

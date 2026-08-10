@@ -669,9 +669,9 @@ def run_cleanup(current_user):
     
     backup_size = 0
     for backup in old_backups:
-        if backup.file_path and os.path.exists(backup.file_path):
+        if backup.filepath and os.path.exists(backup.filepath):
             try:
-                backup_size += os.path.getsize(backup.file_path)
+                backup_size += os.path.getsize(backup.filepath)
             except OSError:
                 pass
     
@@ -685,9 +685,9 @@ def run_cleanup(current_user):
     if not preview_only and old_backups:
         for backup in old_backups:
             # Delete file if exists
-            if backup.file_path and os.path.exists(backup.file_path):
+            if backup.filepath and os.path.exists(backup.filepath):
                 try:
-                    os.remove(backup.file_path)
+                    os.remove(backup.filepath)
                 except OSError:
                     pass
             db.session.delete(backup)
@@ -710,7 +710,13 @@ def run_cleanup(current_user):
         ).delete()
     
     # 3. Orphaned attachments (files without DB record)
-    attachments_dir = os.path.join(os.getcwd(), 'volumes', 'attachments')
+    # A3: use the CONFIGURED attachments folder — never derive it from the
+    # process cwd. os.getcwd() only happened to equal the real folder in the
+    # default container layout (cwd=/app → /app/volumes/attachments); any
+    # UPLOAD_FOLDER / VOLUMES_PATH override (CI, custom deploy) made this scan a
+    # silent no-op against a nonexistent path. Resolves the same way as
+    # attachments.py:get_upload_folder() and backup.py:get_attachment_folder().
+    attachments_dir = current_app.config.get('UPLOAD_FOLDER', '/app/volumes/attachments')
     orphaned_files = []
     orphaned_size = 0
     

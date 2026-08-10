@@ -29,6 +29,22 @@ def _prehash_password(password: str) -> str:
     return base64.b64encode(digest).decode('ascii')
 
 
+def _as_utc(dt):
+    """Coerce a DB-loaded (naive-UTC) or aware datetime to aware UTC.
+
+    Token-expiry columns are written with ``datetime.now(timezone.utc)`` but the
+    ``db.DateTime`` column is tz-naive, so SQLAlchemy reads them back WITHOUT a
+    tzinfo. Comparing that naive value against an aware ``datetime.now(...)``
+    raises ``TypeError`` and 500s every valid reset/verification request. This
+    normalises either form to aware UTC so the comparison is always safe.
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 class User(UserMixin, db.Model):
     """User model for authentication and profile."""
     
@@ -216,7 +232,7 @@ class User(UserMixin, db.Model):
         user = User.query.filter_by(password_reset_token=hashed).first()
         if user is None:
             return None
-        if user.password_reset_expires is None or user.password_reset_expires < datetime.now(timezone.utc):
+        if user.password_reset_expires is None or _as_utc(user.password_reset_expires) < datetime.now(timezone.utc):
             return None
         return user
     
@@ -235,7 +251,7 @@ class User(UserMixin, db.Model):
         user = User.query.filter_by(email_verification_token=token).first()
         if user is None:
             return None
-        if user.email_verification_expires is None or user.email_verification_expires < datetime.now(timezone.utc):
+        if user.email_verification_expires is None or _as_utc(user.email_verification_expires) < datetime.now(timezone.utc):
             return None
         return user
     

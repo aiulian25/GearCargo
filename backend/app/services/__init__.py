@@ -1290,6 +1290,11 @@ def process_scheduled_backups(app):
                     should_run = False
             
             if should_run:
+                # L8: reset per iteration BEFORE the try so a failure before these
+                # are assigned can't NameError (first iteration) or silently mutate
+                # the PREVIOUS iteration's objects (later iterations) inside except.
+                backup = None
+                user = None
                 try:
                     user = User.query.get(schedule.user_id)
                     if not user:
@@ -1365,15 +1370,19 @@ def process_scheduled_backups(app):
                     app.logger.info(f'Scheduled backup completed for user {user.id}: {filename}')
                     
                 except Exception as e:
-                    if backup:
+                    # `backup is not None` (not truthiness) to match the `user`
+                    # guard below and make the per-iteration reset intent explicit.
+                    if backup is not None:
                         backup.status = 'failed'
                         backup.error_message = str(e)
                         backup.completed_at = datetime.now(timezone.utc)
                     
                     schedule.last_status = 'failed'
                     schedule.last_error = str(e)
-                    
-                    if schedule.notify_on_failure:
+
+                    # L8: guard against a failure that occurred before `user` was
+                    # assigned (would otherwise pass None / a stale user).
+                    if schedule.notify_on_failure and user is not None:
                         send_backup_notification(user, None, 'failure', app, str(e))
                     
                     app.logger.error(f'Scheduled backup failed for user {schedule.user_id}: {e}')

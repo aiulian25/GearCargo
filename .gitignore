@@ -172,3 +172,6 @@ CHAT_HARDENING_PLAN.md
 IMPROVEMENTS.md
 *_PLAN.md
 *_INVESTIGATION.md
+
+# Claude Code local settings — never commit (per-user tooling state).
+.claude/

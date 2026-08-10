@@ -393,6 +393,32 @@ def _safe_zip_filename(raw_filename, target_dir):
     return safe_name
 
 
+# M6: decompression-bomb ceilings. zf.read(name) materialises a member fully in
+# memory, so a 200 MB upload (MAX_UPLOAD_SIZE_MB) of highly-compressible data can
+# expand to hundreds of GB and OOM the single-container deployment (which also
+# hosts Postgres + Redis). The uncompressed sizes come straight from the ZIP's
+# central directory, so this is a cheap metadata-only pre-check run BEFORE any
+# member is decompressed.
+_MAX_MEMBER_BYTES = 100 * 1024 * 1024              # any single member: 100 MB
+_MAX_TOTAL_UNCOMPRESSED = 2 * 1024 * 1024 * 1024   # whole archive: 2 GB
+
+
+def _check_zip_budget(zf):
+    """Raise ValueError if the archive's declared uncompressed size is hostile.
+
+    Guards against zip bombs: checks each member's declared size and the running
+    total against fixed ceilings, using only central-directory metadata (no
+    decompression). Callers surface the message as an HTTP 400.
+    """
+    total = 0
+    for info in zf.infolist():
+        if info.file_size > _MAX_MEMBER_BYTES:
+            raise ValueError(f'Backup member too large: {info.filename!r}')
+        total += info.file_size
+        if total > _MAX_TOTAL_UNCOMPRESSED:
+            raise ValueError('Backup archive expands beyond the allowed size')
+
+
 def _extract_member_to_directory(archive, member, archive_prefix, target_root):
     """Extract a tar member to a staging directory with traversal protection."""
     relative_path = member.name[len(archive_prefix):].lstrip('/')
@@ -620,12 +646,19 @@ def create_backup_zip(user, include_attachments=True):
             for attachment in attachments:
                 if attachment.filepath and os.path.exists(attachment.filepath):
                     if attachment.filepath in added_filepaths:
-                        # File already in ZIP under a different attachment ID —
-                        # still record a ZIP entry so each DB record is represented,
-                        # but store it as a zero-overhead reference via writestr
-                        # pointing to the same content (symlink-like).
-                        # We write the file content only once; on import the
-                        # deduplication logic matches by filepath+entry_id.
+                        # M4: another attachment already carries this physical file,
+                        # but restore rebuilds one Attachment row PER ZIP MEMBER
+                        # (restore_from_zip iterates zf.namelist()). Without a member
+                        # of its own, THIS record — and any document_attachment_id
+                        # pointing at it — is silently lost on restore. Write the same
+                        # bytes under this attachment's own arcname so every DB record
+                        # round-trips. ZIP_DEFLATED makes the duplicate near-free for
+                        # identical content; simplicity beats a reference scheme here.
+                        with open(attachment.filepath, 'rb') as fh:
+                            zf.writestr(
+                                f'attachments/{attachment.id}/{attachment.filename}',
+                                fh.read(),
+                            )
                         continue
                     arcname = f'attachments/{attachment.id}/{attachment.filename}'
                     zf.write(attachment.filepath, arcname)
@@ -1095,10 +1128,13 @@ def cleanup_old_backups(user_id, max_backups=10, retention_days=90):
     if not os.path.exists(user_folder):
         return 0
     
-    # Get all backup files
+    # Get all backup files. H2: match ANY .zip — save_backup_to_disk() names
+    # files "{App}_{User}_{timestamp}.zip", so the old startswith('backup_')
+    # filter matched nothing and retention silently pruned NOTHING (disk filled).
+    # This mirrors get_backup_status() and the scheduler's cleanup_user_backups().
     files = []
     for f in os.listdir(user_folder):
-        if f.startswith('backup_') and f.endswith('.zip'):
+        if f.endswith('.zip'):
             filepath = os.path.join(user_folder, f)
             mtime = os.path.getmtime(filepath)
             files.append((filepath, mtime))
@@ -1549,6 +1585,14 @@ def restore_from_zip(user, file, merge_mode='merge'):
     zip_data = BytesIO(file.read())
     
     with zipfile.ZipFile(zip_data, 'r') as zf:
+        # M6: reject a decompression bomb BEFORE any zf.read() materialises a
+        # member. This is the single choke point for the in-app import AND (via
+        # delegation, Step 9) the external- and stored-backup restore paths.
+        try:
+            _check_zip_budget(zf)
+        except ValueError as exc:
+            return jsonify({'error': str(exc)}), 400
+
         # Read manifest
         if 'manifest.json' in zf.namelist():
             manifest = json.loads(zf.read('manifest.json').decode('utf-8'))
@@ -1765,6 +1809,9 @@ def import_backup_data(user, backup_data, merge_mode='merge'):
         'insurance_policies': 0,
         'todos': 0,
         'skipped_duplicates': 0,
+        # A2: policies whose own vehicle isn't in this backup are skipped (never
+        # attached to an arbitrary vehicle), and counted here for transparency.
+        'skipped_unmatched_policies': 0,
     }
     
     # Track mapping of old vehicle IDs to new vehicle IDs
@@ -2040,52 +2087,52 @@ def import_backup_data(user, backup_data, merge_mode='merge'):
         db.session.add(reminder)
         imported['reminders'] += 1
     
-    # Import insurance policies
+    # Import insurance policies — A2: ONLY onto the policy's own vehicle.
     for policy_data in backup_data.get('insurance_policies', []):
-        # Find the vehicle by name or use first vehicle
-        vehicle_id = None
         old_vehicle_id = policy_data.get('vehicle_id')
-        if old_vehicle_id and old_vehicle_id in vehicle_id_map:
-            vehicle_id = vehicle_id_map[old_vehicle_id]
-        elif vehicle_id_map:
-            vehicle_id = next(iter(vehicle_id_map.values()))
-        
-        if vehicle_id:
-            # Deduplication: check by provider + start_date + vehicle
-            start_date = datetime.fromisoformat(policy_data['start_date']).date() if policy_data.get('start_date') else None
-            existing = InsurancePolicy.query.filter_by(
-                user_id=user.id,
-                vehicle_id=vehicle_id,
-                provider=policy_data.get('provider'),
-                start_date=start_date,
-            ).first()
-            if existing:
-                imported['skipped_duplicates'] += 1
-                continue
-            
-            policy = InsurancePolicy(
-                user_id=user.id,
-                vehicle_id=vehicle_id,
-                policy_number=policy_data.get('policy_number'),
-                provider=policy_data.get('provider'),
-                policy_type=policy_data.get('policy_type') or policy_data.get('coverage_type'),
-                premium=policy_data.get('premium'),
-                payment_frequency=policy_data.get('payment_frequency'),
-                coverage_amount=policy_data.get('coverage_amount'),
-                deductible=policy_data.get('deductible'),
-                start_date=start_date,
-                end_date=datetime.fromisoformat(policy_data['end_date']).date() if policy_data.get('end_date') else None,
-                agent_name=policy_data.get('agent_name'),
-                agent_phone=policy_data.get('agent_phone'),
-                agent_email=policy_data.get('agent_email'),
-                claims_phone=policy_data.get('claims_phone'),
-                status=policy_data.get('status', 'active'),
-                auto_renew=policy_data.get('auto_renew', False),
-                notes=policy_data.get('notes'),
-                currency=policy_data.get('currency'),
-            )
-            db.session.add(policy)
-            imported['insurance_policies'] += 1
+        vehicle_id = vehicle_id_map.get(old_vehicle_id) if old_vehicle_id else None
+        if not vehicle_id:
+            # The previous code fell back to next(iter(vehicle_id_map.values())),
+            # attaching an orphaned policy to an ARBITRARY vehicle and corrupting
+            # that vehicle's costs. Skip it instead and record the count.
+            imported['skipped_unmatched_policies'] += 1
+            continue
+
+        # Deduplication: check by provider + start_date + vehicle
+        start_date = datetime.fromisoformat(policy_data['start_date']).date() if policy_data.get('start_date') else None
+        existing = InsurancePolicy.query.filter_by(
+            user_id=user.id,
+            vehicle_id=vehicle_id,
+            provider=policy_data.get('provider'),
+            start_date=start_date,
+        ).first()
+        if existing:
+            imported['skipped_duplicates'] += 1
+            continue
+
+        policy = InsurancePolicy(
+            user_id=user.id,
+            vehicle_id=vehicle_id,
+            policy_number=policy_data.get('policy_number'),
+            provider=policy_data.get('provider'),
+            policy_type=policy_data.get('policy_type') or policy_data.get('coverage_type'),
+            premium=policy_data.get('premium'),
+            payment_frequency=policy_data.get('payment_frequency'),
+            coverage_amount=policy_data.get('coverage_amount'),
+            deductible=policy_data.get('deductible'),
+            start_date=start_date,
+            end_date=datetime.fromisoformat(policy_data['end_date']).date() if policy_data.get('end_date') else None,
+            agent_name=policy_data.get('agent_name'),
+            agent_phone=policy_data.get('agent_phone'),
+            agent_email=policy_data.get('agent_email'),
+            claims_phone=policy_data.get('claims_phone'),
+            status=policy_data.get('status', 'active'),
+            auto_renew=policy_data.get('auto_renew', False),
+            notes=policy_data.get('notes'),
+            currency=policy_data.get('currency'),
+        )
+        db.session.add(policy)
+        imported['insurance_policies'] += 1
     
     # Import todos
     for todo_data in backup_data.get('todos', []):
@@ -2505,15 +2552,16 @@ def send_latest_to_external(current_user):
             return jsonify({'error': 'Invalid filename'}), 400
         filepath = os.path.join(user_folder, target_filename)
     else:
-        # Find latest backup
+        # Find latest backup. H2: match ANY .zip (files are named
+        # "{App}_{User}_{timestamp}.zip", never "backup_*"), and pick the newest
+        # by MODIFICATION TIME — a reverse filename sort is unreliable once the
+        # app/user name prefix varies, so it could pick the wrong (or no) file.
         if not os.path.exists(user_folder):
             return jsonify({'error': 'No stored backups found. Run a backup first.'}), 404
-        files = sorted(
-            [f for f in os.listdir(user_folder) if f.startswith('backup_') and f.endswith('.zip')],
-            reverse=True
-        )
+        files = [f for f in os.listdir(user_folder) if f.endswith('.zip')]
         if not files:
             return jsonify({'error': 'No stored backups found. Run a backup first.'}), 404
+        files.sort(key=lambda f: os.path.getmtime(os.path.join(user_folder, f)), reverse=True)
         target_filename = files[0]
         filepath = os.path.join(user_folder, target_filename)
 
@@ -2851,117 +2899,22 @@ def restore_from_external(current_user):
         with open(local_path, 'wb') as f:
             f.write(file_content)
 
-        # Restore from the downloaded ZIP
-        zip_data = BytesIO(file_content)
-        with zipfile.ZipFile(zip_data, 'r') as zf:
-            if 'backup_data.json' not in zf.namelist():
-                return jsonify({'error': 'Invalid backup file: missing backup_data.json'}), 400
+        # M5: delegate to the single, hardened restore path instead of a ~130-line
+        # inline copy that had already DRIFTED from it — the copy lacked the
+        # existing-attachment dedup (so repeated external restores multiplied
+        # attachment rows) and never chmod'd the written attachment files to
+        # 0o640 (leaving them group/other-readable per umask). restore_from_zip
+        # has the Zip Slip guard, the dedup, os.chmod 0o640 AND the S13 MIME
+        # re-derivation in ONE place. The downloaded archive was already saved
+        # locally above; restore_from_zip re-reads it from the wrapper.
+        class _Wrapper:
+            def __init__(self, data, name):
+                self._d, self.filename = data, name
 
-            backup_data = json.loads(zf.read('backup_data.json').decode('utf-8'))
-            imported, vehicle_id_map, entry_id_map = import_backup_data(current_user, backup_data, merge_mode)
+            def read(self):
+                return self._d
 
-            imported['attachments'] = 0
-            imported['vehicle_photos'] = 0
-            attachment_id_map = {}
-
-            attachment_folder = get_attachment_folder()
-            user_attachment_folder = os.path.join(attachment_folder, str(current_user.id))
-            os.makedirs(user_attachment_folder, exist_ok=True)
-
-            attachment_metadata = {}
-            for att in backup_data.get('attachments', []):
-                attachment_metadata[str(att.get('id'))] = att
-
-            uploads_folder = get_uploads_folder()
-            vehicle_photo_folder = os.path.join(uploads_folder, 'vehicles')
-            os.makedirs(vehicle_photo_folder, mode=0o750, exist_ok=True)
-
-            for name in zf.namelist():
-                if name.startswith('uploads/vehicles/'):
-                    parts = name.split('/')
-                    if len(parts) >= 4 and parts[3]:
-                        try:
-                            old_vehicle_id = int(parts[2])
-                        except ValueError:
-                            continue
-                        new_vehicle_id = vehicle_id_map.get(old_vehicle_id)
-                        if not new_vehicle_id:
-                            continue
-                        content = zf.read(name)
-                        ext = parts[3].rsplit('.', 1)[1] if '.' in parts[3] else 'jpg'
-                        import uuid
-                        new_filename_v = f"{new_vehicle_id}_{uuid.uuid4().hex}.{ext}"
-                        new_filepath = os.path.join(vehicle_photo_folder, new_filename_v)
-                        with open(new_filepath, 'wb') as f:
-                            f.write(content)
-                        os.chmod(new_filepath, 0o640)
-                        vehicle = Vehicle.query.get(new_vehicle_id)
-                        if vehicle:
-                            vehicle.photo = f"/uploads/vehicles/{new_filename_v}"
-                            imported['vehicle_photos'] += 1
-
-                elif name.startswith('attachments/'):
-                    parts = name.split('/')
-                    if len(parts) >= 3 and parts[2]:
-                        old_id = parts[1]
-                        # Zip Slip protection: strip path components and verify
-                        # the resolved path is confined to the attachment folder.
-                        try:
-                            att_filename = _safe_zip_filename(
-                                parts[2], user_attachment_folder
-                            )
-                        except ValueError as exc:
-                            current_app.logger.warning(
-                                '[Security] Zip Slip attempt blocked during '
-                                'external restore for user_id=%s: %s',
-                                current_user.id, exc
-                            )
-                            continue
-                        content = zf.read(name)
-                        new_filepath = os.path.join(user_attachment_folder, att_filename)
-                        with open(new_filepath, 'wb') as f:
-                            f.write(content)
-                        att_meta = attachment_metadata.get(old_id, {})
-                        old_vehicle_id = att_meta.get('vehicle_id')
-                        new_vehicle_id = vehicle_id_map.get(old_vehicle_id) if old_vehicle_id else None
-                        old_entry_id = att_meta.get('entry_id')
-                        new_entry_id = entry_id_map.get(old_entry_id) if old_entry_id else None
-                        attachment = Attachment(
-                            user_id=current_user.id,
-                            filename=att_filename,
-                            original_filename=att_meta.get('original_filename', att_filename),
-                            filepath=new_filepath,
-                            # S13: Never trust the file_type from ZIP metadata —
-                            # a crafted archive could store 'text/html' / 'image/svg+xml'
-                            # and cause XSS when the file is later served inline.
-                            # Re-derive from the original filename extension using the
-                            # canonical allowlist in attachments.py.
-                            file_type=_safe_mime_from_meta(att_meta.get('original_filename') or att_filename),
-                            file_size=len(content),
-                            description=att_meta.get('description'),
-                            category=att_meta.get('category'),
-                            tags=att_meta.get('tags'),
-                            vehicle_id=new_vehicle_id,
-                            entry_id=new_entry_id,
-                        )
-                        db.session.add(attachment)
-                        db.session.flush()
-                        try:
-                            attachment_id_map[int(old_id)] = attachment.id
-                        except ValueError:
-                            pass
-                        imported['attachments'] += 1
-
-            db.session.commit()
-
-        security_audit.data_import(current_user.id, current_user.email, 'external_zip', success=True)
-
-        return jsonify({
-            'message': 'Restore from external backup completed',
-            'imported': imported,
-            'saved_locally': True,
-            'local_filename': filename,
-        })
+        return restore_from_zip(current_user, _Wrapper(file_content, filename), merge_mode)
 
     except requests.exceptions.Timeout:
         return jsonify({'error': 'Download timed out. The external server did not respond in time.'}), 504
@@ -2996,6 +2949,7 @@ def upload_backup(current_user):
         # Validate it's a real ZIP with backup_data.json
         zip_data = BytesIO(content)
         with zipfile.ZipFile(zip_data, 'r') as zf:
+            _check_zip_budget(zf)  # M6: reject decompression bombs pre-extract
             if 'backup_data.json' not in zf.namelist():
                 return jsonify({'error': 'Invalid backup file: missing backup_data.json'}), 400
 
@@ -3026,6 +2980,9 @@ def upload_backup(current_user):
 
     except zipfile.BadZipFile:
         return jsonify({'error': 'File is not a valid ZIP archive'}), 400
+    except ValueError as e:
+        # M6: decompression-bomb rejection — surface the specific reason.
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
         current_app.logger.error(f'Upload backup failed: {e}')
         return jsonify({'error': 'Upload failed'}), 500

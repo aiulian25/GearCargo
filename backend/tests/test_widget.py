@@ -40,6 +40,18 @@ def test_widget_requires_api_key(client):
                       headers={'X-API-Key': 'wrong-key'}).status_code == 401
 
 
+def test_widget_rejects_query_param_key(client, user, auth_headers):
+    """L4: a VALID key in the ?key= query string is rejected (401); only the
+    X-API-Key header is accepted (query-string creds leak into logs/history)."""
+    key = _api_key(client, user, auth_headers)
+    # Query param no longer accepted → 401 (was 200 before the fix), both endpoints.
+    assert client.get(f'/api/widget/v1/homepage?key={key}').status_code == 401
+    assert client.get(f'/api/widget/v1/vehicles?key={key}').status_code == 401
+    # The header form still works.
+    assert client.get('/api/widget/v1/homepage', headers={'X-API-Key': key}).status_code == 200
+    assert client.get('/api/widget/v1/vehicles', headers={'X-API-Key': key}).status_code == 200
+
+
 def test_widget_v2_fields(app, client, user, auth_headers):
     with app.app_context():
         v = Vehicle(user_id=user.id, name='Golf', make='VW', model='Golf')

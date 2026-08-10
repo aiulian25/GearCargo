@@ -195,93 +195,28 @@ def preview_report_info(current_user):
     """
     try:
         data = request.get_json() or {}
-        
+
         vehicle_ids = data.get('vehicle_ids', 'all')
         period = data.get('period', 'current_month')
         year = data.get('year')
         month = data.get('month')
-        
-        # Get vehicles
-        if vehicle_ids == 'all' or not vehicle_ids:
-            vehicles = Vehicle.query.filter_by(
-                user_id=current_user.id,
-                archived=False
-            ).all()
-        else:
-            if isinstance(vehicle_ids, list):
-                vehicles = Vehicle.query.filter(
-                    Vehicle.id.in_(vehicle_ids),
-                    Vehicle.user_id == current_user.id
-                ).all()
-            else:
-                vehicle = Vehicle.query.filter_by(
-                    id=vehicle_ids,
-                    user_id=current_user.id
-                ).first()
-                vehicles = [vehicle] if vehicle else []
-        
+
+        # L9: reuse the shared resolver + summary (same numbers as the public
+        # shared-report view) instead of a divergent inline copy.
+        vehicles = _resolve_report_vehicles(current_user, vehicle_ids)
         if not vehicles:
             return jsonify({'error': 'No vehicles found'}), 404
-        
-        # Get period dates
-        start_date, end_date, period_label = get_period_dates(period, year, month)
-        
-        # Import here to avoid circular imports
-        from app.services.pdf_report_service import get_vehicle_entries
-        from app.services.currency import get_rates_cached
 
-        # Get currency + EUR-based rates (F1: convert amounts before summing)
-        currency = (getattr(current_user, 'currency', 'EUR') or 'EUR').upper()
-        rates = get_rates_cached(current_app._get_current_object())
+        summary = _report_summary(current_user, vehicles, period, year, month)
 
-        # Calculate totals
-        totals = {
-            'fuel': 0,
-            'service': 0,
-            'repair': 0,
-            'tax': 0,
-            'parking': 0,
-            'insurance': 0,
-            'grand_total': 0
-        }
-        
-        entry_counts = {
-            'fuel': 0,
-            'service': 0,
-            'repair': 0,
-            'tax': 0,
-            'parking': 0,
-            'insurance': 0,
-            'total': 0
-        }
-        
-        converted = True
-        fx_applied = False
-        for vehicle in vehicles:
-            entries = get_vehicle_entries(vehicle, start_date, end_date, currency, rates)
-            for key in ['fuel', 'service', 'repair', 'tax', 'parking', 'insurance']:
-                totals[key] += entries['totals'][key]
-                entry_counts[key] += len(entries[key])
-            totals['grand_total'] += entries['totals']['grand_total']
-            converted = converted and entries['totals'].get('converted', True)
-            fx_applied = fx_applied or entries['totals'].get('fx_applied', False)
+        # The authenticated preview additionally exposes each vehicle's id (the
+        # public shared view deliberately omits it). _report_summary builds its
+        # 'vehicles' list in the same order it received them, so zip aligns.
+        for v, meta in zip(vehicles, summary['vehicles']):
+            meta['id'] = v.id
 
-        entry_counts['total'] = sum([entry_counts[k] for k in ['fuel', 'service', 'repair', 'tax', 'parking', 'insurance']])
+        return jsonify(summary)
 
-        return jsonify({
-            'period_label': period_label,
-            'start_date': start_date.strftime('%Y-%m-%d'),
-            'end_date': end_date.strftime('%Y-%m-%d'),
-            'vehicle_count': len(vehicles),
-            'vehicles': [{'id': v.id, 'name': f"{v.make} {v.model}"} for v in vehicles],
-            'entry_counts': entry_counts,
-            'totals': totals,
-            'currency': currency,
-            'display_currency': currency,
-            'converted': converted,
-            'fx_applied': fx_applied,
-        })
-        
     except Exception as e:
         current_app.logger.error(f"Error previewing report: {str(e)}")
         return jsonify({'error': 'Failed to preview report. Please try again later.'}), 500

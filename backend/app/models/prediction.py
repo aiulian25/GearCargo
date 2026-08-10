@@ -4,6 +4,7 @@ GearCargo - Prediction Alert Model
 
 from datetime import datetime, timezone
 from app import db
+from app.models.user import _as_utc  # C1 follow-up: naive→aware UTC coercion
 
 
 class PredictionAlert(db.Model):
@@ -77,7 +78,7 @@ class PredictionAlert(db.Model):
         """Check if alert is still active."""
         if self.dismissed or self.actioned:
             return False
-        if self.expires_at and self.expires_at < datetime.now(timezone.utc):
+        if self.expires_at and _as_utc(self.expires_at) < datetime.now(timezone.utc):
             return False
         return True
     

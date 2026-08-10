@@ -4,6 +4,7 @@ GearCargo - Tax Entry Routes
 
 from datetime import datetime, date, timezone
 from flask import Blueprint, request, jsonify, current_app
+from sqlalchemy import func, extract
 
 from app import db
 from app.models import Vehicle, TaxEntry, InsurancePolicy
@@ -304,37 +305,56 @@ def get_tax_stats(current_user):
     """Get tax statistics."""
     vehicle_id = request.args.get('vehicle_id', type=int)
     
-    query = TaxEntry.query.join(Vehicle).filter(
-        Vehicle.user_id == current_user.id
-    )
-    
+    # M9: DB aggregation instead of loading every tax row into memory.
+    filters = [Vehicle.user_id == current_user.id]
     if vehicle_id:
-        query = query.filter(TaxEntry.vehicle_id == vehicle_id)
-    
-    entries = query.all()
-    
-    total_cost = sum(float(e.amount or 0) for e in entries)
+        filters.append(TaxEntry.vehicle_id == vehicle_id)
 
-    # By type
+    entry_count, total_cost = (
+        db.session.query(
+            func.count(TaxEntry.id),
+            func.coalesce(func.sum(TaxEntry.amount), 0),
+        )
+        .join(Vehicle).filter(*filters)
+        .one()
+    )
+
+    # By type — grouped; NULL/'' → 'other' (COALESCE only catches NULL).
     by_type = {}
-    for entry in entries:
-        ttype = entry.tax_type or 'other'
+    for ttype_raw, cnt, cost in (
+        db.session.query(
+            TaxEntry.tax_type,
+            func.count(TaxEntry.id),
+            func.coalesce(func.sum(TaxEntry.amount), 0),
+        )
+        .join(Vehicle).filter(*filters)
+        .group_by(TaxEntry.tax_type)
+        .all()
+    ):
+        ttype = ttype_raw or 'other'
         if ttype not in by_type:
             by_type[ttype] = {'count': 0, 'cost': 0}
-        by_type[ttype]['count'] += 1
-        by_type[ttype]['cost'] += float(entry.amount or 0)
+        by_type[ttype]['count'] += cnt
+        by_type[ttype]['cost'] += float(cost or 0)
 
-    # Yearly breakdown
+    # Yearly breakdown — group by the calendar year of `date` in SQL.
+    # extract() is portable (SQLite → CAST(STRFTIME…), Postgres → EXTRACT); the
+    # year comes back int/Decimal, so int() it to match the old `date.year` key.
     yearly = {}
-    for entry in entries:
-        year = entry.date.year
-        if year not in yearly:
-            yearly[year] = 0
-        yearly[year] += float(entry.amount or 0)
-    
+    for year, cost in (
+        db.session.query(
+            extract('year', TaxEntry.date),
+            func.coalesce(func.sum(TaxEntry.amount), 0),
+        )
+        .join(Vehicle).filter(*filters)
+        .group_by(extract('year', TaxEntry.date))
+        .all()
+    ):
+        yearly[int(year)] = float(cost or 0)
+
     return jsonify({
-        'total_cost': float(total_cost),
-        'entry_count': len(entries),
+        'total_cost': float(total_cost or 0),
+        'entry_count': entry_count,
         'by_type': by_type,
         'yearly_breakdown': yearly,
     })

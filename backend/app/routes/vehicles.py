@@ -2490,6 +2490,7 @@ def get_vehicle_timeline(current_user, vehicle_id):
         start = (page - 1) * per_page
         result_items = insurance_items[start:start + per_page]
         total = insurance_total
+        nav_total = insurance_total   # insurance is what we paginate here
 
     else:
         eq = Entry.query.filter_by(vehicle_id=vehicle_id)
@@ -2498,40 +2499,31 @@ def get_vehicle_timeline(current_user, vehicle_id):
 
         entry_total = eq.count()
 
-        # On page 1 we merge insurance records into the entry window.
-        # Fetch a slightly larger buffer so insurance doesn't displace entries
-        # that the user expects to see on this page.
-        buffer   = len(insurance_items)          # > 0 only on page 1
-        db_limit = per_page + buffer
-
-        # For pages after page 1: adjust the DB offset so we don't skip the
-        # entries that were "consumed" by insurance records on page 1.
-        if page == 1:
-            db_offset = 0
-        else:
-            # insurance_total records appeared before (or within) page 1;
-            # shift the offset back so those entries aren't silently skipped.
-            db_offset = max(0, (page - 1) * per_page - insurance_total)
-
+        # M2: paginate ENTRIES ONLY — plain offset/limit, no insurance splicing.
+        # The old buffer/offset arithmetic (db_offset = (page-1)*per_page -
+        # insurance_total) both dropped policies that sorted past page 1's cut
+        # and re-served page-1 entries on later pages. Insurance is a small
+        # (< ~20) set delivered whole on page 1 (below) and merged client-side,
+        # so it can never displace or duplicate an entry row again.
         entries_raw = (
             eq
             .order_by(Entry.date.desc(), Entry.id.desc())
-            .offset(db_offset)
-            .limit(db_limit)
+            .offset((page - 1) * per_page)
+            .limit(per_page)
             .all()
         )
-        entry_items = [e.to_dict(include_attachments=False) for e in entries_raw]
+        result_items = [e.to_dict(include_attachments=False) for e in entries_raw]
 
-        # In-memory merge is at most (per_page + ~20) items — no OOM risk.
-        merged = entry_items + insurance_items
-        merged.sort(key=lambda x: x.get('date') or '', reverse=True)
-        result_items = merged[:per_page]
-
+        # Displayed count includes policies (they render in the same feed), but
+        # page navigation tracks ENTRIES only: every policy already ships on
+        # page 1, so has_next/pages must not count them or the client would be
+        # told to fetch an entry page that doesn't exist.
         total = entry_total + insurance_total
+        nav_total = entry_total
 
-    pages = max(1, (total + per_page - 1) // per_page)
+    pages = max(1, (nav_total + per_page - 1) // per_page)
 
-    return jsonify({
+    response = {
         'entries':      result_items,
         'total':        total,
         'pages':        pages,
@@ -2539,7 +2531,14 @@ def get_vehicle_timeline(current_user, vehicle_id):
         'per_page':     per_page,
         'has_next':     page < pages,
         'has_prev':     page > 1,
-    })
+    }
+    # Page 1 of the combined 'all' feed carries the full (small) insurance set
+    # under its own key so the client merges it in without any per-page
+    # splicing. Absent on later pages and on filtered views (M2).
+    if entry_type == 'all' and page == 1:
+        response['insurance'] = insurance_items
+
+    return jsonify(response)
 
 
 @vehicles_bp.route('/<int:vehicle_id>/mileage', methods=['POST'])

@@ -4,12 +4,24 @@ GearCargo - Repair Entry Routes
 
 from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, current_app
+from sqlalchemy import func, case
 
 from app import db
 from app.models import Vehicle, RepairEntry
 from app.routes.auth import token_required
 
 repairs_bp = Blueprint('repairs', __name__)
+
+# Known repair-type values. Module-level so BOTH create and update validate
+# against the same set (L10) — keeping by_type stats and the health endpoint's
+# REPAIR_TYPE_TO_COMPONENTS matching consistent between POST and PUT.
+VALID_REPAIR_TYPES = {
+    'engine', 'transmission', 'brakes', 'suspension', 'electrical',
+    'exhaust', 'cooling', 'fuel_system', 'steering', 'body',
+    'interior', 'ac_heating', 'tires_wheels', 'clutch', 'drivetrain',
+    'windshield', 'lights', 'oil_change', 'filters', 'battery',
+    'turbo', 'timing_belt', 'differential', 'other'
+}
 
 
 def _opt_int(value):
@@ -71,14 +83,7 @@ def create_repair_entry(current_user):
     if not repair_types_list and data.get('repair_type'):
         repair_types_list = [data['repair_type']]
     
-    # Validate repair types - only allow known values
-    VALID_REPAIR_TYPES = {
-        'engine', 'transmission', 'brakes', 'suspension', 'electrical',
-        'exhaust', 'cooling', 'fuel_system', 'steering', 'body',
-        'interior', 'ac_heating', 'tires_wheels', 'clutch', 'drivetrain',
-        'windshield', 'lights', 'oil_change', 'filters', 'battery',
-        'turbo', 'timing_belt', 'differential', 'other'
-    }
+    # Validate repair types — only allow known values (module-level set).
     repair_types_list = [rt for rt in repair_types_list if rt in VALID_REPAIR_TYPES]
     if not repair_types_list:
         return jsonify({'error': 'At least one valid repair type is required'}), 400
@@ -169,17 +174,26 @@ def update_repair_entry(current_user, entry_id):
     
     data = request.get_json()
     
-    # Handle multi-select repair_types
+    # Handle multi-select repair_types. L10: validate on update exactly as create
+    # does — filter to known values and reject if the client sent a selection but
+    # none are valid, so PUT can't store arbitrary strings that corrupt by_type
+    # stats and REPAIR_TYPE_TO_COMPONENTS matching. Omitting types (or sending an
+    # empty list) leaves the existing types untouched, as before.
+    incoming_types = None
     if 'repair_types' in data:
-        types_list = data['repair_types']
-        if isinstance(types_list, list) and len(types_list) > 0:
-            entry.repair_types = types_list
-            entry.repair_type = types_list[0]
-            entry.title = ', '.join(types_list)
+        incoming_types = data['repair_types']
+        if not isinstance(incoming_types, list):
+            incoming_types = [incoming_types]
     elif 'repair_type' in data and data['repair_type']:
-        entry.repair_type = data['repair_type']
-        entry.repair_types = [data['repair_type']]
-        entry.title = data['repair_type']
+        incoming_types = [data['repair_type']]
+
+    if incoming_types:
+        valid_types = [rt for rt in incoming_types if rt in VALID_REPAIR_TYPES]
+        if not valid_types:
+            return jsonify({'error': 'At least one valid repair type is required'}), 400
+        entry.repair_types = valid_types
+        entry.repair_type = valid_types[0]
+        entry.title = ', '.join(valid_types)
 
     # F18 — request keys mapped to the REAL model columns. Aliases first,
     # canonical names last so the canonical value wins when both are sent.
@@ -269,42 +283,63 @@ def get_repair_stats(current_user):
     """Get repair statistics."""
     vehicle_id = request.args.get('vehicle_id', type=int)
     
-    query = RepairEntry.query.join(Vehicle).filter(
-        Vehicle.user_id == current_user.id
-    )
-    
+    # M9: DB aggregation. The scalar totals and the severity breakdown are pure
+    # grouped SQL; only `by_type` still scans rows because it fans one repair out
+    # over a JSON array column (`repair_types`), which isn't portably groupable —
+    # and even that fetches ONLY the three columns it needs, not full ORM rows.
+    filters = [Vehicle.user_id == current_user.id]
     if vehicle_id:
-        query = query.filter(RepairEntry.vehicle_id == vehicle_id)
-    
-    entries = query.all()
-    
-    total_cost = sum(float(e.amount or 0) for e in entries)
-    # 'Savings' = cost of repairs that were covered by an existing warranty.
-    warranty_savings = sum(float(e.amount or 0) for e in entries if e.under_warranty)
+        filters.append(RepairEntry.vehicle_id == vehicle_id)
+
+    entry_count, total_cost, warranty_savings = (
+        db.session.query(
+            func.count(RepairEntry.id),
+            func.coalesce(func.sum(RepairEntry.amount), 0),
+            # 'Savings' = cost of repairs covered by an existing warranty.
+            # case(...) rather than an aggregate FILTER for SQLite/Postgres portability.
+            func.coalesce(
+                func.sum(case((RepairEntry.under_warranty.is_(True), RepairEntry.amount), else_=0)), 0
+            ),
+        )
+        .join(Vehicle).filter(*filters)
+        .one()
+    )
     # RepairEntry has no insurance columns — keep the response shape stable.
     insurance_claims = 0.0
 
-    # By severity
+    # By severity — grouped in SQL; NULL/'' → 'medium', unknown severities dropped
+    # (only the four fixed buckets are counted), exactly as before.
     by_severity = {'low': 0, 'medium': 0, 'high': 0, 'critical': 0}
-    for entry in entries:
-        severity = entry.severity or 'medium'
+    for sev_raw, cnt in (
+        db.session.query(RepairEntry.severity, func.count(RepairEntry.id))
+        .join(Vehicle).filter(*filters)
+        .group_by(RepairEntry.severity)
+        .all()
+    ):
+        severity = sev_raw or 'medium'
         if severity in by_severity:
-            by_severity[severity] += 1
+            by_severity[severity] += cnt
 
-    # By type
+    # By type — one repair can list multiple `repair_types` (JSON array) and each
+    # gets the full entry amount, so this fans out per row. Fetch only the 3
+    # needed columns (not entities) and reproduce the original loop verbatim.
     by_type = {}
-    for entry in entries:
-        types = entry.repair_types or ([entry.repair_type] if entry.repair_type else ['other'])
+    for repair_types, repair_type, amount in (
+        db.session.query(RepairEntry.repair_types, RepairEntry.repair_type, RepairEntry.amount)
+        .join(Vehicle).filter(*filters)
+        .all()
+    ):
+        types = repair_types or ([repair_type] if repair_type else ['other'])
         for rtype in types:
             if rtype not in by_type:
                 by_type[rtype] = {'count': 0, 'cost': 0}
             by_type[rtype]['count'] += 1
-            by_type[rtype]['cost'] += float(entry.amount or 0)
-    
+            by_type[rtype]['cost'] += float(amount or 0)
+
     return jsonify({
-        'total_cost': float(total_cost),
-        'entry_count': len(entries),
-        'warranty_savings': float(warranty_savings),
+        'total_cost': float(total_cost or 0),
+        'entry_count': entry_count,
+        'warranty_savings': float(warranty_savings or 0),
         'insurance_claims': float(insurance_claims),
         'by_severity': by_severity,
         'by_type': by_type,

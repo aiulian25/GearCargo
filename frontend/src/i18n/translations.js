@@ -2063,6 +2063,7 @@ export const translations = {
       displayName: 'Display Name',
       displayNamePlaceholder: 'Your full name',
       usernamePlaceholder: 'Choose a username',
+      usernameEmpty: 'Username cannot be empty',
       emailChangeNote: 'Used for login and notifications',
       emailVerified: 'Email verified',
       sensitiveChangeNote: 'Changing your name, username, or email will require password verification',
@@ -2203,8 +2204,11 @@ export const translations = {
       
       // Disable 2FA
       disableWarning: 'Warning',
-      disableDescription: 'Disabling 2FA will make your account less secure. Enter your password to confirm.',
+      disableDescription: 'Disabling 2FA will make your account less secure. Confirm with your password and a current authentication code.',
       enterPassword: 'Enter your password',
+      disableCodeLabel: 'Authentication code',
+      codeOrBackupPlaceholder: '6-digit or backup code',
+      disableCodeHint: 'Enter a 6-digit code from your authenticator app, or one of your backup codes.',
       confirmDisable: 'Disable 2FA',
       
       // Regenerate backup codes
@@ -2615,6 +2619,7 @@ export const translations = {
         upToDate: 'All changes saved',
         offlineNotice: "You're offline. Changes are saved on this device and will sync automatically when you reconnect.",
         savedOffline: "Saved on this device — we'll sync it when you're back online.",
+        syncRejected: "Some offline changes couldn't be synced and weren't saved.",
       },
     },
     
@@ -4890,6 +4895,7 @@ export const translations = {
       displayName: 'Nume Afișat',
       displayNamePlaceholder: 'Numele tău complet',
       usernamePlaceholder: 'Alege un nume de utilizator',
+      usernameEmpty: 'Numele de utilizator nu poate fi gol',
       emailChangeNote: 'Folosit pentru autentificare și notificări',
       emailVerified: 'Email verificat',
       sensitiveChangeNote: 'Modificarea numelui, utilizatorului sau email-ului necesită verificarea parolei',
@@ -5030,8 +5036,11 @@ export const translations = {
       
       // Dezactivare 2FA
       disableWarning: 'Atenție',
-      disableDescription: 'Dezactivarea 2FA va face contul tău mai puțin sigur. Introdu parola pentru a confirma.',
+      disableDescription: 'Dezactivarea 2FA va face contul tău mai puțin sigur. Confirmă cu parola și un cod de autentificare curent.',
       enterPassword: 'Introdu parola',
+      disableCodeLabel: 'Cod de autentificare',
+      codeOrBackupPlaceholder: 'Cod de 6 cifre sau de backup',
+      disableCodeHint: 'Introdu un cod de 6 cifre din aplicația de autentificare sau unul dintre codurile tale de backup.',
       confirmDisable: 'Dezactivează 2FA',
       
       // Regenerare coduri backup
@@ -5444,6 +5453,7 @@ export const translations = {
         upToDate: 'Toate modificările sunt salvate',
         offlineNotice: 'Ești offline. Modificările sunt salvate pe acest dispozitiv și se vor sincroniza automat când te reconectezi.',
         savedOffline: 'Salvat pe acest dispozitiv — se va sincroniza când revii online.',
+        syncRejected: 'Unele modificări offline nu au putut fi sincronizate și nu au fost salvate.',
       },
     },
     
@@ -7717,6 +7727,7 @@ export const translations = {
       displayName: 'Nombre a Mostrar',
       displayNamePlaceholder: 'Tu nombre completo',
       usernamePlaceholder: 'Elige un nombre de usuario',
+      usernameEmpty: 'El nombre de usuario no puede estar vacío',
       emailChangeNote: 'Usado para iniciar sesión y notificaciones',
       emailVerified: 'Correo verificado',
       sensitiveChangeNote: 'Cambiar nombre, usuario o email requiere verificación de contraseña',
@@ -7857,8 +7868,11 @@ export const translations = {
       
       // Desactivar 2FA
       disableWarning: 'Advertencia',
-      disableDescription: 'Desactivar 2FA hará tu cuenta menos segura. Ingresa tu contraseña para confirmar.',
+      disableDescription: 'Desactivar 2FA hará tu cuenta menos segura. Confirma con tu contraseña y un código de autenticación actual.',
       enterPassword: 'Ingresa tu contraseña',
+      disableCodeLabel: 'Código de autenticación',
+      codeOrBackupPlaceholder: 'Código de 6 dígitos o de respaldo',
+      disableCodeHint: 'Ingresa un código de 6 dígitos de tu aplicación de autenticación o uno de tus códigos de respaldo.',
       confirmDisable: 'Desactivar 2FA',
       
       // Regenerar códigos de respaldo
@@ -8276,6 +8290,7 @@ export const translations = {
         upToDate: 'Todos los cambios guardados',
         offlineNotice: 'Estás sin conexión. Los cambios se guardan en este dispositivo y se sincronizarán automáticamente al reconectarte.',
         savedOffline: 'Guardado en este dispositivo — se sincronizará cuando vuelvas a estar en línea.',
+        syncRejected: 'Algunos cambios sin conexión no se pudieron sincronizar y no se guardaron.',
       },
     },
     

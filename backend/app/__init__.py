@@ -556,9 +556,14 @@ def create_app(config_class=None):
         '20 per hour',
         error_message='Too many requests. Please try again later.')
 
-    from app.routes.widget import widget_bp
-    limiter.exempt(widget_bp)
-    
+    # L4: the widget endpoints are an unauthenticated-facing surface. Apply a
+    # modest per-IP limit instead of a blanket blueprint exemption, so anonymous
+    # probing is throttled while a legitimate Gethomepage poll (every few seconds)
+    # stays well under it. The api-key management endpoints are token-authenticated
+    # and low-frequency, so they fall under the app-wide default limit.
+    _rate_limit('widget.homepage_widget', '120 per minute')
+    _rate_limit('widget.homepage_vehicles', '120 per minute')
+
     # S22: Widget WSGI middleware — only strip headers that genuinely conflict
     # with cross-origin widget embedding.  All other security headers (HSTS,
     # X-Content-Type-Options, Referrer-Policy, Permissions-Policy, etc.) are
@@ -716,10 +721,14 @@ def create_app(config_class=None):
         blacklisting is disabled.
         """
         from app import _redis_available
+        # L5: single source of truth for the version — the build manifest that
+        # /api/app-version also serves (cached per-process), so monitoring keyed
+        # on /health no longer drifts from the real release.
+        from app.routes.system import _load_build_info
         return jsonify({
             'status': 'healthy',
             'app': 'GearCargo',
-            'version': '1.2.0',
+            'version': _load_build_info().get('version', '0.0.0'),
             'redis_ok': _redis_available,
         }), 200
 
@@ -895,8 +904,14 @@ def create_app(config_class=None):
     # Error handlers
     @app.errorhandler(404)
     def not_found(e):
-        """Return JSON for API routes, SPA for others."""
-        if '/api/' in str(e):
+        """Return JSON for API routes, the SPA shell for everything else.
+
+        M3: branch on the REQUEST PATH, not str(e). str(e) is Werkzeug's human
+        description ("404 Not Found: The requested URL…"), which never contains
+        '/api/', so API misses (e.g. get_or_404 in admin routes) were returning
+        index.html with HTTP 200 — invisible errors for API consumers.
+        """
+        if request.path.startswith('/api/'):
             return jsonify({'error': 'Not found'}), 404
         return send_from_directory(app.static_folder, 'index.html')
     

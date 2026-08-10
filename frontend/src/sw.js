@@ -16,6 +16,7 @@ import { ExpirationPlugin } from 'workbox-expiration'
 import { CacheableResponsePlugin } from 'workbox-cacheable-response'
 import { BackgroundSyncPlugin } from 'workbox-background-sync'
 import { FLUSH_QUEUE_SYNC_TAG, REMINDER_REFRESH_TAG } from './utils/syncTags'
+import { replayQueuedRequest } from './swSync'
 
 // ============================================================
 // BACKGROUND SYNC CONFIGURATION
@@ -25,38 +26,41 @@ import { FLUSH_QUEUE_SYNC_TAG, REMINDER_REFRESH_TAG } from './utils/syncTags'
 const bgSyncPlugin = new BackgroundSyncPlugin('gearcargo-sync-queue', {
   maxRetentionTime: 24 * 60, // Retry for up to 24 hours (in minutes)
   onSync: async ({ queue }) => {
+    // Post a message to every controlled client (page).
+    const notifyClients = async (message) => {
+      const clients = await self.clients.matchAll()
+      for (const client of clients) {
+        client.postMessage(message)
+      }
+    }
+
     let entry
     while ((entry = await queue.shiftRequest())) {
       try {
-        await fetch(entry.request.clone())
-        
-        // Notify the app that sync succeeded
-        const clients = await self.clients.matchAll()
-        for (const client of clients) {
-          client.postMessage({
-            type: 'SYNC_SUCCESS',
-            url: entry.request.url,
-            method: entry.request.method,
-          })
+        // Per-entry replay decision lives in replayQueuedRequest (unit-tested).
+        // 'success' / 'rejected' (4xx, already dropped + client notified) both
+        // continue to the next entry; a transient 5xx/429 THROWS below.
+        const result = await replayQueuedRequest(entry, {
+          fetchFn: (request) => fetch(request),
+          notifyClients,
+        })
+        if (result.status === 'success') {
+          log('Background sync successful:', entry.request.url)
         }
-        
-        log('Background sync successful:', entry.request.url)
       } catch (error) {
         console.error('Background sync failed, re-queuing:', error)
-        // Put the entry back in the queue and re-throw to signal failure
+        // Put the entry back in the queue and re-throw to signal failure (ONE
+        // unshift — replayQueuedRequest deliberately does not unshift itself).
         await queue.unshiftRequest(entry)
         throw error
       }
     }
-    
+
     // Notify app that all syncs are complete
-    const clients = await self.clients.matchAll()
-    for (const client of clients) {
-      client.postMessage({
-        type: 'SYNC_COMPLETE',
-        message: 'All offline changes have been synced',
-      })
-    }
+    await notifyClients({
+      type: 'SYNC_COMPLETE',
+      message: 'All offline changes have been synced',
+    })
   },
 })
 

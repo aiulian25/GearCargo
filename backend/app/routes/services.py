@@ -4,6 +4,7 @@ GearCargo - Service Entry Routes
 
 from datetime import datetime, date, timezone
 from flask import Blueprint, request, jsonify, current_app
+from sqlalchemy import func
 
 from app import db
 from app.models import Vehicle, ServiceEntry
@@ -320,32 +321,45 @@ def get_service_stats(current_user):
     """Get service statistics."""
     vehicle_id = request.args.get('vehicle_id', type=int)
     
-    query = ServiceEntry.query.join(Vehicle).filter(
-        Vehicle.user_id == current_user.id
-    )
-    
+    # M9: DB aggregation instead of loading every service row into memory.
+    filters = [Vehicle.user_id == current_user.id]
     if vehicle_id:
-        query = query.filter(ServiceEntry.vehicle_id == vehicle_id)
-    
-    entries = query.all()
-    
-    total_cost = sum(float(e.amount or 0) for e in entries)
-    total_labor = sum(float(e.labor_cost or 0) for e in entries)
-    total_parts = sum(float(e.parts_cost or 0) for e in entries)
+        filters.append(ServiceEntry.vehicle_id == vehicle_id)
 
-    # Service types breakdown
+    entry_count, total_cost, total_labor, total_parts = (
+        db.session.query(
+            func.count(ServiceEntry.id),
+            func.coalesce(func.sum(ServiceEntry.amount), 0),
+            func.coalesce(func.sum(ServiceEntry.labor_cost), 0),
+            func.coalesce(func.sum(ServiceEntry.parts_cost), 0),
+        )
+        .join(Vehicle).filter(*filters)
+        .one()
+    )
+
+    # Service-type breakdown grouped in SQL. Post-fold NULL *and* '' into 'other'
+    # exactly as the old `service_type or 'other'` did (COALESCE only catches NULL).
     by_type = {}
-    for entry in entries:
-        stype = entry.service_type or 'other'
+    for stype_raw, cnt, cost in (
+        db.session.query(
+            ServiceEntry.service_type,
+            func.count(ServiceEntry.id),
+            func.coalesce(func.sum(ServiceEntry.amount), 0),
+        )
+        .join(Vehicle).filter(*filters)
+        .group_by(ServiceEntry.service_type)
+        .all()
+    ):
+        stype = stype_raw or 'other'
         if stype not in by_type:
             by_type[stype] = {'count': 0, 'cost': 0}
-        by_type[stype]['count'] += 1
-        by_type[stype]['cost'] += float(entry.amount or 0)
-    
+        by_type[stype]['count'] += cnt
+        by_type[stype]['cost'] += float(cost or 0)
+
     return jsonify({
-        'total_cost': float(total_cost),
-        'total_labor_cost': float(total_labor),
-        'total_parts_cost': float(total_parts),
-        'entry_count': len(entries),
+        'total_cost': float(total_cost or 0),
+        'total_labor_cost': float(total_labor or 0),
+        'total_parts_cost': float(total_parts or 0),
+        'entry_count': entry_count,
         'by_type': by_type,
     })

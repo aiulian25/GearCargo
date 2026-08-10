@@ -13,6 +13,7 @@ from flask import Blueprint, request, jsonify, current_app, send_file
 from werkzeug.utils import secure_filename
 from app.services.ollama import chat as _ollama_chat, OllamaError as _OllamaError, resolve_model as _resolve_model, ai_cache_get as _ai_cache_get, ai_cache_set as _ai_cache_set, AI_CACHE_TTL as _AI_CACHE_TTL, validate_ollama_url as _validate_ollama_url
 
+from sqlalchemy import func
 from app import db
 from app.models import Vehicle, Entry, Attachment
 from app.routes.auth import token_required, token_required_query_param
@@ -1247,33 +1248,58 @@ def get_expiring_attachments(current_user):
 @token_required
 def get_attachment_stats(current_user):
     """Get attachment statistics."""
-    attachments = Attachment.query.filter_by(user_id=current_user.id).all()
-    
-    total_size = sum(a.file_size or 0 for a in attachments)
-    
-    # By category
+    # M9: DB aggregation instead of loading every attachment row into memory.
+    uid = current_user.id
+
+    total_count, total_size = (
+        db.session.query(
+            func.count(Attachment.id),
+            func.coalesce(func.sum(Attachment.file_size), 0),
+        )
+        .filter(Attachment.user_id == uid)
+        .one()
+    )
+    total_size = int(total_size or 0)
+
+    # By category — grouped; NULL/'' → 'other'.
     by_category = {}
-    for a in attachments:
-        cat = a.category or 'other'
+    for cat_raw, cnt, size in (
+        db.session.query(
+            Attachment.category,
+            func.count(Attachment.id),
+            func.coalesce(func.sum(Attachment.file_size), 0),
+        )
+        .filter(Attachment.user_id == uid)
+        .group_by(Attachment.category)
+        .all()
+    ):
+        cat = cat_raw or 'other'
         if cat not in by_category:
             by_category[cat] = {'count': 0, 'size': 0}
-        by_category[cat]['count'] += 1
-        by_category[cat]['size'] += a.file_size or 0
-    
-    # By type
+        by_category[cat]['count'] += int(cnt)
+        by_category[cat]['size'] += int(size or 0)
+
+    # By type — classification follows the is_image / is_pdf properties and a
+    # CASE-SENSITIVE 'document' substring test, which SQL LIKE can't reproduce
+    # portably (SQLite LIKE is case-insensitive). Fetch only the file_type column
+    # (not entities) and run the exact original chain in Python.
     by_type = {'images': 0, 'pdfs': 0, 'documents': 0, 'other': 0}
-    for a in attachments:
-        if a.is_image:
+    for (ft,) in (
+        db.session.query(Attachment.file_type)
+        .filter(Attachment.user_id == uid)
+        .all()
+    ):
+        if ft and ft.startswith('image/'):
             by_type['images'] += 1
-        elif a.is_pdf:
+        elif ft == 'application/pdf':
             by_type['pdfs'] += 1
-        elif a.file_type and 'document' in a.file_type:
+        elif ft and 'document' in ft:
             by_type['documents'] += 1
         else:
             by_type['other'] += 1
-    
+
     return jsonify({
-        'total_count': len(attachments),
+        'total_count': int(total_count),
         'total_size': total_size,
         'total_size_human': _human_size(total_size),
         'by_category': by_category,

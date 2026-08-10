@@ -1185,6 +1185,11 @@ def send_new_login_alert(user, device_info: dict) -> bool:
             location = "Local Network"
             isp = "Private Network"
         
+        # M10 audit: rendered via Jinja render_template_string, so every {{ }}
+        # value below (UA-derived device/browser, GeoIP city/country/ISP, IP)
+        # is auto-escaped. Do NOT wrap these in markupsafe.escape() — passing a
+        # Markup('None') for the nullable `isp` would defeat the template's
+        # {% if isp %} guard — and do NOT switch this body to an f-string.
         content_html = render_template_string(
             NEW_LOGIN_ALERT_TEMPLATE,
             user_name=user.display_name or user.username,
@@ -1289,6 +1294,9 @@ def send_suspicious_location_alert(user, location_info: dict, known_locations: l
         # Format known locations for display
         known_locations_display = ', '.join(known_locations) if known_locations else 'None recorded'
         
+        # M10 audit: same as send_new_login_alert — every {{ }} value below
+        # (GeoIP country/city/ISP/IP, known-location names) is Jinja
+        # auto-escaped here. Do NOT wrap in escape() or switch to an f-string.
         content_html = render_template_string(
             SUSPICIOUS_LOCATION_TEMPLATE,
             user_name=user.display_name or user.username,

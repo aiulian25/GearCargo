@@ -355,27 +355,6 @@ def test_notification(current_user):
     })
 
 
-@push_bp.route('/history', methods=['GET'])
-@token_required
-def get_notification_history(current_user):
-    """Get notification history."""
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 20, type=int)
-    
-    logs = NotificationLog.query.filter_by(
-        user_id=current_user.id
-    ).order_by(NotificationLog.created_at.desc()).paginate(
-        page=page, per_page=per_page, error_out=False
-    )
-    
-    return jsonify({
-        'notifications': [n.to_dict() for n in logs.items],
-        'total': logs.total,
-        'pages': logs.pages,
-        'current_page': page,
-    })
-
-
 def send_push_to_user(user_id, title, body, data=None, tag=None):
     """Send push notification to all user's subscriptions."""
     from flask import current_app

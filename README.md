@@ -837,6 +837,18 @@ Base URL: `/api/`
 | `/api/widget/api-key` | GET | JWT | Get current API key |
 | `/api/widget/api-key` | DELETE | JWT | Revoke API key |
 
+> **Auth:** the widget key must be sent in the **`X-API-Key` request header**. It is **not** accepted as a `?key=` query parameter — query-string credentials leak into proxy/access logs and browser history. Generate/rotate the key via `POST /api/widget/api-key` (or the in-app widget settings), then configure Gethomepage `services.yaml` with the header:
+>
+> ```yaml
+> widget:
+>   type: customapi
+>   url: https://your-gearcargo-url/api/widget/v1/homepage
+>   headers:
+>     X-API-Key: your-api-key
+> ```
+>
+> The widget endpoints are rate-limited (120 requests/minute per IP); a normal Gethomepage poll stays well under this.
+
 ### Import
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -883,6 +895,8 @@ gearcargo/
 ---
 
 ## Updating
+
+> **Breaking change (widget API key):** the Gethomepage widget key is now accepted **only** in the `X-API-Key` header — the previously-accepted `?key=` query parameter has been removed (it leaked the key into logs/history). If your `services.yaml` passed the key via `?key=` in the `url`, move it to a `headers:` block (see [Widget API](#widget-api-gethomepage)). The endpoints are also now rate-limited (120/min per IP) instead of unlimited.
 
 ### Standard (pre-built single image)
 ```bash

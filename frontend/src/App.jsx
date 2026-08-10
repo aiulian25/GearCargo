@@ -2,7 +2,6 @@ import { useEffect, lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import toast, { Toaster, useToasterStore } from 'react-hot-toast'
 import { useAuth } from './contexts/AuthContext'
-import { initializeSync } from './db'
 
 // Layouts — eager: part of the app shell, needed immediately on every route.
 import AppLayout from './layouts/AppLayout'
@@ -129,13 +128,6 @@ function useToastLimit() {
 
 function App() {
   useToastLimit()
-
-  // Initialize offline sync on app startup
-  useEffect(() => {
-    initializeSync().catch(err => {
-      console.error('Failed to initialize offline sync:', err)
-    })
-  }, [])
 
   return (
     <>

@@ -116,6 +116,8 @@ export default function TwoFactorSetup({ isOpen, onClose, onSuccess, isEnabled =
   // Disable 2FA states
   const [showDisable, setShowDisable] = useState(false)
   const [disablePassword, setDisablePassword] = useState('')
+  // L7: disabling 2FA now also requires a live TOTP or a backup code.
+  const [disableCode, setDisableCode] = useState('')
   
   // Regenerate backup codes states
   const [showRegenerate, setShowRegenerate] = useState(false)
@@ -178,7 +180,13 @@ export default function TwoFactorSetup({ isOpen, onClose, onSuccess, isEnabled =
     setLoading(true)
     setError('')
     try {
-      await api.post('/auth/2fa/disable', { password: disablePassword })
+      const code = disableCode.trim()
+      // A 6-digit value is a TOTP; anything else is treated as a backup code.
+      // The backend tries TOTP first, then the backup-code hash loop.
+      const payload = /^\d{6}$/.test(code)
+        ? { password: disablePassword, totp_code: code }
+        : { password: disablePassword, backup_code: code }
+      await api.post('/auth/2fa/disable', payload)
       await refreshUser()
       onSuccess?.()
       onClose()
@@ -428,10 +436,10 @@ export default function TwoFactorSetup({ isOpen, onClose, onSuccess, isEnabled =
                   {Icons.warning} {t('twoFactor.disableWarning') || 'Warning'}
                 </p>
                 <p className="text-xs text-[var(--color-text-muted)]">
-                  {t('twoFactor.disableDescription') || 'Disabling 2FA will make your account less secure. Enter your password to confirm.'}
+                  {t('twoFactor.disableDescription') || 'Disabling 2FA will make your account less secure. Confirm with your password and a current authentication code.'}
                 </p>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium mb-2">
                   {t('common.password') || 'Password'}
@@ -442,21 +450,44 @@ export default function TwoFactorSetup({ isOpen, onClose, onSuccess, isEnabled =
                   onChange={(e) => setDisablePassword(e.target.value)}
                   className="input w-full"
                   placeholder={t('twoFactor.enterPassword') || 'Enter your password'}
+                  autoComplete="current-password"
                   required
                 />
               </div>
-              
+
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  {t('twoFactor.disableCodeLabel') || 'Authentication code'}
+                </label>
+                <input
+                  type="text"
+                  value={disableCode}
+                  onChange={(e) => setDisableCode(e.target.value)}
+                  className="input w-full font-mono tracking-wider"
+                  placeholder={t('twoFactor.codeOrBackupPlaceholder') || '6-digit or backup code'}
+                  inputMode="text"
+                  autoComplete="one-time-code"
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  required
+                />
+                <p className="mt-2 text-xs text-[var(--color-text-muted)]">
+                  {t('twoFactor.disableCodeHint') || 'Enter a 6-digit code from your authenticator app, or one of your backup codes.'}
+                </p>
+              </div>
+
               <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={() => { setShowDisable(false); setDisablePassword(''); setError(''); }}
+                  onClick={() => { setShowDisable(false); setDisablePassword(''); setDisableCode(''); setError(''); }}
                   className="btn btn-secondary flex-1"
                 >
                   {t('common.cancel') || 'Cancel'}
                 </button>
                 <button
                   type="submit"
-                  disabled={loading || !disablePassword}
+                  disabled={loading || !disablePassword || !disableCode.trim()}
                   className="btn bg-red-500 text-white hover:bg-red-600 flex-1"
                 >
                   {loading ? (t('common.loading') || 'Loading...') : (t('twoFactor.confirmDisable') || 'Disable 2FA')}

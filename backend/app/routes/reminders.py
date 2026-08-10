@@ -4,6 +4,7 @@ GearCargo - Reminders Routes
 
 from datetime import datetime, date, timedelta, timezone
 from flask import Blueprint, request, jsonify, current_app
+from sqlalchemy import func, case, and_
 
 from app import db
 from app.models import Vehicle, Reminder
@@ -416,28 +417,57 @@ def get_mileage_reminders(current_user):
 @token_required
 def get_reminder_stats(current_user):
     """Get reminder statistics."""
-    reminders = Reminder.query.filter_by(user_id=current_user.id).all()
-    
-    completed = sum(1 for r in reminders if r.completed)
-    pending = sum(1 for r in reminders if not r.completed and not r.dismissed)
-    overdue = sum(1 for r in reminders if r.is_overdue)
-    
-    # By type
+    # M9: DB aggregation instead of loading every reminder into memory.
+    # Boolean predicates use `.isnot(True)` so a NULL flag counts as "not set",
+    # matching Python truthiness (`not r.completed` is True for False and None).
+    # is_overdue → (not completed) AND (not dismissed) AND due_date < today,
+    # with `today` in UTC exactly as the property computes it.
+    uid = current_user.id
+    today = datetime.now(timezone.utc).date()
+    is_completed = Reminder.completed.is_(True)
+    is_pending = and_(Reminder.completed.isnot(True), Reminder.dismissed.isnot(True))
+    is_overdue = and_(is_pending, Reminder.due_date < today)
+
+    completed_1 = func.coalesce(func.sum(case((is_completed, 1), else_=0)), 0)
+    pending_1 = func.coalesce(func.sum(case((is_pending, 1), else_=0)), 0)
+
+    total, completed, pending, overdue = (
+        db.session.query(
+            func.count(Reminder.id),
+            completed_1,
+            pending_1,
+            func.coalesce(func.sum(case((is_overdue, 1), else_=0)), 0),
+        )
+        .filter(Reminder.user_id == uid)
+        .one()
+    )
+
+    # By type — NULL/'' reminder_type → 'custom'. Per type: total, plus completed
+    # (completed truthy) and pending (not completed AND not dismissed), matching
+    # the original if/elif exactly.
     by_type = {}
-    for reminder in reminders:
-        rtype = reminder.reminder_type or 'custom'
+    for rtype_raw, cnt, comp, pend in (
+        db.session.query(
+            Reminder.reminder_type,
+            func.count(Reminder.id),
+            completed_1,
+            pending_1,
+        )
+        .filter(Reminder.user_id == uid)
+        .group_by(Reminder.reminder_type)
+        .all()
+    ):
+        rtype = rtype_raw or 'custom'
         if rtype not in by_type:
             by_type[rtype] = {'total': 0, 'pending': 0, 'completed': 0}
-        by_type[rtype]['total'] += 1
-        if reminder.completed:
-            by_type[rtype]['completed'] += 1
-        elif not reminder.dismissed:
-            by_type[rtype]['pending'] += 1
-    
+        by_type[rtype]['total'] += int(cnt)
+        by_type[rtype]['completed'] += int(comp)
+        by_type[rtype]['pending'] += int(pend)
+
     return jsonify({
-        'total': len(reminders),
-        'pending': pending,
-        'completed': completed,
-        'overdue': overdue,
+        'total': int(total),
+        'pending': int(pending),
+        'completed': int(completed),
+        'overdue': int(overdue),
         'by_type': by_type,
     })

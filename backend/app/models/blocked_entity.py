@@ -5,6 +5,7 @@ For security - tracking and blocking malicious IPs and devices
 
 from datetime import datetime, timezone
 from app import db
+from app.models.user import _as_utc  # C1 follow-up: naive→aware UTC coercion
 
 
 class BlockedIP(db.Model):
@@ -82,7 +83,7 @@ class BlockedIP(db.Model):
         blocked = cls.query.filter_by(ip_address=ip_address, is_active=True).first()
         if blocked:
             # Check if block has expired
-            if blocked.expires_at and blocked.expires_at < datetime.now(timezone.utc):
+            if blocked.expires_at and _as_utc(blocked.expires_at) < datetime.now(timezone.utc):
                 blocked.is_active = False
                 db.session.commit()
                 return False, None
@@ -248,7 +249,7 @@ class BlockedDevice(db.Model):
         fingerprint = cls.generate_fingerprint(user_agent, ip_address)
         blocked = cls.query.filter_by(device_fingerprint=fingerprint, is_active=True).first()
         if blocked:
-            if blocked.expires_at and blocked.expires_at < datetime.now(timezone.utc):
+            if blocked.expires_at and _as_utc(blocked.expires_at) < datetime.now(timezone.utc):
                 blocked.is_active = False
                 db.session.commit()
                 return False, None

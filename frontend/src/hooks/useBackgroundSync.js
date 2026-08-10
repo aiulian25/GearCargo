@@ -1,204 +1,59 @@
 /**
  * GearCargo - Background Sync Hook
- * Provides sync status and utilities for offline data synchronization.
  *
- * The app has two offline mechanisms:
- *   1. The Dexie `offlineQueue` table — the real write queue populated by every
- *      repository mutation (create/update/delete), drained by
- *      syncService.processOfflineQueue(). It carries rich status
- *      (pending / processing / failed) plus per-item error + retryCount.
- *   2. The Workbox background-sync queue in the service worker — a fallback that
- *      only sees raw API requests that reach the SW and fail.
- *
- * This hook merges BOTH so the UI shows the true number of unsynced writes and
- * can surface failures, not just whatever happened to reach the SW queue.
+ * Reports the state of the ONE real offline write queue: the Workbox
+ * background-sync queue in the service worker (it holds API writes that failed
+ * while offline and replays them on reconnect). The former Dexie
+ * `offlineQueue`/conflict/repository stack had no producer and was removed
+ * (Step 20 / L6), so this hook now sources its count solely from the SW's
+ * `GET_PENDING_SYNC_COUNT` reply.
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import toast from 'react-hot-toast'
+import { useTranslation } from '../contexts/LanguageContext'
 import { registerPeriodicReminderSync } from '../utils/pwaSync'
 
 export function useBackgroundSync() {
+  // Latest translator kept in a ref so the (stable) service-worker message
+  // listener always renders the toast in the CURRENT language without being
+  // re-registered on every language change.
+  const { t } = useTranslation()
+  const tRef = useRef(t)
+  tRef.current = t
+
   const [isOnline, setIsOnline] = useState(navigator.onLine)
-  // Count reported by the Workbox background-sync queue (via the service worker).
+  // Number of writes queued in the Workbox background-sync queue (from the SW).
   const [swPendingCount, setSwPendingCount] = useState(0)
-  // Truth from the Dexie offline queue (the queue repositories actually write to).
-  const [queuedWriteCount, setQueuedWriteCount] = useState(0)
-  const [failedCount, setFailedCount] = useState(0)
-  const [failedItems, setFailedItems] = useState([])
   const [lastSyncTime, setLastSyncTime] = useState(null)
   const [isSyncing, setIsSyncing] = useState(false)
   const [syncError, setSyncError] = useState(null)
 
-  // Read the real offline queue + persistent last-sync time from Dexie.
-  const refreshQueueState = useCallback(async () => {
-    try {
-      const { getQueueSummary, getPendingOperations, getLastSyncTime } = await import('../db')
-      const summary = await getQueueSummary()
-      // "Waiting to sync" = operations not yet accepted by the server.
-      setQueuedWriteCount((summary.pending || 0) + (summary.processing || 0))
-      setFailedCount(summary.failed || 0)
-
-      if (summary.failed > 0) {
-        const pending = await getPendingOperations()
-        setFailedItems(
-          pending
-            .filter((item) => item.status === 'failed')
-            .map((item) => ({
-              id: item.id,
-              entity: item.entity,
-              operation: item.operation,
-              error: item.error,
-              retryCount: item.retryCount || 0,
-            }))
-        )
-      } else {
-        setFailedItems([])
-      }
-
-      const last = await getLastSyncTime('all')
-      if (last) setLastSyncTime(new Date(last))
-    } catch (error) {
-      // Dexie unavailable (e.g. private mode) — degrade gracefully, never throw.
-      console.error('Failed to read offline queue state:', error)
-    }
-  }, [])
-
-  // Listen for online/offline status changes
-  useEffect(() => {
-    const handleOnline = () => {
-      setIsOnline(true)
-      // Trigger sync when coming back online
-      triggerSync()
-    }
-
-    const handleOffline = () => {
-      setIsOnline(false)
-    }
-
-    window.addEventListener('online', handleOnline)
-    window.addEventListener('offline', handleOffline)
-
-    return () => {
-      window.removeEventListener('online', handleOnline)
-      window.removeEventListener('offline', handleOffline)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // Refresh when the Dexie queue processor finishes a run.
-  useEffect(() => {
-    const handleSyncComplete = () => {
-      setIsSyncing(false)
-      setLastSyncTime(new Date())
-      setSyncError(null)
-      refreshQueueState()
-    }
-
-    window.addEventListener('gearcargo:sync-complete', handleSyncComplete)
-    return () => window.removeEventListener('gearcargo:sync-complete', handleSyncComplete)
-  }, [refreshQueueState])
-
-  // Listen for messages from service worker about sync status
-  useEffect(() => {
-    const handleMessage = (event) => {
-      if (!event.data) return
-
-      switch (event.data.type) {
-        case 'SYNC_SUCCESS':
-          updatePendingCount()
-          refreshQueueState()
-          break
-
-        case 'SYNC_COMPLETE':
-          setIsSyncing(false)
-          setLastSyncTime(new Date())
-          setSyncError(null)
-          updatePendingCount()
-          refreshQueueState()
-          break
-
-        case 'SYNC_ERROR':
-          setIsSyncing(false)
-          setSyncError(event.data.error)
-          break
-
-        // offlineQueue.js posts this whenever items are added/completed.
-        case 'QUEUE_UPDATED':
-          if (typeof event.data.count === 'number') {
-            setQueuedWriteCount(event.data.count)
-          }
-          refreshQueueState()
-          break
-
-        // Background Sync fired in the SW (connectivity returned) — run the
-        // authoritative Dexie queue flush here in the page, where conflict
-        // detection and temp-id remapping live.
-        case 'SYNC_NOW':
-          setIsSyncing(true)
-          import('../db')
-            .then(({ processOfflineQueue }) => processOfflineQueue())
-            .catch((error) => console.error('SYNC_NOW flush failed:', error))
-            .finally(() => {
-              setIsSyncing(false)
-              updatePendingCount()
-              refreshQueueState()
-            })
-          break
-
-        default:
-          break
-      }
-    }
-
-    navigator.serviceWorker?.addEventListener('message', handleMessage)
-
-    return () => {
-      navigator.serviceWorker?.removeEventListener('message', handleMessage)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshQueueState])
-
-  // Get pending sync count from service worker (Workbox queue)
+  // Ask the service worker for the Workbox queue length.
   const updatePendingCount = useCallback(async () => {
     if (!navigator.serviceWorker?.controller) return
-
     try {
       const messageChannel = new MessageChannel()
-
       const countPromise = new Promise((resolve) => {
-        messageChannel.port1.onmessage = (event) => {
-          resolve(event.data.count || 0)
-        }
+        messageChannel.port1.onmessage = (event) => resolve(event.data.count || 0)
       })
-
       navigator.serviceWorker.controller.postMessage(
         { type: 'GET_PENDING_SYNC_COUNT' },
         [messageChannel.port2]
       )
-
-      const count = await countPromise
-      setSwPendingCount(count)
+      setSwPendingCount(await countPromise)
     } catch (error) {
       console.error('Failed to get pending sync count:', error)
     }
   }, [])
 
-  // Trigger a manual sync — drains the Dexie queue AND nudges the Workbox queue.
+  // Manual sync — nudge the Workbox background-sync queue to replay now.
   const triggerSync = useCallback(async () => {
     if (!isOnline) return false
 
     setIsSyncing(true)
     setSyncError(null)
-
     try {
-      // 1. Flush the real (Dexie) offline write queue.
-      const { processOfflineQueue } = await import('../db')
-      const result = await processOfflineQueue()
-      if (result && result.success === false && result.error) {
-        throw new Error(result.error)
-      }
-
-      // 2. Nudge the Workbox background-sync queue (fallback path).
       if (navigator.serviceWorker?.controller) {
         if ('sync' in self.registration) {
           await self.registration.sync.register(
@@ -219,7 +74,6 @@ export function useBackgroundSync() {
 
       setLastSyncTime(new Date())
       await updatePendingCount()
-      await refreshQueueState()
       return true
     } catch (error) {
       console.error('Manual sync failed:', error)
@@ -228,7 +82,67 @@ export function useBackgroundSync() {
     } finally {
       setIsSyncing(false)
     }
-  }, [isOnline, updatePendingCount, refreshQueueState])
+  }, [isOnline, updatePendingCount])
+
+  // Online/offline transitions
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true)
+      triggerSync()
+    }
+    const handleOffline = () => setIsOnline(false)
+
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [triggerSync])
+
+  // Service-worker sync messages
+  useEffect(() => {
+    const handleMessage = (event) => {
+      if (!event.data) return
+
+      switch (event.data.type) {
+        case 'SYNC_SUCCESS':
+          updatePendingCount()
+          break
+
+        case 'SYNC_COMPLETE':
+          setIsSyncing(false)
+          setLastSyncTime(new Date())
+          setSyncError(null)
+          updatePendingCount()
+          break
+
+        case 'SYNC_ERROR':
+          setIsSyncing(false)
+          setSyncError(event.data.error)
+          break
+
+        // H3: a queued offline write was permanently rejected by the server
+        // (4xx — session expired, validation, etc.) and dropped by the SW, so
+        // the user must NOT be left believing it synced. Surface one de-duped
+        // error toast (id collapses multiple rejections in a single run).
+        case 'SYNC_REJECTED':
+          toast.error(tRef.current('pwa.sync.syncRejected'), {
+            id: 'sync-rejected',
+            duration: 6000,
+          })
+          updatePendingCount()
+          break
+
+        default:
+          break
+      }
+    }
+
+    navigator.serviceWorker?.addEventListener('message', handleMessage)
+    return () => navigator.serviceWorker?.removeEventListener('message', handleMessage)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [updatePendingCount])
 
   // Register Periodic Background Sync for reminder refresh once (best-effort;
   // only takes effect for an installed PWA with the permission already granted).
@@ -236,35 +150,24 @@ export function useBackgroundSync() {
     registerPeriodicReminderSync()
   }, [])
 
-  // Initial fetch + periodic refresh
+  // Initial fetch + periodic refresh of the Workbox queue count.
   useEffect(() => {
     updatePendingCount()
-    refreshQueueState()
-
-    const interval = setInterval(() => {
-      updatePendingCount()
-      refreshQueueState()
-    }, 30000) // Every 30 seconds
-
+    const interval = setInterval(updatePendingCount, 30000) // every 30s
     return () => clearInterval(interval)
-  }, [updatePendingCount, refreshQueueState])
+  }, [updatePendingCount])
 
-  // The real number of writes still owed to the server: both queues combined.
-  const pendingSyncCount = queuedWriteCount + swPendingCount
+  const pendingSyncCount = swPendingCount
 
   return {
     isOnline,
     pendingSyncCount,
     hasPendingSync: pendingSyncCount > 0,
-    failedCount,
-    hasFailed: failedCount > 0,
-    failedItems,
     lastSyncTime,
     isSyncing,
     syncError,
     triggerSync,
     updatePendingCount,
-    refreshQueueState,
   }
 }
 

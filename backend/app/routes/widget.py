@@ -25,10 +25,14 @@ def _hash_api_key(raw_key: str) -> str:
 
 
 def api_key_required(f):
-    """Decorator to require valid API key via X-API-Key header or query param."""
+    """Decorator to require a valid API key via the X-API-Key header.
+
+    L4: the key is accepted ONLY in the header, never in the query string —
+    query-string credentials leak into proxy/access logs and browser history.
+    """
     @wraps(f)
     def decorated(*args, **kwargs):
-        api_key = request.headers.get('X-API-Key') or request.args.get('key')
+        api_key = request.headers.get('X-API-Key')
 
         if not api_key:
             return jsonify({'error': 'API key is required'}), 401

@@ -96,7 +96,6 @@ def _detect_fuel_anomaly(app, user_id: int, vehicle_id: int, entry_id: int) -> N
             if ai_cache_get(_anomaly_cache_key):
                 app.logger.debug('Anomaly cache HIT entry_id=%d — skipping Ollama', entry_id)
                 return
-                timeout = 60
 
             # Scope strictly to the owning user
             vehicle = Vehicle.query.filter_by(id=vehicle_id, user_id=user_id).first()
@@ -590,18 +589,26 @@ def get_fuel_stats(current_user):
     """Get fuel statistics."""
     vehicle_id = request.args.get('vehicle_id', type=int)
     
-    query = FuelEntry.query.join(Vehicle).filter(
-        Vehicle.user_id == current_user.id
-    )
-    
+    # M9: aggregate in the DB (grouped SQL) instead of loading the vehicle's
+    # entire fuel history into worker memory. Same F28 currency handling — the
+    # per-currency cost sums are just sourced from SQL now.
+    filters = [Vehicle.user_id == current_user.id]
     if vehicle_id:
-        query = query.filter(FuelEntry.vehicle_id == vehicle_id)
-    
-    entries = query.all()
+        filters.append(FuelEntry.vehicle_id == vehicle_id)
 
     display_ccy = (getattr(current_user, 'currency', None) or 'GBP').upper()
 
-    if not entries:
+    # Count + litre total in one row (no FX involved for volume).
+    entry_count, total_liters = (
+        db.session.query(
+            func.count(FuelEntry.id),
+            func.coalesce(func.sum(FuelEntry.liters), 0),
+        )
+        .join(Vehicle).filter(*filters)
+        .one()
+    )
+
+    if not entry_count:
         return jsonify({
             'total_cost': 0,
             'total_liters': 0,
@@ -613,26 +620,48 @@ def get_fuel_stats(current_user):
             'fx_applied': False,
         })
 
-    # F28 — convert per-currency cost sums into the display currency before
-    # adding (volume/efficiency stay unit-based, no FX involved).
-    rates = get_rates_cached(current_app._get_current_object())
+    # F28 — per-currency cost sums grouped in SQL, then converted into the
+    # display currency before adding. Re-fold by upper-cased currency exactly as
+    # the old row loop did (so 'eur'/'EUR' merge into one bucket).
+    ccy_rows = (
+        db.session.query(
+            FuelEntry.currency,
+            func.coalesce(func.sum(FuelEntry.total_price), 0),
+        )
+        .join(Vehicle).filter(*filters)
+        .group_by(FuelEntry.currency)
+        .all()
+    )
     per_ccy = {}
-    for e in entries:
-        ccy = (e.currency or 'EUR').upper()
-        per_ccy[ccy] = per_ccy.get(ccy, 0.0) + float(e.total_price or 0)
+    for ccy, amt in ccy_rows:
+        k = (ccy or 'EUR').upper()
+        per_ccy[k] = per_ccy.get(k, 0.0) + float(amt or 0)
+    rates = get_rates_cached(current_app._get_current_object())
     total_cost, converted, fx_applied = sum_to_display(
         list(per_ccy.items()), display_ccy, rates)
 
-    total_liters = sum(float(e.liters or 0) for e in entries)
-    efficiencies = [e.fuel_efficiency for e in entries if e.fuel_efficiency]
-    prices = [float(e.price_per_liter) for e in entries if e.price_per_liter]
+    # Averages use the SAME truthy filter as the old comprehensions
+    # ([x for e in entries if x]): exclude NULL *and* 0. func.avg → None on an
+    # empty set, matching `... if efficiencies else None`.
+    avg_eff = (
+        db.session.query(func.avg(FuelEntry.fuel_efficiency))
+        .join(Vehicle)
+        .filter(*filters, FuelEntry.fuel_efficiency.isnot(None), FuelEntry.fuel_efficiency != 0)
+        .scalar()
+    )
+    avg_ppl = (
+        db.session.query(func.avg(FuelEntry.price_per_liter))
+        .join(Vehicle)
+        .filter(*filters, FuelEntry.price_per_liter.isnot(None), FuelEntry.price_per_liter != 0)
+        .scalar()
+    )
 
     return jsonify({
         'total_cost': total_cost,
-        'total_liters': total_liters,
-        'entry_count': len(entries),
-        'avg_efficiency': sum(efficiencies) / len(efficiencies) if efficiencies else None,
-        'avg_price_per_liter': sum(prices) / len(prices) if prices else None,
+        'total_liters': float(total_liters or 0),
+        'entry_count': entry_count,
+        'avg_efficiency': float(avg_eff) if avg_eff is not None else None,
+        'avg_price_per_liter': float(avg_ppl) if avg_ppl is not None else None,
         'display_currency': display_ccy,
         'converted': converted,      # False → a needed FX rate was unavailable
         'fx_applied': fx_applied,    # True → amounts crossed currencies

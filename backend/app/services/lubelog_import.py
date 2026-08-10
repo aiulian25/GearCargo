@@ -663,6 +663,11 @@ def import_lubelog_to_gearcargo(user, zip_data, merge_mode='merge', distance_uni
     # Step 1: Parse the backup
     zip_data.seek(0)
     with zipfile.ZipFile(zip_data, 'r') as zf:
+        # M6: reject a decompression bomb before any member is read into memory.
+        # Lazy import avoids a load-time dependency on the backup route module
+        # (the ValueError is surfaced as a 400 by import_lubelog).
+        from app.routes.backup import _check_zip_budget
+        _check_zip_budget(zf)
         names = zf.namelist()
 
         # Find LiteDB file

@@ -4,6 +4,7 @@ GearCargo - Insurance Routes
 
 from datetime import datetime, date, timedelta
 from flask import Blueprint, request, jsonify, current_app
+from sqlalchemy import func, case, and_
 
 from app import db
 from app.models import Vehicle, InsurancePolicy
@@ -245,40 +246,83 @@ def get_expiring_policies(current_user):
 @token_required
 def get_insurance_stats(current_user):
     """Get insurance statistics."""
-    policies = InsurancePolicy.query.filter_by(user_id=current_user.id).all()
-    
-    active = [p for p in policies if p.is_active]
-    total_premium = sum(p.premium or 0 for p in active)
-    
-    # By type
+    # M9: DB aggregation instead of loading every policy into memory. The
+    # date-based properties are translated into SQL predicates:
+    #   is_active         → start_date <= today <= end_date AND status == 'active'
+    #   is_expiring_soon  → 0 < (end_date - today).days <= 30
+    #                       → end_date > today AND end_date <= today + 30d
+    # (today / today+30 computed in Python → portable, no DB date math).
+    today = date.today()
+    uid = current_user.id
+    active_cond = and_(
+        InsurancePolicy.start_date <= today,
+        InsurancePolicy.end_date >= today,
+        InsurancePolicy.status == 'active',
+    )
+    expiring_cond = and_(
+        active_cond,
+        InsurancePolicy.end_date > today,
+        InsurancePolicy.end_date <= today + timedelta(days=30),
+    )
+    active_1 = func.coalesce(func.sum(case((active_cond, 1), else_=0)), 0)
+    active_premium = func.coalesce(
+        func.sum(case((active_cond, func.coalesce(InsurancePolicy.premium, 0)), else_=0)), 0
+    )
+
+    total_policies, active_policies, total_premium, expiring_soon = (
+        db.session.query(
+            func.count(InsurancePolicy.id),
+            active_1,
+            active_premium,
+            func.coalesce(func.sum(case((expiring_cond, 1), else_=0)), 0),
+        )
+        .filter(InsurancePolicy.user_id == uid)
+        .one()
+    )
+
+    # By type — count ALL policies per type; active count + premium only for the
+    # active ones. NULL/'' policy_type → 'other'.
     by_type = {}
-    for p in policies:
-        ptype = p.policy_type or 'other'
+    for ptype_raw, cnt, active_cnt, prem in (
+        db.session.query(
+            InsurancePolicy.policy_type,
+            func.count(InsurancePolicy.id),
+            active_1,
+            active_premium,
+        )
+        .filter(InsurancePolicy.user_id == uid)
+        .group_by(InsurancePolicy.policy_type)
+        .all()
+    ):
+        ptype = ptype_raw or 'other'
         if ptype not in by_type:
             by_type[ptype] = {'count': 0, 'active': 0, 'premium': 0}
-        by_type[ptype]['count'] += 1
-        if p.is_active:
-            by_type[ptype]['active'] += 1
-            by_type[ptype]['premium'] += float(p.premium or 0)
-    
-    # By provider
+        by_type[ptype]['count'] += int(cnt)
+        by_type[ptype]['active'] += int(active_cnt)
+        by_type[ptype]['premium'] += float(prem or 0)
+
+    # By provider — provider is NOT NULL, so it is used raw as the key.
     by_provider = {}
-    for p in policies:
-        provider = p.provider
+    for provider, cnt, active_cnt in (
+        db.session.query(
+            InsurancePolicy.provider,
+            func.count(InsurancePolicy.id),
+            active_1,
+        )
+        .filter(InsurancePolicy.user_id == uid)
+        .group_by(InsurancePolicy.provider)
+        .all()
+    ):
         if provider not in by_provider:
             by_provider[provider] = {'count': 0, 'active': 0}
-        by_provider[provider]['count'] += 1
-        if p.is_active:
-            by_provider[provider]['active'] += 1
-    
-    # Expiring soon
-    expiring_soon = sum(1 for p in active if p.is_expiring_soon)
-    
+        by_provider[provider]['count'] += int(cnt)
+        by_provider[provider]['active'] += int(active_cnt)
+
     return jsonify({
-        'total_policies': len(policies),
-        'active_policies': len(active),
-        'total_active_premium': float(total_premium),
-        'expiring_soon': expiring_soon,
+        'total_policies': int(total_policies),
+        'active_policies': int(active_policies),
+        'total_active_premium': float(total_premium or 0),
+        'expiring_soon': int(expiring_soon),
         'by_type': by_type,
         'by_provider': by_provider,
     })

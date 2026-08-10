@@ -120,7 +120,7 @@ jobs:
         run: python -m pytest -q
 
   frontend:
-    name: Frontend — build smoke
+    name: Frontend — build & unit tests
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -139,3 +139,6 @@ jobs:
 
       - name: Build (smoke)
         run: npm run build
+
+      - name: Run unit tests
+        run: npm test

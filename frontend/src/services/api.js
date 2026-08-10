@@ -16,76 +16,110 @@ const api = axios.create({
 // access_token cookie automatically on every request.  Manual Authorization
 // header injection from localStorage is removed (S05).
 
-// Response interceptor — transparent token refresh via cookie
-api.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const originalRequest = error.config
+// Single-flight token refresh (H4 companion). The server now ROTATES and
+// REVOKES the previous session on every /auth/refresh, so the old refresh token
+// is invalid the instant a new one is issued. When several requests 401 at once
+// — e.g. a dashboard firing multiple API calls right as the 1-hour access token
+// expires — each would otherwise call /auth/refresh independently; the first
+// rotates, and the 2nd..Nth then present the just-revoked token and 401, forcing
+// a spurious sign-out. Funnelling every refresh through ONE shared promise means
+// exactly one rotation happens and all queued requests retry with the new token
+// (also: one network round-trip instead of N).
+let refreshPromise = null
 
-    // Skip auth handling on login / register / change-password pages.
-    const currentPath = window.location.pathname
-    const isAuthPage =
-      currentPath === '/login' ||
-      currentPath === '/register' ||
-      currentPath === '/change-password'
+function refreshSession() {
+  if (!refreshPromise) {
+    // withCredentials sends the httpOnly refresh_token cookie automatically.
+    refreshPromise = axios
+      .post('/api/auth/refresh', {}, { withCredentials: true })
+      .finally(() => { refreshPromise = null })
+  }
+  return refreshPromise
+}
 
-    // Session definitively expired / invalid — no point refreshing.
-    const errorCode = error.response?.data?.code
-    if (errorCode === 'SESSION_EXPIRED' || errorCode === 'SESSION_INVALID') {
-      // Clear the local auth flag so ThemeContext / LanguageContext stop
-      // attempting background sync (they check this flag, not the cookie).
-      localStorage.removeItem('auth_session')
-      if (!isAuthPage) {
-        toast.error(error.response?.data?.error || 'Your session has expired. Please login again.', {
-          duration: 4000,
-          id: 'session-expired',
-        })
-        setTimeout(() => { window.location.href = '/login' }, 2000)
-      }
+// Pages where auth errors must NOT trigger a redirect/toast (you are already there).
+const AUTH_PAGES = new Set(['/login', '/register', '/change-password'])
+// Server codes meaning the session is definitively over — refreshing is futile.
+const SESSION_ENDED_CODES = new Set(['SESSION_EXPIRED', 'SESSION_INVALID'])
+
+// T2 (Step 25): the response-error logic is extracted here so the
+// 401 → refresh → retry and session-expired → redirect paths can be unit-tested
+// with injected deps. Behaviour is IDENTICAL to the previous inline interceptor;
+// the interceptor below just wires the real window/localStorage/toast/axios
+// implementations. Note: this service layer lives outside React, so it cannot
+// call the i18n t(); it surfaces the backend's own (localized) `error` message
+// and falls back to an English string only when the backend sends none.
+export async function handleAuthError(error, deps) {
+  const { getPath, clearAuth, notifyExpired, redirectSoon, redirectNow, refresh, retry } = deps
+  const originalRequest = error.config
+  const isAuthPage = AUTH_PAGES.has(getPath())
+
+  // Session definitively expired / invalid — no point refreshing.
+  const errorCode = error.response?.data?.code
+  if (SESSION_ENDED_CODES.has(errorCode)) {
+    // Clear the local auth flag so ThemeContext / LanguageContext stop
+    // attempting background sync (they check this flag, not the cookie).
+    clearAuth()
+    if (!isAuthPage) {
+      notifyExpired(error.response?.data?.error || 'Your session has expired. Please login again.')
+      redirectSoon('/login')
+    }
+    return Promise.reject(error)
+  }
+
+  // 401 — try a silent token refresh; the browser sends the refresh_token
+  // cookie automatically because withCredentials: true is set.
+  if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
+    if (isAuthPage) {
       return Promise.reject(error)
     }
 
-    // 401 — try a silent token refresh; the browser sends the refresh_token
-    // cookie automatically because withCredentials: true is set.
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      if (isAuthPage) {
-        return Promise.reject(error)
-      }
+    originalRequest._retry = true
 
-      originalRequest._retry = true
+    try {
+      // Single-flight: concurrent 401s share ONE refresh so only one session
+      // rotation happens server-side (H4). The httpOnly refresh_token cookie is
+      // sent automatically; no localStorage read needed (S05).
+      await refresh()
 
-      try {
-        // POST with empty body — the httpOnly refresh_token cookie is sent
-        // automatically.  No localStorage read needed (S05).
-        await axios.post('/api/auth/refresh', {}, { withCredentials: true })
-
-        // New access_token cookie is now set by the server.  Retry original request.
-        return api(originalRequest)
-      } catch (refreshError) {
-        const refreshErrorCode = refreshError.response?.data?.code
-        if (refreshErrorCode === 'SESSION_EXPIRED' || refreshErrorCode === 'SESSION_INVALID') {
-          localStorage.removeItem('auth_session')
-          if (!isAuthPage) {
-            toast.error(refreshError.response?.data?.error || 'Your session has expired. Please login again.', {
-              duration: 4000,
-              id: 'session-expired',
-            })
-            setTimeout(() => { window.location.href = '/login' }, 2000)
-          }
-          return Promise.reject(refreshError)
-        }
-
-        // Refresh failed for any other reason — send user to login.
-        localStorage.removeItem('auth_session')
+      // New access_token cookie is now set by the server.  Retry original request.
+      return retry(originalRequest)
+    } catch (refreshError) {
+      const refreshErrorCode = refreshError.response?.data?.code
+      if (SESSION_ENDED_CODES.has(refreshErrorCode)) {
+        clearAuth()
         if (!isAuthPage) {
-          window.location.href = '/login'
+          notifyExpired(refreshError.response?.data?.error || 'Your session has expired. Please login again.')
+          redirectSoon('/login')
         }
         return Promise.reject(refreshError)
       }
-    }
 
-    return Promise.reject(error)
+      // Refresh failed for any other reason — send user to login.
+      clearAuth()
+      if (!isAuthPage) {
+        redirectNow('/login')
+      }
+      return Promise.reject(refreshError)
+    }
   }
+
+  return Promise.reject(error)
+}
+
+// Response interceptor — transparent token refresh via cookie. Wires the real
+// browser/axios dependencies into the testable handleAuthError above.
+api.interceptors.response.use(
+  (response) => response,
+  (error) => handleAuthError(error, {
+    getPath: () => window.location.pathname,
+    clearAuth: () => localStorage.removeItem('auth_session'),
+    notifyExpired: (message) => toast.error(message, { duration: 4000, id: 'session-expired' }),
+    redirectSoon: (url) => { setTimeout(() => { window.location.href = url }, 2000) },
+    redirectNow: (url) => { window.location.href = url },
+    refresh: refreshSession,
+    retry: (config) => api(config),
+  })
 )
 
 export default api
@@ -261,13 +295,9 @@ export const authApi = {
   sendVerificationEmail: () => api.post('/auth/email/send-verification', {}),
   verifyEmail: (token) => api.post('/auth/email/verify', { token }),
   resendVerificationEmail: (email) => api.post('/auth/email/resend-verification', { email }),
-  
-  // 2FA
-  setupTotp: () => api.post('/auth/totp/setup'),
-  enableTotp: (code) => api.post('/auth/totp/enable', { code }),
-  disableTotp: (code) => api.post('/auth/totp/disable', { code }),
-  verifyTotp: (email, code) => api.post('/auth/totp/verify', { email, code }),
-  
+
+  // 2FA: TwoFactorSetup.jsx calls the real /auth/2fa/* endpoints directly.
+
   // Avatar
   getAvatars: () => api.get('/auth/avatars'),
   uploadAvatar: (file) => {
