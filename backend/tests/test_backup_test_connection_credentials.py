@@ -37,6 +37,8 @@ def calls(monkeypatch):
 
     class _Response:
         status_code = 207
+        text = '<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"></d:multistatus>'
+        content = b""
 
     def _record(method, url, **kwargs):
         recorded.append({"method": method, "url": url, "auth": kwargs.get("auth")})
@@ -140,6 +142,72 @@ def test_webdav_auth_never_puts_the_password_in_the_username_slot(app):
 
         schedule.external_api_key = "person:secret"
         assert bk._webdav_auth(schedule) == ("person", "secret")
+
+
+# --- every WebDAV endpoint, not just /external/test ---------------------------
+# The first fix only covered /external/test, so browsing folders still sent the
+# app password as the username path segment and 401'd. These pin all of them.
+
+BROWSE_ENDPOINTS = [
+    ("/api/backup/external/browse", {"path": "/"}),
+    ("/api/backup/external/files", {"path": "/GearCargo"}),
+]
+
+
+@pytest.mark.parametrize("endpoint,extra", BROWSE_ENDPOINTS)
+def test_browse_endpoints_reject_a_key_without_a_username(app, client, auth_headers, calls,
+                                                          endpoint, extra):
+    with app.app_context():
+        uid = _user_with_saved_destination(f"browse{abs(hash(endpoint))}@example.com")
+
+    resp = client.post(endpoint, json={"url": NEW_URL, "api_key": "no-username-here", **extra},
+                       headers=auth_headers(uid))
+
+    assert resp.status_code == 400
+    assert resp.get_json()["message_key"] == "backup.apiKeyFormat"
+    assert calls == []          # the password never reached a URL
+
+
+@pytest.mark.parametrize("endpoint,extra", BROWSE_ENDPOINTS)
+def test_browse_endpoints_do_not_borrow_the_legacy_key(app, client, auth_headers, calls,
+                                                       endpoint, extra):
+    """A destination being added is not authenticated with an older one's key."""
+    with app.app_context():
+        uid = _user_with_saved_destination(f"borrow{abs(hash(endpoint))}@example.com")
+
+    resp = client.post(endpoint, json={"url": NEW_URL, "api_key": "", **extra},
+                       headers=auth_headers(uid))
+
+    assert resp.status_code == 400
+    assert resp.get_json()["message_key"] == "backup.apiKeyRequired"
+    assert calls == []
+
+
+@pytest.mark.parametrize("endpoint,extra", BROWSE_ENDPOINTS)
+def test_browse_endpoints_use_that_destinations_stored_key(app, client, auth_headers, calls,
+                                                           endpoint, extra):
+    with app.app_context():
+        uid = _user_with_saved_destination(f"stored{abs(hash(endpoint))}@example.com")
+
+    client.post(endpoint, json={"url": SAVED_URL, "api_key": "", **extra},
+                headers=auth_headers(uid))
+
+    assert calls, "the request should have gone out with the stored credential"
+    assert calls[0]["auth"] == ("saved-user", "saved-app-password")
+
+
+def test_restore_download_rejects_a_key_without_a_username(app, client, auth_headers, calls):
+    with app.app_context():
+        uid = _user_with_saved_destination("restore@example.com")
+
+    resp = client.post("/api/backup/external/restore",
+                       json={"url": NEW_URL, "api_key": "no-username-here",
+                             "filename": "backup.zip"},
+                       headers=auth_headers(uid))
+
+    assert resp.status_code == 400
+    assert resp.get_json()["message_key"] == "backup.apiKeyFormat"
+    assert calls == []
 
 
 # --- save path ----------------------------------------------------------------

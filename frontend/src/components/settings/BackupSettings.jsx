@@ -327,31 +327,41 @@ export default function BackupSettings() {
         has_external_api_key: Boolean(destination.has_external_api_key),
       }))
       
-      if (schedule.external_enabled) {
-        const enabledDestinations = destinations.filter((destination) => destination.enabled)
-        if (!enabledDestinations.length) {
-          toast.error(t('backup.enableAtLeastOneDestination') || 'Enable at least one destination')
+      // The API validates EVERY destination in the payload and rejects the
+      // whole request if one is incomplete. Rows the UI used to exempt from
+      // validation — disabled ones, and all of them while external backup is
+      // off — were still sent, so a single half-filled row made every save
+      // fail, including saves meant to remove or edit a different row.
+      const isUnfilled = (destination) =>
+        !destination.external_url &&
+        !destination.external_api_key &&
+        !destination.has_external_api_key
+
+      const destinationsToSave = destinations.filter((destination) => !isUnfilled(destination))
+
+      for (const destination of destinationsToSave) {
+        if (!destination.external_url) {
+          toast.error(t('backup.enterDestinationUrl') || 'Please enter a destination URL')
           return
         }
-
-        for (const destination of enabledDestinations) {
-          if (!destination.external_url) {
-            toast.error(t('backup.enterDestinationUrl') || 'Please enter a destination URL')
-            return
-          }
-          if (!destination.external_url.startsWith('https://')) {
-            toast.error(t('backup.httpsRequired') || 'External URL must use HTTPS')
-            return
-          }
-          if (!destination.external_api_key && !destination.has_external_api_key) {
-            toast.error(t('backup.enterDestinationKey') || 'Please enter credentials for each destination')
-            return
-          }
+        if (!destination.external_url.startsWith('https://')) {
+          toast.error(t('backup.httpsRequired') || 'External URL must use HTTPS')
+          return
+        }
+        if (!destination.external_api_key && !destination.has_external_api_key) {
+          toast.error(t('backup.enterDestinationKey') || 'Please enter credentials for each destination')
+          return
         }
       }
 
-      const enabledDestinations = destinations.filter((destination) => destination.enabled)
-      const primaryDestination = enabledDestinations[0] || destinations[0]
+      const enabledDestinations = destinationsToSave.filter((destination) => destination.enabled)
+
+      if (schedule.external_enabled && !enabledDestinations.length) {
+        toast.error(t('backup.enableAtLeastOneDestination') || 'Enable at least one destination')
+        return
+      }
+
+      const primaryDestination = enabledDestinations[0] || destinationsToSave[0]
 
       const schedulePayload = {
         ...schedule,
