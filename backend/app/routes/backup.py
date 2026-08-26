@@ -883,19 +883,47 @@ def _webdav_base_url(server_url):
     return url + '/remote.php/dav/files'
 
 
-def _webdav_auth(schedule):
-    """Return a (username, password) tuple for WebDAV Basic auth.
+def _webdav_credential_parts(token):
+    """Split a stored "username:app-password" credential.
 
-    The 'external_api_key' field stores either:
-      - "user:apppassword"  (preferred)
-      - plain app-password  (username taken from URL)
+    Returns None when there is no username. The username is interpolated into
+    the request path by every _webdav_*_url builder below, so a credential
+    without one would send the app password as a URL path segment — where the
+    server and any proxy in between will log it. It cannot authenticate
+    either, so there is nothing to salvage by guessing.
     """
-    token = schedule.external_api_key or ''
-    if ':' in token:
-        parts = token.split(':', 1)
-        return (parts[0], parts[1])
-    # Fallback: use the token as password with empty user
-    return (token, token)
+    username, separator, password = (token or '').strip().partition(':')
+    if not separator or not username or not password:
+        return None
+    return (username, password)
+
+
+def _webdav_auth(schedule):
+    """Return a (username, password) tuple for WebDAV Basic auth."""
+    return _webdav_credential_parts(schedule.external_api_key) or ('', '')
+
+
+def _stored_api_key_for_url(user_id, url):
+    """The stored credential for the destination at `url`, or ''.
+
+    Matched per destination, the way PUT /schedule matches. The legacy
+    top-level external_api_key belongs to the destination it was saved for;
+    testing a different one with it reports someone else's auth result.
+    """
+    schedule = BackupSchedule.query.filter_by(user_id=user_id).first()
+    if not schedule:
+        return ''
+
+    target = (url or '').strip()
+    for destination in (schedule.get_external_destinations() or []):
+        if not isinstance(destination, dict):
+            continue
+        if (destination.get('external_url') or '').strip() == target:
+            return (destination.get('external_api_key') or '').strip()
+
+    if (schedule.external_url or '').strip() == target:
+        return (schedule.external_api_key or '').strip()
+    return ''
 
 
 def _webdav_upload_url(schedule, filename):
@@ -2378,7 +2406,17 @@ def update_backup_schedule(current_user):
             if not _is_allowed_webdav_url(url):  # S09: blocks private IPs
                 return jsonify({'error': f'Destination at index {index} URL must be a public HTTPS address'}), 400
 
-            api_key = str(destination.get('external_api_key') or destination.get('api_key') or '').strip()
+            submitted_key = str(destination.get('external_api_key') or destination.get('api_key') or '').strip()
+            # Only a SUBMITTED key is validated. A key merged from storage may
+            # predate this check, and rejecting it would block editing the
+            # destination's name or path — leaving the row uneditable.
+            if submitted_key and not _webdav_credential_parts(submitted_key):
+                return jsonify({
+                    'error': f'Destination at index {index} API key must use the format "username:app-password"',
+                    'message_key': 'backup.apiKeyFormat',
+                }), 400
+
+            api_key = submitted_key
             existing_destination = existing_by_id.get(destination_id) or existing_by_url.get(url)
             if not api_key and existing_destination:
                 api_key = str(existing_destination.get('external_api_key') or '').strip()
@@ -2598,24 +2636,26 @@ def test_external_connection(current_user):
         return jsonify({'error': 'URL is required'}), 400
 
     url = data['url']
-    api_key = data.get('api_key', '')
-
-    # Fall back to stored credentials if not provided
-    if not api_key:
-        schedule = BackupSchedule.query.filter_by(user_id=current_user.id).first()
-        if schedule and schedule.external_api_key:
-            api_key = schedule.external_api_key
+    api_key = (data.get('api_key') or '').strip() or _stored_api_key_for_url(current_user.id, url)
 
     # S09: Validate HTTPS and not targeting private/internal IP range
     if not _is_allowed_webdav_url(url):
         return jsonify({'error': 'URL must be a public HTTPS address'}), 400
 
-    # Build auth tuple
-    if ':' in api_key:
-        parts = api_key.split(':', 1)
-        auth = (parts[0], parts[1])
-    else:
-        auth = (api_key, api_key)
+    if not api_key:
+        return jsonify({
+            'success': False,
+            'error': 'API key is required. Use format "username:app-password".',
+            'message_key': 'backup.apiKeyRequired',
+        })
+
+    auth = _webdav_credential_parts(api_key)
+    if not auth:
+        return jsonify({
+            'success': False,
+            'error': 'API key must use the format "username:app-password".',
+            'message_key': 'backup.apiKeyFormat',
+        })
 
     try:
         # Test with WebDAV PROPFIND on the user root

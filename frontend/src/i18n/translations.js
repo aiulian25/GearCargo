@@ -2776,6 +2776,8 @@ export const translations = {
       importing: 'Importing...',
       // External backup extras
       apiKeyHint: 'For Nextcloud: username:app-password',
+      apiKeyRequired: 'Enter the API key for this destination, using the format username:app-password.',
+      apiKeyFormat: 'The API key must use the format username:app-password.',
       credentialsSaved: 'Credentials are saved. Leave empty to keep existing, or enter new ones to update.',
       backupPath: 'Backup Folder Path',
       backupPathHint: 'Folder will be created automatically if it doesn\'t exist',
@@ -5615,6 +5617,8 @@ export const translations = {
       importing: 'Se importă...',
       // External backup extras
       apiKeyHint: 'Pentru Nextcloud: utilizator:parolă-aplicație',
+      apiKeyRequired: 'Introdu cheia API pentru această destinație, în formatul utilizator:parolă-aplicație.',
+      apiKeyFormat: 'Cheia API trebuie să fie în formatul utilizator:parolă-aplicație.',
       credentialsSaved: 'Credențialele sunt salvate. Lasă gol pentru a păstra existentele, sau introdu altele noi.',
       backupPath: 'Calea Folderului de Backup',
       backupPathHint: 'Folderul va fi creat automat dacă nu există',
@@ -8457,6 +8461,8 @@ export const translations = {
       importing: 'Importando...',
       // External backup extras
       apiKeyHint: 'Para Nextcloud: usuario:contraseña-aplicación',
+      apiKeyRequired: 'Introduce la clave API de este destino, con el formato usuario:contraseña-aplicación.',
+      apiKeyFormat: 'La clave API debe usar el formato usuario:contraseña-aplicación.',
       credentialsSaved: 'Las credenciales están guardadas. Deja vacío para mantener las existentes, o ingresa nuevas.',
       backupPath: 'Ruta de la Carpeta de Respaldo',
       backupPathHint: 'La carpeta se creará automáticamente si no existe',

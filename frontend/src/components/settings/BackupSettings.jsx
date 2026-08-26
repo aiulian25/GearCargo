@@ -266,12 +266,13 @@ export default function BackupSettings() {
   }
 
   const removeExternalDestination = (index) => {
-    updateDestinationList((destinations) => {
-      if (destinations.length <= 1) {
-        return [createEmptyDestination(1)]
-      }
-      return destinations.filter((_, destinationIndex) => destinationIndex !== index)
-    })
+    // Removing the last destination clears the list. It used to leave a BLANK
+    // placeholder behind, which the API rejects (a destination needs a URL), so
+    // the save 400'd — the row never disappeared and every later save failed
+    // too, making the whole panel look frozen. An empty list saves cleanly and
+    // turns external backup off via syncLegacyExternalFields.
+    updateDestinationList((destinations) =>
+      destinations.filter((_, destinationIndex) => destinationIndex !== index))
     setSelectedExternalDestinationIndex((prev) => Math.max(0, prev - (index <= prev ? 1 : 0)))
   }
 
@@ -739,7 +740,11 @@ export default function BackupSettings() {
       if (response.data.success) {
         toast.success(response.data.message || t('backup.connectionSuccess') || 'Connection successful')
       } else {
-        toast.error(response.data.error || t('backup.connectionFailed') || 'Connection failed')
+        toast.error(
+          (response.data.message_key && t(response.data.message_key)) ||
+          response.data.error ||
+          t('backup.connectionFailed') || 'Connection failed'
+        )
       }
     } catch (error) {
       console.error('Connection test failed:', error)
@@ -1235,6 +1240,7 @@ export default function BackupSettings() {
                       <div className="relative">
                         <input
                           type={isDestinationApiKeyVisible(destination.id || `destination_${index}`) ? 'text' : 'password'}
+                          autoComplete="new-password"
                           value={destination.external_api_key || ''}
                           onChange={(e) => updateExternalDestination(index, 'external_api_key', e.target.value)}
                           placeholder={destination.has_external_api_key && !destination.external_api_key ? '••••••••••• (saved)' : 'username:app-password'}
