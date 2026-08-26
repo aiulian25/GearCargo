@@ -1,30 +1,30 @@
 {
-  "version": "1.3.0",
-  "date": "2026-08-10",
+  "version": "1.4.0",
+  "date": "2026-08-26",
   "notes": {
     "en": [
-      { "type": "new", "title": "Workshop records & maintenance checklists", "desc": "Log service and repair visits in detail — with checklists, parts and warranty tracking." },
-      { "type": "new", "title": "Warranty ledger & parking fines", "desc": "Track active warranties and outstanding fines, all in one Due & Expiring feed." },
-      { "type": "new", "title": "Richer analytics & smarter receipts", "desc": "Clearer cost breakdowns and improved receipt scanning." },
-      { "type": "fix", "title": "Stronger account security", "desc": "Failed 2FA codes now count toward lockout, turning off 2FA requires a current code, and changing your email re-verifies it." },
-      { "type": "fix", "title": "Faster dashboards", "desc": "Statistics load straight from the database, so pages open quickly even with lots of history." },
-      { "type": "fix", "title": "A more trustworthy history & offline sync", "desc": "Your vehicle timeline no longer shows duplicates or misses insurance, and pending offline changes are reported accurately." }
+      { "type": "new", "title": "Revoke your calendar links", "desc": "Shared a calendar link you'd rather take back? Settings → Calendar now has a Revoke button that stops every link you've handed out." },
+      { "type": "fix", "title": "Re-create your calendar and verification links", "desc": "For your security these links are now stored differently, so any you generated before this update no longer work — just generate a new one." },
+      { "type": "fix", "title": "The same car can be in two accounts", "desc": "A VIN is now unique per account, so a car sold between two people can be recorded by both. Adding a duplicate shows a clear message instead of an error." },
+      { "type": "fix", "title": "Clearer messages when something's wrong", "desc": "Invalid emails, over-long names, odd mileage values and bad dates now explain what to fix, in your language." },
+      { "type": "fix", "title": "Faster, steadier lists", "desc": "Long history lists load in sensible pages, so pages stay quick on big garages." },
+      { "type": "fix", "title": "Safer email and calendar sharing", "desc": "Verification emails now land on the right site, resend is throttled to stop inbox flooding, and calendar server addresses are checked more strictly." }
     ],
     "ro": [
-      { "type": "new", "title": "Fișe de atelier și liste de verificare", "desc": "Înregistrează detaliat vizitele de service și reparații — cu liste de verificare, piese și urmărirea garanției." },
-      { "type": "new", "title": "Registru de garanții și amenzi de parcare", "desc": "Urmărește garanțiile active și amenzile neplătite, toate într-un singur flux Scadente și Care Expiră." },
-      { "type": "new", "title": "Analize mai bogate și bonuri mai inteligente", "desc": "Defalcări de costuri mai clare și scanare îmbunătățită a bonurilor." },
-      { "type": "fix", "title": "Securitate mai bună a contului", "desc": "Codurile 2FA greșite contează acum la blocare, dezactivarea 2FA cere un cod curent, iar schimbarea emailului îl reverifică." },
-      { "type": "fix", "title": "Tablouri de bord mai rapide", "desc": "Statisticile se încarcă direct din baza de date, așa că paginile se deschid rapid chiar și cu mult istoric." },
-      { "type": "fix", "title": "Istoric și sincronizare offline mai de încredere", "desc": "Cronologia vehiculului nu mai afișează duplicate și nu mai omite asigurările, iar modificările offline în așteptare sunt raportate corect." }
+      { "type": "new", "title": "Revocă linkurile de calendar", "desc": "Ai partajat un link de calendar pe care vrei să-l retragi? Setări → Calendar are acum un buton Revocă, care oprește toate linkurile distribuite." },
+      { "type": "fix", "title": "Regenerează linkurile de calendar și de verificare", "desc": "Pentru siguranța ta, aceste linkuri sunt acum stocate diferit, așa că cele generate înainte de această actualizare nu mai funcționează — generează pur și simplu unul nou." },
+      { "type": "fix", "title": "Aceeași mașină poate fi în două conturi", "desc": "VIN-ul este acum unic per cont, deci o mașină vândută între două persoane poate fi înregistrată de ambele. La duplicat apare un mesaj clar, nu o eroare." },
+      { "type": "fix", "title": "Mesaje mai clare când ceva nu e în regulă", "desc": "Emailurile invalide, numele prea lungi, valorile ciudate de kilometraj și datele greșite explică acum ce trebuie corectat, în limba ta." },
+      { "type": "fix", "title": "Liste mai rapide și mai stabile", "desc": "Listele lungi de istoric se încarcă pe pagini rezonabile, deci rămân rapide chiar și pentru garaje mari." },
+      { "type": "fix", "title": "Partajare mai sigură pe email și calendar", "desc": "Emailurile de verificare ajung acum pe site-ul corect, retrimiterea este limitată pentru a evita inundarea inboxului, iar adresele serverelor de calendar sunt verificate mai strict." }
     ],
     "es": [
-      { "type": "new", "title": "Registros de taller y listas de verificación", "desc": "Registra las visitas de servicio y reparación en detalle, con listas de verificación, piezas y seguimiento de garantía." },
-      { "type": "new", "title": "Registro de garantías y multas de aparcamiento", "desc": "Controla las garantías activas y las multas pendientes, todo en un único listado de Vencimientos y Caducidades." },
-      { "type": "new", "title": "Análisis más completos y recibos más inteligentes", "desc": "Desgloses de costes más claros y escaneo de recibos mejorado." },
-      { "type": "fix", "title": "Mayor seguridad de la cuenta", "desc": "Los códigos 2FA fallidos ahora cuentan para el bloqueo, desactivar 2FA requiere un código vigente y cambiar tu correo lo vuelve a verificar." },
-      { "type": "fix", "title": "Paneles más rápidos", "desc": "Las estadísticas se cargan directamente desde la base de datos, así las páginas se abren rápido incluso con mucho historial." },
-      { "type": "fix", "title": "Un historial y una sincronización sin conexión más fiables", "desc": "La cronología de tu vehículo ya no muestra duplicados ni omite seguros, y los cambios sin conexión pendientes se informan con precisión." }
+      { "type": "new", "title": "Revoca tus enlaces de calendario", "desc": "¿Compartiste un enlace de calendario y quieres retirarlo? Ajustes → Calendario ahora tiene un botón Revocar que detiene todos los enlaces que has compartido." },
+      { "type": "fix", "title": "Vuelve a crear tus enlaces de calendario y verificación", "desc": "Por tu seguridad, estos enlaces se almacenan de otra forma, así que los generados antes de esta actualización ya no funcionan — simplemente genera uno nuevo." },
+      { "type": "fix", "title": "El mismo coche puede estar en dos cuentas", "desc": "El VIN ahora es único por cuenta, así que un coche vendido entre dos personas puede registrarse en ambas. Si se duplica, verás un mensaje claro en lugar de un error." },
+      { "type": "fix", "title": "Mensajes más claros cuando algo falla", "desc": "Correos inválidos, nombres demasiado largos, kilometrajes extraños y fechas incorrectas ahora explican qué corregir, en tu idioma." },
+      { "type": "fix", "title": "Listas más rápidas y estables", "desc": "Los listados largos de historial se cargan en páginas razonables, así que todo sigue siendo rápido en garajes grandes." },
+      { "type": "fix", "title": "Compartir por correo y calendario de forma más segura", "desc": "Los correos de verificación llegan al sitio correcto, el reenvío está limitado para evitar saturar el buzón y las direcciones de servidores de calendario se validan de forma más estricta." }
     ]
   }
 }
