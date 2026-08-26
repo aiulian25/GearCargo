@@ -443,7 +443,9 @@ export default function Profile() {
         setRequires2FA(true)
         setError(t('profile.totpRequired') || '2FA code is required')
       } else {
-        setError(errorData?.error || t('profile.failedToUpdate') || 'Failed to update profile')
+        // Prefer the server's message_key so validation reasons are localized.
+        const localized = errorData?.message_key && t(errorData.message_key, { max: errorData.max_length })
+        setError(localized || errorData?.error || t('profile.failedToUpdate') || 'Failed to update profile')
       }
     } finally {
       setIsSubmitting(false)

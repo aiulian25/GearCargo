@@ -3,6 +3,7 @@ GearCargo - User Model
 """
 
 from datetime import datetime, timedelta, timezone
+from app.utils.timeutils import utc_naive_now
 import base64
 import hashlib
 import secrets
@@ -27,6 +28,11 @@ def _prehash_password(password: str) -> str:
     """
     digest = hashlib.sha256((password or '').encode('utf-8')).digest()
     return base64.b64encode(digest).decode('ascii')
+
+
+# Lifetime of an email-verification token. Shared so callers can derive when a
+# token was issued from its expiry (there is no separate "issued at" column).
+EMAIL_VERIFICATION_TTL_HOURS = 48
 
 
 def _as_utc(dt):
@@ -140,14 +146,18 @@ class User(UserMixin, db.Model):
     calendar_password = db.Column(db.Text)  # Encrypted
     calendar_id = db.Column(db.String(255))  # Specific calendar to use
     calendar_last_sync = db.Column(db.DateTime)
+    # R8: server-side secret bound into every ICS feed JWT. Rotating it revokes
+    # ALL outstanding feed URLs at once — the kill switch a plain 90-day JWT
+    # (no jti, no server state) could never provide.
+    calendar_feed_secret = db.Column(db.String(64))
     
     # DB-backed lockout fallback (used when Redis is unavailable)
     failed_login_attempts = db.Column(db.Integer, default=0, nullable=False, server_default='0')
     locked_until = db.Column(db.DateTime, nullable=True)
 
     # Timestamps
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_naive_now)
+    updated_at = db.Column(db.DateTime, default=utc_naive_now, onupdate=utc_naive_now)
     last_login = db.Column(db.DateTime)
     
     # Relationships
@@ -236,19 +246,27 @@ class User(UserMixin, db.Model):
             return None
         return user
     
-    def generate_verification_token(self, expires_hours=48):
-        """Generate an email verification token."""
-        self.email_verification_token = secrets.token_urlsafe(32)
+    def generate_verification_token(self, expires_hours=EMAIL_VERIFICATION_TTL_HOURS):
+        """Generate an email verification token.
+
+        R7: stores only the SHA-256 hash, the same posture S08 gave password
+        reset — a DB/backup leak must not yield working verification links.
+        Returns the RAW token; callers put it in the link and never store it.
+        """
+        raw_token = secrets.token_urlsafe(32)
+        self.email_verification_token = User._hash_reset_token(raw_token)
         self.email_verification_expires = datetime.now(timezone.utc) + timedelta(hours=expires_hours)
         db.session.commit()
-        return self.email_verification_token
-    
+        return raw_token
+
     @staticmethod
     def verify_email_token(token):
         """Verify an email verification token and return the user."""
         if not token:
             return None
-        user = User.query.filter_by(email_verification_token=token).first()
+        user = User.query.filter_by(
+            email_verification_token=User._hash_reset_token(token)
+        ).first()
         if user is None:
             return None
         if user.email_verification_expires is None or _as_utc(user.email_verification_expires) < datetime.now(timezone.utc):
@@ -358,11 +376,34 @@ class User(UserMixin, db.Model):
             self.unsubscribe_token = secrets.token_urlsafe(48)
         return self.unsubscribe_token
 
+    def get_or_create_calendar_feed_secret(self):
+        """Return the ICS-feed secret, creating it on first use (R8)."""
+        if not self.calendar_feed_secret:
+            self.calendar_feed_secret = secrets.token_hex(16)
+            db.session.commit()
+        return self.calendar_feed_secret
+
+    def rotate_calendar_feed_secret(self):
+        """Invalidate every outstanding ICS feed URL by minting a new secret."""
+        self.calendar_feed_secret = secrets.token_hex(16)
+        db.session.commit()
+        return self.calendar_feed_secret
+
+    @staticmethod
+    def calendar_feed_fingerprint(secret: str) -> str:
+        """Hash embedded in the feed JWT so the token never carries the secret."""
+        return hashlib.sha256((secret or '').encode('utf-8')).hexdigest()
+
     def generate_notification_email_token(self, expires_hours=72):
-        """Generate a verification token for the notification email."""
-        self.notification_email_token = secrets.token_urlsafe(32)
+        """Generate a verification token for the notification email.
+
+        R7: stores only the SHA-256 hash and returns the RAW token (see
+        generate_verification_token).
+        """
+        raw_token = secrets.token_urlsafe(32)
+        self.notification_email_token = User._hash_reset_token(raw_token)
         self.notification_email_token_exp = datetime.now(timezone.utc) + timedelta(hours=expires_hours)
-        return self.notification_email_token
+        return raw_token
 
     def _signed_avatar_url(self):
         """Return a signed URL for the user avatar."""

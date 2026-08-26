@@ -9,11 +9,12 @@ from io import BytesIO
 from sqlalchemy import and_, or_
 
 import json
+import secrets
 
 from app import db, redis_client
 from app.models import (
     Reminder, Vehicle, FuelEntry, ServiceEntry, RepairEntry,
-    TaxEntry, ParkingEntry, InsurancePolicy, Todo
+    TaxEntry, ParkingEntry, InsurancePolicy, Todo, User, ActivityLog
 )
 from app.routes.auth import token_required
 import logging
@@ -411,11 +412,20 @@ def calendar_feed(token):
         
         if payload.get('type') != 'calendar_feed':
             return jsonify({'error': 'Invalid token'}), 401
-        
+
         user = User.query.get(payload['user_id'])
         if not user:
             return jsonify({'error': 'User not found'}), 404
-        
+
+        # R8: the token must match the user's CURRENT feed secret. Fail closed —
+        # a token minted before this feature (no 'fs' claim) or one issued
+        # before a revocation is rejected.
+        expected = User.calendar_feed_fingerprint(user.calendar_feed_secret)
+        presented = payload.get('fs') or ''
+        if not user.calendar_feed_secret or not secrets.compare_digest(presented, expected):
+            return jsonify({'error': 'This feed link has been revoked'}), 401
+
+
     except jwt.InvalidTokenError:
         return jsonify({'error': 'Invalid token'}), 401
     
@@ -473,6 +483,12 @@ def generate_feed_token(current_user):
         {
             'user_id': current_user.id,
             'type': 'calendar_feed',
+            # R8: binds the token to the current feed secret. Rotating the
+            # secret (DELETE /calendar/feed-token) invalidates every URL issued
+            # before it, which a stateless JWT alone cannot do.
+            'fs': User.calendar_feed_fingerprint(
+                current_user.get_or_create_calendar_feed_secret()
+            ),
             'created': datetime.now(timezone.utc).isoformat(),
             'exp': datetime.now(timezone.utc) + timedelta(days=90)
         },
@@ -486,6 +502,31 @@ def generate_feed_token(current_user):
         'token': token,
         'feed_url': feed_url,
         'message': 'Use this URL to subscribe to your calendar'
+    })
+
+
+@calendar_bp.route('/feed-token', methods=['DELETE'])
+@token_required
+def revoke_feed_token(current_user):
+    """Revoke every outstanding ICS feed URL (R8).
+
+    Rotates the feed secret, so every previously-issued link — including one
+    that leaked — stops working immediately. The user can mint a fresh link
+    with POST /calendar/feed-token afterwards.
+    """
+    current_user.rotate_calendar_feed_secret()
+
+    ActivityLog.log(
+        event_type='calendar_feed_revoked',
+        event_category='auth',
+        user_id=current_user.id,
+        description='Calendar feed links revoked',
+        success=True,
+    )
+
+    return jsonify({
+        'message': 'Calendar feed links revoked',
+        'message_key': 'calendar.linkRevoked',
     })
 
 

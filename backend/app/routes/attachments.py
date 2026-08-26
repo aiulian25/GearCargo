@@ -234,7 +234,7 @@ def get_attachments(current_user):
     entry_id = request.args.get('entry_id', type=int)
     category = request.args.get('category')
     page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 20, type=int)
+    per_page = max(1, min(request.args.get('per_page', 20, type=int), 100))
 
     # OCR / filename text search — sanitised, length-capped, parameterised via ilike()
     raw_q = request.args.get('q', '').strip()

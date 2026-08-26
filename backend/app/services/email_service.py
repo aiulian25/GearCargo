@@ -14,6 +14,24 @@ import re
 logger = logging.getLogger(__name__)
 
 
+def link_domain_for(user=None) -> str:
+    """Return the base URL for links emailed to *user*.
+
+    Admins are refused login on USER_DOMAIN by `_enforce_login_domain_policy`,
+    so a USER_DOMAIN verify/reset link is a dead end for them — they must land
+    on ADMIN_DOMAIN. Everyone else keeps USER_DOMAIN, falling back to APP_URL
+    when no split is configured.
+    """
+    def _configured(key):
+        value = (current_app.config.get(key, '') or '').strip()
+        # config.py keeps commented-out values ('#...'); treat them as unset.
+        return '' if value.startswith('#') else value
+
+    domain = _configured('ADMIN_DOMAIN') if getattr(user, 'is_admin', False) else ''
+    domain = domain or _configured('USER_DOMAIN') or current_app.config.get('APP_URL', 'http://localhost:5000')
+    return domain if domain.startswith('http') else f'https://{domain}'
+
+
 # ============================================================
 # EMAIL TEMPLATES
 # ============================================================
@@ -354,12 +372,7 @@ class EmailService:
         if not to_email:
             return False
         
-        # Use USER_DOMAIN for user-facing email links
-        user_domain = current_app.config.get('USER_DOMAIN', '').strip()
-        if not user_domain:
-            user_domain = current_app.config.get('APP_URL', 'http://localhost:5000')
-        if not user_domain.startswith('http'):
-            user_domain = f"https://{user_domain}"
+        user_domain = link_domain_for(user)
         logo_url = f"{user_domain}/icons/logo.png"
         unsubscribe_url = f"{user_domain}/api/auth/unsubscribe?token={user.unsubscribe_token}" if user.unsubscribe_token else None
         
@@ -406,12 +419,7 @@ class EmailService:
         if not to_email:
             return False
         
-        # Use USER_DOMAIN for user-facing email links
-        user_domain = current_app.config.get('USER_DOMAIN', '').strip()
-        if not user_domain:
-            user_domain = current_app.config.get('APP_URL', 'http://localhost:5000')
-        if not user_domain.startswith('http'):
-            user_domain = f"https://{user_domain}"
+        user_domain = link_domain_for(user)
         logo_url = f"{user_domain}/icons/logo.png"
         unsubscribe_url = f"{user_domain}/api/auth/unsubscribe?token={user.unsubscribe_token}" if user.unsubscribe_token else None
         
@@ -451,12 +459,7 @@ class EmailService:
         if not to_email:
             return False
         
-        # Use USER_DOMAIN for user-facing email links
-        user_domain = current_app.config.get('USER_DOMAIN', '').strip()
-        if not user_domain:
-            user_domain = current_app.config.get('APP_URL', 'http://localhost:5000')
-        if not user_domain.startswith('http'):
-            user_domain = f"https://{user_domain}"
+        user_domain = link_domain_for(user)
         logo_url = f"{user_domain}/icons/logo.png"
         unsubscribe_url = f"{user_domain}/api/auth/unsubscribe?token={user.unsubscribe_token}" if user.unsubscribe_token else None
         
@@ -492,12 +495,7 @@ class EmailService:
         if not to_email:
             return False
         
-        # Use USER_DOMAIN for user-facing email links
-        user_domain = current_app.config.get('USER_DOMAIN', '').strip()
-        if not user_domain:
-            user_domain = current_app.config.get('APP_URL', 'http://localhost:5000')
-        if not user_domain.startswith('http'):
-            user_domain = f"https://{user_domain}"
+        user_domain = link_domain_for(user)
         logo_url = f"{user_domain}/icons/logo.png"
         
         content_html = """
@@ -904,14 +902,7 @@ class EmailVerificationService:
             return False
         
         try:
-            # Use USER_DOMAIN for email verification (users verify on user domain)
-            user_domain = current_app.config.get('USER_DOMAIN', '').strip()
-            if not user_domain:
-                # Fallback to APP_URL if USER_DOMAIN not configured
-                user_domain = current_app.config.get('APP_URL', 'http://localhost:5000')
-            # Ensure it has protocol
-            if not user_domain.startswith('http'):
-                user_domain = f"https://{user_domain}"
+            user_domain = link_domain_for(user)
             
             logo_url = f"{user_domain}/icons/logo.png"
             verify_link = f"{user_domain}/verify-email?token={token}"
@@ -995,12 +986,7 @@ class PasswordResetEmailService:
             return False
         
         try:
-            # Use USER_DOMAIN for user-facing email links
-            user_domain = current_app.config.get('USER_DOMAIN', '').strip()
-            if not user_domain:
-                user_domain = current_app.config.get('APP_URL', 'http://localhost:5000')
-            if not user_domain.startswith('http'):
-                user_domain = f"https://{user_domain}"
+            user_domain = link_domain_for(user)
             logo_url = f"{user_domain}/icons/logo.png"
             reset_link = f"{user_domain}/reset-password?token={token}"
             
@@ -1101,12 +1087,7 @@ def send_new_login_alert(user, device_info: dict) -> bool:
         return False
     
     try:
-        # Use USER_DOMAIN for user-facing email links
-        user_domain = current_app.config.get('USER_DOMAIN', '').strip()
-        if not user_domain:
-            user_domain = current_app.config.get('APP_URL', 'http://localhost:5000')
-        if not user_domain.startswith('http'):
-            user_domain = f"https://{user_domain}"
+        user_domain = link_domain_for(user)
         logo_url = f"{user_domain}/icons/logo.png"
         
         # Parse user agent for friendlier display
@@ -1283,12 +1264,7 @@ def send_suspicious_location_alert(user, location_info: dict, known_locations: l
         return False
     
     try:
-        # Use USER_DOMAIN for user-facing email links
-        user_domain = current_app.config.get('USER_DOMAIN', '').strip()
-        if not user_domain:
-            user_domain = current_app.config.get('APP_URL', 'http://localhost:5000')
-        if not user_domain.startswith('http'):
-            user_domain = f"https://{user_domain}"
+        user_domain = link_domain_for(user)
         logo_url = f"{user_domain}/icons/logo.png"
         
         # Format known locations for display

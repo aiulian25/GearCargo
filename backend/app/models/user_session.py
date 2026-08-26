@@ -9,12 +9,13 @@ outage no longer silently fails OPEN (accepting stale / revoked / cross-device
 tokens).  It mirrors the existing DB-backed account-lockout fallback pattern
 (see ``_db_is_account_locked`` in routes/auth.py).
 
-All timestamps are stored as naive UTC (``datetime.utcnow``) to match the rest of
+All timestamps are stored as naive UTC (``utc_naive_now``) to match the rest of
 the schema (e.g. blocked_entity, user).  Helper comparisons in routes/auth.py
 always compare against a naive-UTC "now", so there is never an aware/naive mix.
 """
 
 from datetime import datetime
+from app.utils.timeutils import utc_naive_now
 from app import db
 
 
@@ -58,7 +59,7 @@ class UserSession(db.Model):
     user_agent = db.Column(db.String(255))
     ip = db.Column(db.String(45))
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utc_naive_now, nullable=False)
 
     def __repr__(self):
         state = 'revoked' if self.revoked else 'active'

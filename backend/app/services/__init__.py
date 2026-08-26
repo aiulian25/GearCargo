@@ -4,6 +4,7 @@ GearCargo - Background Task Scheduler Service
 
 import hashlib
 from datetime import datetime, date, timedelta, timezone
+from app.utils.timeutils import utc_naive_now
 from flask_apscheduler import APScheduler
 
 scheduler = APScheduler()
@@ -1232,7 +1233,7 @@ def cleanup_old_data(app):
         # S01: purge expired or revoked session rows (the durable Redis-fallback
         # table). absolute_expires_at / revoked_at are stored as naive UTC, so we
         # compare against a naive-UTC now.
-        now_naive = datetime.utcnow()
+        now_naive = utc_naive_now()
         deleted_sessions = UserSession.query.filter(
             db.or_(
                 UserSession.absolute_expires_at < now_naive,

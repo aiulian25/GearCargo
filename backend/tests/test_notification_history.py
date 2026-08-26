@@ -5,6 +5,7 @@ rows (push + email), newest first, and never another user's.
 """
 
 from datetime import datetime, timedelta
+from app.utils.timeutils import utc_naive_now
 
 from app import db
 from app.models import User, NotificationLog
@@ -22,14 +23,14 @@ def _log(user_id, title, channel='push', status='sent', when=None, **kw):
     row = NotificationLog(
         user_id=user_id, notification_type=kw.get('notification_type', 'reminder'),
         title=title, body=kw.get('body', 'Body text'), channel=channel, status=status,
-        error_message=kw.get('error_message'), created_at=when or datetime.utcnow())
+        error_message=kw.get('error_message'), created_at=when or utc_naive_now())
     db.session.add(row)
     db.session.commit()
     return row
 
 
 def test_history_returns_own_rows_newest_first(app, client, user, auth_headers):
-    now = datetime.utcnow()
+    now = utc_naive_now()
     with app.app_context():
         _log(user.id, 'Older push', when=now - timedelta(hours=2))
         _log(user.id, 'Newer email', channel='email', status='failed',

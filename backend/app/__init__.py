@@ -434,6 +434,17 @@ def create_app(config_class=None):
         '5 per hour; 20 per day',
         error_message='Too many registration attempts. Please try again later.')
 
+    # R4: Apply a dedicated per-IP rate limit to the public resend-verification
+    # endpoint. It sends mail to an address the CALLER supplies and rotates the
+    # account's verification token on every call, so under the global default a
+    # single IP could both email-bomb an unverified address and keep invalidating
+    # the victim's outstanding link. 5/hour is ample for genuine use (a user who
+    # missed the first mail resends once or twice). A per-ACCOUNT cooldown in
+    # resend_verification_email covers the distributed case this can't.
+    _rate_limit('auth.resend_verification_email',
+        '5 per hour',
+        error_message='Too many requests. Please try again later.')
+
     # S16: Apply a dedicated per-IP rate limit to the security-question lookup
     # endpoint. The global default (100/hour) is far too permissive — an attacker
     # can enumerate thousands of email addresses to discover which accounts have

@@ -3,6 +3,7 @@ GearCargo - Prediction Alert Model
 """
 
 from datetime import datetime, timezone
+from app.utils.timeutils import utc_naive_now
 from app import db
 from app.models.user import _as_utc  # C1 follow-up: naive→aware UTC coercion
 
@@ -57,7 +58,7 @@ class PredictionAlert(db.Model):
     vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id'), nullable=False, index=True)
     
     # Timestamps
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_naive_now)
     expires_at = db.Column(db.DateTime)
     
     def __repr__(self):

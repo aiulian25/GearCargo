@@ -4,6 +4,7 @@ For security - tracking and blocking malicious IPs and devices
 """
 
 from datetime import datetime, timezone
+from app.utils.timeutils import utc_naive_now
 from app import db
 from app.models.user import _as_utc  # C1 follow-up: naive→aware UTC coercion
 
@@ -47,7 +48,7 @@ class BlockedIP(db.Model):
     target_email = db.Column(db.String(255))  # Email they tried to login with
     
     # Timestamps
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    created_at = db.Column(db.DateTime, default=utc_naive_now, index=True)
     expires_at = db.Column(db.DateTime, nullable=True)  # Auto-blocks can expire
     
     def __repr__(self):
@@ -201,7 +202,7 @@ class BlockedDevice(db.Model):
     target_email = db.Column(db.String(255))
     
     # Timestamps
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    created_at = db.Column(db.DateTime, default=utc_naive_now, index=True)
     expires_at = db.Column(db.DateTime, nullable=True)
     
     def __repr__(self):

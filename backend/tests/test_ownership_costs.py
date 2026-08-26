@@ -6,6 +6,7 @@ pinned empty here — running costs are created in the display currency too.
 """
 
 from datetime import date, timedelta
+from app.utils.timeutils import utc_today
 
 import pytest
 from dateutil.relativedelta import relativedelta
@@ -13,7 +14,7 @@ from dateutil.relativedelta import relativedelta
 from app import db
 from app.models import User, Vehicle, FuelEntry
 
-TODAY = date.today()
+TODAY = utc_today()
 
 
 @pytest.fixture(autouse=True)

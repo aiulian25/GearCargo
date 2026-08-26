@@ -565,6 +565,8 @@ export const calendarApi = {
   },
   // Get calendar feed token
   getFeedToken: () => api.post('/calendar/feed-token'),
+  // R8 — rotates the feed secret, invalidating every ICS link already issued.
+  revokeFeedToken: () => api.delete('/calendar/feed-token'),
   // Get sync status
   getSyncStatus: () => api.get('/calendar/sync-status'),
   // Sync all reminders to calendar

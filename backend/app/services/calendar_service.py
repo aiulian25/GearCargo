@@ -171,6 +171,18 @@ def _ensure_encrypted(value: str) -> str:
     return encrypt_field(value)  # plaintext → encrypt
 
 
+# R9: cloud metadata endpoints — never a legitimate CalDAV host, and reachable
+# by NAME as well as by IP. `metadata.google.internal` would otherwise be waved
+# through by the '.internal' suffix allowance below. 169.254.0.0/16 is handled
+# by the link-local rule; these are the out-of-range extras.
+_METADATA_HOSTS = frozenset({
+    'metadata',                 # GCP short name
+    'metadata.google.internal',
+    'metadata.goog',
+    '100.100.100.200',          # Alibaba Cloud
+})
+
+
 def _host_is_private_or_local(host: str) -> bool:
     """True for loopback/LAN hosts where plaintext http is acceptable (the
     traffic never leaves the local network): localhost, RFC-1918 / loopback /
@@ -182,7 +194,10 @@ def _host_is_private_or_local(host: str) -> bool:
         return True
     try:
         ip = ipaddress.ip_address(h)
-        return ip.is_private or ip.is_loopback or ip.is_link_local
+        # R9: link-local (169.254.0.0/16, fe80::/10) is NOT a LAN CalDAV host —
+        # it is where cloud metadata lives (169.254.169.254). RFC-1918 and
+        # loopback stay allowed: self-hosted servers genuinely live there.
+        return (ip.is_private or ip.is_loopback) and not ip.is_link_local
     except ValueError:
         return False
 
@@ -203,6 +218,18 @@ def _is_allowed_caldav_url(url: str) -> bool:
     host = (parsed.hostname or '').lower()
     if not host:
         return False
+
+    # R9: metadata endpoints are rejected for BOTH schemes — https to a metadata
+    # IP is no more legitimate than http, and this keeps the policy aligned with
+    # backup.py's SSRF guard (which blocks the same targets at its front door).
+    if host.rstrip('.') in _METADATA_HOSTS:
+        return False
+    try:
+        ip = ipaddress.ip_address(host)
+        if ip.is_link_local or ip.is_multicast or ip.is_unspecified:
+            return False
+    except ValueError:
+        pass
 
     if parsed.scheme == 'https':
         return True

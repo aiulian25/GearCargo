@@ -1013,8 +1013,23 @@ export default function Settings() {
     }
   }
 
-  // F46 — issue (or rotate) the ICS subscribe URL. Generating a new link mints a
-  // fresh 90-day JWT; the previous one keeps working until it expires naturally.
+  // R8 — revoke every ICS link already handed out (rotates the feed secret).
+  // Use when a link leaked; the user can generate a fresh one afterwards.
+  const handleRevokeFeed = async () => {
+    setFeedLoading(true)
+    try {
+      const res = await calendarApi.revokeFeedToken()
+      setFeedUrl('')
+      toast.success(t(res.data?.message_key) || t('calendar.linkRevoked') || 'Calendar links revoked')
+    } catch {
+      toast.error(t('common.error') || 'Error')
+    } finally {
+      setFeedLoading(false)
+    }
+  }
+
+  // F46 — issue an ICS subscribe URL. Generating another link is additive: every
+  // link stays valid until its 90-day expiry or an explicit revoke (R8).
   const handleGenerateFeed = async () => {
     setFeedLoading(true)
     try {
@@ -2063,6 +2078,21 @@ export default function Settings() {
                     <p className="text-2xs text-[var(--color-text-muted)]">
                       {t('calendar.subscribeWhere') || 'Google: Settings → Add calendar → From URL. Apple: File → New Calendar Subscription.'}
                     </p>
+
+                    {/* R8 — kill switch for a link that leaked */}
+                    <div className="pt-2 border-t border-[var(--color-border)]">
+                      <button
+                        type="button"
+                        onClick={handleRevokeFeed}
+                        disabled={feedLoading}
+                        className="text-xs font-medium text-red-500 hover:text-red-400 hover:underline disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-red-500 rounded px-1 py-0.5"
+                      >
+                        {feedLoading ? (t('common.loading') || 'Loading…') : (t('calendar.revokeLink') || 'Revoke all links')}
+                      </button>
+                      <p className="mt-1 text-2xs text-[var(--color-text-muted)]">
+                        {t('calendar.revokeHint') || 'Stops every link already shared. Calendars using them will no longer update.'}
+                      </p>
+                    </div>
 
                     <button
                       onClick={handleGenerateFeed}

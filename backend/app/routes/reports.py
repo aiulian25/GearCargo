@@ -4,6 +4,7 @@ PDF report generation for vehicle expenses
 """
 
 from datetime import datetime, timedelta, timezone
+from app.utils.timeutils import utc_naive_now
 from flask import Blueprint, request, jsonify, send_file, current_app
 
 from app import db
@@ -312,7 +313,7 @@ def create_report_share(current_user):
         period=period,
         year=year,
         month=month,
-        expires_at=datetime.utcnow() + timedelta(days=days),
+        expires_at=utc_naive_now() + timedelta(days=days),
     )
     db.session.add(share)
     db.session.commit()
@@ -348,7 +349,7 @@ def revoke_report_share(current_user, share_id):
         return jsonify({'error': 'Share not found'}), 404
     if not share.revoked:
         share.revoked = True
-        share.revoked_at = datetime.utcnow()
+        share.revoked_at = utc_naive_now()
         db.session.commit()
         security_audit.data_export(current_user.id, current_user.email, 'report_share_revoked')
     return jsonify({'message': 'Share link revoked'})
@@ -398,7 +399,7 @@ def view_shared_report(token):
     # Access telemetry (best-effort; never blocks the response).
     try:
         share.access_count = (share.access_count or 0) + 1
-        share.last_accessed_at = datetime.utcnow()
+        share.last_accessed_at = utc_naive_now()
         db.session.commit()
     except Exception:
         db.session.rollback()

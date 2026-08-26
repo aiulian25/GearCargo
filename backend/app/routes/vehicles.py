@@ -8,6 +8,7 @@ import os
 from datetime import datetime, date, timedelta, timezone
 from flask import Blueprint, request, jsonify, current_app
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 import requests as req_lib
 
 from app import db
@@ -169,6 +170,18 @@ def create_vehicle(current_user):
                 'current': current_vehicle_count
             }), 403
     
+    # R2: parse before constructing — an unparseable date raised ValueError -> 500.
+    try:
+        purchase_date = (
+            datetime.fromisoformat(data['purchase_date']).date()
+            if data.get('purchase_date') else None
+        )
+    except (TypeError, ValueError):
+        return jsonify({
+            'error': 'Invalid date format',
+            'message_key': 'validation.invalidDate',
+        }), 400
+
     vehicle = Vehicle(
         user_id=current_user.id,
         name=data['name'],
@@ -190,14 +203,27 @@ def create_vehicle(current_user):
         vehicle_width_cm=data.get('vehicle_width_cm'),
         vehicle_length_cm=data.get('vehicle_length_cm'),
         vehicle_weight_kg=data.get('vehicle_weight_kg'),
-        purchase_date=datetime.fromisoformat(data['purchase_date']).date() if data.get('purchase_date') else None,
+        purchase_date=purchase_date,
         purchase_price=data.get('purchase_price'),
         monthly_budget=data.get('monthly_budget'),
     )
     
     db.session.add(vehicle)
-    db.session.commit()
-    
+    try:
+        db.session.commit()
+    except IntegrityError as exc:
+        # R1: `vin` carries a UNIQUE constraint, so a duplicate (even another
+        # user's) reached the client as an unhandled 500. Anything else is a
+        # genuinely unexpected constraint failure — re-raise rather than
+        # mislabel it as a VIN conflict.
+        db.session.rollback()
+        if 'vin' not in str(getattr(exc, 'orig', exc)).lower():
+            raise
+        return jsonify({
+            'error': 'A vehicle with this VIN already exists',
+            'message_key': 'vehicles.vinAlreadyExists',
+        }), 409
+
     return jsonify({
         'message': 'Vehicle created successfully',
         'vehicle': vehicle.to_dict()
@@ -244,6 +270,15 @@ def update_vehicle(current_user, vehicle_id):
     for field in allowed:
         if field in data:
             if field == 'current_mileage':
+                # R2: the client may send "5000" (or junk) — comparing a str to
+                # an int below raised TypeError -> 500.
+                try:
+                    data[field] = int(data[field])
+                except (TypeError, ValueError):
+                    return jsonify({
+                        'error': 'Mileage must be a number',
+                        'message_key': 'validation.invalidNumber',
+                    }), 400
                 # Allow correcting mileage, but not below highest recorded entry
                 max_recorded = _get_max_recorded_odometer(current_user.id, vehicle_id)
                 if data[field] < max_recorded:
@@ -252,12 +287,24 @@ def update_vehicle(current_user, vehicle_id):
                         'message_key': 'vehicles.mileageBelowRecordedMax',
                         'min_allowed_mileage': max_recorded,
                     }), 400
+            if field == 'vin':
+                # R1: same '' → None coercion create does, so clearing the VIN
+                # stores NULL (distinct under UNIQUE) instead of colliding on ''.
+                setattr(vehicle, field, data[field] or None)
+                continue
             setattr(vehicle, field, data[field])
 
     # F23 — purchase_date needs the same ISO parse used at create.
     if 'purchase_date' in data:
         raw = data['purchase_date']
-        vehicle.purchase_date = datetime.fromisoformat(raw).date() if raw else None
+        try:
+            vehicle.purchase_date = datetime.fromisoformat(raw).date() if raw else None
+        except (TypeError, ValueError):
+            # R2: an unparseable date raised ValueError -> 500.
+            return jsonify({
+                'error': 'Invalid date format',
+                'message_key': 'validation.invalidDate',
+            }), 400
 
     # F31 — per-vehicle wear-interval overrides, strictly validated.
     if 'maintenance_intervals' in data:
@@ -277,7 +324,16 @@ def update_vehicle(current_user, vehicle_id):
                 cleaned[key] = int(val)
             vehicle.maintenance_intervals = cleaned or None
 
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError as exc:
+        db.session.rollback()
+        if 'vin' not in str(getattr(exc, 'orig', exc)).lower():
+            raise
+        return jsonify({
+            'error': 'A vehicle with this VIN already exists',
+            'message_key': 'vehicles.vinAlreadyExists',
+        }), 409
 
     return jsonify({
         'message': 'Vehicle updated',

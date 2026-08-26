@@ -1,35 +1,15 @@
 /**
- * Page-side registration helpers for the Background Sync and Periodic
- * Background Sync APIs. All functions are best-effort and feature-detected:
- * on browsers without support (Safari/Firefox) or without permission they
- * resolve to `false` and never throw, so callers can fire-and-forget.
+ * Page-side registration helper for the Periodic Background Sync API.
+ * Best-effort and feature-detected: on browsers without support
+ * (Safari/Firefox) or without permission it resolves to `false` and never
+ * throws, so callers can fire-and-forget.
+ *
+ * Offline WRITES are replayed by the Workbox background-sync queue inside the
+ * service worker, which registers and handles its own tag — no page-side
+ * registration is involved.
  */
 
-import {
-  FLUSH_QUEUE_SYNC_TAG,
-  REMINDER_REFRESH_TAG,
-  REMINDER_REFRESH_MIN_INTERVAL,
-} from './syncTags'
-
-/**
- * Register a one-off Background Sync so the browser flushes the offline write
- * queue when connectivity returns — even if the tab is later backgrounded.
- * Falls back silently when the SyncManager API is unavailable; the existing
- * `online` listener in syncService still covers those browsers.
- */
-export async function registerBackgroundSync() {
-  try {
-    if (typeof window === 'undefined') return false
-    if (!('serviceWorker' in navigator) || !('SyncManager' in window)) return false
-
-    const registration = await navigator.serviceWorker.ready
-    await registration.sync.register(FLUSH_QUEUE_SYNC_TAG)
-    return true
-  } catch {
-    // Permission denied, not installed, or unsupported — degrade gracefully.
-    return false
-  }
-}
+import { REMINDER_REFRESH_TAG, REMINDER_REFRESH_MIN_INTERVAL } from './syncTags'
 
 /**
  * Register Periodic Background Sync for reminder refresh. Only succeeds for an

@@ -20,7 +20,7 @@ def get_policies(current_user):
     vehicle_id = request.args.get('vehicle_id', type=int)
     status = request.args.get('status')
     page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 20, type=int)
+    per_page = max(1, min(request.args.get('per_page', 20, type=int), 100))
     
     query = InsurancePolicy.query.filter_by(user_id=current_user.id)
     

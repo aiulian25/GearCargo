@@ -18,6 +18,7 @@ Security model
 import hashlib
 import secrets
 from datetime import datetime, timezone
+from app.utils.timeutils import utc_naive_now
 
 from app import db
 
@@ -50,7 +51,7 @@ class ReportShare(db.Model):
     access_count = db.Column(db.Integer, nullable=False, default=0)
     last_accessed_at = db.Column(db.DateTime)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utc_naive_now, nullable=False)
 
     user = db.relationship('User', foreign_keys=[user_id])
 
@@ -67,7 +68,7 @@ class ReportShare(db.Model):
         return raw, cls.hash_token(raw), raw[:8]
 
     def is_expired(self) -> bool:
-        return self.expires_at is not None and self.expires_at <= datetime.utcnow()
+        return self.expires_at is not None and self.expires_at <= utc_naive_now()
 
     def is_active(self) -> bool:
         return not self.revoked and not self.is_expired()

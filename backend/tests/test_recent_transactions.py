@@ -1,6 +1,7 @@
 """Tests for GET /api/vehicles/recent-transactions — the fleet-wide feed."""
 
 from datetime import date, timedelta
+from app.utils.timeutils import utc_today
 
 from app import db
 from app.models import User, Vehicle, FuelEntry, ServiceEntry, InsurancePolicy
@@ -22,7 +23,7 @@ def test_merges_types_newest_first_with_vehicle_name(app, client, user, auth_hea
     with app.app_context():
         v1 = _mk_vehicle(user.id, 'Ford Focus')
         v2 = _mk_vehicle(user.id, 'VW Golf')
-        today = date.today()
+        today = utc_today()
 
         # Oldest → newest so we can assert ordering.
         db.session.add(ServiceEntry(user_id=user.id, vehicle_id=v2.id,
@@ -53,7 +54,7 @@ def test_merges_types_newest_first_with_vehicle_name(app, client, user, auth_hea
 def test_limit_caps_results(app, client, user, auth_headers):
     with app.app_context():
         v = _mk_vehicle(user.id, 'Ford Focus')
-        today = date.today()
+        today = utc_today()
         for i in range(8):
             db.session.add(FuelEntry(user_id=user.id, vehicle_id=v.id,
                                      date=today - timedelta(days=i), amount=50 + i,
@@ -70,7 +71,7 @@ def test_excludes_future_dated_entries(app, client, user, auth_headers):
     # the "recent" feed; a past entry on the same vehicle should.
     with app.app_context():
         v = _mk_vehicle(user.id, 'Ford Focus')
-        today = date.today()
+        today = utc_today()
         db.session.add(ServiceEntry(user_id=user.id, vehicle_id=v.id,
                                     date=today + timedelta(days=200), amount=0, title='scheduled MOT'))
         db.session.add(FuelEntry(user_id=user.id, vehicle_id=v.id,
@@ -90,7 +91,7 @@ def test_isolation_never_leaks_other_users_entries(app, client, user, auth_heade
         # The authorized user's own entry.
         v_mine = _mk_vehicle(user.id, 'Mine')
         db.session.add(FuelEntry(user_id=user.id, vehicle_id=v_mine.id,
-                                 date=date.today(), amount=10, total_price=10, fuel_type='petrol'))
+                                 date=utc_today(), amount=10, total_price=10, fuel_type='petrol'))
 
         # A second user with their own vehicle + entry.
         other = User(username='other', email='other@example.com', is_active=True)
@@ -100,7 +101,7 @@ def test_isolation_never_leaks_other_users_entries(app, client, user, auth_heade
         db.session.refresh(other)
         v_theirs = _mk_vehicle(other.id, 'Theirs')
         db.session.add(ServiceEntry(user_id=other.id, vehicle_id=v_theirs.id,
-                                    date=date.today(), amount=999, title='secret'))
+                                    date=utc_today(), amount=999, title='secret'))
         db.session.commit()
 
     resp = client.get('/api/vehicles/recent-transactions', headers=auth_headers(user.id))

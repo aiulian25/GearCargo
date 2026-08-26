@@ -1,15 +1,13 @@
 /**
- * Shared Background Sync / Periodic Background Sync tag names.
+ * Shared Periodic Background Sync tag names.
  *
  * Imported by BOTH the page (src/utils/pwaSync.js) and the service worker
  * (src/sw.js) so the registration side and the event side never drift.
+ *
+ * Note: offline WRITES are handled entirely by the Workbox background-sync
+ * queue in the service worker, which owns its own tag
+ * ('workbox-background-sync:gearcargo-sync-queue') — nothing here is involved.
  */
-
-// One-off Background Sync: fired by the browser when connectivity returns.
-// Used purely as a reliable wake signal — the SW asks live clients to run the
-// authoritative Dexie queue flush (syncService.processOfflineQueue), keeping
-// conflict detection + temp-id remapping in one place (the page).
-export const FLUSH_QUEUE_SYNC_TAG = 'gearcargo-flush-queue'
 
 // Periodic Background Sync: refreshes the (read-only) reminders cache while the
 // app is closed, so reminders are fresh on next open even offline.

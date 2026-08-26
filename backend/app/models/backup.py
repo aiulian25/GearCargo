@@ -4,6 +4,7 @@ GearCargo - Backup Model
 
 import json
 from datetime import datetime, timezone
+from app.utils.timeutils import utc_naive_now
 from app import db
 
 
@@ -46,7 +47,7 @@ class Backup(db.Model):
     # Timestamps
     started_at = db.Column(db.DateTime)
     completed_at = db.Column(db.DateTime)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_naive_now)
     
     def __repr__(self):
         return f'<Backup {self.id} - {self.backup_type}>'
@@ -144,8 +145,8 @@ class BackupSchedule(db.Model):
     next_run_at = db.Column(db.DateTime)
     
     # Timestamps
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_naive_now)
+    updated_at = db.Column(db.DateTime, default=utc_naive_now, onupdate=utc_naive_now)
 
     def _cloud_metadata(self):
         """Return cloud_credentials parsed as JSON metadata when possible."""

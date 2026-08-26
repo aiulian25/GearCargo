@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from app.utils.timeutils import utc_naive_now
 
 import jwt
 import pytest
@@ -74,7 +75,7 @@ def auth_headers(app):
             "user_id": user_id,
             "is_admin": is_admin,
             "jti": jti,
-            "exp": datetime.utcnow() + timedelta(hours=1),
+            "exp": utc_naive_now() + timedelta(hours=1),
         }
         token = jwt.encode(payload, app.config["JWT_SECRET_KEY"], algorithm="HS256")
         # Auth now requires a real server-side session (48h absolute wall +

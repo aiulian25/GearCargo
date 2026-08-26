@@ -3,6 +3,7 @@ GearCargo - Push Subscription Model
 """
 
 from datetime import datetime, timezone
+from app.utils.timeutils import utc_naive_now
 from app import db
 
 
@@ -32,8 +33,8 @@ class PushSubscription(db.Model):
     last_error = db.Column(db.Text)
     
     # Timestamps
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_naive_now)
+    updated_at = db.Column(db.DateTime, default=utc_naive_now, onupdate=utc_naive_now)
     
     # Unique constraint on endpoint
     __table_args__ = (
@@ -114,7 +115,7 @@ class NotificationLog(db.Model):
     # Timestamps
     scheduled_at = db.Column(db.DateTime)
     sent_at = db.Column(db.DateTime)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_naive_now)
     
     def __repr__(self):
         return f'<NotificationLog {self.id} - {self.notification_type}>'

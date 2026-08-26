@@ -15,7 +15,7 @@ import { CacheFirst, NetworkFirst, StaleWhileRevalidate, NetworkOnly } from 'wor
 import { ExpirationPlugin } from 'workbox-expiration'
 import { CacheableResponsePlugin } from 'workbox-cacheable-response'
 import { BackgroundSyncPlugin } from 'workbox-background-sync'
-import { FLUSH_QUEUE_SYNC_TAG, REMINDER_REFRESH_TAG } from './utils/syncTags'
+import { REMINDER_REFRESH_TAG } from './utils/syncTags'
 import { replayQueuedRequest } from './swSync'
 
 // ============================================================
@@ -494,26 +494,11 @@ self.addEventListener('pushsubscriptionchange', (event) => {
 // BACKGROUND SYNC — flush the offline write queue on reconnect
 // ============================================================
 
-// Ask any live client (window) to run the authoritative Dexie queue flush
-// (syncService.processOfflineQueue) so conflict detection + temp-id remapping
-// stay in one place. If no client is alive (app fully closed) the flush is
-// deferred to next app open, which is wired via the `online` listener.
-async function notifyClientsToSync() {
-  const clients = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' })
-  for (const client of clients) {
-    client.postMessage({ type: 'SYNC_NOW' })
-  }
-}
-
 self.addEventListener('sync', (event) => {
-  // Workbox replays its own background-sync queue automatically via the plugin.
+  // Workbox replays its own background-sync queue automatically via the plugin
+  // (see bgSyncPlugin above); this listener only records that it fired.
   if (event.tag === 'workbox-background-sync:gearcargo-sync-queue') {
     log('Background sync triggered for gearcargo-sync-queue')
-  }
-
-  // Our explicit tag: wake clients to flush the Dexie offline queue.
-  if (event.tag === FLUSH_QUEUE_SYNC_TAG) {
-    event.waitUntil(notifyClientsToSync())
   }
 })
 

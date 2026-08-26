@@ -14,7 +14,7 @@
 # ============================================================
 # STAGE 1: Build Frontend (React PWA)
 # ============================================================
-FROM node:20-alpine AS frontend-builder
+FROM node:22-alpine AS frontend-builder
 WORKDIR /frontend
 # Build metadata baked into the PWA (via Vite's import.meta.env) so the running
 # app can detect a newer published build and tell a feature update apart from a
@@ -27,7 +27,9 @@ ENV VITE_GIT_SHA=$GIT_SHA \
     VITE_APP_VERSION=$APP_VERSION
 COPY frontend/package*.json ./
 COPY frontend/package-lock.json* ./
-RUN npm install --silent
+# npm ci (not install): installs exactly the lockfile, so an image build can
+# never silently resolve different dependency versions than CI tested.
+RUN npm ci --silent
 COPY frontend/ .
 RUN npm run build
 

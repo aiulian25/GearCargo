@@ -10,6 +10,7 @@ succeeds, reports the row, and — in real mode — removes the file and DB row.
 import os
 import tempfile
 from datetime import datetime, timedelta
+from app.utils.timeutils import utc_naive_now
 
 from flask import current_app
 
@@ -32,7 +33,7 @@ def test_cleanup_preview_with_old_backup_does_not_500(app, client, auth_headers)
         aid = admin.id
         db.session.add(Backup(
             user_id=aid, backup_type="manual", status="completed",
-            created_at=datetime.utcnow() - timedelta(days=40),
+            created_at=utc_naive_now() - timedelta(days=40),
         ))
         db.session.commit()
 
@@ -59,7 +60,7 @@ def test_cleanup_real_removes_old_backup_file_and_row(app, client, auth_headers)
         aid = admin.id
         b = Backup(
             user_id=aid, backup_type="manual", status="completed", filepath=path,
-            created_at=datetime.utcnow() - timedelta(days=40),
+            created_at=utc_naive_now() - timedelta(days=40),
         )
         db.session.add(b)
         db.session.commit()

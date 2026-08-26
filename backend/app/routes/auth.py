@@ -16,6 +16,7 @@ from functools import wraps
 
 from flask import Blueprint, request, jsonify, current_app
 from markupsafe import escape  # M10: HTML-escape user-controlled values in f-string email bodies
+from sqlalchemy.exc import IntegrityError
 import jwt
 
 from app import db, redis_client
@@ -23,6 +24,52 @@ from app.models import User, ActivityLog, BlockedIP, BlockedDevice
 from app.utils.security_audit import security_audit
 
 auth_bp = Blueprint('auth', __name__)
+
+# R2: these columns are length-limited in Postgres, so unvalidated input raised
+# DataError -> 500 (SQLite silently truncates nothing and accepts it, which is
+# why the test suite never caught it). Values mirror app/models/user.py.
+IDENTITY_MAX_LENGTHS = {
+    'username': 80,
+    'first_name': 50,
+    'last_name': 50,
+    'email': 120,
+}
+
+# Same pattern already used by set_notification_email.
+EMAIL_PATTERN = re.compile(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$')
+
+# R4: minimum gap between verification emails for the SAME account, independent
+# of the per-IP limit applied in create_app().
+RESEND_VERIFICATION_COOLDOWN = timedelta(minutes=5)
+
+
+def _identity_field_error(email=None, **fields):
+    """Return a 400 response for a malformed email / over-long identity field.
+
+    Returns None when everything is acceptable. `message_key` values reuse the
+    already-localised `validation.*` namespace so the client renders the reason
+    in the user's language.
+    """
+    if email is not None and not EMAIL_PATTERN.match(email):
+        return jsonify({
+            'error': 'Invalid email address',
+            'message_key': 'validation.invalidEmail',
+        }), 400
+
+    candidates = dict(fields)
+    if email is not None:
+        candidates['email'] = email
+    for name, value in candidates.items():
+        limit = IDENTITY_MAX_LENGTHS.get(name)
+        if limit and value is not None and len(value) > limit:
+            return jsonify({
+                'error': f'{name} must be no more than {limit} characters',
+                'message_key': 'validation.maxLength',
+                'field': name,
+                'max_length': limit,
+            }), 400
+    return None
+
 
 # Common passwords that should be rejected (top 100 most common)
 COMMON_PASSWORDS = {
@@ -1315,6 +1362,12 @@ def register():
     email = data['email'].strip().lower()
     password = data['password']
 
+    # R2: reject a malformed/over-long address before the existence lookup and
+    # the bcrypt cost below.
+    email_error = _identity_field_error(email=email)
+    if email_error:
+        return email_error
+
     # S03: Enforce the FULL server-side password policy (length / common /
     # breached) — not just a length check. This runs BEFORE any account-existence
     # lookup so password feedback never depends on whether the email exists.
@@ -1351,7 +1404,15 @@ def register():
         name_parts = data['name'].split(' ', 1)
         first_name = name_parts[0]
         last_name = name_parts[1] if len(name_parts) > 1 else ''
-    
+
+    # R2: validate before writing — these are length-limited DB columns.
+    username = data.get('username') or email.split('@')[0]
+    field_error = _identity_field_error(
+        username=username, first_name=first_name, last_name=last_name,
+    )
+    if field_error:
+        return field_error
+
     # Check if this is the first user (make them admin)
     # SECURITY: Only the first user in the system can become admin through self-registration
     # After first admin exists, new admins can ONLY be created by existing admins
@@ -1361,7 +1422,7 @@ def register():
     # It's only True for the very first user, or when created by an admin via /admin/users
     user = User(
         email=email,
-        username=data.get('username', email.split('@')[0]),
+        username=username,
         first_name=first_name,
         last_name=last_name,
         language=data.get('language', 'en'),
@@ -1369,10 +1430,20 @@ def register():
         is_admin=is_first_user,  # ONLY first user becomes admin - this is NOT from request data
     )
     user.set_password(password)
-    
+
     db.session.add(user)
-    db.session.commit()
-    
+    try:
+        db.session.commit()
+    except IntegrityError:
+        # R2: `username` and `email` are UNIQUE. The pre-checks above race with a
+        # concurrent signup (and only `email` is pre-checked at all), so a
+        # collision reached the client as a 500.
+        db.session.rollback()
+        return jsonify({
+            'error': 'Username or email already registered',
+            'message_key': 'auth.usernameOrEmailTaken',
+        }), 409
+
     # Log registration
     ActivityLog.log(
         event_type='registration',
@@ -2080,12 +2151,28 @@ def update_profile(current_user):
         'login_alerts_enabled',  # S18: suspicious login/device detection opt-out
     ]
     
+    # R2: validate every identity value this request would write, before any of
+    # them is applied — same length-limited columns as register.
+    _pending_first, _pending_last = None, None
+    if 'name' in data:
+        _parts = data['name'].split(' ', 1)
+        _pending_first = _parts[0]
+        _pending_last = _parts[1] if len(_parts) > 1 else ''
+    field_error = _identity_field_error(
+        email=data['email'].lower().strip() if data.get('email') else None,
+        username=data.get('username'),
+        first_name=data.get('first_name', _pending_first),
+        last_name=data.get('last_name', _pending_last),
+    )
+    if field_error:
+        return field_error
+
     # Handle 'name' field (split into first/last)
     if 'name' in data:
         name_parts = data['name'].split(' ', 1)
         current_user.first_name = name_parts[0]
         current_user.last_name = name_parts[1] if len(name_parts) > 1 else ''
-    
+
     # Handle email update with validation
     if 'email' in data and data['email']:
         new_email = data['email'].lower().strip()
@@ -2719,6 +2806,24 @@ def verify_email():
     })
 
 
+def _resend_cooldown_elapsed(user):
+    """True when a fresh verification email may be sent to *user*.
+
+    R4: the per-IP limit registered in create_app() can't stop a distributed
+    bomb aimed at ONE address, and every resend rotates the token — killing the
+    link the victim may be about to click. So the send is also throttled per
+    account. There is no "issued at" column; the token TTL is fixed, so the
+    issue time is derived from the expiry.
+    """
+    from app.models.user import EMAIL_VERIFICATION_TTL_HOURS, _as_utc
+
+    expires = _as_utc(user.email_verification_expires)
+    if not expires:
+        return True  # no outstanding token
+    issued_at = expires - timedelta(hours=EMAIL_VERIFICATION_TTL_HOURS)
+    return (datetime.now(timezone.utc) - issued_at) >= RESEND_VERIFICATION_COOLDOWN
+
+
 @auth_bp.route('/email/resend-verification', methods=['POST'])
 def resend_verification_email():
     """Resend verification email (public endpoint - for login page)."""
@@ -2732,12 +2837,13 @@ def resend_verification_email():
     
     # Always return success to prevent email enumeration
     user = User.query.filter_by(email=email).first()
-    
+
     if user and not user.email_verified:
-        if current_app.config.get('MAIL_ENABLED'):
+        if current_app.config.get('MAIL_ENABLED') and _resend_cooldown_elapsed(user):
             token = user.generate_verification_token()
             email_verification_service.send_verification_email(user, token)
-    
+
+
     return jsonify({
         'message': 'If that email exists and is unverified, a verification link has been sent'
     })
@@ -2863,13 +2969,8 @@ def set_notification_email(current_user):
     db.session.commit()
 
     # Send verification email
-    from app.services.email_service import EmailService
-    # Use USER_DOMAIN for user-facing email links
-    user_domain = current_app.config.get('USER_DOMAIN', '').strip()
-    if not user_domain:
-        user_domain = current_app.config.get('APP_URL', 'http://localhost:5000')
-    if not user_domain.startswith('http'):
-        user_domain = f"https://{user_domain}"
+    from app.services.email_service import EmailService, link_domain_for
+    user_domain = link_domain_for(current_user)
     verify_url = f"{user_domain}/settings?verify_notification={token}"
 
     verify_html = f"""
@@ -2927,8 +3028,10 @@ def verify_notification_email(current_user):
     if not token:
         return jsonify({'error': 'Verification token is required'}), 400
 
-    # Validate token
-    if current_user.notification_email_token != token:
+    # Validate token. R7: only the hash is stored, so hash the presented value
+    # before comparing (constant-time, per the reset-token path).
+    stored_hash = current_user.notification_email_token
+    if not stored_hash or not secrets.compare_digest(stored_hash, User._hash_reset_token(token)):
         return jsonify({'error': 'Invalid verification token'}), 401
 
     from app.models.user import _as_utc
@@ -3060,13 +3163,8 @@ def resend_notification_verification(current_user):
     if not email_addr:
         return jsonify({'error': 'Could not decrypt notification email'}), 500
 
-    from app.services.email_service import EmailService
-    # Use USER_DOMAIN for user-facing email links
-    user_domain = current_app.config.get('USER_DOMAIN', '').strip()
-    if not user_domain:
-        user_domain = current_app.config.get('APP_URL', 'http://localhost:5000')
-    if not user_domain.startswith('http'):
-        user_domain = f"https://{user_domain}"
+    from app.services.email_service import EmailService, link_domain_for
+    user_domain = link_domain_for(current_user)
     verify_url = f"{user_domain}/settings?verify_notification={token}"
 
     verify_html = f"""
@@ -3132,12 +3230,8 @@ def unsubscribe_email():
         success=True
     )
 
-    # Use USER_DOMAIN for user-facing links
-    user_domain = current_app.config.get('USER_DOMAIN', '').strip()
-    if not user_domain:
-        user_domain = current_app.config.get('APP_URL', 'http://localhost:5000')
-    if not user_domain.startswith('http'):
-        user_domain = f"https://{user_domain}"
+    from app.services.email_service import link_domain_for
+    user_domain = link_domain_for(user)
     return f'''<html><body style="background:#0f172a;color:#e2e8f0;font-family:sans-serif;text-align:center;padding:60px">
     <h1 style="color:#3b82f6">Unsubscribed</h1>
     <p>You have been successfully unsubscribed from GearCargo email notifications.</p>

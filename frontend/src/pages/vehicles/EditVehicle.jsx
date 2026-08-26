@@ -169,7 +169,10 @@ export default function EditVehicle() {
       
       navigate(`/vehicles/${id}`)
     } catch (err) {
-      setError(err.response?.data?.error || t('vehicles.updateFailed'))
+      // Prefer the server's message_key so the reason is shown in the user's
+      // language (e.g. a duplicate VIN); fall back to its English text.
+      const data = err.response?.data
+      setError((data?.message_key && t(data.message_key)) || data?.error || t('vehicles.updateFailed'))
     } finally {
       setIsSubmitting(false)
     }

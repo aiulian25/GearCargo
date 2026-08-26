@@ -13,6 +13,7 @@ Reminders are NOT stored here — dismissing a reminder sets the existing
 """
 
 from datetime import datetime
+from app.utils.timeutils import utc_naive_now
 from app import db
 
 
@@ -24,7 +25,7 @@ class DueDismissal(db.Model):
     kind = db.Column(db.String(20), nullable=False)
     ref_id = db.Column(db.Integer, nullable=False)
     due_date = db.Column(db.Date, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_naive_now)
 
     __table_args__ = (
         db.Index('ix_due_dismissals_lookup', 'user_id', 'kind', 'ref_id'),

@@ -283,7 +283,7 @@ def get_fuel_entries(current_user):
     """Get fuel entries for user's vehicles."""
     vehicle_id = request.args.get('vehicle_id', type=int)
     page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 20, type=int)
+    per_page = max(1, min(request.args.get('per_page', 20, type=int), 100))
     
     query = FuelEntry.query.join(Vehicle).filter(
         Vehicle.user_id == current_user.id

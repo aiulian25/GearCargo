@@ -5,6 +5,7 @@ Records every consent grant, revocation, verification, and change.
 """
 
 from datetime import datetime
+from app.utils.timeutils import utc_naive_now
 from app import db
 
 
@@ -30,7 +31,7 @@ class EmailConsentLog(db.Model):
     user_agent = db.Column(db.String(500))
 
     # Timestamp — set once, never changed
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_naive_now, index=True)
 
     # Relationship
     user = db.relationship('User', backref=db.backref('email_consent_logs', lazy='dynamic'))

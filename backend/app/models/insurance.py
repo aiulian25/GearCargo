@@ -3,6 +3,7 @@ GearCargo - Insurance Policy Model
 """
 
 from datetime import datetime, date
+from app.utils.timeutils import utc_naive_now
 from app import db
 
 
@@ -55,8 +56,8 @@ class InsurancePolicy(db.Model):
     notes = db.Column(db.Text)
     
     # Timestamps
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_naive_now)
+    updated_at = db.Column(db.DateTime, default=utc_naive_now, onupdate=utc_naive_now)
     
     # Relationships
     document = db.relationship('Attachment', foreign_keys=[document_attachment_id])

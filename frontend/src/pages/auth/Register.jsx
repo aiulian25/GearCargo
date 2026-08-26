@@ -120,7 +120,11 @@ export default function Register() {
       toast.success(t('auth.accountCreated') || 'Account created successfully!')
       navigate('/')
     } catch (error) {
-      toast.error(error.response?.data?.error || t('auth.registrationFailed') || 'Registration failed')
+      // Prefer the server's message_key so validation reasons (invalid email,
+      // field too long, username taken) are shown in the user's language.
+      const data = error.response?.data
+      const localized = data?.message_key && t(data.message_key, { max: data.max_length })
+      toast.error(localized || data?.error || t('auth.registrationFailed') || 'Registration failed')
     } finally {
       setIsLoading(false)
     }

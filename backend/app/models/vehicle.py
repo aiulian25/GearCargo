@@ -3,6 +3,7 @@ GearCargo - Vehicle Model
 """
 
 from datetime import datetime
+from app.utils.timeutils import utc_naive_now
 from app import db
 
 
@@ -19,7 +20,11 @@ class Vehicle(db.Model):
     make = db.Column(db.String(50))
     model = db.Column(db.String(50))
     year = db.Column(db.Integer)
-    vin = db.Column(db.String(17), unique=True, index=True)
+    # R1: unique PER USER, not instance-wide — the same car legitimately appears
+    # in two accounts (sold between users, spouse accounts), and a global
+    # constraint also let one user probe whether a VIN exists in another's
+    # garage. NULLs compare distinct, so multiple blank VINs stay legal.
+    vin = db.Column(db.String(17), index=True)
     license_plate = db.Column(db.String(20))
     
     # Technical specs
@@ -72,8 +77,8 @@ class Vehicle(db.Model):
     photo = db.Column(db.String(255))
     
     # Timestamps
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_naive_now)
+    updated_at = db.Column(db.DateTime, default=utc_naive_now, onupdate=utc_naive_now)
     
     # Relationships
     fuel_entries = db.relationship('FuelEntry', backref='vehicle', lazy='dynamic', cascade='all, delete-orphan')
@@ -85,7 +90,11 @@ class Vehicle(db.Model):
     predictions = db.relationship('PredictionAlert', backref='vehicle', lazy='dynamic', cascade='all, delete-orphan')
     attachments = db.relationship('Attachment', backref='vehicle', lazy='dynamic', cascade='all, delete-orphan')
     insurance_policies = db.relationship('InsurancePolicy', backref='vehicle', lazy='dynamic', cascade='all, delete-orphan')
-    
+
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'vin', name='uq_vehicle_user_vin'),
+    )
+
     def __repr__(self):
         return f'<Vehicle {self.name} ({self.make} {self.model})>'
     

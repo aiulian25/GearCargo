@@ -3,6 +3,7 @@ GearCargo - Activity Log Model
 """
 
 from datetime import datetime
+from app.utils.timeutils import utc_naive_now
 from app import db
 
 
@@ -49,7 +50,7 @@ class ActivityLog(db.Model):
     extra_data = db.Column(db.JSON, default=dict)
     
     # Timestamp
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    created_at = db.Column(db.DateTime, default=utc_naive_now, index=True)
     
     # Relationship
     user = db.relationship('User', backref=db.backref('activity_logs', lazy='dynamic'))
