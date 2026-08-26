@@ -1,21 +1,21 @@
 {
-  "version": "1.4.1",
+  "version": "1.4.2",
   "date": "2026-08-26",
   "notes": {
     "en": [
-      { "type": "fix", "title": "Removing an external backup destination works", "desc": "Deleting your only destination used to leave it sitting there and quietly blocked every later change to the panel. It now disappears and stays gone." },
-      { "type": "fix", "title": "\"Test Connection\" tests the right destination", "desc": "Testing a newly added destination could check an old, saved credential instead and report \"Authentication failed\" even when your details were correct." },
-      { "type": "fix", "title": "Safer handling of your app password", "desc": "The API key is now checked for the username:app-password format before anything is sent, so a half-entered key can no longer end up in a web address, and your browser won't autofill the field." }
+      { "type": "fix", "title": "External backup works again", "desc": "Browsing folders, restoring and testing a destination all failed with an authentication error even when your details were right. Every one of them now uses the credentials of the destination you are actually working on." },
+      { "type": "fix", "title": "Clear message when the API key is incomplete", "desc": "A Nextcloud app password on its own is not enough — your username is needed too. The field now says so instead of just failing." },
+      { "type": "fix", "title": "One unfinished destination no longer blocks saving", "desc": "A half-filled or switched-off destination could make every save fail, so nothing could be added, edited or removed until the page was reloaded." }
     ],
     "ro": [
-      { "type": "fix", "title": "Ștergerea unei destinații de backup extern funcționează", "desc": "Ștergerea singurei destinații o lăsa pe loc și bloca discret orice modificare ulterioară din panou. Acum dispare și rămâne ștearsă." },
-      { "type": "fix", "title": "„Testează conexiunea” testează destinația corectă", "desc": "Testarea unei destinații nou adăugate putea verifica o credențială veche, salvată, și raporta „Autentificare eșuată” chiar dacă datele tale erau corecte." },
-      { "type": "fix", "title": "Manipulare mai sigură a parolei de aplicație", "desc": "Cheia API este verificată acum în formatul utilizator:parolă-aplicație înainte de a trimite ceva, așa că o cheie incompletă nu mai poate ajunge într-o adresă web, iar browserul nu mai completează automat câmpul." }
+      { "type": "fix", "title": "Backupul extern funcționează din nou", "desc": "Răsfoirea folderelor, restaurarea și testarea unei destinații eșuau cu o eroare de autentificare chiar dacă datele erau corecte. Toate folosesc acum credențialele destinației la care lucrezi efectiv." },
+      { "type": "fix", "title": "Mesaj clar când cheia API este incompletă", "desc": "O parolă de aplicație Nextcloud nu este suficientă singură — este nevoie și de numele tău de utilizator. Câmpul îți spune asta acum, în loc să eșueze pur și simplu." },
+      { "type": "fix", "title": "O destinație neterminată nu mai blochează salvarea", "desc": "O destinație completată pe jumătate sau dezactivată putea face ca orice salvare să eșueze, așa că nimic nu putea fi adăugat, editat sau șters până la reîncărcarea paginii." }
     ],
     "es": [
-      { "type": "fix", "title": "Eliminar un destino de copia externa funciona", "desc": "Borrar tu único destino lo dejaba ahí y bloqueaba en silencio cualquier cambio posterior en el panel. Ahora desaparece y no vuelve." },
-      { "type": "fix", "title": "«Probar conexión» prueba el destino correcto", "desc": "Al probar un destino recién añadido podía usarse una credencial antigua guardada e informar «Error de autenticación» aunque tus datos fueran correctos." },
-      { "type": "fix", "title": "Manejo más seguro de tu contraseña de aplicación", "desc": "La clave API se comprueba ahora con el formato usuario:contraseña-aplicación antes de enviar nada, así una clave a medias ya no puede acabar en una dirección web, y el navegador no autocompleta el campo." }
+      { "type": "fix", "title": "La copia externa vuelve a funcionar", "desc": "Explorar carpetas, restaurar y probar un destino fallaban con un error de autenticación aunque tus datos fueran correctos. Todos usan ahora las credenciales del destino con el que realmente estás trabajando." },
+      { "type": "fix", "title": "Mensaje claro cuando la clave API está incompleta", "desc": "Una contraseña de aplicación de Nextcloud no basta por sí sola: también hace falta tu nombre de usuario. Ahora el campo lo indica en lugar de fallar sin más." },
+      { "type": "fix", "title": "Un destino a medias ya no bloquea el guardado", "desc": "Un destino incompleto o desactivado podía hacer que fallara cualquier guardado, así que no se podía añadir, editar ni eliminar nada hasta recargar la página." }
     ]
   }
 }
