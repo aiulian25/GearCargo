@@ -1,30 +1,21 @@
 {
-  "version": "1.4.0",
+  "version": "1.4.1",
   "date": "2026-08-26",
   "notes": {
     "en": [
-      { "type": "new", "title": "Revoke your calendar links", "desc": "Shared a calendar link you'd rather take back? Settings → Calendar now has a Revoke button that stops every link you've handed out." },
-      { "type": "fix", "title": "Re-create your calendar and verification links", "desc": "For your security these links are now stored differently, so any you generated before this update no longer work — just generate a new one." },
-      { "type": "fix", "title": "The same car can be in two accounts", "desc": "A VIN is now unique per account, so a car sold between two people can be recorded by both. Adding a duplicate shows a clear message instead of an error." },
-      { "type": "fix", "title": "Clearer messages when something's wrong", "desc": "Invalid emails, over-long names, odd mileage values and bad dates now explain what to fix, in your language." },
-      { "type": "fix", "title": "Faster, steadier lists", "desc": "Long history lists load in sensible pages, so pages stay quick on big garages." },
-      { "type": "fix", "title": "Safer email and calendar sharing", "desc": "Verification emails now land on the right site, resend is throttled to stop inbox flooding, and calendar server addresses are checked more strictly." }
+      { "type": "fix", "title": "Removing an external backup destination works", "desc": "Deleting your only destination used to leave it sitting there and quietly blocked every later change to the panel. It now disappears and stays gone." },
+      { "type": "fix", "title": "\"Test Connection\" tests the right destination", "desc": "Testing a newly added destination could check an old, saved credential instead and report \"Authentication failed\" even when your details were correct." },
+      { "type": "fix", "title": "Safer handling of your app password", "desc": "The API key is now checked for the username:app-password format before anything is sent, so a half-entered key can no longer end up in a web address, and your browser won't autofill the field." }
     ],
     "ro": [
-      { "type": "new", "title": "Revocă linkurile de calendar", "desc": "Ai partajat un link de calendar pe care vrei să-l retragi? Setări → Calendar are acum un buton Revocă, care oprește toate linkurile distribuite." },
-      { "type": "fix", "title": "Regenerează linkurile de calendar și de verificare", "desc": "Pentru siguranța ta, aceste linkuri sunt acum stocate diferit, așa că cele generate înainte de această actualizare nu mai funcționează — generează pur și simplu unul nou." },
-      { "type": "fix", "title": "Aceeași mașină poate fi în două conturi", "desc": "VIN-ul este acum unic per cont, deci o mașină vândută între două persoane poate fi înregistrată de ambele. La duplicat apare un mesaj clar, nu o eroare." },
-      { "type": "fix", "title": "Mesaje mai clare când ceva nu e în regulă", "desc": "Emailurile invalide, numele prea lungi, valorile ciudate de kilometraj și datele greșite explică acum ce trebuie corectat, în limba ta." },
-      { "type": "fix", "title": "Liste mai rapide și mai stabile", "desc": "Listele lungi de istoric se încarcă pe pagini rezonabile, deci rămân rapide chiar și pentru garaje mari." },
-      { "type": "fix", "title": "Partajare mai sigură pe email și calendar", "desc": "Emailurile de verificare ajung acum pe site-ul corect, retrimiterea este limitată pentru a evita inundarea inboxului, iar adresele serverelor de calendar sunt verificate mai strict." }
+      { "type": "fix", "title": "Ștergerea unei destinații de backup extern funcționează", "desc": "Ștergerea singurei destinații o lăsa pe loc și bloca discret orice modificare ulterioară din panou. Acum dispare și rămâne ștearsă." },
+      { "type": "fix", "title": "„Testează conexiunea” testează destinația corectă", "desc": "Testarea unei destinații nou adăugate putea verifica o credențială veche, salvată, și raporta „Autentificare eșuată” chiar dacă datele tale erau corecte." },
+      { "type": "fix", "title": "Manipulare mai sigură a parolei de aplicație", "desc": "Cheia API este verificată acum în formatul utilizator:parolă-aplicație înainte de a trimite ceva, așa că o cheie incompletă nu mai poate ajunge într-o adresă web, iar browserul nu mai completează automat câmpul." }
     ],
     "es": [
-      { "type": "new", "title": "Revoca tus enlaces de calendario", "desc": "¿Compartiste un enlace de calendario y quieres retirarlo? Ajustes → Calendario ahora tiene un botón Revocar que detiene todos los enlaces que has compartido." },
-      { "type": "fix", "title": "Vuelve a crear tus enlaces de calendario y verificación", "desc": "Por tu seguridad, estos enlaces se almacenan de otra forma, así que los generados antes de esta actualización ya no funcionan — simplemente genera uno nuevo." },
-      { "type": "fix", "title": "El mismo coche puede estar en dos cuentas", "desc": "El VIN ahora es único por cuenta, así que un coche vendido entre dos personas puede registrarse en ambas. Si se duplica, verás un mensaje claro en lugar de un error." },
-      { "type": "fix", "title": "Mensajes más claros cuando algo falla", "desc": "Correos inválidos, nombres demasiado largos, kilometrajes extraños y fechas incorrectas ahora explican qué corregir, en tu idioma." },
-      { "type": "fix", "title": "Listas más rápidas y estables", "desc": "Los listados largos de historial se cargan en páginas razonables, así que todo sigue siendo rápido en garajes grandes." },
-      { "type": "fix", "title": "Compartir por correo y calendario de forma más segura", "desc": "Los correos de verificación llegan al sitio correcto, el reenvío está limitado para evitar saturar el buzón y las direcciones de servidores de calendario se validan de forma más estricta." }
+      { "type": "fix", "title": "Eliminar un destino de copia externa funciona", "desc": "Borrar tu único destino lo dejaba ahí y bloqueaba en silencio cualquier cambio posterior en el panel. Ahora desaparece y no vuelve." },
+      { "type": "fix", "title": "«Probar conexión» prueba el destino correcto", "desc": "Al probar un destino recién añadido podía usarse una credencial antigua guardada e informar «Error de autenticación» aunque tus datos fueran correctos." },
+      { "type": "fix", "title": "Manejo más seguro de tu contraseña de aplicación", "desc": "La clave API se comprueba ahora con el formato usuario:contraseña-aplicación antes de enviar nada, así una clave a medias ya no puede acabar en una dirección web, y el navegador no autocompleta el campo." }
     ]
   }
 }
