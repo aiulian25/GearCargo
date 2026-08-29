@@ -667,6 +667,27 @@ def sync_entry_to_calendar(user, entry_type: str, entry: Any, action: str = 'cre
         return False, str(e)
 
 
+def sync_entry_to_calendar_safe(user, entry_type: str, entry: Any,
+                                action: str = 'create') -> None:
+    """Fire-and-forget calendar sync for an entry write path.
+
+    Calendar sync is a side effect of saving an entry and must never turn a
+    successful save into a failed request — a CalDAV server being down is not
+    the user's problem when they are editing a tax. Write routes call this
+    instead of repeating the enabled-check and try/except at every site.
+
+    Callers deleting an entry must call this BEFORE db.session.delete(): once
+    the row is gone the instance is expired and entry.id (which forms the event
+    UID) can no longer be read.
+    """
+    if not getattr(user, 'calendar_enabled', False):
+        return
+    try:
+        sync_entry_to_calendar(user, entry_type, entry, action)
+    except Exception as exc:
+        current_app.logger.warning(f'Calendar sync failed for {entry_type}: {exc}')
+
+
 def get_event_data_for_entry(entry_type: str, entry: Any, vehicle_name: str) -> Optional[Dict]:
     """Generate event data based on entry type."""
     

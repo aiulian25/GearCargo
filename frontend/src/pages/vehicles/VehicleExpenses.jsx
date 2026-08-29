@@ -639,7 +639,8 @@ export default function VehicleExpenses() {
 
   const handleCancelRecurring = async (type, entryId) => {
     const msg = type === 'insurance'
-      ? 'Cancel this insurance policy? This will stop future recurring costs and set the end date to today.'
+      ? (t('recurring.cancelInsuranceConfirm')
+         || 'Cancel this insurance policy? This will stop future recurring costs and set the end date to today.')
       : (t('recurring.stopRepeatingConfirm')
          || 'Stop this recurring series? Future entries will no longer be auto-generated.')
     if (!confirm(msg)) return
@@ -657,6 +658,9 @@ export default function VehicleExpenses() {
       }
     } catch (error) {
       console.error('Failed to cancel recurring:', error)
+      toast.error(error.response?.data?.error
+        || t('recurring.cancelFailed')
+        || 'Could not stop this recurring series. Please try again.')
     }
   }
 
@@ -700,6 +704,9 @@ export default function VehicleExpenses() {
       }
     } catch (error) {
       console.error('Failed to delete:', error)
+      toast.error(error.response?.data?.error
+        || t('common.deleteFailed')
+        || 'Could not delete this entry. Please try again.')
     }
   }
 
@@ -1243,7 +1250,7 @@ export default function VehicleExpenses() {
                         <button
                           onClick={() => handleCancelRecurring('insurance', entry.id)}
                           className="text-orange-500 hover:text-orange-400 p-1"
-                          title="Cancel insurance (stop recurring costs)"
+                          title={t('recurring.cancelInsurance') || 'Cancel insurance (stop recurring costs)'}
                         >
                           {Icons.cancelRecurring}
                         </button>

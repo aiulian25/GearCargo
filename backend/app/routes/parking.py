@@ -9,6 +9,10 @@ from sqlalchemy import func
 from app import db
 from app.models import Vehicle, ParkingEntry
 from app.routes.auth import token_required
+from app.services.calendar_service import sync_entry_to_calendar_safe
+from app.utils.entryparse import (
+    InvalidFieldError, invalid_field_response, parse_amount, parse_iso_date,
+)
 
 parking_bp = Blueprint('parking', __name__)
 
@@ -71,66 +75,56 @@ def create_parking_entry(current_user):
     if not vehicle:
         return jsonify({'error': 'Vehicle not found'}), 404
     
-    # Parse date - support both 'date' and 'entry_date' field names
-    entry_date = datetime.now(timezone.utc).date()
-    if data.get('date'):
-        entry_date = datetime.fromisoformat(data['date'].replace('Z', '+00:00')).date()
-    elif data.get('entry_date'):
-        entry_date = datetime.fromisoformat(data['entry_date'].replace('Z', '+00:00')).date()
-    
-    # Parse start/end times
-    start_datetime = None
-    end_datetime = None
-    if data.get('start_time'):
-        # Handle both ISO datetime strings and simple time strings (HH:MM)
-        time_str = data['start_time']
-        if 'T' in time_str or len(time_str) > 5:  # ISO datetime format
-            start_datetime = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
-        else:  # Simple time format (HH:MM)
-            from datetime import time as time_class
-            hour, minute = map(int, time_str.split(':'))
-            start_datetime = datetime.combine(entry_date, time_class(hour, minute))
-    if data.get('end_time'):
-        # Handle both ISO datetime strings and simple time strings (HH:MM)
-        time_str = data['end_time']
-        if 'T' in time_str or len(time_str) > 5:  # ISO datetime format
-            end_datetime = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
-        else:  # Simple time format (HH:MM)
-            from datetime import time as time_class
-            hour, minute = map(int, time_str.split(':'))
-            end_datetime = datetime.combine(entry_date, time_class(hour, minute))
-    
-    # Parse permit expiry
-    permit_expires = None
-    if data.get('permit_valid_until'):
-        permit_expires = datetime.fromisoformat(data['permit_valid_until'].replace('Z', '+00:00')).date()
-    elif data.get('permit_expires'):
-        permit_expires = datetime.fromisoformat(data['permit_expires'].replace('Z', '+00:00')).date()
-    
-    # Parse next due date for recurring
-    next_due_date = None
+    # Every parse below raises InvalidFieldError on malformed input, caught once
+    # at the end of the block — a bad date used to escape as a 500.
+    try:
+        # Parse date - support both 'date' and 'entry_date' field names
+        entry_date = datetime.now(timezone.utc).date()
+        if data.get('date'):
+            entry_date = parse_iso_date(data['date'])
+        elif data.get('entry_date'):
+            entry_date = parse_iso_date(data['entry_date'])
+
+        # Parse start/end times — accepts ISO datetimes or plain HH:MM.
+        start_datetime = _parse_time_field(data['start_time'], entry_date) \
+            if data.get('start_time') else None
+        end_datetime = _parse_time_field(data['end_time'], entry_date) \
+            if data.get('end_time') else None
+
+        # Parse permit expiry
+        permit_expires = None
+        if data.get('permit_valid_until'):
+            permit_expires = parse_iso_date(data['permit_valid_until'])
+        elif data.get('permit_expires'):
+            permit_expires = parse_iso_date(data['permit_expires'])
+
+        amount = parse_amount(
+            data.get('total_cost') or data.get('cost') or data.get('amount') or 0)
+
+        # Parse next due date for recurring
+        next_due_date = None
+        if data.get('next_due_date'):
+            next_due_date = parse_iso_date(data['next_due_date'])
+    except InvalidFieldError as invalid:
+        payload, status = invalid_field_response(invalid)
+        return jsonify(payload), status
+
     is_recurring = data.get('recurring', False)
     recurrence_type = data.get('recurrence_type')
-    
-    if data.get('next_due_date'):
-        next_due_date = datetime.fromisoformat(data['next_due_date'].replace('Z', '+00:00')).date()
-    elif is_recurring and permit_expires:
-        # Auto-calculate next due date based on recurrence type
-        from dateutil.relativedelta import relativedelta
-        if recurrence_type == 'daily':
-            next_due_date = permit_expires + relativedelta(days=1)
-        elif recurrence_type == 'weekly':
-            next_due_date = permit_expires + relativedelta(weeks=1)
-        elif recurrence_type == 'monthly':
-            next_due_date = permit_expires + relativedelta(months=1)
-        else:  # annual
-            next_due_date = permit_expires + relativedelta(years=1)
+
+    # An explicit next_due_date from the client wins; otherwise derive it. Uses
+    # the shared helper the generator uses — the old inline chain fell through
+    # to "annual" for the 'quarterly' option the form offers, scheduling a
+    # quarterly permit's first renewal nine months late.
+    if not next_due_date and is_recurring and permit_expires:
+        from app.services import _recurrence_step
+        next_due_date = permit_expires + _recurrence_step(recurrence_type)
     
     entry = ParkingEntry(
         user_id=current_user.id,
         vehicle_id=vehicle.id,
         date=entry_date,
-        amount=data.get('total_cost') or data.get('cost') or data.get('amount', 0),
+        amount=amount,
         currency=data.get('currency') or current_user.currency or 'EUR',
         title=data.get('location_name') or data.get('location'),
         description=data.get('notes'),
@@ -157,13 +151,7 @@ def create_parking_entry(current_user):
     db.session.add(entry)
     db.session.commit()
 
-    # Auto-sync to calendar if enabled
-    if current_user.calendar_enabled:
-        try:
-            from app.services.calendar_service import sync_entry_to_calendar
-            sync_entry_to_calendar(current_user, 'parking', entry, 'create')
-        except Exception as e:
-            current_app.logger.warning(f"Calendar sync failed for parking: {e}")
+    sync_entry_to_calendar_safe(current_user, 'parking', entry, 'create')
 
     return jsonify({
         'message': 'Parking entry created',
@@ -218,31 +206,62 @@ def update_parking_entry(current_user, entry_id):
         'permit_valid_until': 'permit_expires', 'permit_expires': 'permit_expires',
         'reminder_days': 'reminder_days',
         'recurring': 'recurring', 'recurrence_type': 'recurrence_type',
+        'next_due_date': 'next_due_date',
         'notes': 'notes',
         'fine_reason': 'fine_reason', 'fine_status': 'fine_status',  # F14
     }
     date_columns = {'date', 'permit_expires', 'next_due_date'}
 
-    for key, column in field_aliases.items():
-        if key not in data:
-            continue
-        value = data[key]
-        if column in date_columns:
-            if value:
-                setattr(entry, column,
-                        datetime.fromisoformat(str(value).replace('Z', '+00:00')).date())
-            elif column != 'date':
-                setattr(entry, column, None)
-        elif column == 'amount':
-            if value is not None:
-                entry.amount = float(value)
-        elif column == 'duration_minutes':
-            try:
-                entry.duration_minutes = int(value) if value not in (None, '') else None
-            except (TypeError, ValueError):
-                entry.duration_minutes = None
-        else:
-            setattr(entry, column, value)
+    # Captured BEFORE the loop overwrites them — the recurrence block below acts
+    # on what actually CHANGED, not on what the form happened to post (it posts
+    # every field on every save).
+    previous_recurring = bool(entry.recurring)
+    previous_recurrence_type = entry.recurrence_type
+    previous_permit_expires = entry.permit_expires
+
+    try:
+        for key, column in field_aliases.items():
+            if key not in data:
+                continue
+            value = data[key]
+            if column in date_columns:
+                if value:
+                    setattr(entry, column, parse_iso_date(value))
+                elif column != 'date':
+                    setattr(entry, column, None)
+            elif column == 'amount':
+                if value is not None:
+                    entry.amount = parse_amount(value)
+            elif column == 'duration_minutes':
+                try:
+                    entry.duration_minutes = int(value) if value not in (None, '') else None
+                except (TypeError, ValueError):
+                    entry.duration_minutes = None
+            elif column == 'recurring':
+                entry.recurring = bool(value)
+            else:
+                setattr(entry, column, value)
+    except InvalidFieldError as invalid:
+        # Nothing is committed on this path, so the entry is left untouched.
+        payload, status = invalid_field_response(invalid)
+        return jsonify(payload), status
+
+    # Recurrence transitions — mirrors update_tax_entry. next_due_date is what
+    # drives the generator, so it has to follow `recurring`, the frequency, and
+    # the permit's expiry date (a renewed permit reschedules from its new end).
+    recurring_now = bool(entry.recurring)
+    turned_off = 'recurring' in data and not recurring_now
+    turned_on = recurring_now and not previous_recurring
+    frequency_changed = recurring_now and entry.recurrence_type != previous_recurrence_type
+    expiry_changed = recurring_now and entry.permit_expires != previous_permit_expires
+
+    if turned_off:
+        entry.next_due_date = None      # same settlement as cancel_parking_entry
+    elif (turned_on or frequency_changed or expiry_changed) and 'next_due_date' not in data:
+        # An explicit next_due_date in the payload always wins (handled above).
+        from app.services import _next_future_occurrence
+        entry.next_due_date = _next_future_occurrence(
+            entry.permit_expires or entry.date, entry.recurrence_type)
 
     # start_time / end_time — the form sends HH:MM (or an ISO datetime); parse
     # into the real start_datetime / end_datetime columns exactly as create does.
@@ -255,7 +274,9 @@ def update_parking_entry(current_user, entry_id):
                 setattr(entry, column, None)
 
     db.session.commit()
-    
+
+    sync_entry_to_calendar_safe(current_user, 'parking', entry, 'update')
+
     return jsonify({
         'message': 'Parking entry updated',
         'entry': entry.to_dict()
@@ -282,6 +303,8 @@ def cancel_parking_entry(current_user, entry_id):
     entry.next_due_date = None
     db.session.commit()
 
+    sync_entry_to_calendar_safe(current_user, 'parking', entry, 'update')
+
     return jsonify({
         'message': 'Recurring parking cancelled',
         'entry': entry.to_dict()
@@ -300,9 +323,12 @@ def delete_parking_entry(current_user, entry_id):
     if not entry:
         return jsonify({'error': 'Entry not found'}), 404
     
+    # Before the row goes: the event UID is derived from entry.id.
+    sync_entry_to_calendar_safe(current_user, 'parking', entry, 'delete')
+
     db.session.delete(entry)
     db.session.commit()
-    
+
     return jsonify({'message': 'Parking entry deleted'})
 
 

@@ -732,6 +732,19 @@ def process_auto_renew_insurance(app):
                 continue
 
             term_days = (old.end_date - old.start_date).days
+            if term_days < 1:
+                # end_date <= start_date (bad import data). Rolling this forward
+                # produces a successor that expires the day it starts, which is
+                # picked up by the next run — one junk policy and one "renewed"
+                # push per day, forever. Settle it instead; a real one-day
+                # policy has term_days == 1 and still renews.
+                app.logger.warning(
+                    f'Insurance policy {old.id} has a non-positive term '
+                    f'({term_days} days); not auto-renewing.'
+                )
+                old.status = 'expired'
+                continue
+
             new_start = old.end_date + _td(days=1)
             new_end = new_start + _td(days=term_days)
 
@@ -1674,7 +1687,6 @@ def process_recurring_tax_entries(app):
     with app.app_context():
         from app import db
         from app.models import TaxEntry
-        from dateutil.relativedelta import relativedelta
 
         today = date.today()
         created_count = 0
@@ -1688,17 +1700,7 @@ def process_recurring_tax_entries(app):
             TaxEntry.next_due_date.is_(None),
         ).all()
         for entry in null_due:
-            recurrence = entry.recurrence_type or 'monthly'
-            if recurrence == 'monthly':
-                step = relativedelta(months=1)
-            elif recurrence == 'quarterly':
-                step = relativedelta(months=3)
-            elif recurrence == 'semi_annual':
-                step = relativedelta(months=6)
-            elif recurrence == 'annual':
-                step = relativedelta(years=1)
-            else:
-                step = relativedelta(months=1)
+            step = _recurrence_step(entry.recurrence_type)
             base = entry.date or today
             # Set to the FIRST occurrence after the entry date — process_recurring_tax_entries
             # will then backfill all missed periods and advance next_due_date to the future.
@@ -1715,62 +1717,64 @@ def process_recurring_tax_entries(app):
 
         for entry in due_entries:
             try:
+                step = _recurrence_step(entry.recurrence_type)
                 next_date = entry.next_due_date
-                recurrence = entry.recurrence_type or 'monthly'
-
-                # Determine relativedelta step
-                if recurrence == 'monthly':
-                    step = relativedelta(months=1)
-                elif recurrence == 'quarterly':
-                    step = relativedelta(months=3)
-                elif recurrence == 'semi_annual':
-                    step = relativedelta(months=6)
-                elif recurrence == 'annual':
-                    step = relativedelta(years=1)
-                else:
-                    step = relativedelta(months=1)
+                generated_for_entry = 0
 
                 # Iterate: create an entry for each missed period up to today
                 while next_date <= today:
-                    # Avoid duplicate: check if an entry already exists on this date
-                    exists = TaxEntry.query.filter(
-                        TaxEntry.vehicle_id == entry.vehicle_id,
-                        TaxEntry.tax_type == entry.tax_type,
-                        TaxEntry.date == next_date,
-                        TaxEntry.id != entry.id,
-                    ).first()
+                    if generated_for_entry < _MAX_RECURRING_BACKFILL:
+                        # Avoid duplicate: check if an entry already exists on this date
+                        exists = TaxEntry.query.filter(
+                            TaxEntry.vehicle_id == entry.vehicle_id,
+                            TaxEntry.tax_type == entry.tax_type,
+                            TaxEntry.date == next_date,
+                            TaxEntry.id != entry.id,
+                        ).first()
 
-                    if not exists:
-                        new_entry = TaxEntry(
-                            user_id=entry.user_id,
-                            vehicle_id=entry.vehicle_id,
-                            date=next_date,
-                            amount=entry.amount,
-                            title=entry.title,
-                            description=entry.description,
-                            tax_type=entry.tax_type,
-                            tax_year=next_date.year,
-                            tax_period=entry.tax_period,
-                            status='paid',
-                            due_date=next_date,
-                            paid_date=next_date,
-                            reference_number=entry.reference_number,
-                            notes=entry.notes,
-                            # A generated occurrence is a plain booked payment —
-                            # NOT another template. Only the original template
-                            # carries recurring/next_due_date; stamping them here
-                            # multiplied templates every period (one extra
-                            # "Coming up" row and forecast projection per month).
-                            recurring=False,
-                            recurrence_type=None,
-                            next_due_date=None,
-                            reminder_days=entry.reminder_days,
-                            insurance_policy_id=entry.insurance_policy_id,
-                        )
-                        db.session.add(new_entry)
-                        created_count += 1
+                        if not exists:
+                            new_entry = TaxEntry(
+                                user_id=entry.user_id,
+                                vehicle_id=entry.vehicle_id,
+                                date=next_date,
+                                amount=entry.amount,
+                                # Without this the occurrence fell back to the
+                                # Entry.currency default ('EUR'), booking every
+                                # non-EUR recurring tax in the wrong currency.
+                                currency=entry.currency,
+                                title=entry.title,
+                                description=entry.description,
+                                tax_type=entry.tax_type,
+                                tax_year=next_date.year,
+                                tax_period=entry.tax_period,
+                                status='paid',
+                                due_date=next_date,
+                                paid_date=next_date,
+                                reference_number=entry.reference_number,
+                                notes=entry.notes,
+                                # A generated occurrence is a plain booked payment —
+                                # NOT another template. Only the original template
+                                # carries recurring/next_due_date; stamping them here
+                                # multiplied templates every period (one extra
+                                # "Coming up" row and forecast projection per month).
+                                recurring=False,
+                                recurrence_type=None,
+                                next_due_date=None,
+                                reminder_days=entry.reminder_days,
+                                insurance_policy_id=entry.insurance_policy_id,
+                            )
+                            db.session.add(new_entry)
+                            created_count += 1
+                            generated_for_entry += 1
 
+                    # Always advance, even past the cap, so the series reaches the future.
                     next_date = next_date + step
+
+                if generated_for_entry >= _MAX_RECURRING_BACKFILL:
+                    app.logger.warning(
+                        f'Recurring tax entry {entry.id} hit the backfill cap '
+                        f'({_MAX_RECURRING_BACKFILL}); older occurrences were skipped.'
+                    )
 
                 # Update the original entry's next_due_date to the next future date
                 entry.next_due_date = next_date
@@ -1778,8 +1782,10 @@ def process_recurring_tax_entries(app):
             except Exception as e:
                 app.logger.error(f'Failed to process recurring tax entry {entry.id}: {e}')
 
-        if created_count:
-            db.session.commit()
+        # Unconditional: the loop also advances entry.next_due_date, and that
+        # write must survive a run where every occurrence was deduped away —
+        # otherwise the template stays past-due and nags forever.
+        db.session.commit()
 
         app.logger.info(f'Recurring tax processing: created {created_count} new entries')
 
@@ -1837,6 +1843,21 @@ def _recurrence_step(recurrence_type):
         'semi_annual': relativedelta(months=6),
         'annual': relativedelta(years=1),
     }.get(recurrence_type, relativedelta(months=1))
+
+
+def _next_future_occurrence(base_date, recurrence_type):
+    """First occurrence strictly after today, stepping from ``base_date``.
+
+    Used by the tax and parking edit routes: switching a series ON, or changing
+    its frequency, must schedule the NEXT payment and never fabricate the missed
+    ones. The generators' backfill exists for templates that were already
+    running — not for a checkbox ticked today.
+    """
+    step = _recurrence_step(recurrence_type)
+    next_due = base_date + step
+    while next_due <= date.today():
+        next_due = next_due + step
+    return next_due
 
 
 # Safety cap: maximum entries auto-created per recurring series per run. Protects
@@ -1943,7 +1964,8 @@ def process_recurring_parking_entries(app):
             except Exception as e:
                 app.logger.error(f'Failed to process recurring parking entry {entry.id}: {e}')
 
-        if created_count:
-            db.session.commit()
+        # Unconditional — see process_recurring_tax_entries: entry.next_due_date
+        # is advanced even when nothing new was created.
+        db.session.commit()
 
         app.logger.info(f'Recurring parking processing: created {created_count} new entries')
