@@ -107,8 +107,15 @@ RUN set -eux; \
 # Python dependencies (same requirements as the backend image)
 # ------------------------------------------------------------
 COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip uninstall -y wheel setuptools || true
+# pip is upgraded before it installs anything (the base ships 24.0, which Trivy
+# flags for sdist symlink extraction, CVE-2025-8869 et al), then removed along
+# with wheel/setuptools: nothing in the running container installs packages, and
+# leaving pip behind also leaves its vendored msgpack/pkg_resources — which pip
+# declares in its own SBOM, so the scanner reports them as image findings.
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    { pip uninstall -y wheel setuptools || true; } && \
+    { python -m pip uninstall -y pip || true; }
 
 # ------------------------------------------------------------
 # Application code, backup script, built frontend

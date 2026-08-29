@@ -61,8 +61,7 @@ numpy~=2.0          # local-illumination normalisation in the OCR preprocessing 
 
 # PDF Generation
 reportlab~=4.0
-pypdf~=4.0
-weasyprint~=68.0
+pypdf~=6.15
 
 # Scheduling
 APScheduler~=3.10
@@ -94,4 +93,4 @@ uuid~=1.30
 shortuuid~=1.0
 
 # Data encryption
-cryptography~=49.0
+cryptography~=50.0
