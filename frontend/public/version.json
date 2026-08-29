@@ -1,21 +1,33 @@
 {
-  "version": "1.4.2",
-  "date": "2026-08-26",
+  "version": "1.5.0",
+  "date": "2026-08-29",
   "notes": {
     "en": [
-      { "type": "fix", "title": "External backup works again", "desc": "Browsing folders, restoring and testing a destination all failed with an authentication error even when your details were right. Every one of them now uses the credentials of the destination you are actually working on." },
-      { "type": "fix", "title": "Clear message when the API key is incomplete", "desc": "A Nextcloud app password on its own is not enough — your username is needed too. The field now says so instead of just failing." },
-      { "type": "fix", "title": "One unfinished destination no longer blocks saving", "desc": "A half-filled or switched-off destination could make every save fail, so nothing could be added, edited or removed until the page was reloaded." }
+      { "type": "new", "title": "Change when a recurring payment is next due", "desc": "You can now edit the next due date of a repeating tax or parking permit directly, instead of deleting it and starting again. Changing how often it repeats takes effect straight away." },
+      { "type": "fix", "title": "Turning off a repeat actually stops it", "desc": "Un-ticking \"Recurring\" used to leave a reminder behind that kept appearing in Coming up and couldn't be cleared. It now stops for good, exactly like the Stop repeating button." },
+      { "type": "fix", "title": "No more invented payments", "desc": "Switching on repeat for an older entry could fill your history overnight with back-dated payments you never made. It now simply schedules the next one." },
+      { "type": "fix", "title": "Quarterly permits renew on time", "desc": "A parking permit set to renew every three months was being scheduled a year ahead. Six-monthly permits weren't handled at all. Both work now — edit an existing permit to correct it." },
+      { "type": "fix", "title": "Recurring taxes keep your currency", "desc": "Automatically created tax payments were always recorded in euro, whatever the original was in. They now follow the currency you entered." },
+      { "type": "fix", "title": "Your calendar keeps up", "desc": "Editing, deleting or stopping a repeating entry now updates your linked calendar too, instead of leaving the old event sitting there." },
+      { "type": "fix", "title": "Clearer messages when something's wrong", "desc": "Odd dates and amounts now explain what to fix in your language, failed deletes say so instead of looking successful, and the insurance cancel dialog is translated." }
     ],
     "ro": [
-      { "type": "fix", "title": "Backupul extern funcționează din nou", "desc": "Răsfoirea folderelor, restaurarea și testarea unei destinații eșuau cu o eroare de autentificare chiar dacă datele erau corecte. Toate folosesc acum credențialele destinației la care lucrezi efectiv." },
-      { "type": "fix", "title": "Mesaj clar când cheia API este incompletă", "desc": "O parolă de aplicație Nextcloud nu este suficientă singură — este nevoie și de numele tău de utilizator. Câmpul îți spune asta acum, în loc să eșueze pur și simplu." },
-      { "type": "fix", "title": "O destinație neterminată nu mai blochează salvarea", "desc": "O destinație completată pe jumătate sau dezactivată putea face ca orice salvare să eșueze, așa că nimic nu putea fi adăugat, editat sau șters până la reîncărcarea paginii." }
+      { "type": "new", "title": "Schimbă când urmează o plată recurentă", "desc": "Poți edita direct data următoarei plăți pentru o taxă sau un permis de parcare recurent, fără să-l ștergi și să începi din nou. Schimbarea frecvenței se aplică imediat." },
+      { "type": "fix", "title": "Oprirea repetării chiar oprește seria", "desc": "Debifarea opțiunii „Recurent” lăsa în urmă o notificare care apărea mereu în „Urmează” și nu putea fi ștearsă. Acum se oprește definitiv, exact ca butonul Oprește repetarea." },
+      { "type": "fix", "title": "Fără plăți inventate", "desc": "Activarea repetării pentru o intrare mai veche putea umple istoricul peste noapte cu plăți retroactive pe care nu le-ai făcut. Acum programează pur și simplu următoarea." },
+      { "type": "fix", "title": "Permisele trimestriale se reînnoiesc la timp", "desc": "Un permis de parcare setat să se reînnoiască la trei luni era programat cu un an înainte, iar cele semestriale nu erau tratate deloc. Acum funcționează — editează un permis existent pentru a-l corecta." },
+      { "type": "fix", "title": "Taxele recurente păstrează moneda ta", "desc": "Plățile de taxe create automat erau înregistrate mereu în euro, indiferent de moneda originală. Acum folosesc moneda pe care ai introdus-o." },
+      { "type": "fix", "title": "Calendarul rămâne la zi", "desc": "Editarea, ștergerea sau oprirea unei intrări recurente actualizează acum și calendarul conectat, în loc să lase evenimentul vechi acolo." },
+      { "type": "fix", "title": "Mesaje mai clare când ceva nu e în regulă", "desc": "Datele și sumele greșite explică acum ce trebuie corectat, în limba ta, ștergerile eșuate o spun în loc să pară reușite, iar dialogul de anulare a asigurării este tradus." }
     ],
     "es": [
-      { "type": "fix", "title": "La copia externa vuelve a funcionar", "desc": "Explorar carpetas, restaurar y probar un destino fallaban con un error de autenticación aunque tus datos fueran correctos. Todos usan ahora las credenciales del destino con el que realmente estás trabajando." },
-      { "type": "fix", "title": "Mensaje claro cuando la clave API está incompleta", "desc": "Una contraseña de aplicación de Nextcloud no basta por sí sola: también hace falta tu nombre de usuario. Ahora el campo lo indica en lugar de fallar sin más." },
-      { "type": "fix", "title": "Un destino a medias ya no bloquea el guardado", "desc": "Un destino incompleto o desactivado podía hacer que fallara cualquier guardado, así que no se podía añadir, editar ni eliminar nada hasta recargar la página." }
+      { "type": "new", "title": "Cambia cuándo vence el próximo pago recurrente", "desc": "Ahora puedes editar directamente la fecha del próximo pago de un impuesto o permiso de aparcamiento recurrente, en lugar de borrarlo y empezar de nuevo. Cambiar la frecuencia surte efecto de inmediato." },
+      { "type": "fix", "title": "Desactivar la repetición ahora la detiene de verdad", "desc": "Desmarcar «Recurrente» dejaba un recordatorio que seguía apareciendo en Próximamente y no se podía quitar. Ahora se detiene definitivamente, igual que el botón Detener repetición." },
+      { "type": "fix", "title": "Se acabaron los pagos inventados", "desc": "Activar la repetición en una entrada antigua podía llenar tu historial de un día para otro con pagos retroactivos que nunca hiciste. Ahora simplemente programa el siguiente." },
+      { "type": "fix", "title": "Los permisos trimestrales se renuevan a tiempo", "desc": "Un permiso de aparcamiento configurado para renovarse cada tres meses se programaba un año después, y los semestrales no se contemplaban. Ya funcionan — edita un permiso existente para corregirlo." },
+      { "type": "fix", "title": "Los impuestos recurrentes mantienen tu moneda", "desc": "Los pagos de impuestos creados automáticamente se registraban siempre en euros, fuera cual fuera la moneda original. Ahora usan la que introdujiste." },
+      { "type": "fix", "title": "Tu calendario se mantiene al día", "desc": "Editar, eliminar o detener una entrada recurrente ahora actualiza también tu calendario vinculado, en vez de dejar ahí el evento antiguo." },
+      { "type": "fix", "title": "Mensajes más claros cuando algo falla", "desc": "Las fechas y los importes incorrectos explican qué corregir en tu idioma, los borrados fallidos lo indican en lugar de parecer correctos, y el diálogo de cancelación del seguro está traducido." }
     ]
   }
 }
