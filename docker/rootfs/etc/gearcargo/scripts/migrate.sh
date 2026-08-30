@@ -43,8 +43,8 @@ echo "[migrate] Running flask db upgrade ..."
 # this is compatible with a read-only rootfs. Run as the unprivileged app user.
 s6-setuidgid gearcargo env PATH="$PATH" DATABASE_URL="$DATABASE_URL" flask db upgrade
 
-# Opt-in belt-and-suspenders schema self-heal, mirrored from the 4-container
-# entrypoint. Default OFF (a healthy migrated DB needs nothing here). Set
+# Opt-in belt-and-suspenders schema self-heal. Default OFF (a healthy database
+# needs nothing here). Set
 # DB_SCHEMA_SYNC=true only for one-off recovery after a missed migration.
 if [ "${DB_SCHEMA_SYNC:-false}" = "true" ]; then
     echo "[migrate] DB_SCHEMA_SYNC=true — verifying model tables/columns exist ..."

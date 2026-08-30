@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 
 /**
- * Reusable, accessible empty-state (IMPROVEMENTS.md §2 — Empty states with guidance).
+ * Reusable, accessible empty-state with guidance.
  *
  * Friendly icon + title + description + a primary CTA, replacing bland/blank
  * tables for first-run users. Matches the existing `card text-center py-12`

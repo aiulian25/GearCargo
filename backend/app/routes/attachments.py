@@ -51,7 +51,7 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 #
 # S12: configurable via OCR_MAX_CONCURRENCY (default 2) so operators on small
 # boxes can lower it to 1 to keep CPU available for request handling, or raise it
-# on bigger hosts. (A dedicated task queue — see IMPROVEMENTS.md §1.5 — remains
+# on bigger hosts. (A dedicated task queue remains
 # the longer-term fix to fully isolate this CPU-heavy work from the web workers.)
 try:
     _OCR_CONCURRENCY = max(1, int(os.environ.get('OCR_MAX_CONCURRENCY', '2')))

@@ -7,8 +7,7 @@
 # The cluster is created with the SAME superuser/password/database the app uses
 # (parsed from DATABASE_URL in env.sh), listening on loopback only, with password
 # auth required over TCP. A fresh cluster is created empty; the app schema is
-# applied by the separate `migrate` service (flask db upgrade), and — for a
-# migrating install — data is loaded from a portable backup afterwards.
+# applied by the separate `migrate` service (flask db upgrade).
 set -eu
 . /etc/gearcargo/env.sh
 
@@ -34,9 +33,8 @@ printf '%s' "$GC_DB_PASS" > "$pwfile"
 chown postgres:postgres "$pwfile"
 
 # --username sets the bootstrap superuser to the app's DB user (e.g. gearcargo);
-# --pwfile gives it the app's password. Collation C matches the 4-container
-# cluster (POSTGRES_INITDB_ARGS --lc-collate=C --lc-ctype=C) so restored dumps
-# and index/collation behaviour line up.
+# --pwfile gives it the app's password. Collation C keeps restored dumps and
+# index/collation behaviour consistent.
 s6-setuidgid postgres initdb \
     --pgdata="$PGDATA" \
     --username="$GC_DB_USER" \

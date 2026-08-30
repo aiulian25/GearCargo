@@ -1,6 +1,6 @@
 name: Dependency Audit
 
-# S13 (IMPROVEMENTS.md §1.6): automated source-dependency CVE scanning.
+# S13: automated source-dependency CVE scanning.
 # Complements the image-level scanning already in the Makefile (Trivy/Grype/Syft).
 #
 # Runs on:

@@ -697,7 +697,7 @@ def _to_naive_utc(dt):
 
 def _warn_redis_degraded(context):
     """Emit a throttled WARNING so a Redis outage is loudly visible in the logs
-    (the 'loud degraded state' from IMPROVEMENTS.md §1.1) without flooding them
+    (a loud degraded state) without flooding them
     on every request."""
     global _redis_degraded_last_logged
     import time

@@ -1,7 +1,7 @@
 import { useTranslation } from '../../contexts/LanguageContext'
 
 /**
- * Skeleton loading primitives (IMPROVEMENTS.md §2 — Loading & skeleton states).
+ * Skeleton loading primitives for loading states.
  *
  * Built on the global `.skeleton` class (animate-pulse, theme-aware) so the look
  * stays consistent with the bespoke skeletons already used across the app, while

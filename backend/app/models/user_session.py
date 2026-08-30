@@ -1,7 +1,7 @@
 """
 GearCargo - User Session Model
 
-S01 (IMPROVEMENTS.md §1.1): durable, database-backed mirror of the Redis
+S01: durable, database-backed mirror of the Redis
 session store.  Redis remains the fast path for session validation, single-device
 enforcement, the 48-hour absolute-expiry wall, and logout/blacklist revocation.
 This table is the *fallback* consulted only when Redis is unavailable, so a Redis

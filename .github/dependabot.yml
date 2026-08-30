@@ -1,4 +1,4 @@
-# GearCargo - Dependabot configuration (S13, IMPROVEMENTS.md §1.6)
+# GearCargo - Dependabot configuration (S13)
 #
 # Opens automated PRs for dependency updates and surfaces vulnerable versions.
 # Minor/patch bumps are grouped to reduce PR noise; major bumps come as

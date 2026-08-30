@@ -1,6 +1,6 @@
 name: CI
 
-# Smoke-test CI (IMPROVEMENTS.md §5): run DB migrations, boot the app, and run
+# Smoke-test CI: run DB migrations, boot the app, and run
 # the backend unit tests (security-critical helpers: encryption, signed URLs,
 # SSRF guard, password hashing, account lockout), plus a frontend build smoke.
 #

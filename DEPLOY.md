@@ -7,7 +7,7 @@ Complete step-by-step guide to deploy GearCargo on any Docker-capable machine �
 > The fastest path is the [main README "Install in 3 steps"](README.md#install-in-3-steps)
 > (`docker run --rm …/gearcargo:latest install` → `./setup.sh`). Jump to
 > [§15 Single-Image Deployment](#15-single-image--all-in-one-deployment) for the
-> detailed guide and migration. Sections 2–14 cover configuration (env, secrets,
+> detailed guide. Sections 2–14 cover configuration (env, secrets,
 > reverse proxy, admin bootstrap) that applies to the single container too.
 
 ---
@@ -25,7 +25,7 @@ Complete step-by-step guide to deploy GearCargo on any Docker-capable machine �
    - [4.5 Change the Default Port](#45-change-the-default-port)
    - [4.6 Email (SMTP)](#46-email-smtp)
    - [4.7 Push Notifications (VAPID Keys)](#47-push-notifications-vapid-keys)
-   - [4.8 AI Features (Ollama)](#48-ai-features-ollama---optional)
+   - [4.8 AI Features (Ollama)](#48-ai-features-ollama--optional)
    - [4.9 Admin Account Bootstrap](#49-admin-account-bootstrap)
 5. [Login to GitHub Container Registry](#5-login-to-github-container-registry)
 6. [Start the Application](#6-start-the-application)
@@ -442,7 +442,7 @@ This starts three containers:
 - **gearcargo-redis** — Redis 7 cache and session store
 
 The backend will wait for the database and Redis to be healthy before starting, then:
-1. Run database migrations
+1. Apply database schema updates
 2. Verify all tables and columns exist
 3. Start the Gunicorn web server
 
@@ -483,7 +483,7 @@ Fixing volume permissions...
 Waiting for database...
 ok
 Database is ready.
-Running database migrations...
+Applying database schema updates...
 All tables and columns verified.
 Database setup complete.
 [INFO] Booting worker with pid: 10
@@ -579,11 +579,11 @@ docker compose pull
 # Recreate the backend with the new image
 docker compose up -d --force-recreate
 
-# Check logs for migration output
+# Check logs for schema-update output
 docker compose logs -f backend
 ```
 
-The entrypoint automatically runs database migrations on every startup, so schema changes are applied seamlessly.
+The entrypoint automatically applies database schema updates on every startup, so changes land seamlessly.
 
 ---
 
@@ -720,7 +720,7 @@ automatically (no PUID/PGID juggling), and it carries no hard resource limits
    sudo mkdir -p /volume1/docker/gearcargo/volumes/{pgdata,redis,attachments,backups,uploads,logs,geoip}
    ```
    (The single container runs as root and drops each service to its own user, so
-   you don't need to pre-set ownership as with the old 4-container setup.)
+   you don't need to pre-set ownership yourself.)
 
 5. **Get the install files from the image** (single container; `setup.sh` creates
    the dirs above too):
@@ -865,8 +865,7 @@ Every environment variable the application reads, with its default value:
 
 ## 15. Single-Image / All-in-One Deployment
 
-Instead of the four-container stack (`backend` + `db` + `redis` + `backup`), you
-can run GearCargo as **one container** that bundles PostgreSQL 16, Redis 7, the
+GearCargo runs as **one container** that bundles PostgreSQL 16, Redis 7, the
 app (gunicorn) and the scheduled backups together, supervised by
 [s6-overlay](https://github.com/just-containers/s6-overlay). This is the simplest
 setup to operate — one image, one container, one thing to update.
@@ -900,14 +899,13 @@ docker compose up -d
 docker compose logs -f
 ```
 
-Data lives under `./volumes/` exactly as in the four-container stack, plus one new
-directory:
+Data lives under `./volumes/`:
 
 | Host path | Purpose |
 |-----------|---------|
-| `./volumes/pgdata` | Embedded PostgreSQL data (kept separate from `./volumes/db`) |
+| `./volumes/pgdata` | Embedded PostgreSQL data |
 | `./volumes/redis` | Embedded Redis (ephemeral) |
-| `./volumes/attachments`, `./volumes/uploads`, `./volumes/backups`, `./volumes/logs` | Same as the four-container stack |
+| `./volumes/attachments`, `./volumes/uploads`, `./volumes/backups`, `./volumes/logs` | Attachments, uploads, backups and logs |
 
 **Recommended host resources:** ~2 GB RAM (one container runs PostgreSQL + Redis +
 4 gunicorn workers + cron). Tune with `PG_SHARED_BUFFERS`, `REDIS_MAXMEMORY`,
@@ -925,53 +923,17 @@ REDIS_URL=redis://:pass@redis.internal:6379/0
 
 You can also force it explicitly with `EMBEDDED_DB=false` / `EMBEDDED_REDIS=false`.
 
-### 15.3 Migrating an existing four-container install
-
-The migration is **safe and reversible** — it uses the app's own portable backup
-as the transfer format, restores into a **separate** `./volumes/pgdata`, and never
-touches your existing `./volumes/db`, so you can roll back instantly.
-
-Run from a checkout of this repository (`scripts/migrate-to-single.sh` +
-`docker-compose.dev.yml`), pointed at the dir with your existing `.env`,
-`secrets/` and `volumes/`. It reuses your EXISTING `.env` (same `ENCRYPTION_KEY`
-/ `SECRET_KEY` / `JWT_SECRET_KEY`):
-
-```bash
-# Point GC_PROD_COMPOSE at your EXISTING multi-container compose (GearCargo no
-# longer ships one), then run:
-GC_PROD_COMPOSE=docker-compose.yml scripts/migrate-to-single.sh   # add --yes to skip prompts
-```
-
-The script:
-1. Verifies `ENCRYPTION_KEY` is present (PII is unrecoverable without it).
-2. Takes a portable backup **and** an independent raw tarball.
-3. Records source row counts.
-4. Stops the four-container stack (volumes preserved).
-5. Starts the single image with a fresh embedded PostgreSQL and restores your data.
-6. Verifies row counts match — and **auto-rolls back to the four-container stack**
-   on any failure.
-
-> ⚠️ **Reuse the same `ENCRYPTION_KEY`.** A different key makes all encrypted PII
-> permanently unrecoverable. Keep the raw tarball and the old `./volumes/db` until
-> the migrated install has run cleanly for several days.
-
-**Rollback** (anytime — the old `./volumes/db` is never touched): bring your
-previous stack back up with **your own** old compose
-(`docker compose -f <your-old-compose> up -d`), or restore the backup the script
-wrote to `./volumes/backups/` into a fresh install.
-
-### 15.4 Backups
+### 15.3 Backups
 
 Scheduled `pg_dump` + attachments/uploads archives run inside the container (daily
-03:00, weekly Sun 03:30 UTC) and land in `./volumes/backups/system/` — the same
-format as the retired four-container `backup` service, so archives restore through
-the in-app Backup page. Disable with `BACKUP_ENABLED=false`. Run one on demand:
+03:00, weekly Sun 03:30 UTC) and land in `./volumes/backups/system/` — the format
+the in-app Backup page restores from. Disable with `BACKUP_ENABLED=false`. Run one on demand:
 
 ```bash
 docker compose exec gearcargo /etc/gearcargo/scripts/run-backup.sh manual
 ```
 
-### 15.5 Updating
+### 15.4 Updating
 
 ```bash
 docker compose pull      # (dev/build: docker compose -f docker-compose.dev.yml build)
@@ -979,4 +941,4 @@ docker compose up -d
 ```
 
 PostgreSQL is pinned to **major version 16**. Do not bind-mount a data directory
-from a different PostgreSQL major version — migrate via dump/restore instead.
+from a different PostgreSQL major version — use dump/restore instead.

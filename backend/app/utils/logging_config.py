@@ -6,7 +6,7 @@ root logger that third-party / module loggers propagate to). It deliberately
 does NOT touch the dedicated `security_audit` logger, which keeps full PII for
 forensic purposes and never propagates (see app/utils/security_audit.py).
 
-Two concerns from IMPROVEMENTS §5:
+Two concerns:
   1. No PII (full emails, IPs, tokens) in the general logs beyond what's needed —
      handled by RedactionFilter, applied defensively to every emitted record so
      a single call site cannot leak PII regardless of how it formats its message.

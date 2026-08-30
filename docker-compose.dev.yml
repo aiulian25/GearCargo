@@ -7,15 +7,10 @@
 # datastores bind to 127.0.0.1 inside the container.
 #
 # Usage:
-#   1. Copy .env.example to .env and set the secrets (reuse your EXISTING
-#      ENCRYPTION_KEY / SECRET_KEY / JWT_SECRET_KEY when migrating!).
+#   1. Copy .env.example to .env and set the secrets (keep ENCRYPTION_KEY
+#      stable — encrypted data is unrecoverable without it).
 #   2. Build + start: docker compose -f docker-compose.dev.yml up -d --build
 #
-# Migrating from the 4-container stack? Use scripts/migrate-to-single.sh — it
-# backs up first, loads your data into the embedded PG, verifies row counts, and
-# auto-rolls back on failure. The embedded PG uses ./volumes/pgdata, so your old
-# ./volumes/db is left untouched for instant rollback.
-
 services:
   gearcargo:
     build:
@@ -124,12 +119,12 @@ services:
     secrets:
       - vapid_private_key
     volumes:
-      # Embedded PostgreSQL — SEPARATE dir so the 4-container ./volumes/db stays
-      # untouched for rollback. Do NOT point this at an old alpine data dir.
+      # Embedded PostgreSQL. Do NOT point this at a data dir written by a
+      # different PostgreSQL major version.
       - ./volumes/pgdata:/var/lib/postgresql/data
       # Embedded Redis (ephemeral — sessions/rate-limit/cache)
       - ./volumes/redis:/data
-      # Durable app data — same mounts as the 4-container stack
+      # Durable app data
       - ./volumes/attachments:/app/volumes/attachments
       - ./volumes/backups:/app/volumes/backups
       - ./volumes/uploads:/app/uploads

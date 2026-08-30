@@ -43,11 +43,11 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 
 ---
 
-## Quick Start (Recommended Method)
+## Contents
 
-- [Features](#features)
 - [Screenshots](#screenshots)
-- [Quick Start](#quick-start)
+- [Features](#features)
+- [Quick Start](#quick-start-recommended-method)
 - [Deployment Options](#deployment-options)
 - [Credential Generation](#credential-generation)
 - [Admin User Setup](#admin-user-setup)
@@ -55,7 +55,10 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 - [Backup & Restore](#backup--restore)
 - [Tech Stack](#tech-stack)
 - [API Documentation](#api-documentation)
-- [Contributing](#contributing)
+- [Project Structure](#project-structure)
+- [Updating](#updating)
+- [Troubleshooting](#troubleshooting)
+- [Support](#support)
 
 ---
 
@@ -195,7 +198,7 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 - Export to external servers (HTTPS)
 - JSON and ZIP backup formats
 - Import from backup files
-- **LubeLogger import** — migrate from LubeLogger with full data conversion
+- **LubeLogger import** — bring your data across from LubeLogger with full conversion
 - Distance unit conversion on import (km ↔ miles)
 - Attachment import linked to corresponding entries
 - **Import deduplication** — prevents duplicate entries on re-import
@@ -264,8 +267,6 @@ the container and are never network-exposed. Put a reverse proxy in front for HT
 > your VAPID key, then `docker compose up -d`.
 >
 > **Custom port / Synology:** set `APP_PORT` in `.env` (e.g. `5050`) — no separate file.
->
-> **Already on the old 4-container stack?** See [Migrating to the Single Container](#migrating-to-the-single-container) — guided, verified, auto-rollback.
 
 ### Build from source (for development)
 
@@ -299,47 +300,6 @@ Clean PostgreSQL shutdown on `docker stop` (no WAL recovery on next boot).
 **~2 GB RAM recommended.**
 
 - Every environment variable is documented in **`examples/.env.reference`**.
-
-## Migrating to the Single Container
-
-If you already run the **4-container** stack and want to move to the single
-container, use the guided migration script. It is **safe and reversible** — it
-never deletes your old data, so you can roll back instantly.
-
-**What it does:**
-1. Checks your `ENCRYPTION_KEY` is present (PII is unrecoverable without it).
-2. Takes a portable backup **and** an independent raw tarball.
-3. Records your current row counts.
-4. Stops the 4-container stack (volumes are preserved).
-5. Starts the single container with a **fresh** embedded PostgreSQL at
-   `./volumes/pgdata` — your old `./volumes/db` is never touched.
-6. Restores your data and **verifies row counts match**, automatically rolling
-   back to the 4-container stack if anything fails.
-
-Run it from a checkout of this repository (`scripts/migrate-to-single.sh` +
-`docker-compose.dev.yml`), in the folder that holds your existing `.env`,
-`secrets/` and `volumes/`. It **reuses your existing `.env`** — same
-`ENCRYPTION_KEY` / `SECRET_KEY` / `JWT_SECRET_KEY`, so encrypted data stays
-readable.
-
-```bash
-# from your repo checkout, pointed at your data dir. Tell it your existing compose:
-GC_PROD_COMPOSE=docker-compose.yml scripts/migrate-to-single.sh   # add --yes to skip prompts
-```
-
-> `GC_PROD_COMPOSE` must point at your **existing** multi-container compose (the
-> one currently running db/redis/backend) — GearCargo no longer ships one.
-
-> ⚠️ **Reuse the same `ENCRYPTION_KEY`.** A different key makes all encrypted PII
-> permanently unrecoverable. The script refuses to run if the key is missing.
-
-**Rollback (anytime — your original `./volumes/db` is never touched):**
-bring your old stack back up with your own compose
-(`docker compose -f <your-old-compose> up -d`), or restore the automatic backup
-the script wrote to `./volumes/backups/` into a fresh install.
-
-Keep the raw tarball and the old `./volumes/db` until the migrated install has run
-cleanly for several days. Full details: [DEPLOY.md §15](DEPLOY.md).
 
 ---
 
@@ -559,7 +519,7 @@ ADMIN_PASSWORD=YourSecurePassword123!
 ```
 
 **What happens automatically on first startup:**
-1. Database tables are created via migrations
+1. Database tables are created automatically
 2. Admin user is created if no users exist
 3. Application starts ready to use
 
@@ -775,7 +735,7 @@ pytest tests/test_backup_external_destinations.py -q
 | Component | Technology | Purpose |
 |-----------|------------|---------|
 | **Containers** | Docker | Containerization |
-| **Orchestration** | Docker Compose | Multi-container management |
+| **Orchestration** | Docker Compose | Single-container deployment |
 | **AI (Optional)** | Ollama | Local LLM inference (predictions, OCR parsing, anomaly detection) |
 
 ---
@@ -889,7 +849,7 @@ gearcargo/
 ├── examples/                  # Full .env reference (examples/.env.reference)
 ├── Dockerfile                 # The single all-in-one image
 ├── setup.sh                   # Guided installer
-└── scripts/                   # Utility scripts (docker-backup.sh, migration, maintenance)
+└── scripts/                   # Utility scripts (docker-backup.sh, maintenance)
 ```
 
 ---

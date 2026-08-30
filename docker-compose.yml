@@ -16,8 +16,6 @@
 #
 # Synology / custom port: set APP_PORT in .env (e.g. 5050) — no separate file.
 # Want to build locally instead of pull? Use docker-compose.dev.yml.
-# Migrating from an old multi-container stack? See README "Migrating to the
-# single container" (scripts/migrate-to-single.sh — safe, backup-first).
 
 services:
   gearcargo:
@@ -115,7 +113,7 @@ services:
     secrets:
       - vapid_private_key
     volumes:
-      # Embedded PostgreSQL data (kept separate from any 4-container ./volumes/db)
+      # Embedded PostgreSQL data
       - ./volumes/pgdata:/var/lib/postgresql/data
       - ./volumes/redis:/data
       - ./volumes/attachments:/app/volumes/attachments

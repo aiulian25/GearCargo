@@ -1,5 +1,5 @@
 /**
- * Reusable form-field primitive (IMPROVEMENTS.md §2 — Form UX consistency).
+ * Reusable form-field primitive, for form UX consistency.
  *
  * A foundation for consolidating the add/edit forms incrementally: consistent
  * label, optional hint, and an accessible inline error wired up with the input.

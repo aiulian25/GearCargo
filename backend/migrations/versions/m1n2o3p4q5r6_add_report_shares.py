@@ -1,6 +1,6 @@
 """Add report_shares table (shareable read-only report links)
 
-F05 (IMPROVEMENTS.md §3.2): signed, expiring, revocable public share links for
+F05: signed, expiring, revocable public share links for
 expense reports. Stores only the SHA-256 hash of the share token.
 
 Idempotent (CREATE TABLE IF NOT EXISTS).

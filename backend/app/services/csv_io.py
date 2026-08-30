@@ -1,5 +1,5 @@
 """
-GearCargo - Generic CSV Import / Export (F01, IMPROVEMENTS.md §3.1)
+GearCargo - Generic CSV Import / Export (F01)
 
 Human-readable, Excel-openable CSV export and import for fuel / service / repair /
 tax / parking history. Complements the JSON/ZIP backup (full fidelity) and the

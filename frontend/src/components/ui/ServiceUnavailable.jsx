@@ -1,7 +1,7 @@
 import { useTranslation } from '../../contexts/LanguageContext'
 
 /**
- * Inline "service unavailable / retry" affordance (IMPROVEMENTS.md §2).
+ * Inline "service unavailable / retry" affordance.
  *
  * Shown in place of a widget when an optional external service (fuel prices,
  * …) fails, instead of leaving a silently-empty placeholder. Accessible

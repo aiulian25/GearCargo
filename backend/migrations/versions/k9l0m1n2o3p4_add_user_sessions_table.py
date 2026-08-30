@@ -1,6 +1,6 @@
 """Add user_sessions table (DB-backed session fallback)
 
-S01 (IMPROVEMENTS.md §1.1): creates a durable mirror of the Redis session store
+S01: creates a durable mirror of the Redis session store
 so session validation, the 48h absolute-expiry wall, single-device enforcement,
 and logout revocation continue to work (fail CLOSED, not OPEN) when Redis is
 unavailable. Redis stays the fast path; this table is the fallback.

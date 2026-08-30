@@ -1,6 +1,6 @@
 """Add consumable_entries table (tires/battery/consumables tracking)
 
-F03 (IMPROVEMENTS.md §3.2): a first-class consumable expense entry type with
+F03: a first-class consumable expense entry type with
 mileage- and time-based wear estimation. Joined-table inheritance on `entries`
 (like fuel/service/repair/tax/parking).
 

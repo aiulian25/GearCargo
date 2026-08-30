@@ -15,7 +15,7 @@ import UpdateModal from './components/PWA/UpdateModal'
 import PageLoader from './components/ui/PageLoader'
 
 // ---------------------------------------------------------------------------
-// Route-level code splitting (IMPROVEMENTS.md §2).
+// Route-level code splitting.
 // Every page is loaded via React.lazy() so it ships as its own chunk fetched
 // on demand, instead of being bundled into one ~1.7 MB entry. This drastically
 // cuts the initial download (the login screen no longer pulls in the entire app,

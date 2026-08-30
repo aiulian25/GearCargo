@@ -59,7 +59,5 @@ export EMBEDDED_DB EMBEDDED_REDIS
 export GC_DB_HOST GC_DB_PORT GC_DB_USER GC_DB_PASS GC_DB_NAME
 export GC_REDIS_HOST GC_REDIS_PORT GC_REDIS_PASS
 
-# Embedded PostgreSQL data directory (kept separate from the 4-container
-# ./volumes/db so an existing install's data dir is never touched — see the
-# migration plan §8.4 rollback).
+# Embedded PostgreSQL data directory.
 export PGDATA="${PGDATA:-/var/lib/postgresql/data}"

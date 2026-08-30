@@ -1,6 +1,6 @@
 """Unit tests for the DB-backed account lockout fallback (app/routes/auth.py).
 
-This is the "fail safe when Redis is down" path (IMPROVEMENTS top priority). We
+This is the "fail safe when Redis is down" path. We
 force ``redis_client = None`` so the DB fallback is exercised, then assert the
 account locks after MAX_LOGIN_ATTEMPTS and reports as locked.
 """

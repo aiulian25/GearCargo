@@ -228,7 +228,7 @@ class Config:
     # writable location without privileged setup. Defaults are unchanged.
     VOLUMES_PATH = os.environ.get('VOLUMES_PATH', '/app/volumes')
 
-    # Logging (IMPROVEMENTS §5) — general app log hygiene.
+    # Logging — general app log hygiene.
     # LOG_REDACT_PII scrubs emails/IPs/tokens from the general logs (the
     # dedicated security_audit log is unaffected). LOG_FORMAT=json emits
     # one JSON object per line for ingestion.
@@ -236,7 +236,7 @@ class Config:
     LOG_FORMAT = os.environ.get('LOG_FORMAT', 'text')
     LOG_REDACT_PII = os.environ.get('LOG_REDACT_PII', 'true').lower() == 'true'
 
-    # Background task queue (IMPROVEMENTS §5 / §1.5 S12).
+    # Background task queue (S12).
     # 'thread' (default) preserves the historical in-process daemon-thread
     # behaviour — no extra process required. Set 'rq' to offload heavy work
     # (e.g. OCR) to a separate `python rq_worker.py` process on the same Redis.

@@ -1,5 +1,5 @@
 """
-Background task queue abstraction (IMPROVEMENTS §5 / §1.5 S12).
+Background task queue abstraction (S12).
 
 A single ``enqueue_task()`` entry point so the scattered ``threading.Thread``
 call sites no longer hand-roll background execution. Two interchangeable

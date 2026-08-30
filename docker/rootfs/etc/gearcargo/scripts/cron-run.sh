@@ -1,6 +1,6 @@
 #!/command/with-contenv bash
-# Longrun: the backup scheduler — replaces the separate 4-container `backup`
-# service. It writes the credentials the backup job needs to a runtime env file
+# Longrun: the backup scheduler. It writes the credentials the backup job needs
+# to a runtime env file
 # (cron jobs don't inherit the container environment), then runs cron in the
 # foreground. The schedule lives in the baked /etc/cron.d/gearcargo.
 #

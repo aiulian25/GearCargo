@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useCallback, useEffect, useRef } f
 import { useTranslation } from '../../contexts/LanguageContext'
 
 /**
- * Consistent, accessible confirmation dialog (IMPROVEMENTS.md §2).
+ * Consistent, accessible confirmation dialog.
  *
  * Replaces native window.confirm() with a themed, localized modal. Exposes an
  * imperative, promise-based API so call sites stay simple:
