@@ -319,7 +319,7 @@ export default function Settings() {
   }
   
   // Clean up sync poll on unmount
-  useEffect(() => () => stopSyncPoll(), []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => stopSyncPoll(), [])
 
   // Load expiring attachments
   useEffect(() => {
@@ -1045,7 +1045,6 @@ export default function Settings() {
   // Load existing share links when the Reports section is opened.
   useEffect(() => {
     if (showReportsSection) loadShares()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showReportsSection])
 
   const handleLogout = () => {

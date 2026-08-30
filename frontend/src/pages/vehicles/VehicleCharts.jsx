@@ -364,7 +364,7 @@ export default function VehicleCharts() {
     
     yearEntries.forEach(entry => {
       const cost = parseFloat(entry.cost) || 0
-      if (categoryTotals.hasOwnProperty(entry.type)) {
+      if (Object.prototype.hasOwnProperty.call(categoryTotals, entry.type)) {
         categoryTotals[entry.type] += cost
       } else {
         categoryTotals.other += cost

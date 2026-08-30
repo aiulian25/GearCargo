@@ -141,7 +141,6 @@ export function useBackgroundSync() {
 
     navigator.serviceWorker?.addEventListener('message', handleMessage)
     return () => navigator.serviceWorker?.removeEventListener('message', handleMessage)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [updatePendingCount])
 
   // Register Periodic Background Sync for reminder refresh once (best-effort;

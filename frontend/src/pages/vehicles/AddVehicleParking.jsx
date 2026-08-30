@@ -118,8 +118,6 @@ export default function AddVehicleParking() {
             fine_status: entry.fine_status || 'pending',
           })
           
-          if (entry.attachments && entry.attachments.length > 0) {
-          }
         }
       } catch (error) {
         console.error('Failed to fetch data:', error)

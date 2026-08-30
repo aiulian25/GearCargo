@@ -107,8 +107,6 @@ export default function AddVehicleFuel() {
             notes: entry.notes || '',
           })
           
-          if (entry.attachments && entry.attachments.length > 0) {
-          }
         } else {
           // Pre-fill mileage from current vehicle mileage for new entries
           if (vehicleRes.data.current_mileage) {

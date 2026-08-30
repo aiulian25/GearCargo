@@ -114,8 +114,6 @@ export default function AddVehicleTax() {
             insurance_policy_id: entry.insurance_policy_id || '',
           })
           
-          if (entry.attachments && entry.attachments.length > 0) {
-          }
         }
       } catch (error) {
         console.error('Failed to fetch data:', error)

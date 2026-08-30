@@ -37,7 +37,7 @@ function PasswordStrength({ password, useServerValidation = false }) {
     if (/\d/.test(pwd)) score += 15
     else errors.push(t('profile.passwordNumber') || 'Add a number')
     
-    if (/[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\;'`~]/.test(pwd)) score += 15
+    if (/[!@#$%^&*(),.?":{}|<>_\-+=[\]\\;'`~]/.test(pwd)) score += 15
     
     // Common password check (simplified client-side)
     const commonPasswords = ['password', 'password123', '123456', 'qwerty', 'letmein', 'admin', 'welcome']

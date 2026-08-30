@@ -1,4 +1,3 @@
-/* eslint-disable no-restricted-globals */
 
 // CACHE VERSION - increment to force update
 const CACHE_VERSION = 'v2.0.2'

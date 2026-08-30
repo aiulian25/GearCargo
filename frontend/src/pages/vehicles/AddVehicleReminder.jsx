@@ -77,8 +77,6 @@ export default function AddVehicleReminder() {
             notes: entry.notes || entry.description || '',
           })
           
-          if (entry.attachments && entry.attachments.length > 0) {
-          }
         }
       } catch (error) {
         console.error('Failed to fetch data:', error)

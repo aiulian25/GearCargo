@@ -78,8 +78,6 @@ export default function AddVehicleTodo() {
             repeat: entry.recurring ? (entry.frequency || '') : '',
           })
           
-          if (entry.attachments && entry.attachments.length > 0) {
-          }
         }
       } catch (error) {
         console.error('Failed to fetch data:', error)

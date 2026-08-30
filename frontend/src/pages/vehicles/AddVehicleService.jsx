@@ -121,8 +121,6 @@ export default function AddVehicleService() {
             setSelectedServiceTypes([entry.service_type])
           }
           
-          if (entry.attachments && entry.attachments.length > 0) {
-          }
         }
       } catch (error) {
         console.error('Failed to fetch data:', error)
