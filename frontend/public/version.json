@@ -1,33 +1,162 @@
 {
-  "version": "1.5.0",
-  "date": "2026-08-29",
+  "version": "1.6.0",
+  "date": "2026-09-04",
   "notes": {
     "en": [
-      { "type": "new", "title": "Change when a recurring payment is next due", "desc": "You can now edit the next due date of a repeating tax or parking permit directly, instead of deleting it and starting again. Changing how often it repeats takes effect straight away." },
-      { "type": "fix", "title": "Turning off a repeat actually stops it", "desc": "Un-ticking \"Recurring\" used to leave a reminder behind that kept appearing in Coming up and couldn't be cleared. It now stops for good, exactly like the Stop repeating button." },
-      { "type": "fix", "title": "No more invented payments", "desc": "Switching on repeat for an older entry could fill your history overnight with back-dated payments you never made. It now simply schedules the next one." },
-      { "type": "fix", "title": "Quarterly permits renew on time", "desc": "A parking permit set to renew every three months was being scheduled a year ahead. Six-monthly permits weren't handled at all. Both work now — edit an existing permit to correct it." },
-      { "type": "fix", "title": "Recurring taxes keep your currency", "desc": "Automatically created tax payments were always recorded in euro, whatever the original was in. They now follow the currency you entered." },
-      { "type": "fix", "title": "Your calendar keeps up", "desc": "Editing, deleting or stopping a repeating entry now updates your linked calendar too, instead of leaving the old event sitting there." },
-      { "type": "fix", "title": "Clearer messages when something's wrong", "desc": "Odd dates and amounts now explain what to fix in your language, failed deletes say so instead of looking successful, and the insurance cancel dialog is translated." }
+      {
+        "type": "fix",
+        "title": "Your document sizes stay correct",
+        "desc": "Every time a document list was opened, the stored file size shrank a little — a 2 MB receipt could end up reading as a few bytes. Sizes are now recorded once and left alone. Existing entries can be repaired with the included script."
+      },
+      {
+        "type": "fix",
+        "title": "Weekly and monthly email summaries show real figures",
+        "desc": "The spending totals in your email digests were reading the wrong fields and came out empty or wrong. They now report what you actually spent, converted into your currency."
+      },
+      {
+        "type": "fix",
+        "title": "Recurring road tax finally appears in your reminders",
+        "desc": "A tax set to repeat was never included in the alert emails — exactly the one you most want reminding about. It now shows up on its next due date."
+      },
+      {
+        "type": "fix",
+        "title": "Calendar export works again",
+        "desc": "Exporting your reminders to a calendar file produced an empty or rejected file. It now exports your upcoming reminders correctly, with the right vehicle on each event."
+      },
+      {
+        "type": "fix",
+        "title": "\"Sync now\" actually syncs",
+        "desc": "The manual sync button always reported an error, and anything you saved offline was never sent when you came back online. Both now work, and reconnecting replays your queued changes."
+      },
+      {
+        "type": "fix",
+        "title": "Notifications behave",
+        "desc": "Tapping a notification now brings up the tab you already have open instead of piling up new ones, and notifications no longer disappear silently when they arrive in an unexpected format."
+      },
+      {
+        "type": "fix",
+        "title": "Forms explain what's wrong, in your language",
+        "desc": "A mistyped date, mileage or amount used to fail with a generic server error, and sometimes the value was quietly discarded. Every form now says which field to fix and why, translated — and never saves half your changes."
+      },
+      {
+        "type": "fix",
+        "title": "Faster lists and dashboards",
+        "desc": "The expenses tab, the home-screen widget and the admin pages were making one database query per row. They now load in a fixed number of queries, whatever the size of your fleet."
+      },
+      {
+        "type": "fix",
+        "title": "Small annoyances fixed",
+        "desc": "Two-factor codes are no longer rejected in the last seconds before they change, a vehicle's mileage can be set back to 0, quarterly backup schedules no longer skip a quarter, and looking up an owner's manual returns in seconds instead of stalling."
+      },
+      {
+        "type": "new",
+        "title": "Tighter security behind the scenes",
+        "desc": "One-click unsubscribe links are no longer stored in readable form, so a database copy can't be used to unsubscribe you. Internal service addresses are hidden from non-admin accounts."
+      }
     ],
     "ro": [
-      { "type": "new", "title": "Schimbă când urmează o plată recurentă", "desc": "Poți edita direct data următoarei plăți pentru o taxă sau un permis de parcare recurent, fără să-l ștergi și să începi din nou. Schimbarea frecvenței se aplică imediat." },
-      { "type": "fix", "title": "Oprirea repetării chiar oprește seria", "desc": "Debifarea opțiunii „Recurent” lăsa în urmă o notificare care apărea mereu în „Urmează” și nu putea fi ștearsă. Acum se oprește definitiv, exact ca butonul Oprește repetarea." },
-      { "type": "fix", "title": "Fără plăți inventate", "desc": "Activarea repetării pentru o intrare mai veche putea umple istoricul peste noapte cu plăți retroactive pe care nu le-ai făcut. Acum programează pur și simplu următoarea." },
-      { "type": "fix", "title": "Permisele trimestriale se reînnoiesc la timp", "desc": "Un permis de parcare setat să se reînnoiască la trei luni era programat cu un an înainte, iar cele semestriale nu erau tratate deloc. Acum funcționează — editează un permis existent pentru a-l corecta." },
-      { "type": "fix", "title": "Taxele recurente păstrează moneda ta", "desc": "Plățile de taxe create automat erau înregistrate mereu în euro, indiferent de moneda originală. Acum folosesc moneda pe care ai introdus-o." },
-      { "type": "fix", "title": "Calendarul rămâne la zi", "desc": "Editarea, ștergerea sau oprirea unei intrări recurente actualizează acum și calendarul conectat, în loc să lase evenimentul vechi acolo." },
-      { "type": "fix", "title": "Mesaje mai clare când ceva nu e în regulă", "desc": "Datele și sumele greșite explică acum ce trebuie corectat, în limba ta, ștergerile eșuate o spun în loc să pară reușite, iar dialogul de anulare a asigurării este tradus." }
+      {
+        "type": "fix",
+        "title": "Mărimea documentelor rămâne corectă",
+        "desc": "De fiecare dată când deschideai lista de documente, mărimea salvată a fișierului scădea puțin — o chitanță de 2 MB putea ajunge să apară de câțiva octeți. Mărimea se înregistrează acum o singură dată. Intrările existente pot fi reparate cu scriptul inclus."
+      },
+      {
+        "type": "fix",
+        "title": "Rezumatele săptămânale și lunare pe email arată cifre reale",
+        "desc": "Totalurile din emailurile de sinteză citeau câmpurile greșite și ieșeau goale sau eronate. Acum raportează exact cât ai cheltuit, convertit în moneda ta."
+      },
+      {
+        "type": "fix",
+        "title": "Taxele recurente apar în sfârșit în memento-uri",
+        "desc": "O taxă setată să se repete nu era niciodată inclusă în emailurile de alertă — exact cea pentru care ai vrea să fii anunțat. Acum apare la următoarea scadență."
+      },
+      {
+        "type": "fix",
+        "title": "Exportul în calendar funcționează din nou",
+        "desc": "Exportul memento-urilor într-un fișier de calendar producea un fișier gol sau respins. Acum exportă corect memento-urile viitoare, cu vehiculul potrivit pe fiecare eveniment."
+      },
+      {
+        "type": "fix",
+        "title": "„Sincronizează acum” chiar sincronizează",
+        "desc": "Butonul de sincronizare manuală raporta mereu o eroare, iar ce salvai offline nu era trimis niciodată la revenirea online. Ambele funcționează acum, iar reconectarea trimite modificările din coadă."
+      },
+      {
+        "type": "fix",
+        "title": "Notificările se comportă cum trebuie",
+        "desc": "Apăsarea unei notificări aduce acum fila deja deschisă, în loc să deschidă mereu una nouă, iar notificările nu mai dispar în tăcere când ajung într-un format neașteptat."
+      },
+      {
+        "type": "fix",
+        "title": "Formularele explică ce e greșit, în limba ta",
+        "desc": "O dată, un kilometraj sau o sumă greșită dădeau o eroare generică de server, iar uneori valoarea era pur și simplu ignorată. Acum fiecare formular spune ce câmp trebuie corectat și de ce, tradus — și nu mai salvează doar jumătate din modificări."
+      },
+      {
+        "type": "fix",
+        "title": "Liste și panouri mai rapide",
+        "desc": "Fila de cheltuieli, widgetul de pe ecranul principal și paginile de administrare făceau câte o interogare pentru fiecare rând. Acum se încarcă într-un număr fix de interogări, indiferent de câte vehicule ai."
+      },
+      {
+        "type": "fix",
+        "title": "Mici neplăceri rezolvate",
+        "desc": "Codurile în doi pași nu mai sunt respinse în ultimele secunde înainte să se schimbe, kilometrajul unui vehicul poate fi pus înapoi la 0, programările trimestriale de backup nu mai sar un trimestru, iar căutarea manualului de utilizare răspunde în câteva secunde."
+      },
+      {
+        "type": "new",
+        "title": "Securitate mai strânsă în culise",
+        "desc": "Linkurile de dezabonare cu un clic nu mai sunt stocate în formă lizibilă, așa că o copie a bazei de date nu poate fi folosită pentru a te dezabona. Adresele serviciilor interne sunt ascunse conturilor fără drepturi de administrator."
+      }
     ],
     "es": [
-      { "type": "new", "title": "Cambia cuándo vence el próximo pago recurrente", "desc": "Ahora puedes editar directamente la fecha del próximo pago de un impuesto o permiso de aparcamiento recurrente, en lugar de borrarlo y empezar de nuevo. Cambiar la frecuencia surte efecto de inmediato." },
-      { "type": "fix", "title": "Desactivar la repetición ahora la detiene de verdad", "desc": "Desmarcar «Recurrente» dejaba un recordatorio que seguía apareciendo en Próximamente y no se podía quitar. Ahora se detiene definitivamente, igual que el botón Detener repetición." },
-      { "type": "fix", "title": "Se acabaron los pagos inventados", "desc": "Activar la repetición en una entrada antigua podía llenar tu historial de un día para otro con pagos retroactivos que nunca hiciste. Ahora simplemente programa el siguiente." },
-      { "type": "fix", "title": "Los permisos trimestrales se renuevan a tiempo", "desc": "Un permiso de aparcamiento configurado para renovarse cada tres meses se programaba un año después, y los semestrales no se contemplaban. Ya funcionan — edita un permiso existente para corregirlo." },
-      { "type": "fix", "title": "Los impuestos recurrentes mantienen tu moneda", "desc": "Los pagos de impuestos creados automáticamente se registraban siempre en euros, fuera cual fuera la moneda original. Ahora usan la que introdujiste." },
-      { "type": "fix", "title": "Tu calendario se mantiene al día", "desc": "Editar, eliminar o detener una entrada recurrente ahora actualiza también tu calendario vinculado, en vez de dejar ahí el evento antiguo." },
-      { "type": "fix", "title": "Mensajes más claros cuando algo falla", "desc": "Las fechas y los importes incorrectos explican qué corregir en tu idioma, los borrados fallidos lo indican en lugar de parecer correctos, y el diálogo de cancelación del seguro está traducido." }
+      {
+        "type": "fix",
+        "title": "El tamaño de tus documentos se mantiene correcto",
+        "desc": "Cada vez que se abría una lista de documentos, el tamaño guardado del archivo encogía un poco — un recibo de 2 MB podía acabar mostrando unos pocos bytes. Ahora el tamaño se registra una sola vez. Las entradas existentes pueden repararse con el script incluido."
+      },
+      {
+        "type": "fix",
+        "title": "Los resúmenes semanales y mensuales muestran cifras reales",
+        "desc": "Los totales de gasto de tus correos resumen leían los campos equivocados y salían vacíos o incorrectos. Ahora reflejan lo que realmente gastaste, convertido a tu moneda."
+      },
+      {
+        "type": "fix",
+        "title": "Los impuestos recurrentes por fin aparecen en tus avisos",
+        "desc": "Un impuesto configurado para repetirse nunca se incluía en los correos de aviso — justo el que más interesa recordar. Ahora aparece en su próxima fecha de vencimiento."
+      },
+      {
+        "type": "fix",
+        "title": "La exportación al calendario vuelve a funcionar",
+        "desc": "Exportar tus recordatorios a un archivo de calendario generaba un archivo vacío o rechazado. Ahora exporta correctamente tus próximos recordatorios, con el vehículo correcto en cada evento."
+      },
+      {
+        "type": "fix",
+        "title": "«Sincronizar ahora» sincroniza de verdad",
+        "desc": "El botón de sincronización manual siempre daba error, y lo que guardabas sin conexión nunca se enviaba al volver a conectarte. Ambas cosas funcionan ya, y al reconectar se envían los cambios pendientes."
+      },
+      {
+        "type": "fix",
+        "title": "Las notificaciones se comportan",
+        "desc": "Al tocar una notificación ahora se abre la pestaña que ya tenías abierta en vez de acumular pestañas nuevas, y las notificaciones ya no desaparecen en silencio cuando llegan en un formato inesperado."
+      },
+      {
+        "type": "fix",
+        "title": "Los formularios explican qué falla, en tu idioma",
+        "desc": "Una fecha, un kilometraje o un importe mal escritos daban un error genérico del servidor, y a veces el valor se descartaba sin avisar. Ahora cada formulario indica qué campo corregir y por qué, traducido — y nunca guarda solo la mitad de tus cambios."
+      },
+      {
+        "type": "fix",
+        "title": "Listas y paneles más rápidos",
+        "desc": "La pestaña de gastos, el widget de la pantalla de inicio y las páginas de administración hacían una consulta por cada fila. Ahora cargan con un número fijo de consultas, sea cual sea el tamaño de tu flota."
+      },
+      {
+        "type": "fix",
+        "title": "Pequeñas molestias resueltas",
+        "desc": "Los códigos de doble factor ya no se rechazan en los últimos segundos antes de cambiar, el kilometraje de un vehículo puede volver a 0, las copias de seguridad trimestrales ya no se saltan un trimestre, y la búsqueda del manual del propietario responde en segundos en vez de quedarse colgada."
+      },
+      {
+        "type": "new",
+        "title": "Más seguridad entre bastidores",
+        "desc": "Los enlaces de baja con un clic ya no se guardan en forma legible, así que una copia de la base de datos no sirve para darte de baja. Las direcciones de servicios internos quedan ocultas a las cuentas sin permisos de administrador."
+      }
     ]
   }
 }
