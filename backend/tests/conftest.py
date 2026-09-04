@@ -29,8 +29,11 @@ def app(tmp_path):
         SQLALCHEMY_DATABASE_URI = (
             os.environ.get('TEST_DATABASE_URL') or f"sqlite:///{db_path}"
         )
-        JWT_SECRET_KEY = "test-jwt-secret"
-        SECRET_KEY = "test-secret"
+        # 32+ bytes: PyJWT >= 2.12 warns below the RFC 7518 §3.2 minimum for
+        # HS256, and production refuses to start on a weak secret anyway — so a
+        # short test key was both noisy and unrepresentative.
+        JWT_SECRET_KEY = "test-jwt-secret-0123456789abcdef0123456789abcdef"
+        SECRET_KEY = "test-secret-0123456789abcdef0123456789abcdef"
         REDIS_URL = "redis://localhost:6379/15"
         SESSION_TYPE = "filesystem"
         SESSION_FILE_DIR = str(tmp_path / "flask_session")

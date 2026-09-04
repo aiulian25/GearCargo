@@ -23,6 +23,20 @@ from app.models.prediction import GENERATED_BY_ANOMALY, GENERATED_BY_PREDICTION
 from app.services import generate_auto_predictions
 
 
+@pytest.fixture(autouse=True)
+def _always_miss_the_ai_cache(monkeypatch):
+    """Isolate these tests from the shared Redis AI cache.
+
+    The job skips a vehicle when `ai_cache:predict:{user_id}:{vehicle_id}:{fp}`
+    is already set. Every test gets a fresh database, so those ids restart at 1
+    and the key is IDENTICAL between tests — with a real Redis (CI has one; a
+    dev box usually does not) the first test to run poisons the rest, which then
+    silently generate nothing. The cache is not what these tests are about.
+    """
+    monkeypatch.setattr('app.services.ollama.ai_cache_get', lambda key: None)
+    monkeypatch.setattr('app.services.ollama.ai_cache_set', lambda *args, **kwargs: None)
+
+
 def _prediction(title, urgency='medium'):
     return {
         'type': 'maintenance', 'title': title, 'description': f'{title} desc',
