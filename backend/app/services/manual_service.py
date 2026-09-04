@@ -167,20 +167,33 @@ def _slug(value: str) -> str:
 # URL checker
 # ---------------------------------------------------------------------------
 
-def _url_reachable(url: str, timeout: int = 5) -> bool:
-    """HEAD-check a URL; fall back to GET if HEAD is blocked."""
+# R4-20: the outbound budget for ONE lookup. Each probe is a single HEAD, so
+# the worst case a request can spend here is _MAX_PROBES * _PROBE_TIMEOUT — ~4s,
+# against the ~40s the HEAD-then-GET chain over four templates could reach. This
+# runs inline on a sync gunicorn worker (gunicorn.conf.py:14), so the ceiling is
+# a worker-occupancy limit, not just a latency one.
+_PROBE_TIMEOUT = 2
+_MAX_PROBES = 2
+
+# A server that refuses HEAD still tells us the resource is there.
+_HEAD_NOT_ALLOWED = 405
+
+
+def _url_reachable(url: str, timeout: int = _PROBE_TIMEOUT) -> bool:
+    """HEAD-check a URL.
+
+    ponytail: HEAD only — the GET fallback for HEAD-blocking servers doubled
+    every probe's cost to catch a case 405 already identifies. If a real OEM
+    host turns out to answer HEAD with something other than 405, add that
+    status here rather than reinstating the second request.
+    """
     headers = {
         'User-Agent': 'Mozilla/5.0 (compatible; GearCargo/1.0)',
     }
     try:
         resp = requests.head(url, headers=headers, timeout=timeout, allow_redirects=True)
-        if resp.status_code < 400:
-            return True
-        # Some servers block HEAD — try GET with stream
-        resp = requests.get(url, headers=headers, timeout=timeout, stream=True, allow_redirects=True)
-        resp.close()
-        return resp.status_code < 400
-    except (requests.RequestException, Exception):
+        return resp.status_code < 400 or resp.status_code == _HEAD_NOT_ALLOWED
+    except Exception:
         return False
 
 
@@ -259,40 +272,44 @@ def get_manual_url(make: str, model: str, year: int, lang: str) -> dict:
     model_slug = _slug(safe_model)
     make_lower = safe_make.lower().replace(' ', '-')
 
-    # 2. Try OEM templates
-    templates = OEM_TEMPLATES.get(make_lower, [])
-    for tmpl in templates:
-        url = tmpl.format(tld=tld, model=model_slug, year=safe_year)
-        if _url_reachable(url):
-            result = {
-                'manual_url': url,
-                'source': 'oem',
-                'fallback_search': _build_search_url(safe_make, safe_model, safe_year, lang),
-                'cached': False,
-            }
-            _cache_set(safe_make, safe_model, safe_year, lang, result)
-            return result
+    # 2. Probe the candidates, most specific first, within the budget.
+    #
+    # ponytail: only the FIRST (year-specific) OEM template is tried. The
+    # broader ones are landing pages like `/owners/manuals.html` — they almost
+    # always resolve, so they used to spend probes to return a URL that is not
+    # this vehicle's manual while labelling it `source: 'oem'`. The search
+    # fallback below at least targets the exact make/model/year. Raise
+    # _MAX_PROBES if a per-make template list ever earns a second specific URL.
+    candidates = []
 
-    # 3. Try aggregator templates
+    oem_templates = OEM_TEMPLATES.get(make_lower, [])
+    if oem_templates:
+        candidates.append(
+            ('oem', oem_templates[0].format(tld=tld, model=model_slug, year=safe_year))
+        )
+
     for agg in AGGREGATOR_TEMPLATES:
-        url = agg['url'].format(
+        candidates.append(('aggregator', agg['url'].format(
             make=quote_plus(safe_make),
             model=quote_plus(safe_model),
             year=safe_year,
             lang=lang,
             lang_upper=lang.upper(),
-        )
-        if _url_reachable(url):
-            result = {
-                'manual_url': url,
-                'source': 'aggregator',
-                'fallback_search': _build_search_url(safe_make, safe_model, safe_year, lang),
-                'cached': False,
-            }
-            _cache_set(safe_make, safe_model, safe_year, lang, result)
-            return result
+        )))
 
-    # 4. Nothing found — return Google search fallback
+    for source, url in candidates[:_MAX_PROBES]:
+        if not _url_reachable(url):
+            continue
+        result = {
+            'manual_url': url,
+            'source': source,
+            'fallback_search': _build_search_url(safe_make, safe_model, safe_year, lang),
+            'cached': False,
+        }
+        _cache_set(safe_make, safe_model, safe_year, lang, result)
+        return result
+
+    # 3. Nothing found — return Google search fallback
     result = {
         'manual_url': None,
         'source': None,

@@ -10,6 +10,7 @@ from datetime import date
 
 from app import db
 from app.models.entry import Entry
+from app.utils.timeutils import utc_today
 
 
 # Supported consumable categories. Kept as a plain allow-list (validated in the
@@ -85,7 +86,7 @@ class ConsumableEntry(Entry):
         time_fraction = None
         remaining_months = None
         if self.expected_lifespan_months and install_dt:
-            days_used = max(0, (date.today() - install_dt).days)
+            days_used = max(0, (utc_today() - install_dt).days)
             months_used = round(days_used / _DAYS_PER_MONTH, 1)
             time_fraction = (days_used / _DAYS_PER_MONTH) / self.expected_lifespan_months
             remaining_months = round(self.expected_lifespan_months - months_used, 1)

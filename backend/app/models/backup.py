@@ -100,6 +100,10 @@ class Backup(db.Model):
         }
 
 
+# The months a quarterly schedule can fall on.
+QUARTER_MONTHS = (1, 4, 7, 10)
+
+
 class BackupSchedule(db.Model):
     """Backup schedule configuration."""
     
@@ -269,27 +273,25 @@ class BackupSchedule(db.Model):
             self.next_run_at = datetime(year, month, day, self.hour)
             
         elif self.frequency == 'quarterly':
-            # Every 3 months
+            # R4-22: the first quarter month that is still ahead — including the
+            # CURRENT month when its day has not passed yet. The previous code
+            # shifted the month by `3 - 3` (a no-op) and then searched strictly
+            # `qm > month`, which excluded the current quarter month and landed a
+            # whole quarter late (3 October reported January, not 15 October).
             year = now.year
-            month = now.month
-            day = min(self.day_of_month, calendar.monthrange(year, month)[1])
-            
-            if now.day >= day:
-                month += 3
-            else:
-                month += 3 - 3  # Next quarter
-                
-            # Find next quarter month
-            quarter_months = [1, 4, 7, 10]
-            next_quarter = None
-            for qm in quarter_months:
-                if qm > month:
-                    next_quarter = qm
-                    break
-            if next_quarter is None:
-                next_quarter = 1
+            day_this_month = min(self.day_of_month,
+                                 calendar.monthrange(year, now.month)[1])
+
+            next_quarter = next(
+                (quarter_month for quarter_month in QUARTER_MONTHS
+                 if quarter_month > now.month
+                 or (quarter_month == now.month and now.day < day_this_month)),
+                None,
+            )
+            if next_quarter is None:      # past the last quarter month this year
+                next_quarter = QUARTER_MONTHS[0]
                 year += 1
-            
+
             month = next_quarter
             day = min(self.day_of_month, calendar.monthrange(year, month)[1])
             self.next_run_at = datetime(year, month, day, self.hour)

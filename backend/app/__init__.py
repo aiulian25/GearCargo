@@ -66,6 +66,10 @@ def _is_weak_secret(value) -> bool:
     return any(marker in v for marker in _PLACEHOLDER_MARKERS)
 
 
+# URL schemes redis.from_url understands for a session backend.
+REDIS_URL_SCHEMES = ('redis://', 'rediss://', 'unix://')
+
+
 def create_app(config_class=None):
     """Application factory pattern."""
     global redis_client, _redis_available
@@ -110,7 +114,11 @@ def create_app(config_class=None):
     # Configure session with Redis before initializing
     try:
         redis_url = app.config.get('REDIS_URL', 'redis://localhost:6379/0')
-        if redis_url and 'redis://' in redis_url:
+        # R4-34: match on the SCHEME, not a substring. `'redis://' in url` is
+        # false for `rediss://` (TLS) and for `unix://`, so those deployments
+        # silently fell back to filesystem sessions — losing cross-worker
+        # session sharing without any error.
+        if redis_url and redis_url.startswith(REDIS_URL_SCHEMES):
             app.config['SESSION_REDIS'] = redis.from_url(redis_url)
     except Exception as e:
         app.logger.warning(f"Redis session setup failed: {e}. Using filesystem sessions.")
@@ -442,6 +450,15 @@ def create_app(config_class=None):
     # missed the first mail resends once or twice). A per-ACCOUNT cooldown in
     # resend_verification_email covers the distributed case this can't.
     _rate_limit('auth.resend_verification_email',
+        '5 per hour',
+        error_message='Too many requests. Please try again later.')
+
+    # R4-04: the password-reset request endpoint has the same shape as the
+    # resend above — it mails an address the CALLER supplies and rotates the
+    # account's reset token — so it gets the same dedicated per-IP limit instead
+    # of relying on the far more permissive global default. The per-ACCOUNT
+    # cooldown in request_password_reset covers the distributed case.
+    _rate_limit('auth.request_password_reset',
         '5 per hour',
         error_message='Too many requests. Please try again later.')
 

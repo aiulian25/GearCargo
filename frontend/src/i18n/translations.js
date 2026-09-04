@@ -2247,6 +2247,8 @@ export const translations = {
       minLength: 'Must be at least {min} characters',
       maxLength: 'Must be no more than {max} characters',
       passwordMatch: 'Passwords must match',
+      invalidValue: 'That value is not one of the allowed options',
+      invalidCurrency: 'Currency must be a 3-letter code (e.g. GBP)',
       invalidNumber: 'Please enter a valid number',
       positiveNumber: 'Must be a positive number',
       selectOption: 'Please select an option',
@@ -2668,6 +2670,9 @@ export const translations = {
     },
     
     // Backup System
+    push: {
+      endpointOwnedByOther: 'This device already receives notifications for another account. Sign in to that account and turn its notifications off first.',
+    },
     backup: {
       title: 'Auto Backup',
       description: 'Auto backups, restore & external sync',
@@ -2770,6 +2775,7 @@ export const translations = {
       csvErrors: 'errors',
       lubelogInvalidFile: 'Please select a LubeLogger backup ZIP file',
       lubelogImportConfirm: 'Import data from LubeLogger backup? This will create new vehicles and entries.',
+      lubelogImportSkipped: '{count} record(s) skipped — their vehicle is not in the backup',
       lubelogImportSuccess: 'LubeLogger import completed',
       lubelogImportFailed: 'Failed to import LubeLogger data',
       distanceUnit: 'Distance Unit',
@@ -5090,6 +5096,8 @@ export const translations = {
       minLength: 'Trebuie să aibă cel puțin {min} caractere',
       maxLength: 'Trebuie să aibă cel mult {max} caractere',
       passwordMatch: 'Parolele trebuie să coincidă',
+      invalidValue: 'Valoarea nu este una dintre opțiunile permise',
+      invalidCurrency: 'Moneda trebuie să fie un cod din 3 litere (ex. RON)',
       invalidNumber: 'Vă rugăm introduceți un număr valid',
       positiveNumber: 'Trebuie să fie un număr pozitiv',
       selectOption: 'Vă rugăm selectați o opțiune',
@@ -5513,6 +5521,9 @@ export const translations = {
     },
     
     // Backup System
+    push: {
+      endpointOwnedByOther: 'Acest dispozitiv primește deja notificări pentru alt cont. Conectează-te la acel cont și dezactivează notificările acolo mai întâi.',
+    },
     backup: {
       title: 'Backup Automat',
       description: 'Backup-uri automate, restaurare și sincronizare externă',
@@ -5615,6 +5626,7 @@ export const translations = {
       csvErrors: 'erori',
       lubelogInvalidFile: 'Te rugăm să selectezi un fișier ZIP de backup LubeLogger',
       lubelogImportConfirm: 'Importi datele din backup-ul LubeLogger? Se vor crea vehicule și înregistrări noi.',
+      lubelogImportSkipped: '{count} înregistrări omise — vehiculul lor nu este în copia de rezervă',
       lubelogImportSuccess: 'Import LubeLogger finalizat',
       lubelogImportFailed: 'Nu s-au putut importa datele din LubeLogger',
       distanceUnit: 'Unitate de Distanță',
@@ -7933,6 +7945,8 @@ export const translations = {
       minLength: 'Debe tener al menos {min} caracteres',
       maxLength: 'Debe tener máximo {max} caracteres',
       passwordMatch: 'Las contraseñas deben coincidir',
+      invalidValue: 'Ese valor no es una de las opciones permitidas',
+      invalidCurrency: 'La moneda debe ser un código de 3 letras (p. ej. EUR)',
       invalidNumber: 'Por favor ingresa un número válido',
       positiveNumber: 'Debe ser un número positivo',
       selectOption: 'Por favor selecciona una opción',
@@ -8356,6 +8370,9 @@ export const translations = {
     },
     
     // Backup System
+    push: {
+      endpointOwnedByOther: 'Este dispositivo ya recibe notificaciones de otra cuenta. Inicia sesión en esa cuenta y desactiva sus notificaciones primero.',
+    },
     backup: {
       title: 'Copia de Seguridad Automática',
       description: 'Copias automáticas, restaurar y sincronización externa',
@@ -8458,6 +8475,7 @@ export const translations = {
       csvErrors: 'errores',
       lubelogInvalidFile: 'Por favor selecciona un archivo ZIP de respaldo LubeLogger',
       lubelogImportConfirm: '¿Importar datos de la copia de LubeLogger? Se crearán nuevos vehículos y registros.',
+      lubelogImportSkipped: '{count} registro(s) omitidos — su vehículo no está en la copia de seguridad',
       lubelogImportSuccess: 'Importación de LubeLogger completada',
       lubelogImportFailed: 'Error al importar datos de LubeLogger',
       distanceUnit: 'Unidad de Distancia',

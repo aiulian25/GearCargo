@@ -16,11 +16,13 @@ Sources:
 
 import csv
 import json
+import os
 import re
 import io
 from datetime import datetime, date, timezone
 import requests
 import redis as redis_mod
+from app.utils.timeutils import utc_today
 
 
 REDIS_PREFIX = "gearcargo:fuel:"
@@ -280,11 +282,32 @@ EU_COUNTRY_NAMES = {
 #  Redis helpers
 # ──────────────────────────────────────────────
 
+# R4-19: one client (and one connection pool) per process, not one per call.
+# Keyed by (pid, url) so a gunicorn worker never inherits its parent's pooled
+# sockets across a fork — the same rule ollama._get_session follows.
+#
+# The app-level client registered in create_app is deliberately NOT reused: it
+# is built without decode_responses, so sharing it would turn every read in
+# this module from str into bytes.
+_redis_clients = {}
+
+
+def _reset_redis_client_cache():
+    """Drop the cached clients (tests, and any future config reload)."""
+    _redis_clients.clear()
+
+
 def _redis_client(app):
     """Get Redis client for fuel price persistence."""
     try:
         url = app.config.get('REDIS_URL', 'redis://localhost:6379/0')
-        return redis_mod.from_url(url, decode_responses=True)
+        cache_key = (os.getpid(), url)
+        client = _redis_clients.get(cache_key)
+        if client is None:
+            client = redis_mod.from_url(url, decode_responses=True)
+            _redis_clients.clear()      # a changed url/pid retires the old one
+            _redis_clients[cache_key] = client
+        return client
     except Exception:
         return None
 
@@ -376,7 +399,7 @@ def _tag_freshness(data, baseline=False):
     if raw:
         try:
             updated = datetime.strptime(_normalize_date(str(raw)), '%Y-%m-%d').date()
-            stale = (date.today() - updated).days > 14
+            stale = (utc_today() - updated).days > 14
         except ValueError:
             pass  # unparseable date — don't guess
     out['stale'] = stale
@@ -740,6 +763,11 @@ def _parse_eu_bulletin_xlsx(content, app):
         app.logger.warning(f"EU Oil Bulletin: could not open XLSX as ZIP: {e}")
         return None
 
+    # R4-19: one lookup for the whole bulletin. This used to sit inside the
+    # per-country loop, repeating the same Redis read (or rate fetch) for each
+    # of the ~27 member states in a single parse.
+    eur_rates = get_live_eur_rates(app)
+
     # --- Shared strings ---
     shared = []
     if 'xl/sharedStrings.xml' in zf.namelist():
@@ -852,8 +880,7 @@ def _parse_eu_bulletin_xlsx(content, app):
             local_sym = baseline.get('currency', '\u20ac')
 
             # Apply local exchange rate so non-EUR users see local currency prices
-            _rates = get_live_eur_rates(app)
-            rate = _rates.get(local_cc, 1.0)
+            rate = eur_rates.get(local_cc, 1.0)
 
             results[cc] = {
                 'currency': local_sym,

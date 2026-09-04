@@ -80,7 +80,12 @@ export default function AddRepair() {
       
       navigate(-1)
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to add repair entry')
+      // Prefer the server's message_key so the reason (malformed date,
+      // non-numeric mileage or cost) is shown in the user's own language.
+      const data = err.response?.data
+      setError((data?.message_key && t(data.message_key))
+        || data?.error
+        || 'Failed to add repair entry')
     } finally {
       setIsSubmitting(false)
     }

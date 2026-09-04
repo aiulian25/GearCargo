@@ -16,6 +16,7 @@ import uuid
 import shutil
 from datetime import datetime, timezone, date
 from decimal import Decimal
+from app.utils.timeutils import utc_today
 
 
 # ──────────────────────────────────────────────
@@ -390,11 +391,18 @@ def map_to_gearcargo(classified, config=None, distance_unit=None):
     # Track highest mileage per vehicle
     max_mileage = {}
 
+    # R4-14: a record whose VehicleId is not in the backup is dropped below. That
+    # is the right call — inventing a vehicle for it would be worse — but it used
+    # to happen silently, so the user was told "import completed" while some of
+    # their history was discarded. Counted here and reported back.
+    skipped_unmatched_records = 0
+
     # ── Gas records → Fuel entries ──
     for rec in classified['gas_records']:
         vid = rec.get('VehicleId', 1)
         vehicle = vehicle_map.get(vid)
         if not vehicle:
+            skipped_unmatched_records += 1
             continue
 
         raw_mileage = rec.get('Mileage', 0)
@@ -430,6 +438,7 @@ def map_to_gearcargo(classified, config=None, distance_unit=None):
         vid = rec.get('VehicleId', 1)
         vehicle = vehicle_map.get(vid)
         if not vehicle:
+            skipped_unmatched_records += 1
             continue
 
         description = (rec.get('Description') or '').strip()
@@ -502,7 +511,7 @@ def map_to_gearcargo(classified, config=None, distance_unit=None):
             'payment_frequency': frequency,
             'start_date': start_date.isoformat(),
             'end_date': end_date.isoformat(),
-            'status': 'active' if end_date >= date.today() else 'expired',
+            'status': 'active' if end_date >= utc_today() else 'expired',
             'notes': f'Imported from LubeLogger. {len(payments)} payment(s) found.',
             '_lubelog_files': group.get('files', []),
         }
@@ -513,6 +522,7 @@ def map_to_gearcargo(classified, config=None, distance_unit=None):
         vid = rec.get('VehicleId', 1)
         vehicle = vehicle_map.get(vid)
         if not vehicle:
+            skipped_unmatched_records += 1
             continue
 
         raw_mileage = rec.get('Mileage', 0)
@@ -543,6 +553,7 @@ def map_to_gearcargo(classified, config=None, distance_unit=None):
         vid = rec.get('VehicleId', 1)
         vehicle = vehicle_map.get(vid)
         if not vehicle:
+            skipped_unmatched_records += 1
             continue
 
         raw_mileage = rec.get('Mileage', 0)
@@ -583,6 +594,8 @@ def map_to_gearcargo(classified, config=None, distance_unit=None):
         }
         gearcargo_data['reminders'].append(reminder)
 
+    gearcargo_data['skipped_unmatched_records'] = skipped_unmatched_records
+
     # Set vehicle mileage from highest odometer reading
     for vehicle_data in gearcargo_data['vehicles']:
         ll_id = vehicle_data.get('lubelog_id', 1)
@@ -613,16 +626,22 @@ def _guess_service_type(description):
         return 'brake_service'
     if 'tire' in desc_lower or 'tyre' in desc_lower:
         return 'tire_rotation'
+    # R4-37: every branch must return a member of VALID_SERVICE_TYPES. These
+    # three used to emit 'battery', 'filter_change' and 'suspension', which the
+    # health endpoint's component map does not know — imported rows under them
+    # never counted towards a component's wear. 'battery' and 'suspension' have
+    # no service-type equivalent, so they fall through to 'other'; the health
+    # check still picks them up from the description via SERVICE_KEYWORDS.
     if 'battery' in desc_lower:
-        return 'battery'
+        return 'other'
     if 'mot' in desc_lower:
         return 'inspection'
     if 'filter' in desc_lower:
-        return 'filter_change'
+        return 'air_filter'
     if 'full service' in desc_lower or 'service' in desc_lower:
         return 'full_service'
     if 'suspension' in desc_lower:
-        return 'suspension'
+        return 'other'
     return 'other'
 
 
@@ -707,6 +726,11 @@ def import_lubelog_to_gearcargo(user, zip_data, merge_mode='merge', distance_uni
             'insurance_policies': 0,
             'attachments': 0,
             'skipped_duplicates': 0,
+            # R4-14: policies whose own vehicle isn't in this backup are skipped
+            # (never attached to an arbitrary vehicle) and counted here, matching
+            # import_backup_data's A2 fix.
+            'skipped_unmatched_policies': 0,
+            'skipped_unmatched_records': 0,
         }
 
         vehicle_id_map = {}  # lubelog_id → gearcargo vehicle.id
@@ -831,8 +855,10 @@ def import_lubelog_to_gearcargo(user, zip_data, merge_mode='merge', distance_uni
             vid = policy_data.get('vehicle_lubelog_id', 1)
             vehicle_id = vehicle_id_map.get(vid)
             if not vehicle_id:
-                vehicle_id = next(iter(vehicle_id_map.values()), None)
-            if not vehicle_id:
+                # The previous code fell back to next(iter(vehicle_id_map.values())),
+                # pinning an orphaned policy onto an ARBITRARY vehicle and
+                # corrupting that vehicle's costs. Skip it and record the count.
+                imported['skipped_unmatched_policies'] += 1
                 continue
 
             start_date = _parse_date(policy_data.get('start_date'))
@@ -1026,6 +1052,11 @@ def import_lubelog_to_gearcargo(user, zip_data, merge_mode='merge', distance_uni
             except (KeyError, OSError) as e:
                 current_app.logger.warning(f'Failed to extract file {name}: {e}')
                 continue
+
+        # Records dropped during mapping because their vehicle is not in the
+        # backup — surfaced so the import is never silently lossy.
+        imported['skipped_unmatched_records'] = gearcargo_data.get(
+            'skipped_unmatched_records', 0)
 
         db.session.commit()
 

@@ -12,7 +12,7 @@ Fields per entry:
   * ConsumableEntry — warranty_months (dated from install_date/odometer)
 """
 
-from datetime import date as _date
+from app.utils.timeutils import utc_today
 
 from dateutil.relativedelta import relativedelta
 
@@ -54,7 +54,7 @@ def compute_item(entry, source_type, current_mileage=None, today=None):
     The dict includes ``in_force`` (bool) and ``days_left``/``km_left`` (may be
     None when that dimension isn't defined/known).
     """
-    today = today or _date.today()
+    today = today or utc_today()
 
     warranty_km = getattr(entry, 'warranty_km', None)      # service/repair only
     months = getattr(entry, 'warranty_months', None)
@@ -141,7 +141,7 @@ def db_or(*clauses):
 
 def build_vehicle_warranties(vehicle, today=None):
     """In-force warranty items for one vehicle, soonest-to-expire first."""
-    today = today or _date.today()
+    today = today or utc_today()
     items = []
     for entry, source_type in _warranty_entries(vehicle.id):
         item = compute_item(entry, source_type,

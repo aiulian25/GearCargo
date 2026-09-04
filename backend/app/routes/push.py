@@ -4,7 +4,7 @@ GearCargo - Push Notifications Routes
 
 import base64
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify, current_app
 from pywebpush import webpush, WebPushException
 import json
@@ -15,6 +15,34 @@ from app.models import PushSubscription, NotificationLog
 from app.routes.auth import token_required
 
 push_bp = Blueprint('push', __name__)
+
+# R4-13: how long a push record may sit unused before another account may claim
+# its endpoint. A browser has ONE endpoint per profile, so the endpoint
+# identifies the DEVICE, not the user.
+_STALE_ENDPOINT_DAYS = 30
+
+
+def _endpoint_is_stale(existing):
+    """True when *existing* may be claimed by another account.
+
+    Stale means: deactivated by the bounce handling, never successfully
+    delivered to, or not delivered to for _STALE_ENDPOINT_DAYS.
+    """
+    from app.models.user import _as_utc
+
+    if not existing.active:
+        return True
+    last_used = _as_utc(existing.last_used_at)
+    if last_used is None:
+        return True
+    return (datetime.now(timezone.utc) - last_used) > timedelta(days=_STALE_ENDPOINT_DAYS)
+
+
+def _holds_the_device(existing, keys):
+    """True when the caller presents the subscription this endpoint was
+    registered with — i.e. they are on the browser profile that owns it."""
+    return (existing.p256dh_key == keys.get('p256dh')
+            and existing.auth_key == keys.get('auth'))
 
 
 def _vapid_pubkey_to_base64url(key_str: str):
@@ -141,18 +169,56 @@ def subscribe(current_user):
                 'subscription': existing.to_dict()
             })
         else:
-            # Endpoint already belongs to a different user — this is either a stale record
-            # from a shared device whose previous owner did not unsubscribe cleanly, or a
-            # deliberate attempt to hijack another user's push endpoint.
-            # In both cases: evict the stale record so the current user gets a clean
-            # registration below. Never silently transfer ownership across users.
-            current_app.logger.warning(
-                '[Security] Push endpoint re-registration: evicting stale record '
-                'for user_id=%s, new owner user_id=%s',
+            # R4-13: the endpoint belongs to a DIFFERENT account. The old code
+            # deleted it unconditionally, so anyone who learned a victim's
+            # endpoint URL could silence their notifications and push arbitrary
+            # content to their device.
+            #
+            # A handover is only honoured when it is demonstrably legitimate:
+            #   * the caller presents the SAME subscription keys — the Push API
+            #     hands the identical endpoint AND keys to whoever is signed in
+            #     on that browser profile, so this proves possession of the
+            #     device (the shared-device case). Refusing it would also leave
+            #     the previous owner's private notifications landing on a device
+            #     somebody else now uses.
+            #   * or the record is stale: deactivated, never delivered to, or
+            #     untouched for _STALE_ENDPOINT_DAYS.
+            # Anything else is refused.
+            if not (_holds_the_device(existing, keys) or _endpoint_is_stale(existing)):
+                current_app.logger.warning(
+                    '[Security] Refused push endpoint claim: endpoint owned by '
+                    'user_id=%s, claimed by user_id=%s',
+                    existing.user_id, current_user.id
+                )
+                return jsonify({
+                    'error': 'Push endpoint is registered to another account',
+                    'message_key': 'push.endpointOwnedByOther',
+                }), 409
+
+            current_app.logger.info(
+                '[Security] Push endpoint handover: user_id=%s -> user_id=%s',
                 existing.user_id, current_user.id
             )
-            db.session.delete(existing)
-            db.session.flush()   # enforce deletion before the INSERT below
+            # Reassign rather than delete + re-insert: it keeps the row id (so
+            # NotificationLog history stays resolvable) and avoids racing the
+            # UNIQUE constraint on endpoint.
+            existing.user_id = current_user.id
+            existing.p256dh_key = keys['p256dh']
+            existing.auth_key = keys['auth']
+            existing.active = True
+            existing.error_count = 0
+            existing.last_error = None
+            existing.last_used_at = None
+            existing.device_name = data.get('device_name')
+            existing.device_type = data.get('device_type')
+            existing.browser = data.get('browser')
+            existing.os = data.get('os')
+            db.session.commit()
+
+            return jsonify({
+                'message': 'Subscription updated',
+                'subscription': existing.to_dict()
+            })
     
     # Create new subscription
     push_sub = PushSubscription(

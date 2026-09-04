@@ -258,3 +258,118 @@ def test_attachment_stats(app, client, auth_headers):
         "misc": {"count": 1, "size": 300},
     }
     assert d["by_type"] == {"images": 1, "pdfs": 1, "documents": 1, "other": 2}
+
+
+# ── R4-07: /vehicles/<id>/stats never reported the next service ──────────────
+# All three lookups compared a `Date` column against `now` (a *datetime*), so the
+# subtraction raised TypeError — swallowed by `except Exception: pass`. Every
+# response carried next_service_days = null, and the "Next Service Due" card,
+# the alerts list and Smart Recommendations all fell back to empty.
+
+from app.utils.timeutils import utc_today
+
+
+def _vehicle_stats(client, headers, vehicle_id):
+    response = client.get(f'/api/vehicles/{vehicle_id}/stats', headers=headers)
+    assert response.status_code == 200
+    return response.get_json()
+
+
+def test_next_service_comes_from_an_upcoming_reminder(app, client, auth_headers):
+    with app.app_context():
+        uid, vid = _mk()
+        today = utc_today()
+        db.session.add(Reminder(user_id=uid, vehicle_id=vid, title='MOT test',
+                                due_date=today + timedelta(days=10)))
+        db.session.commit()
+        headers = auth_headers(uid)
+
+    stats = _vehicle_stats(client, headers, vid)
+    assert stats['next_service_days'] == 10        # was: None
+    assert stats['next_service_title'] == 'MOT test'
+    assert stats['next_service'] == (utc_today() + timedelta(days=10)).isoformat()
+
+
+def test_next_service_picks_the_soonest_of_all_three_sources(app, client, auth_headers):
+    """A reminder, a future-dated service and a past service's next-due pointer
+    all compete; the nearest one wins."""
+    with app.app_context():
+        uid, vid = _mk()
+        today = utc_today()
+        db.session.add_all([
+            Reminder(user_id=uid, vehicle_id=vid, title='MOT test',
+                     due_date=today + timedelta(days=10)),
+            ServiceEntry(user_id=uid, vehicle_id=vid, date=today + timedelta(days=20),
+                         title='Full service', amount=0),
+            ServiceEntry(user_id=uid, vehicle_id=vid, date=today - timedelta(days=90),
+                         title='Oil change', next_due_date=today + timedelta(days=5),
+                         amount=0),
+        ])
+        db.session.commit()
+        headers = auth_headers(uid)
+
+    stats = _vehicle_stats(client, headers, vid)
+    assert stats['next_service_days'] == 5
+    assert stats['next_service_title'] == 'Oil change'
+
+
+def test_next_service_ignores_past_completed_and_dismissed_reminders(app, client, auth_headers):
+    with app.app_context():
+        uid, vid = _mk()
+        today = utc_today()
+        db.session.add_all([
+            Reminder(user_id=uid, vehicle_id=vid, title='Overdue',
+                     due_date=today - timedelta(days=3)),
+            Reminder(user_id=uid, vehicle_id=vid, title='Done',
+                     due_date=today + timedelta(days=2), completed=True),
+            Reminder(user_id=uid, vehicle_id=vid, title='Dismissed',
+                     due_date=today + timedelta(days=1), dismissed=True),
+        ])
+        db.session.commit()
+        headers = auth_headers(uid)
+
+    stats = _vehicle_stats(client, headers, vid)
+    assert stats['next_service'] is None
+    assert stats['next_service_days'] is None
+    assert stats['next_service_title'] is None
+
+
+def test_next_service_due_today_is_zero_days(app, client, auth_headers):
+    with app.app_context():
+        uid, vid = _mk()
+        db.session.add(Reminder(user_id=uid, vehicle_id=vid, title='Today',
+                                due_date=utc_today()))
+        db.session.commit()
+        headers = auth_headers(uid)
+
+    assert _vehicle_stats(client, headers, vid)['next_service_days'] == 0
+
+
+def test_next_service_title_humanizes_a_type_token(app, client, auth_headers):
+    """Service titles are stored as joined type tokens ('oil_change'), so the
+    label is humanized the way the due feed already does it."""
+    with app.app_context():
+        uid, vid = _mk()
+        db.session.add(ServiceEntry(user_id=uid, vehicle_id=vid,
+                                    date=utc_today() + timedelta(days=4),
+                                    title=None, service_type='oil_change', amount=0))
+        db.session.commit()
+        headers = auth_headers(uid)
+
+    assert _vehicle_stats(client, headers, vid)['next_service_title'] == 'oil change'
+
+
+def test_next_service_title_is_null_when_the_entry_has_no_label(app, client, auth_headers):
+    """No server-invented English label — a null title lets the PWA render its
+    own localized fallback (alerts.serviceDue, already in en/ro/es)."""
+    with app.app_context():
+        uid, vid = _mk()
+        db.session.add(ServiceEntry(user_id=uid, vehicle_id=vid,
+                                    date=utc_today() + timedelta(days=4),
+                                    title=None, service_type=None, amount=0))
+        db.session.commit()
+        headers = auth_headers(uid)
+
+    stats = _vehicle_stats(client, headers, vid)
+    assert stats['next_service_days'] == 4
+    assert stats['next_service_title'] is None

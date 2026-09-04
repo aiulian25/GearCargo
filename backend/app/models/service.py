@@ -6,6 +6,20 @@ from app import db
 from app.models.entry import Entry
 
 
+# R4-37: the single source of truth for service_type. It was declared twice in
+# routes/services.py (create and update) and shadowed by a third vocabulary in
+# the LubeLog importer's guesser, which emitted values the health endpoint's
+# SERVICE_TYPE_TO_COMPONENTS map (routes/vehicles.py) does not know. Kept beside
+# the model like CONSUMABLE_TYPES, so the importer does not have to import a
+# route module to know what a service type is. Human-readable labels live in the
+# frontend i18n files.
+VALID_SERVICE_TYPES = {
+    'oil_change', 'tire_rotation', 'brake_service', 'air_filter', 'cabin_filter',
+    'spark_plugs', 'transmission', 'coolant', 'timing_belt', 'inspection',
+    'full_service', 'other',
+}
+
+
 class ServiceEntry(Entry):
     """Service entry for maintenance records."""
     

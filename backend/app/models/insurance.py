@@ -2,8 +2,8 @@
 GearCargo - Insurance Policy Model
 """
 
-from datetime import datetime, date
-from app.utils.timeutils import utc_naive_now
+from datetime import datetime
+from app.utils.timeutils import utc_naive_now, utc_today
 from app import db
 
 
@@ -93,14 +93,14 @@ class InsurancePolicy(db.Model):
     @property
     def is_active(self):
         """Check if policy is currently active."""
-        today = date.today()
+        today = utc_today()
         return self.start_date <= today <= self.end_date and self.status == 'active'
     
     @property
     def days_until_expiry(self):
         """Days until policy expires."""
         if self.end_date:
-            delta = self.end_date - date.today()
+            delta = self.end_date - utc_today()
             return delta.days
         return None
     

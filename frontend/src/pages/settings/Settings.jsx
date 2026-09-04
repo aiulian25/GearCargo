@@ -615,7 +615,14 @@ export default function Settings() {
       console.error('Failed to update email settings:', error)
       // Revert on error
       setEmailSettings(emailSettings)
-      toast.error(t('settings.emailSettingsFailed') || 'Failed to update email settings')
+      // Prefer the server's message_key so a rejected value (e.g. a non-numeric
+      // alert window) says why, in the user's own language.
+      const data = error.response?.data
+      const localized = data?.message_key && t(data.message_key, { max: data.max_length })
+      toast.error(localized
+        || data?.error
+        || t('settings.emailSettingsFailed')
+        || 'Failed to update email settings')
     }
   }
   

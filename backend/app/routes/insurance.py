@@ -2,13 +2,18 @@
 GearCargo - Insurance Routes
 """
 
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, current_app
 from sqlalchemy import func, case, and_
 
 from app import db
 from app.models import Vehicle, InsurancePolicy
 from app.routes.auth import token_required
+from app.utils.entryparse import (
+    INVALID_DATE_KEY, InvalidFieldError, invalid_field_response, parse_amount,
+    parse_currency_code, parse_iso_date, parse_optional_amount,
+)
+from app.utils.timeutils import utc_today
 
 insurance_bp = Blueprint('insurance', __name__)
 
@@ -62,20 +67,34 @@ def create_policy(current_user):
     if not data.get('start_date') or not data.get('end_date'):
         return jsonify({'error': 'Start and end dates are required'}), 400
     
+    # R4-10/R4-11: every client-supplied date, amount and code is parsed BEFORE
+    # the policy is constructed, so malformed input returns the localized 400 the
+    # UI renders instead of reaching the driver as a 500.
+    try:
+        start_date = parse_iso_date(data['start_date'])
+        end_date = parse_iso_date(data['end_date'])
+        premium = parse_amount(data.get('premium', 0), 'Premium must be a number')
+        coverage_amount = parse_optional_amount(data.get('coverage_amount'))
+        deductible = parse_optional_amount(data.get('deductible'))
+        currency = parse_currency_code(data.get('currency') or current_user.currency)
+    except InvalidFieldError as invalid:
+        payload, status = invalid_field_response(invalid)
+        return jsonify(payload), status
+
     policy = InsurancePolicy(
         user_id=current_user.id,
         vehicle_id=vehicle.id,
         policy_number=data.get('policy_number'),
         provider=data['provider'],
         policy_type=data.get('policy_type'),
-        coverage_amount=data.get('coverage_amount'),
-        deductible=data.get('deductible'),
+        coverage_amount=coverage_amount,
+        deductible=deductible,
         coverage_details=data.get('coverage_details'),
-        premium=data.get('premium', 0),
+        premium=premium,
         payment_frequency=data.get('payment_frequency'),
-        currency=data.get('currency', current_user.currency),
-        start_date=datetime.fromisoformat(data['start_date']).date(),
-        end_date=datetime.fromisoformat(data['end_date']).date(),
+        currency=currency,
+        start_date=start_date,
+        end_date=end_date,
         agent_name=data.get('agent_name'),
         agent_phone=data.get('agent_phone'),
         agent_email=data.get('agent_email'),
@@ -136,12 +155,34 @@ def update_policy(current_user, policy_id):
                'currency', 'start_date', 'end_date', 'agent_name', 'agent_phone',
                'agent_email', 'claims_phone', 'status', 'auto_renew', 'notes']
     
-    for field in allowed:
-        if field in data:
-            if field in ['start_date', 'end_date'] and data[field]:
-                setattr(policy, field, datetime.fromisoformat(data[field]).date())
+    # Parsed into `updates` FIRST, then applied — a rejected field must never
+    # leave the policy half-edited (the old loop mutated as it went).
+    try:
+        updates = {}
+        for field in allowed:
+            if field not in data:
+                continue
+            value = data[field]
+            if field in ('start_date', 'end_date'):
+                # Both columns are NOT NULL; the old `else` branch wrote '' here.
+                if not value:
+                    raise InvalidFieldError(INVALID_DATE_KEY,
+                                            'Start and end dates are required')
+                updates[field] = parse_iso_date(value)
+            elif field == 'premium':
+                updates[field] = parse_amount(value, 'Premium must be a number')
+            elif field in ('coverage_amount', 'deductible'):
+                updates[field] = parse_optional_amount(value)
+            elif field == 'currency':
+                updates[field] = parse_currency_code(value)
             else:
-                setattr(policy, field, data[field])
+                updates[field] = value
+    except InvalidFieldError as invalid:
+        payload, status = invalid_field_response(invalid)
+        return jsonify(payload), status
+
+    for field, value in updates.items():
+        setattr(policy, field, value)
 
     # F6: editing an auto-renewed policy is the user's "confirm details" signal —
     # clear the provenance marker so the "confirm premium" prompt disappears.
@@ -172,7 +213,7 @@ def cancel_policy(current_user, policy_id):
         return jsonify({'error': 'Policy is already cancelled'}), 400
 
     policy.status = 'cancelled'
-    policy.end_date = date.today()
+    policy.end_date = utc_today()
     policy.auto_renew = False
     db.session.commit()
 
@@ -214,8 +255,8 @@ def get_active_policies(current_user):
     policies = InsurancePolicy.query.filter(
         InsurancePolicy.user_id == current_user.id,
         InsurancePolicy.status == 'active',
-        InsurancePolicy.start_date <= date.today(),
-        InsurancePolicy.end_date >= date.today()
+        InsurancePolicy.start_date <= utc_today(),
+        InsurancePolicy.end_date >= utc_today()
     ).order_by(InsurancePolicy.end_date.asc()).all()
     
     return jsonify({
@@ -228,13 +269,13 @@ def get_active_policies(current_user):
 def get_expiring_policies(current_user):
     """Get policies expiring soon."""
     days = request.args.get('days', 30, type=int)
-    cutoff = date.today() + timedelta(days=days)
+    cutoff = utc_today() + timedelta(days=days)
     
     policies = InsurancePolicy.query.filter(
         InsurancePolicy.user_id == current_user.id,
         InsurancePolicy.status == 'active',
         InsurancePolicy.end_date <= cutoff,
-        InsurancePolicy.end_date >= date.today()
+        InsurancePolicy.end_date >= utc_today()
     ).order_by(InsurancePolicy.end_date.asc()).all()
     
     return jsonify({
@@ -252,7 +293,7 @@ def get_insurance_stats(current_user):
     #   is_expiring_soon  → 0 < (end_date - today).days <= 30
     #                       → end_date > today AND end_date <= today + 30d
     # (today / today+30 computed in Python → portable, no DB date math).
-    today = date.today()
+    today = utc_today()
     uid = current_user.id
     active_cond = and_(
         InsurancePolicy.start_date <= today,

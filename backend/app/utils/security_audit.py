@@ -157,9 +157,19 @@ class SecurityAuditLogger:
     
     @staticmethod
     def _get_client_ip() -> str:
-        """Get the real client IP, accounting for proxies."""
-        if request.headers.get('X-Forwarded-For'):
-            return request.headers.get('X-Forwarded-For').split(',')[0].strip()
+        """Return the real client IP address.
+
+        R4-05: this used to return the LEFTMOST X-Forwarded-For entry, which the
+        caller controls — so any client could choose the address recorded against
+        their own login failures, lockouts, exports and admin actions.
+
+        werkzeug's ProxyFix (applied in create_app, S11) has already resolved the
+        real client into request.remote_addr by peeling exactly
+        TRUSTED_PROXY_COUNT hops from the RIGHT of the header, so the header must
+        not be re-read here. This matches routes/auth.py:get_real_client_ip and
+        ActivityLog._get_client_ip, which were corrected by S11 — the audit trail
+        and the blocking machinery must always name the same client.
+        """
         return request.remote_addr or 'Unknown'
     
     # Convenience methods for common events

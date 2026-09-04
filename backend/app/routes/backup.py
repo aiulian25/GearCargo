@@ -1217,7 +1217,7 @@ def cleanup_old_backups(user_id, max_backups=10, retention_days=90):
             try:
                 os.remove(filepath)
                 deleted += 1
-            except:
+            except Exception:
                 pass
     
     # Also clean up database records
@@ -1722,7 +1722,7 @@ def restore_from_zip(user, file, merge_mode='merge'):
                     os.chmod(new_filepath, 0o640)
                     
                     # Update vehicle photo field
-                    vehicle = Vehicle.query.get(new_vehicle_id)
+                    vehicle = db.session.get(Vehicle, new_vehicle_id)
                     if vehicle:
                         vehicle.photo = f"/uploads/vehicles/{new_filename}"
                         imported['vehicle_photos'] += 1
@@ -1903,7 +1903,7 @@ def import_backup_data(user, backup_data, merge_mode='merge'):
                 if vehicle_data.get('archived_at'):
                     try:
                         vehicle.archived_at = datetime.fromisoformat(vehicle_data['archived_at'].replace('Z', '+00:00'))
-                    except:
+                    except Exception:
                         pass
         else:
             # Parse archived_at datetime if present
@@ -1911,7 +1911,7 @@ def import_backup_data(user, backup_data, merge_mode='merge'):
             if vehicle_data.get('archived_at'):
                 try:
                     archived_at = datetime.fromisoformat(vehicle_data['archived_at'].replace('Z', '+00:00'))
-                except:
+                except Exception:
                     pass
             
             vehicle = Vehicle(
@@ -2211,7 +2211,7 @@ def import_backup_data(user, backup_data, merge_mode='merge'):
             )
             db.session.add(todo)
             imported['todos'] += 1
-        except:
+        except Exception:
             pass
     
     # Recalculate current_mileage for all imported/merged vehicles
@@ -2222,7 +2222,7 @@ def import_backup_data(user, backup_data, merge_mode='merge'):
             Entry.odometer.isnot(None)
         ).scalar()
         if max_odometer:
-            vehicle = Vehicle.query.get(new_vehicle_id)
+            vehicle = db.session.get(Vehicle, new_vehicle_id)
             if vehicle and (vehicle.current_mileage or 0) < max_odometer:
                 vehicle.current_mileage = max_odometer
     

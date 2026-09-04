@@ -2,6 +2,8 @@
 
 from datetime import date
 
+import pytest
+
 from app import db
 from app.models import User, Vehicle, ConsumableEntry
 
@@ -192,3 +194,153 @@ def test_check_consumables_due_skips_superseded(app, monkeypatch):
 
     check_consumables_due(app)
     assert calls == []                   # the superseded old pads never push
+
+
+# ---------------------------------------------------------------------------
+# R4-10 / R4-11 — write-path validation. `amount` and `currency` reached the
+# Numeric / String(3) columns raw, the local `_parse_date` was an unguarded
+# `fromisoformat`, and the local `_to_int` silently discarded anything it could
+# not parse. Malformed input was a 500; a mistyped lifespan vanished.
+# ---------------------------------------------------------------------------
+
+def _valid_consumable_payload(vehicle_id, **overrides):
+    payload = {
+        'vehicle_id': vehicle_id,
+        'consumable_type': 'tire',
+        'date': '2026-03-01',
+        'amount': 420.50,
+        'brand': 'Michelin',
+    }
+    payload.update(overrides)
+    return payload
+
+
+@pytest.mark.parametrize('field, bad_value, expected_key', [
+    ('amount', 'abc', 'validation.invalidNumber'),
+    # A European decimal comma is a realistic mistake, and truthy — unlike a
+    # falsy value, which the `or 0` fallback still treats as "not provided".
+    ('amount', '1,50', 'validation.invalidNumber'),
+    ('date', 'bad', 'validation.invalidDate'),
+    ('date', '2026-13-40', 'validation.invalidDate'),
+    ('install_date', 'bad', 'validation.invalidDate'),
+    ('odometer', 'abc', 'validation.invalidNumber'),
+    ('install_odometer', 'abc', 'validation.invalidNumber'),
+    ('quantity', 'abc', 'validation.invalidNumber'),
+    ('expected_lifespan_km', 'abc', 'validation.invalidNumber'),
+    ('expected_lifespan_months', 'abc', 'validation.invalidNumber'),
+    ('warranty_months', 'abc', 'validation.invalidNumber'),
+    ('currency', 'EURO', 'validation.invalidCurrency'),
+])
+def test_create_consumable_rejects_malformed_input(
+        app, client, user, auth_headers, field, bad_value, expected_key):
+    with app.app_context():
+        vehicle_id = _mk_vehicle(user.id).id
+
+    response = client.post('/api/consumables', headers=auth_headers(user.id),
+                           json=_valid_consumable_payload(vehicle_id, **{field: bad_value}))
+
+    assert response.status_code == 400, response.get_json()   # was: 500
+    assert response.get_json()['message_key'] == expected_key
+    with app.app_context():
+        assert ConsumableEntry.query.count() == 0
+
+
+def test_create_consumable_coerces_the_numeric_strings_a_form_submits(app, client, user, auth_headers):
+    with app.app_context():
+        vehicle_id = _mk_vehicle(user.id).id
+
+    response = client.post('/api/consumables', headers=auth_headers(user.id),
+                           json=_valid_consumable_payload(
+                               vehicle_id, amount='420.50', odometer='45000',
+                               quantity='4', expected_lifespan_km='60000',
+                               warranty_months='24', currency='eur',
+                               date='2026-03-01T09:30:00Z'))
+
+    assert response.status_code == 201, response.get_json()
+    with app.app_context():
+        entry = ConsumableEntry.query.one()
+        assert float(entry.amount) == 420.50
+        assert entry.odometer == 45000
+        assert entry.install_odometer == 45000     # defaults to the entry odometer
+        assert entry.quantity == 4
+        assert entry.expected_lifespan_km == 60000
+        assert entry.warranty_months == 24
+        assert entry.currency == 'EUR'             # upper-cased
+        assert entry.date == date(2026, 3, 1)      # 'Z' suffix accepted
+        assert entry.install_date == date(2026, 3, 1)
+
+
+def _existing_consumable(app, user_id, vehicle_id):
+    with app.app_context():
+        entry = ConsumableEntry(
+            user_id=user_id, vehicle_id=vehicle_id, date=date(2026, 3, 1),
+            amount=420.50, currency='GBP', title='Original', consumable_type='tire',
+            brand='Michelin', quantity=4, odometer=45000, install_odometer=45000,
+            install_date=date(2026, 3, 1), expected_lifespan_km=60000,
+            warranty_months=24,
+        )
+        db.session.add(entry)
+        db.session.commit()
+        return entry.id
+
+
+@pytest.mark.parametrize('field, bad_value, expected_key', [
+    ('amount', 'abc', 'validation.invalidNumber'),
+    ('date', 'bad', 'validation.invalidDate'),
+    ('install_date', 'bad', 'validation.invalidDate'),
+    ('odometer', 'abc', 'validation.invalidNumber'),
+    ('quantity', 'abc', 'validation.invalidNumber'),
+    ('expected_lifespan_km', 'abc', 'validation.invalidNumber'),
+    ('currency', 'EURO', 'validation.invalidCurrency'),
+])
+def test_update_consumable_rejects_malformed_input_without_partial_writes(
+        app, client, user, auth_headers, field, bad_value, expected_key):
+    with app.app_context():
+        vehicle_id = _mk_vehicle(user.id).id
+    entry_id = _existing_consumable(app, user.id, vehicle_id)
+
+    response = client.put(f'/api/consumables/{entry_id}', headers=auth_headers(user.id),
+                          json={'title': 'Renamed', field: bad_value})
+
+    assert response.status_code == 400, response.get_json()   # was: 500
+    assert response.get_json()['message_key'] == expected_key
+    with app.app_context():
+        entry = db.session.get(ConsumableEntry, entry_id)
+        assert entry.title == 'Original'                      # the valid edit too
+        assert float(entry.amount) == 420.50
+        assert entry.date == date(2026, 3, 1)
+        assert entry.odometer == 45000
+        assert entry.quantity == 4
+        assert entry.expected_lifespan_km == 60000
+        assert entry.currency == 'GBP'
+
+
+def test_update_consumable_stores_numeric_strings(app, client, user, auth_headers):
+    with app.app_context():
+        vehicle_id = _mk_vehicle(user.id).id
+    entry_id = _existing_consumable(app, user.id, vehicle_id)
+
+    response = client.put(f'/api/consumables/{entry_id}', headers=auth_headers(user.id),
+                          json={'amount': '99.99', 'odometer': '50000',
+                                'quantity': '2', 'date': '2026-04-02'})
+
+    assert response.status_code == 200, response.get_json()
+    with app.app_context():
+        entry = db.session.get(ConsumableEntry, entry_id)
+        assert float(entry.amount) == 99.99
+        assert entry.odometer == 50000
+        assert entry.quantity == 2
+        assert entry.date == date(2026, 4, 2)
+
+
+def test_update_consumable_clears_the_install_date(app, client, user, auth_headers):
+    with app.app_context():
+        vehicle_id = _mk_vehicle(user.id).id
+    entry_id = _existing_consumable(app, user.id, vehicle_id)
+
+    response = client.put(f'/api/consumables/{entry_id}', headers=auth_headers(user.id),
+                          json={'install_date': ''})
+
+    assert response.status_code == 200, response.get_json()
+    with app.app_context():
+        assert db.session.get(ConsumableEntry, entry_id).install_date is None

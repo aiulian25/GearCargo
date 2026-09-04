@@ -5,6 +5,7 @@ GearCargo - Parking Entry Routes
 from datetime import datetime, time as time_class, timezone
 from flask import Blueprint, request, jsonify, current_app
 from sqlalchemy import func
+from sqlalchemy.orm import selectinload
 
 from app import db
 from app.models import Vehicle, ParkingEntry
@@ -13,6 +14,7 @@ from app.services.calendar_service import sync_entry_to_calendar_safe
 from app.utils.entryparse import (
     InvalidFieldError, invalid_field_response, parse_amount, parse_iso_date,
 )
+from app.utils.timeutils import utc_today
 
 parking_bp = Blueprint('parking', __name__)
 
@@ -49,7 +51,10 @@ def get_parking_entries(current_user):
     if vehicle_id:
         query = query.filter(ParkingEntry.vehicle_id == vehicle_id)
     
-    entries = query.order_by(ParkingEntry.date.desc()).paginate(
+    # R4-15: batch the attachments the rows serialize — one query for the
+    # page instead of one per entry.
+    entries = query.options(selectinload(ParkingEntry.attachments)) \
+        .order_by(ParkingEntry.date.desc()).paginate(
         page=page, per_page=per_page, error_out=False
     )
     
@@ -410,9 +415,10 @@ def get_active_permits(current_user):
         ),
         db.or_(
             ParkingEntry.permit_expires.is_(None),
-            ParkingEntry.permit_expires >= date.today(),
+            ParkingEntry.permit_expires >= utc_today(),
         ),
-    ).order_by(ParkingEntry.permit_expires.asc().nullslast()).all()
+    ).options(selectinload(ParkingEntry.attachments)) \
+        .order_by(ParkingEntry.permit_expires.asc().nullslast()).all()
     
     return jsonify({
         'permits': [e.to_dict() for e in entries]

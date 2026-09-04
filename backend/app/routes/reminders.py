@@ -9,6 +9,14 @@ from sqlalchemy import func, case, and_
 from app import db
 from app.models import Vehicle, Reminder
 from app.routes.auth import token_required
+from app.utils.entryparse import (
+    REQUIRED_FIELD_KEY,
+    InvalidFieldError,
+    invalid_field_response,
+    parse_iso_date,
+    parse_optional_int,
+)
+from app.utils.timeutils import utc_today
 
 reminders_bp = Blueprint('reminders', __name__)
 
@@ -22,12 +30,15 @@ _REPEAT_INTERVALS = {
 }
 
 
-def _opt_int(value):
-    """Coerce an optional numeric field to int, treating ''/invalid as None."""
-    try:
-        return int(value) if value not in (None, '') else None
-    except (TypeError, ValueError):
-        return None
+# Integer columns, by the request key that addresses them. Kept apart from the
+# string/bool aliases below because every one of them needs coercing before it
+# reaches the column (R4-11). Canonical name last, so it wins when both are sent.
+_INTEGER_FIELDS = {
+    'due_mileage': 'due_mileage',
+    'notify_days_before': 'notify_days_before',
+    'recurrence_interval': 'frequency_value',
+    'frequency_value': 'frequency_value',
+}
 
 
 def _apply_repeat_interval(reminder, raw):
@@ -57,7 +68,7 @@ def get_reminders(current_user):
     if vehicle_id:
         query = query.filter(Reminder.vehicle_id == vehicle_id)
     
-    today = date.today()
+    today = utc_today()
     
     if status:
         if status == 'upcoming':
@@ -115,25 +126,46 @@ def create_reminder(current_user):
             return jsonify({'error': 'Vehicle not found'}), 404
     
     if not data.get('title'):
-        return jsonify({'error': 'Title is required'}), 400
-    
+        return jsonify({'error': 'Title is required',
+                        'message_key': REQUIRED_FIELD_KEY}), 400
+
+    # due_date is NOT NULL (models/reminder.py:22) — omitting it used to reach
+    # the flush as an IntegrityError 500.
+    if not data.get('due_date'):
+        return jsonify({'error': 'Due date is required',
+                        'message_key': REQUIRED_FIELD_KEY}), 400
+
+    # Every parse below raises InvalidFieldError, caught once — malformed input
+    # used to escape as a 500 (R4-10) or reach an Integer column raw (R4-11).
+    try:
+        due_date = parse_iso_date(data['due_date'])
+        due_mileage = parse_optional_int(data.get('due_mileage'),
+                                         'Due mileage must be a number')
+        notify_days_before = parse_optional_int(data.get('notify_days_before', 7),
+                                                'Notification days must be a number')
+        frequency_value = parse_optional_int(data.get('recurrence_interval'),
+                                             'Repeat interval must be a number')
+    except InvalidFieldError as invalid:
+        payload, status = invalid_field_response(invalid)
+        return jsonify(payload), status
+
     reminder = Reminder(
         user_id=current_user.id,
         vehicle_id=vehicle_id,
         title=data['title'],
         description=data.get('description'),
         reminder_type=data.get('reminder_type', 'custom'),
-        due_date=datetime.fromisoformat(data['due_date']).date() if data.get('due_date') else None,
-        due_mileage=data.get('due_mileage'),
+        due_date=due_date,
+        due_mileage=due_mileage,
         priority=data.get('priority', 'medium'),
         completed=False,
         dismissed=False,
         # Recurrence
         recurring=data.get('is_recurring', False),
         frequency=data.get('recurrence_pattern'),
-        frequency_value=data.get('recurrence_interval'),
+        frequency_value=frequency_value,
         # Notifications
-        notify_days_before=data.get('notify_days_before', 7),
+        notify_days_before=notify_days_before,
         notify_push=data.get('notify_via_push', True),
         notify_email=data.get('notify_via_email', True),
         # Calendar
@@ -198,7 +230,8 @@ def update_reminder(current_user, reminder_id):
     
     # F18 — request keys mapped to the REAL model columns. Aliases first,
     # canonical names last so the canonical value wins when both are sent.
-    # ('status' and 'recurrence_unit' were dropped — no such columns.)
+    # ('status' and 'recurrence_unit' were dropped — no such columns; the
+    # integer columns live in _INTEGER_FIELDS, they cannot be assigned raw.)
     field_aliases = {
         'title': 'title',
         'notes': 'description', 'description': 'description',
@@ -206,8 +239,6 @@ def update_reminder(current_user, reminder_id):
         'priority': 'priority',
         'is_recurring': 'recurring', 'recurring': 'recurring',
         'recurrence_pattern': 'frequency', 'frequency': 'frequency',
-        'recurrence_interval': 'frequency_value', 'frequency_value': 'frequency_value',
-        'notify_days_before': 'notify_days_before',
         'notify_via_push': 'notify_push', 'notify_push': 'notify_push',
         'notify_via_email': 'notify_email', 'notify_email': 'notify_email',
         'sync_to_calendar': 'calendar_sync', 'calendar_sync': 'calendar_sync',
@@ -215,15 +246,28 @@ def update_reminder(current_user, reminder_id):
         'description_translations': 'description_translations',
     }
 
+    # Parsed up front so a rejected field cannot leave the earlier ones already
+    # applied — the loop below used to mutate the reminder as it went (R4-11).
+    try:
+        parsed_columns = {}
+        # A falsy due_date stays a no-op, as before: the column is NOT NULL, and
+        # the edit form sends '' to mean "unchanged".
+        if data.get('due_date'):
+            parsed_columns['due_date'] = parse_iso_date(data['due_date'])
+        for key, column in _INTEGER_FIELDS.items():
+            if key in data:
+                parsed_columns[column] = parse_optional_int(data[key])
+    except InvalidFieldError as invalid:
+        payload, status = invalid_field_response(invalid)
+        return jsonify(payload), status
+
     for key, column in field_aliases.items():
         if key in data:
             setattr(reminder, column, data[key])
 
-    if 'due_date' in data and data['due_date']:
-        reminder.due_date = datetime.fromisoformat(
-            data['due_date'].replace('Z', '+00:00')).date()
-    if 'due_mileage' in data:
-        reminder.due_mileage = _opt_int(data['due_mileage'])
+    for column, value in parsed_columns.items():
+        setattr(reminder, column, value)
+
     # The reminder form's "Repeats" select (F18) — applied last so it wins
     # over any alias-provided recurrence fields.
     if 'repeat_interval' in data:
@@ -347,7 +391,7 @@ def snooze_reminder(current_user, reminder_id):
 def get_upcoming_reminders(current_user):
     """Get upcoming reminders."""
     days = request.args.get('days', 7, type=int)
-    cutoff = date.today() + timedelta(days=days)
+    cutoff = utc_today() + timedelta(days=days)
     
     reminders = Reminder.query.filter(
         Reminder.user_id == current_user.id,
@@ -371,7 +415,7 @@ def get_overdue_reminders(current_user):
         Reminder.completed == False,
         Reminder.dismissed == False,
         Reminder.due_date.isnot(None),
-        Reminder.due_date < date.today()
+        Reminder.due_date < utc_today()
     ).order_by(Reminder.due_date.asc()).all()
     
     return jsonify({

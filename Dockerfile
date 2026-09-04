@@ -38,7 +38,7 @@ RUN npm run build
 # Pinned to bookworm so PostgreSQL 16 (from PGDG) is available on both
 # amd64 and arm64 — the migration is a 16→16 logical restore.
 # ============================================================
-FROM python:3.11-slim-bookworm
+FROM python:3.12-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -115,7 +115,13 @@ COPY backend/requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
     { pip uninstall -y wheel setuptools || true; } && \
-    { python -m pip uninstall -y pip || true; }
+    { python -m pip uninstall -y pip || true; } && \
+    # R4-29: the toolchain only exists so pip can fall back to building a
+    # source dist. Purged in THIS layer, after the install, so it is available
+    # if a wheel is ever missing for an arch but never reaches the final image.
+    # (psycopg2-binary, Pillow and numpy all ship manylinux wheels today.)
+    apt-get purge -y --auto-remove gcc libpq-dev && \
+    rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------
 # Application code, backup script, built frontend

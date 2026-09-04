@@ -59,15 +59,22 @@ class Attachment(db.Model):
     
     @property
     def file_size_human(self):
-        """Return human-readable file size."""
+        """Return human-readable file size.
+
+        R4-01: formats a LOCAL copy. The previous body divided ``self.file_size``
+        — the mapped column — in place, so every read (to_dict, the backup
+        export, the documents list) shrank the stored value and the next commit
+        persisted it. Mirrors ``Backup.file_size_human``.
+        """
         if not self.file_size:
             return '0 B'
-        
+
+        size = float(self.file_size)
         for unit in ['B', 'KB', 'MB', 'GB']:
-            if self.file_size < 1024:
-                return f"{self.file_size:.1f} {unit}"
-            self.file_size /= 1024
-        return f"{self.file_size:.1f} TB"
+            if size < 1024:
+                return f"{size:.1f} {unit}"
+            size /= 1024
+        return f"{size:.1f} TB"
     
     def to_dict(self):
         """Convert to dictionary."""

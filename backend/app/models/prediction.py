@@ -8,6 +8,17 @@ from app import db
 from app.models.user import _as_utc  # C1 follow-up: naive→aware UTC coercion
 
 
+# Values for PredictionAlert.generated_by. R4-06: the maintenance predictor and
+# the fuel-anomaly detector are two DIFFERENT generators that both happen to run
+# on Ollama; they shared the value 'ollama', so "replace the prediction batch"
+# also deleted the user's anomaly alerts. `generated_by` names the generator, so
+# they get one value each.
+GENERATED_BY_PREDICTION = 'ollama'          # maintenance predictions (scheduler + /predictions)
+GENERATED_BY_ANOMALY = 'ollama_anomaly'     # fuel fill-up anomaly detection
+GENERATED_BY_RULE_ENGINE = 'rule_engine'
+GENERATED_BY_MANUAL = 'manual'
+
+
 class PredictionAlert(db.Model):
     """AI-generated maintenance prediction alerts."""
     

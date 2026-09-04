@@ -598,6 +598,19 @@ export default function BackupSettings() {
           : t('backup.lubelogImportSuccess') || 'LubeLogger import completed'
       )
 
+      // Records whose vehicle is missing from the backup are dropped on purpose,
+      // but the user must be told — otherwise the import looks lossless when it
+      // is not. Shown as its own longer-lived toast so it survives the reload.
+      const skipped = (imported.skipped_unmatched_records || 0)
+        + (imported.skipped_unmatched_policies || 0)
+      if (skipped > 0) {
+        toast(
+          t('backup.lubelogImportSkipped', { count: skipped })
+            || `${skipped} record(s) skipped — their vehicle is not in the backup`,
+          { icon: '\u26a0\ufe0f', duration: 8000 }
+        )
+      }
+
       setTimeout(() => window.location.reload(), 1500)
     } catch (error) {
       console.error('LubeLogger import failed:', error)

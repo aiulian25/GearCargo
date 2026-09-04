@@ -4,17 +4,17 @@ GearCargo - Widget API Routes (Gethomepage integration)
 
 import hashlib
 import secrets
-from datetime import date
 from functools import wraps
 
 from flask import Blueprint, request, jsonify
+from sqlalchemy import func
 
 from app import db
-from app.models import User, Vehicle, Reminder
+from app.models import User, Vehicle, Reminder, Entry
 from app.models.service import ServiceEntry
 from app.models.repair import RepairEntry
-from app.models.fuel import FuelEntry
 from app.routes.auth import token_required
+from app.utils.timeutils import utc_today
 
 widget_bp = Blueprint('widget', __name__)
 
@@ -122,7 +122,7 @@ def homepage_widget(current_user):
         Reminder.user_id == current_user.id,
         Reminder.completed == False,
         Reminder.dismissed == False,
-        Reminder.due_date >= date.today()
+        Reminder.due_date >= utc_today()
     ).order_by(Reminder.due_date.asc()).first()
 
     next_reminder_text = 'None'
@@ -204,6 +204,57 @@ def homepage_widget(current_user):
     })
 
 
+# Entry.type discriminators (models/entry.py polymorphic_identity), used to read
+# the grouped counts below.
+SERVICE_ENTRY_TYPE = 'service'
+REPAIR_ENTRY_TYPE = 'repair'
+FUEL_ENTRY_TYPE = 'fuel'
+
+
+def _entry_counts_by_vehicle(vehicle_ids):
+    """{vehicle_id: {entry type: count}} for a whole fleet in ONE query.
+
+    R4-17: this replaced three `.count()` calls per vehicle. `Entry` is the
+    polymorphic base, so grouping by its type discriminator covers service,
+    repair and fuel together.
+    """
+    if not vehicle_ids:
+        return {}
+
+    rows = db.session.query(
+        Entry.vehicle_id, Entry.type, func.count(Entry.id)
+    ).filter(
+        Entry.vehicle_id.in_(vehicle_ids)
+    ).group_by(Entry.vehicle_id, Entry.type).all()
+
+    counts = {}
+    for vehicle_id, entry_type, count in rows:
+        counts.setdefault(vehicle_id, {})[entry_type] = count
+    return counts
+
+
+def _next_reminder_by_vehicle(user_id, vehicle_ids):
+    """{vehicle_id: earliest upcoming Reminder} for a whole fleet in ONE query.
+
+    Ordered by due date so the first row seen for a vehicle is its next one.
+    """
+    if not vehicle_ids:
+        return {}
+
+    reminders = Reminder.query.filter(
+        Reminder.user_id == user_id,
+        Reminder.vehicle_id.in_(vehicle_ids),
+        Reminder.completed == False,
+        Reminder.dismissed == False,
+        Reminder.due_date >= utc_today()
+    ).order_by(Reminder.vehicle_id.asc(), Reminder.due_date.asc()).all()
+
+    next_by_vehicle = {}
+    for reminder in reminders:
+        next_by_vehicle.setdefault(reminder.vehicle_id, reminder)
+    return next_by_vehicle
+
+
 @widget_bp.route('/v1/vehicles', methods=['GET'])
 @api_key_required
 def homepage_vehicles(current_user):
@@ -213,19 +264,17 @@ def homepage_vehicles(current_user):
         archived=False
     ).all()
 
+    vehicle_ids = [v.id for v in vehicles]
+    entry_counts = _entry_counts_by_vehicle(vehicle_ids)
+    next_reminders = _next_reminder_by_vehicle(current_user.id, vehicle_ids)
+
     result = []
     for v in vehicles:
-        service_count = ServiceEntry.query.filter_by(vehicle_id=v.id).count()
-        repair_count = RepairEntry.query.filter_by(vehicle_id=v.id).count()
-        fuel_count = FuelEntry.query.filter_by(vehicle_id=v.id).count()
-
-        next_rem = Reminder.query.filter(
-            Reminder.user_id == current_user.id,
-            Reminder.vehicle_id == v.id,
-            Reminder.completed == False,
-            Reminder.dismissed == False,
-            Reminder.due_date >= date.today()
-        ).order_by(Reminder.due_date.asc()).first()
+        counts = entry_counts.get(v.id, {})
+        service_count = counts.get(SERVICE_ENTRY_TYPE, 0)
+        repair_count = counts.get(REPAIR_ENTRY_TYPE, 0)
+        fuel_count = counts.get(FUEL_ENTRY_TYPE, 0)
+        next_rem = next_reminders.get(v.id)
 
         result.append({
             'name': v.name or f"{v.make} {v.model}",

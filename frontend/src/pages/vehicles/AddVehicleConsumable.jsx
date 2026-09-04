@@ -154,7 +154,13 @@ export default function AddVehicleConsumable() {
         navigate(`/vehicles/${vehicleId}/consumables`)
         return
       }
-      setError(err.response?.data?.error || t('addConsumable.error') || 'Failed to save consumable')
+      // Prefer the server's message_key so the reason (malformed date,
+      // non-numeric cost, odometer or lifespan) is shown in the user's own language.
+      const data = err.response?.data
+      setError((data?.message_key && t(data.message_key))
+        || data?.error
+        || t('addConsumable.error')
+        || 'Failed to save consumable')
     } finally {
       setIsSubmitting(false)
     }

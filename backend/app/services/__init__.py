@@ -4,7 +4,7 @@ GearCargo - Background Task Scheduler Service
 
 import hashlib
 from datetime import datetime, date, timedelta, timezone
-from app.utils.timeutils import utc_naive_now
+from app.utils.timeutils import utc_naive_now, utc_today
 from flask_apscheduler import APScheduler
 
 scheduler = APScheduler()
@@ -247,7 +247,7 @@ def check_due_reminders(app):
         from app.models import Reminder, User
         from app import db
         
-        today = date.today()
+        today = utc_today()
         
         # Get reminders due today or overdue (not completed, not dismissed).
         # F52 — skip snoozed reminders until snoozed_until passes (same rule as
@@ -263,7 +263,7 @@ def check_due_reminders(app):
         
         for reminder in due_reminders:
             # Check notification settings
-            user = User.query.get(reminder.user_id)
+            user = db.session.get(User, reminder.user_id)
             
             if user and user.notifications_enabled:
                 # Determine notification intent separately for push vs email.
@@ -565,7 +565,7 @@ def check_warranty_expiry(app):
         from app.services.warranty import compute_item
         from app import db
 
-        today = date.today()
+        today = utc_today()
         HORIZON_DAYS = 30
         specs = (('service', ServiceEntry), ('repair', RepairEntry),
                  ('consumable', ConsumableEntry))
@@ -634,7 +634,7 @@ def check_document_expiry(app):
         from app.models import Attachment, Vehicle
         from app import db
 
-        today = date.today()
+        today = utc_today()
         HORIZON_DAYS = 14
         cutoff = today + timedelta(days=HORIZON_DAYS)
 
@@ -705,7 +705,7 @@ def process_auto_renew_insurance(app):
         from app.models import Vehicle, InsurancePolicy
         from app import db
 
-        today = date.today()
+        today = utc_today()
 
         expired = InsurancePolicy.query.filter(
             InsurancePolicy.auto_renew == True,   # noqa: E712
@@ -819,7 +819,7 @@ def process_due_services(app):
         from app.models import Vehicle, ServiceEntry, Reminder
         from app import db
 
-        today = date.today()
+        today = utc_today()
 
         # Services carrying a next-due pointer, on non-archived vehicles.
         services = (
@@ -974,6 +974,7 @@ def generate_auto_predictions(app):
         import json
         import requests as req_lib
         from app.models import Vehicle, FuelEntry, ServiceEntry, RepairEntry, PredictionAlert
+        from app.models.prediction import GENERATED_BY_PREDICTION
         from app.models.app_setting import AppSetting
         from app import db
         from app.services.ollama import (
@@ -1111,6 +1112,19 @@ Provide 1-3 maintenance predictions as JSON:
                     app.logger.error(f'Ollama chat error for vehicle {vehicle.id}: {oe}')
                     predictions_data = {'predictions': []}
                 
+                # R4-06: REPLACE the previous batch instead of stacking on it —
+                # the same dismissal the HTTP path performs before inserting
+                # (routes/predictions.py). Scoped to GENERATED_BY_PREDICTION so
+                # the user's fuel-anomaly alerts, a different generator that also
+                # runs on Ollama, are never swept up.
+                PredictionAlert.query.filter_by(
+                    vehicle_id=vehicle.id,
+                    user_id=vehicle.user_id,
+                    generated_by=GENERATED_BY_PREDICTION,
+                    dismissed=False,
+                    actioned=False,
+                ).update({'dismissed': True}, synchronize_session=False)
+
                 critical_alerts = []
                 for pred in predictions_data.get('predictions', []):
                     urgency = pred.get('urgency', 'medium')
@@ -1174,7 +1188,7 @@ Provide 1-3 maintenance predictions as JSON:
                             'prompt_sha256': hashlib.sha256(prompt.encode()).hexdigest()[:16],
                             'prompt_chars': len(prompt),
                         },
-                        generated_by='ollama',
+                        generated_by=GENERATED_BY_PREDICTION,
                         model_version=model,
                     )
                     db.session.add(alert)
@@ -1216,7 +1230,15 @@ Provide 1-3 maintenance predictions as JSON:
                     except Exception as push_exc:
                         app.logger.warning(f'Push notification failed for vehicle {vehicle.id}: {push_exc}')
 
+                # R4-06: each vehicle is an independent unit of work. Committing
+                # here means one vehicle's failure can never discard another's
+                # batch — the single trailing commit lost the whole run.
+                db.session.commit()
+
             except Exception as e:
+                # Without this the half-written batch stayed pending in the
+                # session and the trailing commit persisted it.
+                db.session.rollback()
                 app.logger.error(f'Prediction generation failed for vehicle {vehicle.id}: {e}')
         
         db.session.commit()
@@ -1310,7 +1332,7 @@ def process_scheduled_backups(app):
                 backup = None
                 user = None
                 try:
-                    user = User.query.get(schedule.user_id)
+                    user = db.session.get(User, schedule.user_id)
                     if not user:
                         continue
                     
@@ -1626,7 +1648,7 @@ def send_monthly_reports(app):
         sent_count = 0
         
         # Get last month
-        today = date.today()
+        today = utc_today()
         if today.month == 1:
             month = 12
             year = today.year - 1
@@ -1688,7 +1710,7 @@ def process_recurring_tax_entries(app):
         from app import db
         from app.models import TaxEntry
 
-        today = date.today()
+        today = utc_today()
         created_count = 0
 
         # Self-heal: one recurring template per (vehicle, tax_type) series.
@@ -1855,7 +1877,7 @@ def _next_future_occurrence(base_date, recurrence_type):
     """
     step = _recurrence_step(recurrence_type)
     next_due = base_date + step
-    while next_due <= date.today():
+    while next_due <= utc_today():
         next_due = next_due + step
     return next_due
 
@@ -1880,7 +1902,7 @@ def process_recurring_parking_entries(app):
         from app import db
         from app.models import ParkingEntry
 
-        today = date.today()
+        today = utc_today()
         created_count = 0
 
         # Self-heal: one recurring template per (vehicle, parking_type) series.

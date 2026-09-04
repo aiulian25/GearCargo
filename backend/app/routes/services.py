@@ -5,20 +5,48 @@ GearCargo - Service Entry Routes
 from datetime import datetime, date, timezone
 from flask import Blueprint, request, jsonify, current_app
 from sqlalchemy import func
+from sqlalchemy.orm import selectinload
 
 from app import db
 from app.models import Vehicle, ServiceEntry
+from app.models.service import VALID_SERVICE_TYPES
 from app.routes.auth import token_required
+from app.utils.entryparse import (
+    InvalidFieldError,
+    invalid_field_response,
+    parse_amount,
+    parse_currency_code,
+    parse_iso_date,
+    parse_optional_amount,
+    parse_optional_int,
+)
+from app.utils.timeutils import utc_today
 
 services_bp = Blueprint('services', __name__)
 
+# Typed columns, by the request key that addresses them. Kept apart from the
+# free-text aliases in update_service_entry because every one of them needs
+# coercing before it reaches the column (R4-10 / R4-11). Aliases first,
+# canonical name last, so the canonical value wins when both are sent.
+_DATE_FIELDS = {
+    'entry_date': 'date', 'date': 'date',
+    'next_service_date': 'next_due_date', 'next_due_date': 'next_due_date',
+    'warranty_until': 'warranty_expires', 'warranty_expires': 'warranty_expires',
+}
+_INTEGER_FIELDS = {
+    'mileage': 'odometer', 'odometer': 'odometer',
+    'next_service_mileage': 'next_due_mileage', 'next_due_mileage': 'next_due_mileage',
+    'warranty_months': 'warranty_months',
+    'warranty_km': 'warranty_km',
+}
+_AMOUNT_FIELDS = {
+    'labor_hours': 'labor_hours',
+    'labor_cost': 'labor_cost',
+    'parts_cost': 'parts_cost',
+}
 
-def _opt_int(value):
-    """Coerce an optional numeric field to int, treating ''/invalid as None."""
-    try:
-        return int(value) if value not in (None, '') else None
-    except (TypeError, ValueError):
-        return None
+# entries.date is NOT NULL — a falsy value leaves it alone instead of clearing it.
+_NON_CLEARABLE_DATE = 'date'
 
 
 @services_bp.route('', methods=['GET'])
@@ -36,7 +64,10 @@ def get_service_entries(current_user):
     if vehicle_id:
         query = query.filter(ServiceEntry.vehicle_id == vehicle_id)
     
-    entries = query.order_by(ServiceEntry.date.desc()).paginate(
+    # R4-15: batch the attachments the rows serialize — one query for the
+    # page instead of one per entry.
+    entries = query.options(selectinload(ServiceEntry.attachments)) \
+        .order_by(ServiceEntry.date.desc()).paginate(
         page=page, per_page=per_page, error_out=False
     )
     
@@ -63,12 +94,6 @@ def create_service_entry(current_user):
         return jsonify({'error': 'Vehicle not found'}), 404
     
     # Handle multi-select service_types (array) with legacy service_type (string) fallback
-    VALID_SERVICE_TYPES = {
-        'oil_change', 'tire_rotation', 'brake_service', 'air_filter', 'cabin_filter',
-        'spark_plugs', 'transmission', 'coolant', 'timing_belt', 'inspection',
-        'full_service', 'other',
-    }
-    
     service_types_list = data.get('service_types') or []
     if not isinstance(service_types_list, list):
         service_types_list = [service_types_list]
@@ -82,41 +107,61 @@ def create_service_entry(current_user):
     if not service_types_list:
         return jsonify({'error': 'At least one valid service type is required'}), 400
     
-    # Parse date - support both 'date' and 'entry_date' field names
-    entry_date = datetime.now(timezone.utc).date()
-    if data.get('date'):
-        entry_date = datetime.fromisoformat(data['date'].replace('Z', '+00:00')).date()
-    elif data.get('entry_date'):
-        entry_date = datetime.fromisoformat(data['entry_date'].replace('Z', '+00:00')).date()
-    
-    # Parse next service date
-    next_due_date = None
-    if data.get('next_service_date'):
-        next_due_date = datetime.fromisoformat(data['next_service_date'].replace('Z', '+00:00')).date()
-    elif data.get('next_due_date'):
-        next_due_date = datetime.fromisoformat(data['next_due_date'].replace('Z', '+00:00')).date()
-    
-    # Parse warranty expiry
-    warranty_expires = None
-    if data.get('warranty_until'):
-        warranty_expires = datetime.fromisoformat(data['warranty_until'].replace('Z', '+00:00')).date()
-    elif data.get('warranty_expires'):
-        warranty_expires = datetime.fromisoformat(data['warranty_expires'].replace('Z', '+00:00')).date()
-    
-    # Calculate amount: use explicit total_cost/cost, or sum labor_cost + parts_cost
-    amount = data.get('total_cost') or data.get('cost') or data.get('amount')
-    if amount is None or amount == 0:
-        labor = float(data.get('labor_cost') or 0)
-        parts = float(data.get('parts_cost') or 0)
-        amount = labor + parts
+    # Every parse below raises InvalidFieldError, caught once — malformed input
+    # used to escape as a 500 (R4-10) or reach a Numeric/Integer column raw
+    # (R4-11). Field names support both the form's and the model's spelling.
+    try:
+        entry_date = datetime.now(timezone.utc).date()
+        if data.get('date'):
+            entry_date = parse_iso_date(data['date'])
+        elif data.get('entry_date'):
+            entry_date = parse_iso_date(data['entry_date'])
+
+        next_due_date = None
+        if data.get('next_service_date'):
+            next_due_date = parse_iso_date(data['next_service_date'])
+        elif data.get('next_due_date'):
+            next_due_date = parse_iso_date(data['next_due_date'])
+
+        warranty_expires = None
+        if data.get('warranty_until'):
+            warranty_expires = parse_iso_date(data['warranty_until'])
+        elif data.get('warranty_expires'):
+            warranty_expires = parse_iso_date(data['warranty_expires'])
+
+        odometer = parse_optional_int(data.get('mileage') or data.get('odometer'),
+                                      'Odometer must be a number')
+        next_due_mileage = parse_optional_int(
+            data.get('next_service_mileage') or data.get('next_due_mileage'),
+            'Next service mileage must be a number')
+        warranty_months = parse_optional_int(data.get('warranty_months'),
+                                             'Warranty months must be a number')
+        warranty_km = parse_optional_int(data.get('warranty_km'),
+                                         'Warranty distance must be a number')
+        labor_hours = parse_optional_amount(data.get('labor_hours'),
+                                            'Labour hours must be a number')
+        labor_cost = parse_optional_amount(data.get('labor_cost'))
+        parts_cost = parse_optional_amount(data.get('parts_cost'))
+
+        currency = parse_currency_code(
+            data.get('currency') or current_user.currency or 'EUR')
+
+        # Explicit total wins; otherwise the parts and labour add up to it.
+        raw_amount = data.get('total_cost') or data.get('cost') or data.get('amount')
+        amount = parse_amount(raw_amount) if raw_amount else 0.0
+        if not amount:
+            amount = (labor_cost or 0) + (parts_cost or 0)
+    except InvalidFieldError as invalid:
+        payload, status = invalid_field_response(invalid)
+        return jsonify(payload), status
     
     entry = ServiceEntry(
         user_id=current_user.id,
         vehicle_id=vehicle.id,
         date=entry_date,
-        odometer=data.get('mileage') or data.get('odometer'),
+        odometer=odometer,
         amount=amount,
-        currency=data.get('currency') or current_user.currency or 'EUR',
+        currency=currency,
         title=', '.join(service_types_list),
         description=data.get('description'),
         service_type=service_types_list[0],
@@ -126,19 +171,19 @@ def create_service_entry(current_user):
         garage_address=data.get('provider_location') or data.get('garage_address'),
         garage_phone=data.get('provider_phone') or data.get('garage_phone'),
         work_order_number=data.get('work_order_number'),
-        labor_hours=data.get('labor_hours'),
-        labor_cost=data.get('labor_cost'),
-        parts_cost=data.get('parts_cost'),
+        labor_hours=labor_hours,
+        labor_cost=labor_cost,
+        parts_cost=parts_cost,
         parts_used=data.get('parts_replaced') or data.get('parts_used'),
-        next_due_mileage=data.get('next_service_mileage') or data.get('next_due_mileage'),
+        next_due_mileage=next_due_mileage,
         next_due_date=next_due_date,
         warranty_expires=warranty_expires,
-        warranty_months=_opt_int(data.get('warranty_months')),
-        warranty_km=_opt_int(data.get('warranty_km')),
+        warranty_months=warranty_months,
+        warranty_km=warranty_km,
         notes=data.get('notes'),
     )
     
-    if entry.odometer and entry.odometer > vehicle.current_mileage:
+    if entry.odometer and entry.odometer > (vehicle.current_mileage or 0):
         vehicle.current_mileage = entry.odometer
     
     db.session.add(entry)
@@ -188,12 +233,6 @@ def update_service_entry(current_user, entry_id):
     data = request.get_json()
     
     # Handle multi-select service_types update
-    VALID_SERVICE_TYPES = {
-        'oil_change', 'tire_rotation', 'brake_service', 'air_filter', 'cabin_filter',
-        'spark_plugs', 'transmission', 'coolant', 'timing_belt', 'inspection',
-        'full_service', 'other',
-    }
-    
     if 'service_types' in data or 'service_type' in data:
         service_types_list = data.get('service_types') or []
         if not isinstance(service_types_list, list):
@@ -208,38 +247,51 @@ def update_service_entry(current_user, entry_id):
     
     # F18 — request keys mapped to the REAL model columns. Aliases first,
     # canonical names last so the canonical value wins when both are sent.
+    # (Dates, integers and amounts live in the typed maps at the top of this
+    # module — none of them may be assigned raw.)
     field_aliases = {
-        'entry_date': 'date', 'date': 'date',
-        'mileage': 'odometer', 'odometer': 'odometer',
         'description': 'description',
         'provider_name': 'provider', 'provider': 'provider',
         'shop_name': 'garage_name', 'garage_name': 'garage_name',
         'provider_location': 'garage_address', 'garage_address': 'garage_address',
         'provider_phone': 'garage_phone', 'garage_phone': 'garage_phone',
         'parts_replaced': 'parts_used', 'parts_used': 'parts_used',
-        'work_order_number': 'work_order_number', 'labor_hours': 'labor_hours',
-        'labor_cost': 'labor_cost', 'parts_cost': 'parts_cost',
-        'currency': 'currency',
-        'next_service_mileage': 'next_due_mileage', 'next_due_mileage': 'next_due_mileage',
-        'next_service_date': 'next_due_date', 'next_due_date': 'next_due_date',
+        'work_order_number': 'work_order_number',
         'notes': 'notes',
     }
-    date_columns = {'date', 'next_due_date'}
+
+    # Parsed up front so a rejected field cannot leave the earlier ones already
+    # applied — the loop below used to mutate the entry as it went (R4-11).
+    try:
+        parsed_columns = {}
+        for key, column in _DATE_FIELDS.items():
+            if key not in data:
+                continue
+            if data[key]:
+                parsed_columns[column] = parse_iso_date(data[key])
+            elif column != _NON_CLEARABLE_DATE:
+                parsed_columns[column] = None
+        for key, column in _INTEGER_FIELDS.items():
+            if key in data:
+                parsed_columns[column] = parse_optional_int(data[key])
+        for key, column in _AMOUNT_FIELDS.items():
+            if key in data:
+                parsed_columns[column] = parse_optional_amount(data[key])
+        if 'currency' in data:
+            parsed_columns['currency'] = parse_currency_code(data['currency'])
+        if 'cost' in data or 'total_cost' in data:
+            raw_amount = data.get('total_cost') or data.get('cost')
+            parsed_columns['amount'] = parse_amount(raw_amount) if raw_amount else 0.0
+    except InvalidFieldError as invalid:
+        payload, status = invalid_field_response(invalid)
+        return jsonify(payload), status
 
     for key, column in field_aliases.items():
-        if key not in data:
-            continue
-        value = data[key]
-        if column in date_columns:
-            if value:
-                setattr(entry, column,
-                        datetime.fromisoformat(value.replace('Z', '+00:00')).date())
-            elif column != 'date':      # entries.date is NOT NULL — never clear it
-                setattr(entry, column, None)
-        elif column in ('odometer', 'next_due_mileage'):
-            setattr(entry, column, _opt_int(value))
-        else:
-            setattr(entry, column, value)
+        if key in data:
+            setattr(entry, column, data[key])
+
+    for column, value in parsed_columns.items():
+        setattr(entry, column, value)
 
     # Mirror create's mileage bump — vehicle mileage only ever increases.
     if entry.odometer:
@@ -247,26 +299,13 @@ def update_service_entry(current_user, entry_id):
         if vehicle and entry.odometer > (vehicle.current_mileage or 0):
             vehicle.current_mileage = entry.odometer
 
-    # F2 — warranty fields, mapped to the real columns.
-    if 'warranty_months' in data:
-        entry.warranty_months = _opt_int(data['warranty_months'])
-    if 'warranty_km' in data:
-        entry.warranty_km = _opt_int(data['warranty_km'])
-    if 'warranty_expires' in data or 'warranty_until' in data:
-        raw = data.get('warranty_expires') or data.get('warranty_until')
-        entry.warranty_expires = (
-            datetime.fromisoformat(raw.replace('Z', '+00:00')).date() if raw else None
-        )
-    
-    # Recalculate amount from labor_cost + parts_cost if either was updated
-    # or if cost/total_cost was explicitly provided
-    if 'cost' in data or 'total_cost' in data:
-        entry.amount = data.get('total_cost') or data.get('cost') or 0
-    elif 'labor_cost' in data or 'parts_cost' in data:
-        labor = float(entry.labor_cost or 0)
-        parts = float(entry.parts_cost or 0)
-        entry.amount = labor + parts
-    
+    # No explicit total sent, but the parts or labour changed — the two add up
+    # to the amount. Reads the values applied just above.
+    amount_was_sent = 'amount' in parsed_columns
+    labor_or_parts_changed = 'labor_cost' in data or 'parts_cost' in data
+    if not amount_was_sent and labor_or_parts_changed:
+        entry.amount = float(entry.labor_cost or 0) + float(entry.parts_cost or 0)
+
     db.session.commit()
     
     return jsonify({
@@ -302,13 +341,14 @@ def get_upcoming_services(current_user):
     query = ServiceEntry.query.join(Vehicle).filter(
         Vehicle.user_id == current_user.id,
         ServiceEntry.next_due_date.isnot(None),
-        ServiceEntry.next_due_date >= date.today()
+        ServiceEntry.next_due_date >= utc_today()
     )
 
     if vehicle_id:
         query = query.filter(ServiceEntry.vehicle_id == vehicle_id)
 
-    entries = query.order_by(ServiceEntry.next_due_date.asc()).limit(10).all()
+    entries = query.options(selectinload(ServiceEntry.attachments)) \
+        .order_by(ServiceEntry.next_due_date.asc()).limit(10).all()
     
     return jsonify({
         'entries': [e.to_dict() for e in entries]

@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta
 from app.utils.timeutils import utc_naive_now
 
@@ -21,7 +22,13 @@ def app(tmp_path):
     backups_path.mkdir(parents=True, exist_ok=True)
 
     class LocalTestingConfig(TestingConfig):
-        SQLALCHEMY_DATABASE_URI = f"sqlite:///{db_path}"
+        # R4-38: production runs Postgres. Set TEST_DATABASE_URL to run the whole
+        # suite against it (CI does, as a second pass) — SQLite silently accepts
+        # values Postgres rejects, so a SQLite-only suite cannot see them. The
+        # drop_all() teardown below keeps consecutive tests isolated either way.
+        SQLALCHEMY_DATABASE_URI = (
+            os.environ.get('TEST_DATABASE_URL') or f"sqlite:///{db_path}"
+        )
         JWT_SECRET_KEY = "test-jwt-secret"
         SECRET_KEY = "test-secret"
         REDIS_URL = "redis://localhost:6379/15"

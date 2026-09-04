@@ -149,7 +149,13 @@ export default function AddVehicleReminder() {
         navigate(`/vehicles/${vehicleId}`)
         return
       }
-      setError(err.response?.data?.error || t('addReminder.error') || 'Failed to add reminder')
+      // Prefer the server's message_key so the reason (missing or malformed
+      // due date, non-numeric mileage) is shown in the user's own language.
+      const data = err.response?.data
+      setError((data?.message_key && t(data.message_key))
+        || data?.error
+        || t('addReminder.error')
+        || 'Failed to add reminder')
     } finally {
       setIsSubmitting(false)
     }

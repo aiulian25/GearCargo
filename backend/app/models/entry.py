@@ -33,7 +33,11 @@ class Entry(db.Model):
     updated_at = db.Column(db.DateTime, default=utc_naive_now, onupdate=utc_naive_now)
     
     # Relationships
-    attachments = db.relationship('Attachment', backref='entry', lazy='dynamic',
+    # R4-15: a plain (not 'dynamic') relationship, so the paginated list
+    # endpoints can batch it with selectinload. to_dict is its only consumer,
+    # and it wants the whole collection every time — a query object bought
+    # nothing and cost one round trip per serialized row.
+    attachments = db.relationship('Attachment', backref='entry',
                                   foreign_keys='Attachment.entry_id')
     
     __mapper_args__ = {
@@ -62,8 +66,9 @@ class Entry(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
         
-        # Include attachments if requested
+        # Include attachments if requested. Batched by the list endpoints via
+        # selectinload; a single-entry read still costs one query.
         if include_attachments:
-            data['attachments'] = [a.to_dict() for a in self.attachments.all()]
+            data['attachments'] = [a.to_dict() for a in self.attachments]
         
         return data

@@ -10,6 +10,11 @@ from flask import Blueprint, request, jsonify, send_file, current_app
 from app import db
 from app.models import Vehicle, ReportShare
 from app.routes.auth import token_required
+from app.utils.entryparse import (
+    InvalidFieldError,
+    invalid_field_response,
+    parse_optional_int,
+)
 from app.services.pdf_report_service import (
     generate_pdf_report, get_report_filename, get_period_dates
 )
@@ -117,26 +122,12 @@ def generate_report(current_user):
         year = data.get('year')
         month = data.get('month')
         
-        # Get vehicles
-        if vehicle_ids == 'all' or not vehicle_ids:
-            vehicles = Vehicle.query.filter_by(
-                user_id=current_user.id,
-                archived=False
-            ).order_by(Vehicle.created_at).all()
-        else:
-            if isinstance(vehicle_ids, list):
-                vehicles = Vehicle.query.filter(
-                    Vehicle.id.in_(vehicle_ids),
-                    Vehicle.user_id == current_user.id
-                ).order_by(Vehicle.created_at).all()
-            else:
-                # Single vehicle ID
-                vehicle = Vehicle.query.filter_by(
-                    id=vehicle_ids,
-                    user_id=current_user.id
-                ).first()
-                vehicles = [vehicle] if vehicle else []
-        
+        # R4-31: one resolver for every report path. The inline copy this
+        # replaces passed raw ids straight into `.in_()` and duplicated the
+        # ownership filter — the helper coerces the ids and enforces ownership
+        # in one place.
+        vehicles = _resolve_report_vehicles(current_user, vehicle_ids)
+
         if not vehicles:
             return jsonify({'error': 'No vehicles found'}), 404
         
@@ -145,6 +136,15 @@ def generate_report(current_user):
         if period not in valid_periods:
             period = 'current_month'
         
+        # R4-31: coerce before comparing — `month < 1` raised TypeError on the
+        # string a form submits, and the range check never ran.
+        try:
+            year = parse_optional_int(year, 'Year must be a number')
+            month = parse_optional_int(month, 'Month must be a number')
+        except InvalidFieldError as invalid:
+            payload, status = invalid_field_response(invalid)
+            return jsonify(payload), status
+
         # Validate year and month for custom period
         if period == 'custom':
             if not year or not month:
@@ -153,7 +153,7 @@ def generate_report(current_user):
                 return jsonify({'error': 'Month must be between 1 and 12'}), 400
         
         if period == 'year' and not year:
-            year = datetime.now().year
+            year = datetime.now(timezone.utc).year
         
         # Get language from user preferences
         language = getattr(current_user, 'language', 'en') or 'en'
@@ -229,7 +229,7 @@ def get_available_periods(current_user):
     """
     Get available time periods for report generation.
     """
-    current_year = datetime.now().year
+    current_year = datetime.now(timezone.utc).year
     
     periods = [
         {'id': 'current_month', 'name': 'Current Month', 'requires_date': False},
@@ -264,7 +264,7 @@ def get_available_periods(current_user):
         'years': years,
         'months': months,
         'current_year': current_year,
-        'current_month': datetime.now().month
+        'current_month': datetime.now(timezone.utc).month
     })
 
 

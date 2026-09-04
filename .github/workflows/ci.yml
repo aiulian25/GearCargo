@@ -59,8 +59,11 @@ jobs:
       - name: Configure CI data paths
         # `runner.temp` isn't available in job-level env:, so resolve the
         # writable data root from $RUNNER_TEMP here and export for later steps.
-        # Migrations/boot use the Postgres service above; pytest uses its own
-        # in-memory SQLite via TestingConfig (tables via create_all, no DDL).
+        # Migrations/boot use the Postgres service above. pytest runs twice:
+        # once on its own per-test SQLite file (fast), then once against that
+        # same Postgres service via TEST_DATABASE_URL (R4-38) — SQLite accepts
+        # values Postgres rejects, so only the second pass exercises the engine
+        # production actually runs.
         run: |
           {
             echo "DATABASE_URL=postgresql://gearcargo:gearcargo_ci@localhost:5432/gearcargo_ci"
@@ -114,10 +117,20 @@ jobs:
           print(f"App booted OK with {len(rules)} routes; csrf-token -> {resp.status_code}")
           PY
 
-      - name: Run unit tests
+      - name: Run unit tests (SQLite)
         # `python -m` prepends the backend/ cwd to sys.path so `import app`
         # resolves (the bare `pytest` console script does not).
         run: python -m pytest -q
+
+      - name: Run unit tests (Postgres)
+        # R4-38: the same suite against the production engine. SQLite stores
+        # over-long strings and out-of-range integers happily, so a defect that
+        # only surfaces as a Postgres DataError is invisible to the pass above.
+        # Runs last: the fixture's drop_all() teardown rebuilds the schema from
+        # the models, which discards the migrated schema in this throwaway DB.
+        env:
+          TEST_DATABASE_URL: postgresql://gearcargo:gearcargo_ci@localhost:5432/gearcargo_ci
+        run: python -m pytest -q -x
 
   frontend:
     name: Frontend — build & unit tests

@@ -61,4 +61,27 @@ db.version(2).stores({
   console.log('Database upgraded to version 2')
 })
 
+// R4-28: drop the offline-first stack's tables. The queue, sync metadata and
+// conflict store had no producer, and nothing ever read the entity cache — that
+// code was removed in Step 20 / L6, but the tables stayed declared, so every
+// install still created thirteen empty object stores and carried them forever.
+// Dexie deletes a table whose schema is `null`. `settings` stays: AuthContext,
+// ThemeContext and LanguageContext use it for the offline profile/theme/language
+// cache.
+db.version(3).stores({
+  vehicles: null,
+  fuelEntries: null,
+  serviceEntries: null,
+  repairEntries: null,
+  reminders: null,
+  taxes: null,
+  insurance: null,
+  predictions: null,
+  attachments: null,
+  dashboardCache: null,
+  offlineQueue: null,
+  syncMeta: null,
+  syncConflicts: null,
+})
+
 export default db

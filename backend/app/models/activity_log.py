@@ -3,6 +3,9 @@ GearCargo - Activity Log Model
 """
 
 from datetime import datetime
+
+from flask import current_app
+
 from app.utils.timeutils import utc_naive_now
 from app import db
 
@@ -142,7 +145,10 @@ class ActivityLog(db.Model):
             db.session.commit()
         except Exception as e:
             db.session.rollback()
-            print(f"Failed to log activity: {e}")
+            # R4-36: a print() goes to stdout unstructured and unlevelled — in
+            # the container it is indistinguishable from application output and
+            # invisible to any log level filter.
+            current_app.logger.warning(f"Failed to log activity: {e}")
         
         return log_entry
     

@@ -334,9 +334,12 @@ def export_calendar(current_user):
     cal.add('x-wr-calname', 'GearCargo Reminders')
     
     # Query reminders
+    # R4-03: Reminder has no `status` column — "pending" is the pair of flags
+    # every other surface uses (due feed, digest, notification job).
     query = Reminder.query.filter(
         Reminder.user_id == current_user.id,
-        Reminder.status == 'pending',
+        Reminder.completed == False,   # noqa: E712
+        Reminder.dismissed == False,   # noqa: E712
         Reminder.due_date.isnot(None)
     )
     
@@ -350,16 +353,17 @@ def export_calendar(current_user):
         
         # Get vehicle info
         vehicle_name = ''
-        if reminder.vehicle_id:
-            vehicle = Vehicle.query.get(reminder.vehicle_id)
-            if vehicle:
-                vehicle_name = f" - {vehicle.name}"
+        if reminder.vehicle:
+            vehicle_name = f" - {reminder.vehicle.name}"
         
         event.add('uid', f'reminder-{reminder.id}@gearcargo')
         event.add('summary', f'{reminder.title}{vehicle_name}')
         event.add('description', reminder.description or '')
         event.add('dtstart', reminder.due_date)
-        event.add('dtend', reminder.due_date)
+        # DTEND is EXCLUSIVE for an all-day (VALUE=DATE) event and MUST be later
+        # than DTSTART (RFC 5545 §3.8.2.2) — DTEND == DTSTART is a zero-length
+        # event that strict calendar clients reject.
+        event.add('dtend', reminder.due_date + timedelta(days=1))
         
         # Add priority
         if reminder.priority == 'high':
@@ -413,7 +417,7 @@ def calendar_feed(token):
         if payload.get('type') != 'calendar_feed':
             return jsonify({'error': 'Invalid token'}), 401
 
-        user = User.query.get(payload['user_id'])
+        user = db.session.get(User, payload['user_id'])
         if not user:
             return jsonify({'error': 'User not found'}), 404
 
@@ -450,16 +454,17 @@ def calendar_feed(token):
         event = Event()
         
         vehicle_name = ''
-        if reminder.vehicle_id:
-            vehicle = Vehicle.query.get(reminder.vehicle_id)
-            if vehicle:
-                vehicle_name = f" - {vehicle.name}"
+        if reminder.vehicle:
+            vehicle_name = f" - {reminder.vehicle.name}"
         
         event.add('uid', f'reminder-{reminder.id}@gearcargo')
         event.add('summary', f'{reminder.title}{vehicle_name}')
         event.add('description', reminder.description or '')
         event.add('dtstart', reminder.due_date)
-        event.add('dtend', reminder.due_date)
+        # DTEND is EXCLUSIVE for an all-day (VALUE=DATE) event and MUST be later
+        # than DTSTART (RFC 5545 §3.8.2.2) — DTEND == DTSTART is a zero-length
+        # event that strict calendar clients reject.
+        event.add('dtend', reminder.due_date + timedelta(days=1))
         event.add('created', reminder.created_at or datetime.now(timezone.utc))
         event.add('dtstamp', datetime.now(timezone.utc))
         

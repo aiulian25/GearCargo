@@ -5,6 +5,7 @@ GearCargo - Tax Entry Routes
 from datetime import datetime, date, timezone
 from flask import Blueprint, request, jsonify, current_app
 from sqlalchemy import func, extract
+from sqlalchemy.orm import selectinload
 
 from app import db
 from app.models import Vehicle, TaxEntry, InsurancePolicy
@@ -13,6 +14,7 @@ from app.services.calendar_service import sync_entry_to_calendar_safe
 from app.utils.entryparse import (
     InvalidFieldError, invalid_field_response, parse_amount, parse_iso_date,
 )
+from app.utils.timeutils import utc_today
 
 taxes_bp = Blueprint('taxes', __name__)
 
@@ -32,7 +34,10 @@ def get_tax_entries(current_user):
     if vehicle_id:
         query = query.filter(TaxEntry.vehicle_id == vehicle_id)
     
-    entries = query.order_by(TaxEntry.date.desc()).paginate(
+    # R4-15: batch the attachments the rows serialize — one query for the
+    # page instead of one per entry.
+    entries = query.options(selectinload(TaxEntry.attachments)) \
+        .order_by(TaxEntry.date.desc()).paginate(
         page=page, per_page=per_page, error_out=False
     )
     
@@ -342,14 +347,15 @@ def get_expiring_taxes(current_user):
     days = request.args.get('days', 30, type=int)
     
     from datetime import timedelta
-    cutoff = date.today() + timedelta(days=days)
+    cutoff = utc_today() + timedelta(days=days)
     
     entries = TaxEntry.query.join(Vehicle).filter(
         Vehicle.user_id == current_user.id,
         TaxEntry.due_date.isnot(None),
         TaxEntry.due_date <= cutoff,
-        TaxEntry.due_date >= date.today()
-    ).order_by(TaxEntry.due_date.asc()).all()
+        TaxEntry.due_date >= utc_today()
+    ).options(selectinload(TaxEntry.attachments)) \
+        .order_by(TaxEntry.due_date.asc()).all()
     
     return jsonify({
         'entries': [e.to_dict() for e in entries]

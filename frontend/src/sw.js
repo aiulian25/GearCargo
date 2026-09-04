@@ -1,12 +1,7 @@
 
-// CACHE VERSION - increment to force update
-const CACHE_VERSION = 'v2.0.2'
-
 // Dev-only logger — compiled to a no-op in production builds by Vite
 // so no internal details leak to the browser console in production.
 const log = import.meta.env.DEV ? console.log.bind(console) : () => {}
-
-log('Service Worker Version:', CACHE_VERSION)
 
 import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL, matchPrecache } from 'workbox-precaching'
 import { registerRoute, NavigationRoute, setCatchHandler } from 'workbox-routing'
@@ -16,6 +11,7 @@ import { CacheableResponsePlugin } from 'workbox-cacheable-response'
 import { BackgroundSyncPlugin } from 'workbox-background-sync'
 import { REMINDER_REFRESH_TAG } from './utils/syncTags'
 import { replayQueuedRequest } from './swSync'
+import { findClientToFocus, parsePushData } from './swNotifications'
 
 // ============================================================
 // BACKGROUND SYNC CONFIGURATION
@@ -388,8 +384,10 @@ function openSyncDatabase() {
 // Handle push notifications
 self.addEventListener('push', (event) => {
   if (!event.data) return
-  
-  const data = event.data.json()
+
+  // R4-28: a non-JSON push used to throw here and the notification was dropped
+  // without a trace.
+  const data = parsePushData(event.data)
   
   const options = {
     body: data.body || 'New notification',
@@ -418,13 +416,12 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true })
       .then((clientList) => {
-        // Check if there's already a window open
-        for (const client of clientList) {
-          if (client.url === urlToOpen && 'focus' in client) {
-            return client.focus()
-          }
+        // R4-28: compare paths, not an absolute URL against a path — the old
+        // check never matched, so every click opened a duplicate tab.
+        const existing = findClientToFocus(clientList, urlToOpen)
+        if (existing) {
+          return existing.focus()
         }
-        // Open a new window
         if (self.clients.openWindow) {
           return self.clients.openWindow(urlToOpen)
         }

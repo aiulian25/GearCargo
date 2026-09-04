@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { pushApi } from '../services/api'
+import { useTranslation } from '../contexts/LanguageContext'
 
 /**
  * Convert a base64 string to Uint8Array for VAPID key
@@ -53,6 +54,7 @@ function getDeviceInfo() {
 }
 
 export function usePushNotifications() {
+  const { t } = useTranslation()
   const [isSupported, setIsSupported] = useState(false)
   const [permission, setPermission] = useState('default')
   const [isSubscribed, setIsSubscribed] = useState(false)
@@ -169,12 +171,15 @@ export function usePushNotifications() {
       return true
     } catch (err) {
       console.error('[Push] Failed to subscribe:', err)
-      setError(err.message)
+      // Prefer the server's message_key so the reason is shown in the user's
+      // language (e.g. the endpoint already belongs to another account).
+      const data = err.response?.data
+      setError((data?.message_key && t(data.message_key)) || data?.error || err.message)
       return false
     } finally {
       setLoading(false)
     }
-  }, [isSupported, requestPermission])
+  }, [isSupported, requestPermission, t])
 
   /**
    * Unsubscribe from push notifications

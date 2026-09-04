@@ -16,9 +16,24 @@ from app.services.ollama import chat as _ollama_chat, OllamaError as _OllamaErro
 from sqlalchemy import func
 from app import db
 from app.models import Vehicle, Entry, Attachment
+from app.utils.entryparse import (
+    InvalidFieldError,
+    invalid_field_response,
+    parse_optional_date,
+)
 from app.routes.auth import token_required, token_required_query_param
+from app.utils.timeutils import utc_today
 
 attachments_bp = Blueprint('attachments', __name__)
+
+# R4-33: the categories the app actually uses — both selects in
+# VehicleDocuments.jsx (upload and edit) plus `insurance_document`, which the
+# upload route below uses to route an insurance attachment. `category` is a
+# String(50) that was written verbatim, so anything at all reached the column.
+ATTACHMENT_CATEGORIES = frozenset({
+    'receipt', 'invoice', 'insurance', 'insurance_document', 'registration',
+    'maintenance', 'warranty', 'photo', 'document', 'manual', 'other',
+})
 
 # F9: register Pillow's HEIF/HEIC opener so PIL can decode iPhone photos. The
 # manylinux `pillow-heif` wheels vendor libheif, so this works without a system
@@ -332,7 +347,15 @@ def upload_attachment(current_user):
     
     # Validate entry if provided (but skip for insurance documents which use InsurancePolicy not Entry)
     entry_id = request.form.get('entry_id', type=int)
+    # R4-33: the same allow-list the PUT applies — otherwise an arbitrary
+    # category simply comes in through upload instead of edit.
     category = request.form.get('category', 'document')
+    if category not in ATTACHMENT_CATEGORIES:
+        return jsonify({
+            'error': 'Invalid category',
+            'message_key': 'validation.invalidValue',
+            'field': 'category',
+        }), 400
     
     if entry_id and category != 'insurance_document':
         entry = Entry.query.filter_by(id=entry_id, user_id=current_user.id).first()
@@ -425,7 +448,7 @@ def upload_attachment(current_user):
     # Link attachment to insurance policy if applicable
     if category == 'insurance_document' and entry_id:
         from app.models.insurance import InsurancePolicy
-        policy = InsurancePolicy.query.get(entry_id)
+        policy = db.session.get(InsurancePolicy, entry_id)
         if policy:
             policy.document_attachment_id = attachment.id
 
@@ -1150,13 +1173,25 @@ def update_attachment(current_user, attachment_id):
             if field == 'expires_at':
                 # F42 — set or CLEAR the expiry (null clears it); either way,
                 # re-arm the once-only push sentinel so a new/changed date can
-                # notify again.
-                raw = data['expires_at']
-                attachment.expires_at = (
-                    datetime.fromisoformat(str(raw).replace('Z', '+00:00')).date()
-                    if raw else None
-                )
+                # notify again. R4-33: parsed, not fromisoformat'd raw — a
+                # malformed date used to escape the handler as a 500.
+                try:
+                    attachment.expires_at = parse_optional_date(data['expires_at'])
+                except InvalidFieldError as invalid:
+                    payload, status = invalid_field_response(invalid)
+                    return jsonify(payload), status
                 attachment.expiry_notified = False
+            elif field == 'category':
+                # R4-33: the column is String(50) and the value was written
+                # verbatim, so an over-long or arbitrary category reached it.
+                category = data['category']
+                if category and category not in ATTACHMENT_CATEGORIES:
+                    return jsonify({
+                        'error': 'Invalid category',
+                        'message_key': 'validation.invalidValue',
+                        'field': 'category',
+                    }), 400
+                attachment.category = category or None
             elif field == 'entry_id':
                 entry_id_val = data['entry_id']
                 if entry_id_val is None:
@@ -1209,12 +1244,12 @@ def delete_attachment(current_user, attachment_id):
 @token_required
 def get_expiring_attachments(current_user):
     """Get attachments with expiring or expired documents."""
-    from datetime import date, timedelta
+    from datetime import timedelta
     
     days = request.args.get('days', 30, type=int)
     include_expired = request.args.get('include_expired', 'true').lower() == 'true'
-    cutoff = date.today() + timedelta(days=days)
-    today = date.today()
+    cutoff = utc_today() + timedelta(days=days)
+    today = utc_today()
     
     # Get expiring soon (within X days but not yet expired)
     expiring_soon = Attachment.query.filter(

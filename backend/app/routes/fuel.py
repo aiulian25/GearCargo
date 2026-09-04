@@ -9,13 +9,25 @@ import threading
 from datetime import datetime, date
 from flask import Blueprint, request, jsonify, current_app
 from sqlalchemy import func
+from sqlalchemy.orm import selectinload
 
 from app import db
 from app.models import Vehicle, FuelEntry, Entry
 from app.routes.auth import token_required
+from app.utils.entryparse import (
+    REQUIRED_FIELD_KEY,
+    InvalidFieldError,
+    invalid_field_response,
+    parse_amount,
+    parse_currency_code,
+    parse_iso_date,
+    parse_optional_amount,
+    parse_optional_int,
+)
 from app.services.currency import sum_to_display, get_rates_cached
 from app.services.fuel_efficiency import recalculate_efficiencies
 from app.services.ollama import chat as ollama_chat, OllamaError, resolve_model, ai_cache_get, ai_cache_set, AI_CACHE_TTL, validate_ollama_url
+from app.utils.timeutils import utc_today
 
 fuel_bp = Blueprint('fuel', __name__)
 
@@ -65,6 +77,7 @@ def _detect_fuel_anomaly(app, user_id: int, vehicle_id: int, entry_id: int) -> N
         try:
             from app import db
             from app.models import Vehicle, FuelEntry, PredictionAlert
+            from app.models.prediction import GENERATED_BY_ANOMALY
             from app.routes.push import send_push_to_user
 
             if not app.config.get('OLLAMA_ENABLED', False):
@@ -237,7 +250,7 @@ If anomaly found, return JSON:
                 confidence_score=confidence,
                 urgency='medium',
                 severity='warning',
-                generated_by='ollama',
+                generated_by=GENERATED_BY_ANOMALY,
                 model_version=model,
                 source_data={
                     'model': model,
@@ -293,7 +306,10 @@ def get_fuel_entries(current_user):
         query = query.filter(FuelEntry.vehicle_id == vehicle_id)
     
     # FuelEntry inherits date from Entry
-    entries = query.order_by(FuelEntry.date.desc()).paginate(
+    # R4-15: batch the attachments the rows serialize — one query for the
+    # page instead of one per entry.
+    entries = query.options(selectinload(FuelEntry.attachments)) \
+        .order_by(FuelEntry.date.desc()).paginate(
         page=page, per_page=per_page, error_out=False
     )
     
@@ -322,30 +338,46 @@ def create_fuel_entry(current_user):
     
     # Validate required fields
     if not data.get('liters') and not data.get('volume'):
-        return jsonify({'error': 'Fuel amount (liters) is required'}), 400
-    
-    # Support both field names for compatibility
-    liters = data.get('liters') or data.get('volume')
-    price_per_liter = data.get('price_per_liter') or data.get('price_per_unit')
-    total_price = data.get('total_price') or data.get('total_cost')
-    
-    if not total_price and liters and price_per_liter:
-        total_price = float(liters) * float(price_per_liter)
-    
-    # Parse date
-    entry_date = date.today()
-    if data.get('date'):
-        entry_date = datetime.fromisoformat(data['date'].replace('Z', '+00:00')).date()
-    elif data.get('entry_date'):
-        entry_date = datetime.fromisoformat(data['entry_date'].replace('Z', '+00:00')).date()
+        return jsonify({'error': 'Fuel amount (liters) is required',
+                        'message_key': REQUIRED_FIELD_KEY}), 400
+
+    # Every parse below raises InvalidFieldError, caught once — malformed input
+    # used to escape as a 500 (R4-10) or reach a Numeric/Integer column raw
+    # (R4-11). Both spellings of each field are supported, as before: the alias
+    # chain picks the value, the parser validates whichever one it picked.
+    try:
+        liters = parse_amount(data.get('liters') or data.get('volume'),
+                              'Fuel amount must be a number')
+        price_per_liter = parse_optional_amount(
+            data.get('price_per_liter') or data.get('price_per_unit'),
+            'Price per litre must be a number')
+        total_price = parse_optional_amount(
+            data.get('total_price') or data.get('total_cost'),
+            'Total price must be a number')
+        if not total_price and liters and price_per_liter:
+            total_price = liters * price_per_liter
+
+        odometer = parse_optional_int(data.get('odometer') or data.get('mileage'),
+                                      'Odometer must be a number')
+        currency = parse_currency_code(
+            data.get('currency') or current_user.currency or 'EUR')
+
+        entry_date = utc_today()
+        if data.get('date'):
+            entry_date = parse_iso_date(data['date'])
+        elif data.get('entry_date'):
+            entry_date = parse_iso_date(data['entry_date'])
+    except InvalidFieldError as invalid:
+        payload, status = invalid_field_response(invalid)
+        return jsonify(payload), status
     
     entry = FuelEntry(
         user_id=current_user.id,
         vehicle_id=vehicle.id,
         date=entry_date,
-        odometer=data.get('odometer') or data.get('mileage'),
+        odometer=odometer,
         amount=total_price,
-        currency=data.get('currency') or current_user.currency or 'EUR',
+        currency=currency,
         liters=liters,
         price_per_liter=price_per_liter,
         total_price=total_price,
@@ -357,7 +389,7 @@ def create_fuel_entry(current_user):
     )
     
     # Update vehicle mileage if provided
-    if entry.odometer and entry.odometer > vehicle.current_mileage:
+    if entry.odometer and entry.odometer > (vehicle.current_mileage or 0):
         vehicle.current_mileage = entry.odometer
 
     db.session.add(entry)
@@ -422,24 +454,45 @@ def update_fuel_entry(current_user, entry_id):
     
     data = request.get_json()
     
-    # Update fields
-    if 'date' in data or 'entry_date' in data:
-        date_str = data.get('date') or data.get('entry_date')
-        entry.date = datetime.fromisoformat(date_str.replace('Z', '+00:00')).date()
-    
-    if 'odometer' in data or 'mileage' in data:
-        entry.odometer = data.get('odometer') or data.get('mileage')
-    
-    if 'liters' in data or 'volume' in data:
-        entry.liters = data.get('liters') or data.get('volume')
-    
-    if 'price_per_liter' in data or 'price_per_unit' in data:
-        entry.price_per_liter = data.get('price_per_liter') or data.get('price_per_unit')
-    
-    if 'total_price' in data or 'total_cost' in data:
-        entry.total_price = data.get('total_price') or data.get('total_cost')
-        entry.amount = entry.total_price
-    
+    # Parsed up front so a rejected field cannot leave the earlier ones already
+    # applied — this handler used to assign field by field as it went, and the
+    # mileage/efficiency recalculation below then made the half-write durable
+    # (R4-11).
+    try:
+        parsed_columns = {}
+        if 'date' in data or 'entry_date' in data:
+            parsed_columns['date'] = parse_iso_date(
+                data.get('date') or data.get('entry_date'))
+        if 'odometer' in data or 'mileage' in data:
+            parsed_columns['odometer'] = parse_optional_int(
+                data.get('odometer') or data.get('mileage'),
+                'Odometer must be a number')
+        if 'liters' in data or 'volume' in data:
+            parsed_columns['liters'] = parse_optional_amount(
+                data.get('liters') or data.get('volume'),
+                'Fuel amount must be a number')
+        if 'price_per_liter' in data or 'price_per_unit' in data:
+            parsed_columns['price_per_liter'] = parse_optional_amount(
+                data.get('price_per_liter') or data.get('price_per_unit'),
+                'Price per litre must be a number')
+        if 'total_price' in data or 'total_cost' in data:
+            total_price = parse_optional_amount(
+                data.get('total_price') or data.get('total_cost'),
+                'Total price must be a number')
+            parsed_columns['total_price'] = total_price
+            parsed_columns['amount'] = total_price
+        # F48 — allow editing the per-entry currency (ignore blank so it never
+        # clears an existing value). The column is String(3), so the code is
+        # length-checked here rather than trusted from the client.
+        if data.get('currency'):
+            parsed_columns['currency'] = parse_currency_code(data['currency'])
+    except InvalidFieldError as invalid:
+        payload, status = invalid_field_response(invalid)
+        return jsonify(payload), status
+
+    for column, value in parsed_columns.items():
+        setattr(entry, column, value)
+
     if 'fuel_type' in data:
         entry.fuel_type = data['fuel_type']
     
@@ -454,12 +507,6 @@ def update_fuel_entry(current_user, entry_id):
     
     if 'notes' in data:
         entry.notes = data['notes']
-
-    # F48 — allow editing the per-entry currency (ignore blank so it never
-    # clears an existing value). Codes are validated client-side; the FX
-    # pipeline treats any unknown code as a 1:1 rate, so this is safe.
-    if data.get('currency'):
-        entry.currency = data['currency']
 
     _recalculate_vehicle_current_mileage(current_user.id, entry.vehicle_id)
     # F29 — odometer/liters/date/full_tank edits shift the full-to-full
@@ -676,7 +723,8 @@ def get_recent_fuel(current_user):
     
     entries = FuelEntry.query.join(Vehicle).filter(
         Vehicle.user_id == current_user.id
-    ).order_by(FuelEntry.date.desc()).limit(limit).all()
+    ).options(selectinload(FuelEntry.attachments)) \
+        .order_by(FuelEntry.date.desc()).limit(limit).all()
     
     return jsonify({
         'entries': [e.to_dict() for e in entries]

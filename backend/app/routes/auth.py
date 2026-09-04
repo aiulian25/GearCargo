@@ -22,6 +22,12 @@ import jwt
 from app import db, redis_client
 from app.models import User, ActivityLog, BlockedIP, BlockedDevice
 from app.utils.security_audit import security_audit
+from app.utils.entryparse import (
+    INVALID_NUMBER_KEY,
+    InvalidFieldError,
+    invalid_field_response,
+    parse_optional_int,
+)
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -35,12 +41,40 @@ IDENTITY_MAX_LENGTHS = {
     'email': 120,
 }
 
+# R4-12: the same treatment for the preference columns. Every one of these is a
+# length-limited String on models/user.py, and both PUT /auth/me and register
+# wrote them verbatim — an over-long value reached the driver as a DataError.
+PREFERENCE_MAX_LENGTHS = {
+    'language': 10,
+    'timezone': 50,
+    'theme': 10,
+    'currency': 5,
+    'distance_unit': 10,
+    'volume_unit': 10,
+    'date_format': 20,
+    'country_preference': 3,
+    'location_name': 255,
+}
+
+# alert_days_before feeds timedelta(days=...) in services/due.py, the dashboard
+# widget and the e-mail digest. Clamped rather than rejected: an out-of-range
+# horizon is a slider overshoot, not something worth failing a settings save.
+MIN_ALERT_DAYS_BEFORE = 1
+MAX_ALERT_DAYS_BEFORE = 365
+
+LATITUDE_RANGE = (-90, 90)
+LONGITUDE_RANGE = (-180, 180)
+
 # Same pattern already used by set_notification_email.
 EMAIL_PATTERN = re.compile(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$')
 
 # R4: minimum gap between verification emails for the SAME account, independent
 # of the per-IP limit applied in create_app().
 RESEND_VERIFICATION_COOLDOWN = timedelta(minutes=5)
+# R4-04: minimum gap between password-reset emails for ONE account. Same
+# value as the verification cooldown, kept separate so either can be tuned
+# without silently changing the other.
+PASSWORD_RESET_COOLDOWN = timedelta(minutes=5)
 
 
 def _identity_field_error(email=None, **fields):
@@ -59,9 +93,14 @@ def _identity_field_error(email=None, **fields):
     candidates = dict(fields)
     if email is not None:
         candidates['email'] = email
+    return _max_length_error(IDENTITY_MAX_LENGTHS, candidates)
+
+
+def _max_length_error(limits, candidates):
+    """Return a 400 response for the first over-long value, else None."""
     for name, value in candidates.items():
-        limit = IDENTITY_MAX_LENGTHS.get(name)
-        if limit and value is not None and len(value) > limit:
+        limit = limits.get(name)
+        if limit and value is not None and len(str(value)) > limit:
             return jsonify({
                 'error': f'{name} must be no more than {limit} characters',
                 'message_key': 'validation.maxLength',
@@ -69,6 +108,66 @@ def _identity_field_error(email=None, **fields):
                 'max_length': limit,
             }), 400
     return None
+
+
+def _parse_coordinate(value, field, valid_range):
+    """Coordinate string/number -> float or None, or InvalidFieldError.
+
+    Accepts the decimal comma some locales' number inputs submit. An empty
+    value clears the coordinate; anything unparseable or off the globe is
+    rejected rather than silently discarded, which is what the handler used to
+    do with a `continue`.
+    """
+    if value is None or value == '':
+        return None
+
+    if isinstance(value, str):
+        value = value.replace(',', '.').strip()
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        raise InvalidFieldError(INVALID_NUMBER_KEY, f'{field} must be a number')
+
+    low, high = valid_range
+    if not (low <= parsed <= high):
+        raise InvalidFieldError(INVALID_NUMBER_KEY,
+                                f'{field} must be between {low} and {high}')
+    return parsed
+
+
+def _parse_numeric_preferences(data):
+    """Return the numeric preference columns this request would write.
+
+    Raises InvalidFieldError so the caller can reject the whole request before
+    any field is applied.
+    """
+    parsed = {}
+
+    if 'alert_days_before' in data:
+        days = parse_optional_int(data['alert_days_before'],
+                                  'Alert days must be a number')
+        if days is not None:
+            days = max(MIN_ALERT_DAYS_BEFORE, min(days, MAX_ALERT_DAYS_BEFORE))
+        parsed['alert_days_before'] = days
+
+    if 'location_lat' in data:
+        parsed['location_lat'] = _parse_coordinate(
+            data['location_lat'], 'location_lat', LATITUDE_RANGE)
+    if 'location_lon' in data:
+        parsed['location_lon'] = _parse_coordinate(
+            data['location_lon'], 'location_lon', LONGITUDE_RANGE)
+
+    return parsed
+
+
+def _preference_field_error(data):
+    """Return a 400 response for an over-long preference value, else None.
+
+    Mirrors _identity_field_error for the columns in PREFERENCE_MAX_LENGTHS, so
+    register and update_profile reject the same values the same way.
+    """
+    candidates = {name: data[name] for name in PREFERENCE_MAX_LENGTHS if name in data}
+    return _max_length_error(PREFERENCE_MAX_LENGTHS, candidates)
 
 
 # Common passwords that should be rejected (top 100 most common)
@@ -827,15 +926,33 @@ def _db_prune_user_sessions(user_id):
         db.session.rollback()
 
 
+# Keys per SCAN round-trip when clearing a user's sessions. Large enough to
+# keep the number of round-trips small, small enough that no single call holds
+# Redis for long.
+SESSION_SCAN_BATCH = 100
+
+
 def invalidate_user_sessions(user_id):
     """Invalidate all sessions for a user (Redis + durable DB mirror)."""
     if redis_client:
         try:
-            # Get all session keys for this user
-            session_keys = redis_client.keys(f'session:{user_id}:*')
-            if session_keys:
-                redis_client.delete(*session_keys)
-            current_app.logger.info(f"Invalidated {len(session_keys)} sessions for user {user_id}")
+            # R4-25: SCAN in bounded batches, never KEYS. KEYS walks the whole
+            # keyspace and blocks the server for the duration, and this runs on
+            # every password change, logout-everywhere and single-device
+            # eviction. Same cursor idiom as services/ollama.py:229.
+            deleted = 0
+            cursor = 0
+            while True:
+                cursor, session_keys = redis_client.scan(
+                    cursor,
+                    match=f'session:{user_id}:*',
+                    count=SESSION_SCAN_BATCH,
+                )
+                if session_keys:
+                    deleted += redis_client.delete(*session_keys)
+                if cursor == 0:
+                    break
+            current_app.logger.info(f"Invalidated {deleted} sessions for user {user_id}")
         except Exception as e:
             current_app.logger.error(f"Failed to invalidate sessions: {e}")
 
@@ -1135,7 +1252,7 @@ def token_required(f):
                 current_app.config['JWT_SECRET_KEY'],
                 algorithms=['HS256']
             )
-            current_user = User.query.get(data['user_id'])
+            current_user = db.session.get(User, data['user_id'])
             
             if not current_user:
                 return jsonify({'error': 'User not found'}), 401
@@ -1206,7 +1323,7 @@ def token_required_query_param(f):
                 except (TypeError, ValueError):
                     return jsonify({'error': 'Forbidden or link expired'}), 403
                 if attachment_id and verify_attachment_signature(attachment_id, uid_int, exp, sig):
-                    signed_user = User.query.get(uid_int)
+                    signed_user = db.session.get(User, uid_int)
                     if signed_user and signed_user.is_active:
                         return f(signed_user, *args, **kwargs)
                 return jsonify({'error': 'Forbidden or link expired'}), 403
@@ -1224,7 +1341,7 @@ def token_required_query_param(f):
                 current_app.config['JWT_SECRET_KEY'],
                 algorithms=['HS256']
             )
-            current_user = User.query.get(data['user_id'])
+            current_user = db.session.get(User, data['user_id'])
             
             if not current_user:
                 return jsonify({'error': 'User not found'}), 401
@@ -1409,7 +1526,7 @@ def register():
     username = data.get('username') or email.split('@')[0]
     field_error = _identity_field_error(
         username=username, first_name=first_name, last_name=last_name,
-    )
+    ) or _preference_field_error(data)
     if field_error:
         return field_error
 
@@ -1774,10 +1891,14 @@ def login():
         code_valid = False
         used_backup_code = False
         
-        # Try TOTP code first
+        # Try TOTP code first. R4-26: valid_window=1 accepts the adjacent 30 s
+        # step, so a code read as it rolls over — or a phone clock a few seconds
+        # off — is not rejected. Matches every other TOTP gate in this module;
+        # login was the strictest check guarding the most-used flow, and a
+        # rejection here also counts toward the M7 account lockout.
         if totp_code:
             totp = pyotp.TOTP(_get_totp_secret(user))
-            code_valid = totp.verify(totp_code)
+            code_valid = totp.verify(totp_code, valid_window=1)
         
         # Try backup code if TOTP failed or wasn't provided
         if not code_valid and backup_code and user.two_factor_backup_codes:
@@ -1950,7 +2071,7 @@ def refresh_token():
         if payload.get('type') != 'refresh':
             return jsonify({'error': 'Invalid token type'}), 401
         
-        user = User.query.get(payload['user_id'])
+        user = db.session.get(User, payload['user_id'])
         if not user or not user.is_active:
             return jsonify({'error': 'User not found or disabled'}), 401
         
@@ -2132,8 +2253,9 @@ def update_profile(current_user):
         'distance_unit', 'volume_unit', 'date_format',
         'country_preference',
         # notification_email removed — must use POST /notification-email (GDPR: encryption, consent, double opt-in)
-        # Location settings
-        'location_lat', 'location_lon', 'location_name', 'location_auto_detect'
+        # Location settings (location_lat/location_lon are parsed separately —
+        # see _parse_numeric_preferences)
+        'location_name', 'location_auto_detect'
     ]
     
     # Email notification preference fields
@@ -2147,7 +2269,7 @@ def update_profile(current_user):
         'daily_alerts_enabled',
         'weekly_report_enabled',
         'monthly_report_enabled',
-        'alert_days_before',
+        # alert_days_before is parsed separately — see _parse_numeric_preferences
         'login_alerts_enabled',  # S18: suspicious login/device detection opt-out
     ]
     
@@ -2163,9 +2285,17 @@ def update_profile(current_user):
         username=data.get('username'),
         first_name=data.get('first_name', _pending_first),
         last_name=data.get('last_name', _pending_last),
-    )
+    ) or _preference_field_error(data)
     if field_error:
         return field_error
+
+    # R4-12: the numeric preferences, parsed before anything is written so a
+    # rejected value cannot leave the valid fields in the same request applied.
+    try:
+        parsed_preferences = _parse_numeric_preferences(data)
+    except InvalidFieldError as invalid:
+        payload, status = invalid_field_response(invalid)
+        return jsonify(payload), status
 
     # Handle 'name' field (split into first/last)
     if 'name' in data:
@@ -2227,31 +2357,18 @@ def update_profile(current_user):
         if field in data:
             setattr(current_user, field, data[field])
     
-    # Update preference fields (with special handling for location coordinates)
+    # Update preference fields — coordinates were parsed above.
     for field in preference_fields:
         if field in data:
-            value = data[field]
-            # Explicit float conversion for coordinates
-            if field in ('location_lat', 'location_lon') and value is not None:
-                try:
-                    # Handle string values that might have comma as decimal separator
-                    if isinstance(value, str):
-                        value = value.replace(',', '.').strip()
-                    value = float(value) if value != '' else None
-                    # Validate coordinate ranges
-                    if value is not None:
-                        if field == 'location_lat' and not (-90 <= value <= 90):
-                            continue  # Invalid latitude, skip
-                        if field == 'location_lon' and not (-180 <= value <= 180):
-                            continue  # Invalid longitude, skip
-                except (ValueError, TypeError):
-                    continue  # Skip invalid values
-            setattr(current_user, field, value)
-    
+            setattr(current_user, field, data[field])
+
     # Update email notification fields
     for field in email_notification_fields:
         if field in data:
             setattr(current_user, field, data[field])
+
+    for field, value in parsed_preferences.items():
+        setattr(current_user, field, value)
     
     db.session.commit()
     
@@ -2480,7 +2597,7 @@ def verify_2fa(current_user):
     if pending_secret:
         # Happy path: secret was staged in Redis.
         totp = pyotp.TOTP(pending_secret)
-        if not totp.verify(code):
+        if not totp.verify(code, valid_window=1):
             return jsonify({'error': 'Invalid verification code'}), 401
         # TOTP verified — now encrypt and persist the secret.
         _set_totp_secret(current_user, pending_secret)
@@ -2494,7 +2611,7 @@ def verify_2fa(current_user):
         if not current_user.two_factor_secret:
             return jsonify({'error': 'Please setup 2FA first'}), 400
         totp = pyotp.TOTP(_get_totp_secret(current_user))
-        if not totp.verify(code):
+        if not totp.verify(code, valid_window=1):
             return jsonify({'error': 'Invalid verification code'}), 401
     
     # Generate backup codes
@@ -2679,6 +2796,26 @@ def get_2fa_status(current_user):
     })
 
 
+def _password_reset_cooldown_elapsed(user):
+    """True when a fresh reset email may be sent to *user*.
+
+    R4-04: the per-IP limit registered in create_app() cannot stop a distributed
+    bomb aimed at ONE address, and every request rotated the reset token —
+    killing the link the victim may be about to click. So the send is also
+    throttled per account. Mirrors ``_resend_cooldown_elapsed``: there is no
+    "issued at" column, and the token TTL is fixed, so the issue time is derived
+    from the stored expiry. Deliberately NOT Redis-backed — password recovery
+    must keep working (and stay throttled) during a Redis outage.
+    """
+    from app.models.user import PASSWORD_RESET_TTL_HOURS, _as_utc
+
+    expires = _as_utc(user.password_reset_expires)
+    if not expires:
+        return True  # no outstanding token (never requested, or already used)
+    issued_at = expires - timedelta(hours=PASSWORD_RESET_TTL_HOURS)
+    return (datetime.now(timezone.utc) - issued_at) >= PASSWORD_RESET_COOLDOWN
+
+
 @auth_bp.route('/password-reset/request', methods=['POST'])
 def request_password_reset():
     """Request password reset email."""
@@ -2692,8 +2829,10 @@ def request_password_reset():
     
     user = User.query.filter_by(email=email).first()
     
-    # Always return success to prevent email enumeration
-    if user:
+    # Always return success to prevent email enumeration. Within the cooldown we
+    # skip BOTH the send and the token rotation, so a repeat request can never be
+    # used to invalidate a link the user is still holding.
+    if user and current_app.config.get('MAIL_ENABLED') and _password_reset_cooldown_elapsed(user):
         token = user.generate_reset_token()
         db.session.commit()
         # Send password reset email
@@ -3196,7 +3335,7 @@ def unsubscribe_email():
     if not token:
         return '<html><body style="background:#0f172a;color:#e2e8f0;font-family:sans-serif;text-align:center;padding:60px"><h1>Missing Token</h1><p>Invalid unsubscribe link.</p></body></html>', 400
 
-    user = User.query.filter_by(unsubscribe_token=token).first()
+    user = User.find_by_unsubscribe_token(token)
     if not user:
         return '<html><body style="background:#0f172a;color:#e2e8f0;font-family:sans-serif;text-align:center;padding:60px"><h1>Invalid Link</h1><p>This unsubscribe link is no longer valid.</p></body></html>', 404
 
@@ -3873,7 +4012,7 @@ def verify_recovery_answers():
     if redis_client:
         try:
             redis_client.delete(attempts_key)
-        except:
+        except Exception:
             pass
     
     # Generate a one-time password reset token

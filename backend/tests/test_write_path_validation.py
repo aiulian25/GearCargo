@@ -150,3 +150,205 @@ def test_update_vehicle_rejects_bad_purchase_date(app, client, auth_headers):
                       headers=auth_headers(uid))
     assert resp.status_code == 400, resp.data[:150]
     assert resp.get_json()["message_key"] == "validation.invalidDate"
+
+
+# --- R4-31/32/33: the last unguarded write paths ------------------------------
+#
+# Same class as everything above: values from a form or an admin panel reaching
+# int()/fromisoformat()/a length-limited column with no coercion, so junk is a
+# 500 rather than a 400 the UI can render.
+
+import pytest
+
+from app.models.attachment import Attachment
+
+
+def _admin(email="wadmin@example.com"):
+    user = User(username=email.split("@")[0], email=email, is_active=True,
+                is_admin=True)
+    user.set_password(PASSWORD)
+    db.session.add(user)
+    db.session.commit()
+    return user.id
+
+
+# --- reports (R4-31) ---
+
+@pytest.mark.parametrize("payload", [
+    {"period": "custom", "year": "2026", "month": "not-a-month"},
+    {"period": "custom", "year": "not-a-year", "month": 6},
+    {"period": "custom", "year": 2026, "month": {}},
+])
+def test_report_rejects_a_non_numeric_year_or_month(app, client, auth_headers, payload):
+    with app.app_context():
+        user_id = _user("rep1@example.com")
+        db.session.add(Vehicle(user_id=user_id, name="Car"))
+        db.session.commit()
+
+    response = client.post("/api/reports/generate", json=payload,
+                           headers=auth_headers(user_id))
+
+    assert response.status_code == 400, response.data[:200]   # was: TypeError 500
+    assert response.get_json()["message_key"] == "validation.invalidNumber"
+
+
+def test_report_still_rejects_a_month_outside_the_year(app, client, auth_headers):
+    with app.app_context():
+        user_id = _user("rep2@example.com")
+        db.session.add(Vehicle(user_id=user_id, name="Car"))
+        db.session.commit()
+
+    response = client.post("/api/reports/generate",
+                           json={"period": "custom", "year": 2026, "month": 13},
+                           headers=auth_headers(user_id))
+
+    assert response.status_code == 400
+    assert "Month" in response.get_json()["error"]
+
+
+def test_report_never_includes_another_users_vehicle(app, client, auth_headers):
+    """The inline resolution is gone; _resolve_report_vehicles enforces ownership."""
+    with app.app_context():
+        user_id = _user("rep3@example.com")
+        db.session.add(Vehicle(user_id=user_id, name="Mine"))
+        stranger_id = _user("rep4@example.com")
+        stranger_vehicle = Vehicle(user_id=stranger_id, name="Theirs")
+        db.session.add(stranger_vehicle)
+        db.session.commit()
+        stranger_vehicle_id = stranger_vehicle.id
+
+    response = client.post("/api/reports/generate",
+                           json={"vehicle_ids": [stranger_vehicle_id]},
+                           headers=auth_headers(user_id))
+
+    assert response.status_code == 404          # none of them are the caller's
+    assert b"Theirs" not in response.data
+
+
+# --- admin (R4-32) ---
+
+@pytest.mark.parametrize("limit", ["abc", {}, "3.5.1"])
+def test_admin_create_user_rejects_a_non_numeric_vehicle_limit(app, client, auth_headers, limit):
+    with app.app_context():
+        admin_id = _admin("wadmin1@example.com")
+
+    response = client.post("/api/admin/users",
+                           json={"email": "made@example.com", "password": PASSWORD,
+                                 "vehicle_limit": limit},
+                           headers=auth_headers(admin_id, is_admin=True))
+
+    assert response.status_code == 400, response.data[:200]   # was: ValueError 500
+    assert response.get_json()["message_key"] == "validation.invalidNumber"
+
+
+def test_admin_update_user_rejects_a_non_numeric_vehicle_limit(app, client, auth_headers):
+    with app.app_context():
+        admin_id = _admin("wadmin2@example.com")
+        target_id = _user("target@example.com")
+
+    response = client.put(f"/api/admin/users/{target_id}",
+                          json={"vehicle_limit": "abc"},
+                          headers=auth_headers(admin_id, is_admin=True))
+
+    assert response.status_code == 400, response.data[:200]
+    assert response.get_json()["message_key"] == "validation.invalidNumber"
+
+
+def test_admin_block_ip_rejects_a_non_numeric_expiry(app, client, auth_headers):
+    with app.app_context():
+        admin_id = _admin("wadmin3@example.com")
+
+    response = client.post("/api/admin/blocked/ip",
+                           json={"ip_address": "203.0.113.9", "expires_hours": "soon"},
+                           headers=auth_headers(admin_id, is_admin=True))
+
+    assert response.status_code == 400, response.data[:200]   # was: TypeError 500
+    assert response.get_json()["message_key"] == "validation.invalidNumber"
+
+
+def test_admin_block_ip_still_works_with_a_numeric_expiry(app, client, auth_headers):
+    with app.app_context():
+        admin_id = _admin("wadmin4@example.com")
+
+    response = client.post("/api/admin/blocked/ip",
+                           json={"ip_address": "203.0.113.10", "expires_hours": "24"},
+                           headers=auth_headers(admin_id, is_admin=True))
+
+    assert response.status_code in (200, 201), response.data[:200]
+
+
+# --- attachments (R4-33) ---
+
+def _attachment(user_id):
+    attachment = Attachment(user_id=user_id, filename="doc.pdf",
+                            filepath="/tmp/doc.pdf", file_type="application/pdf",
+                            file_size=10, category="document")
+    db.session.add(attachment)
+    db.session.commit()
+    return attachment.id
+
+
+def test_attachment_rejects_a_malformed_expiry(app, client, auth_headers):
+    with app.app_context():
+        user_id = _user("att1@example.com")
+        attachment_id = _attachment(user_id)
+
+    response = client.put(f"/api/attachments/{attachment_id}",
+                          json={"expires_at": "31/12/2026"},
+                          headers=auth_headers(user_id))
+
+    assert response.status_code == 400, response.data[:200]   # was: ValueError 500
+    assert response.get_json()["message_key"] == "validation.invalidDate"
+
+
+def test_attachment_still_accepts_and_clears_a_valid_expiry(app, client, auth_headers):
+    with app.app_context():
+        user_id = _user("att2@example.com")
+        attachment_id = _attachment(user_id)
+
+    assert client.put(f"/api/attachments/{attachment_id}",
+                      json={"expires_at": "2026-12-31"},
+                      headers=auth_headers(user_id)).status_code == 200
+    with app.app_context():
+        assert db.session.get(Attachment, attachment_id).expires_at is not None
+
+    assert client.put(f"/api/attachments/{attachment_id}",
+                      json={"expires_at": None},
+                      headers=auth_headers(user_id)).status_code == 200
+    with app.app_context():
+        assert db.session.get(Attachment, attachment_id).expires_at is None
+
+
+@pytest.mark.parametrize("category", ["../../etc/passwd", "x" * 80, "not-a-category"])
+def test_attachment_rejects_an_unknown_category(app, client, auth_headers, category):
+    with app.app_context():
+        user_id = _user(f"att-{abs(hash(category)) % 9999}@example.com")
+        attachment_id = _attachment(user_id)
+
+    response = client.put(f"/api/attachments/{attachment_id}",
+                          json={"category": category},
+                          headers=auth_headers(user_id))
+
+    assert response.status_code == 400, response.data[:200]
+    with app.app_context():
+        assert db.session.get(Attachment, attachment_id).category == "document"
+
+
+@pytest.mark.parametrize("category", [
+    "receipt", "invoice", "insurance", "insurance_document", "registration",
+    "maintenance", "warranty", "photo", "document", "manual", "other",
+])
+def test_every_category_the_frontend_sends_is_accepted(app, client, auth_headers, category):
+    """The allow-list must cover both selects AND the insurance_document value
+    the upload route uses to route insurance attachments."""
+    with app.app_context():
+        user_id = _user(f"cat-{category}@example.com")
+        attachment_id = _attachment(user_id)
+
+    response = client.put(f"/api/attachments/{attachment_id}",
+                          json={"category": category},
+                          headers=auth_headers(user_id))
+
+    assert response.status_code == 200, response.data[:200]
+    with app.app_context():
+        assert db.session.get(Attachment, attachment_id).category == category

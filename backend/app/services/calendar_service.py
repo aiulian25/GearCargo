@@ -616,10 +616,14 @@ def sync_entry_to_calendar(user, entry_type: str, entry: Any, action: str = 'cre
         return True, "Calendar not configured"
     
     try:
-        # Get vehicle name for context
+        # Get vehicle name for context. R4-08: Vehicle.full_name is the model's
+        # own display name ("2019 VW Golf", falling back to the name the user
+        # gave the car). Reusing it fixes the crash on the phantom `nickname`
+        # AND the "Ford None" the inline f-string produced whenever make or
+        # model was unset.
         vehicle_name = ""
-        if hasattr(entry, 'vehicle') and entry.vehicle:
-            vehicle_name = f"{entry.vehicle.make} {entry.vehicle.model}" if entry.vehicle.make else entry.vehicle.nickname or "Vehicle"
+        if getattr(entry, 'vehicle', None):
+            vehicle_name = entry.vehicle.full_name or "Vehicle"
         
         # Generate UID for tracking
         uid = f"gearcargo-{entry_type}-{entry.id}@gearcargo.local"
@@ -697,18 +701,20 @@ def get_event_data_for_entry(entry_type: str, entry: Any, vehicle_name: str) -> 
         if hasattr(entry, 'service_type') and entry.service_type:
             title = f"🔧 {entry.service_type}: {vehicle_name}"
         
-        # Use next_service_date if available, otherwise scheduled date
-        event_date = getattr(entry, 'next_service_date', None) or getattr(entry, 'date', None)
+        # R4-08: the column is `next_due_date` — with the phantom name this
+        # always fell through, pinning "Service Due" to the past service date.
+        event_date = getattr(entry, 'next_due_date', None) or getattr(entry, 'date', None)
         if not event_date:
             return None
         
         description = f"Vehicle: {vehicle_name}\n"
-        if hasattr(entry, 'service_type'):
+        if getattr(entry, 'service_type', None):
             description += f"Service: {entry.service_type}\n"
-        if hasattr(entry, 'notes') and entry.notes:
+        if getattr(entry, 'notes', None):
             description += f"Notes: {entry.notes}\n"
-        if hasattr(entry, 'mileage') and entry.mileage:
-            description += f"Mileage: {entry.mileage}\n"
+        # R4-08: the column is `odometer` (Entry), not `mileage`.
+        if getattr(entry, 'odometer', None):
+            description += f"Mileage: {entry.odometer}\n"
         
         return {
             'title': title,
@@ -751,8 +757,9 @@ def get_event_data_for_entry(entry_type: str, entry: Any, vehicle_name: str) -> 
             return None
         
         description = f"Reminder: {entry.title}\n"
-        if hasattr(entry, 'notes') and entry.notes:
-            description += f"Notes: {entry.notes}\n"
+        # R4-08: Reminder has no `notes` column — its free text is `description`.
+        if getattr(entry, 'description', None):
+            description += f"Notes: {entry.description}\n"
         if vehicle_name:
             description += f"Vehicle: {vehicle_name}\n"
         

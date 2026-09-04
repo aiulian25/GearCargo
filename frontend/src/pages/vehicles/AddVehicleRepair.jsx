@@ -209,9 +209,14 @@ export default function AddVehicleRepair() {
         navigate(`/vehicles/${vehicleId}`)
         return
       }
-      // Translate known backend errors
-      const backendError = err.response?.data?.error || ''
-      if (backendError.toLowerCase().includes('repair type')) {
+      // Translate known backend errors. message_key first — it carries the
+      // reason (malformed date, non-numeric mileage or cost) in the user's own
+      // language; the repair-type 400 still identifies itself by its text.
+      const data = err.response?.data
+      const backendError = data?.error || ''
+      if (data?.message_key) {
+        setError(t(data.message_key) || backendError || t('addRepair.error'))
+      } else if (backendError.toLowerCase().includes('repair type')) {
         setError(t('addRepair.repairTypeRequired') || 'Repair type is required')
       } else {
         setError(t('addRepair.error') || 'Failed to add repair entry')

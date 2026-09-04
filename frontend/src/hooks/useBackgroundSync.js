@@ -55,8 +55,14 @@ export function useBackgroundSync() {
     setSyncError(null)
     try {
       if (navigator.serviceWorker?.controller) {
-        if ('sync' in self.registration) {
-          await self.registration.sync.register(
+        // R4-16: this hook runs in the WINDOW, where `self` is `window` and
+        // `self.registration` is undefined — the old `'sync' in self.registration`
+        // threw a TypeError, so every manual sync reported an error and the
+        // fallback below was unreachable. The page-side registration comes from
+        // `navigator.serviceWorker.ready` (same pattern as utils/pwaSync.js).
+        const registration = await navigator.serviceWorker.ready
+        if (registration && 'sync' in registration) {
+          await registration.sync.register(
             'workbox-background-sync:gearcargo-sync-queue'
           )
         } else {

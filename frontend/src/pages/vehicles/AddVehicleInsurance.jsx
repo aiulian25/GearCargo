@@ -160,7 +160,13 @@ export default function AddVehicleInsurance() {
         navigate(`/vehicles/${vehicleId}`)
         return
       }
-      setError(err.response?.data?.error || t('addInsurance.error') || 'Failed to add insurance policy')
+      // Prefer the server's message_key so the reason (bad date, bad premium,
+      // bad currency code) is shown in the user's own language.
+      const data = err.response?.data
+      setError((data?.message_key && t(data.message_key))
+        || data?.error
+        || t('addInsurance.error')
+        || 'Failed to add insurance policy')
     } finally {
       setIsSubmitting(false)
     }

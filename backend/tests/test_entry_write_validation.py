@@ -273,3 +273,63 @@ def test_clearing_a_nullable_date_is_still_allowed(app, client, user, auth_heade
     with app.app_context():
         db.session.remove()
         assert db.session.get(ParkingEntry, entry_id).permit_expires is None
+
+
+# ── Step 12: parse_optional_int — the shared coercion for nullable int columns ──
+# Every odometer / mileage / warranty_months / quantity field on the entry write
+# paths is a nullable INTEGER that routes currently assign straight from JSON.
+# This is the one place that turns "whatever the client sent" into either an int
+# the DB can store or a typed 400.
+
+from app.utils.entryparse import INVALID_NUMBER_KEY, invalid_field_response, parse_optional_int
+
+
+@pytest.mark.parametrize('raw, expected', [
+    ('5000', 5000),          # HTML number inputs submit strings
+    (5000, 5000),
+    (5000.0, 5000),
+    ('12000.7', 12000),      # truncated, never rounded up past a real reading
+    (0, 0),                  # a real value, NOT "empty"
+    ('0', 0),
+    (-50, -50),              # negative is the caller's business, not the parser's
+    (None, None),
+    ('', None),
+])
+def test_parse_optional_int_accepts_the_shapes_clients_send(raw, expected):
+    assert parse_optional_int(raw) == expected
+
+
+@pytest.mark.parametrize('raw', [
+    'abc', '12k', '5,000',   # free text and thousands separators
+    {}, [], object(),
+    True, False,             # a bool is not a reading; int(True) == 1 would be a lie
+    'nan', 'inf', '-inf', '1e400',   # float() accepts these; int() then blows up
+    '99999999999',           # valid int, but past PostgreSQL INTEGER
+    99999999999,
+    -99999999999,
+])
+def test_parse_optional_int_rejects_everything_else(raw):
+    with pytest.raises(InvalidFieldError) as excinfo:
+        parse_optional_int(raw)
+    assert excinfo.value.message_key == INVALID_NUMBER_KEY
+
+
+def test_parse_optional_int_keeps_the_int32_boundaries():
+    """The limits themselves are valid — the guard must not be off by one."""
+    assert parse_optional_int(2147483647) == 2147483647
+    assert parse_optional_int(-2147483648) == -2147483648
+    with pytest.raises(InvalidFieldError):
+        parse_optional_int(2147483648)
+
+
+def test_parse_optional_int_error_is_the_standard_400_payload():
+    """Callers hand the exception straight to invalid_field_response, so the
+    shape must match what every other guarded route returns."""
+    try:
+        parse_optional_int('abc', 'Mileage must be a number')
+    except InvalidFieldError as exc:
+        payload, status = invalid_field_response(exc)
+
+    assert status == 400
+    assert payload == {'error': 'Mileage must be a number',
+                       'message_key': 'validation.invalidNumber'}

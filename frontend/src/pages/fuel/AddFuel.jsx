@@ -91,7 +91,13 @@ export default function AddFuel() {
       
       navigate(-1)
     } catch (err) {
-      setError(err.response?.data?.error || t('addFuel.error') || 'Failed to add fuel entry')
+      // Prefer the server's message_key so the reason (malformed date,
+      // non-numeric litres, price or odometer) is shown in the user's own language.
+      const data = err.response?.data
+      setError((data?.message_key && t(data.message_key))
+        || data?.error
+        || t('addFuel.error')
+        || 'Failed to add fuel entry')
     } finally {
       setIsSubmitting(false)
     }

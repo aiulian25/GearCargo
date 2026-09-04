@@ -81,7 +81,10 @@ services:
       - MAX_UPLOAD_SIZE_MB=${MAX_UPLOAD_SIZE_MB:-200}
 
       # Email
-      - MAIL_ENABLED=${MAIL_ENABLED:-true}
+      # R4-30: default OFF, matching config.py, .env.example and the prod
+      # compose. There is no mail catcher in this stack, so defaulting on with a
+      # blank MAIL_SERVER made every digest and alert attempt error.
+      - MAIL_ENABLED=${MAIL_ENABLED:-false}
       - MAIL_SERVER=${MAIL_SERVER}
       - MAIL_PORT=${MAIL_PORT:-587}
       - MAIL_USE_TLS=${MAIL_USE_TLS:-true}

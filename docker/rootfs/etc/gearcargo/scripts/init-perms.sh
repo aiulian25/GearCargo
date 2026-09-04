@@ -10,7 +10,13 @@ echo "[init-perms] Preparing data directories (EMBEDDED_DB=$EMBEDDED_DB EMBEDDED
 
 mkdir -p /app/volumes/attachments /app/volumes/backups/system \
          /app/uploads /app/volumes/logs /run/gearcargo
-chown -R gearcargo:gearcargo /app/volumes /app/uploads 2>/dev/null || true
+# R4-21: chown only what is not already correct. `chown -R` issued a syscall
+# per file on EVERY boot, so start-up time grew with the number of stored
+# attachments; on a settled volume this find selects nothing and returns at
+# once. Same end state — a host bind-mount arriving root-owned is still
+# fixed, because those files match the predicate.
+find /app/volumes /app/uploads \( ! -user gearcargo -o ! -group gearcargo \) \
+     -exec chown gearcargo:gearcargo {} + 2>/dev/null || true
 chown gearcargo:gearcargo /run/gearcargo 2>/dev/null || true
 
 if [ "$EMBEDDED_DB" = "true" ]; then

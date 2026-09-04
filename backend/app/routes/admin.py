@@ -7,6 +7,11 @@ from flask import Blueprint, request, jsonify, current_app
 from sqlalchemy import func, desc
 
 from app import db
+from app.utils.entryparse import (
+    InvalidFieldError,
+    invalid_field_response,
+    parse_optional_int,
+)
 from app.models import (User, Vehicle, Entry, Backup, ActivityLog, BlockedIP, BlockedDevice,
                          NotificationLog, BackupSchedule, Todo, EmailConsentLog)
 from app.routes.auth import admin_required, MIN_PASSWORD_LENGTH
@@ -74,9 +79,19 @@ def get_users(current_user):
     users = query.order_by(User.created_at.desc()).paginate(
         page=page, per_page=per_page, error_out=False
     )
-    
+
+    # R4-17: one grouped query for the whole page, instead of the
+    # `self.vehicles.count()` User.to_dict() runs per user.
+    listed_user_ids = [u.id for u in users.items]
+    vehicle_counts = dict(
+        db.session.query(Vehicle.user_id, func.count(Vehicle.id))
+        .filter(Vehicle.user_id.in_(listed_user_ids))
+        .group_by(Vehicle.user_id).all()
+    ) if listed_user_ids else {}
+
     return jsonify({
-        'users': [u.to_dict() for u in users.items],
+        'users': [u.to_dict(vehicle_count=vehicle_counts.get(u.id, 0))
+                  for u in users.items],
         'total': users.total,
         'pages': users.pages,
         'current_page': page,
@@ -112,13 +127,19 @@ def create_user(current_user):
         first_name = parts[0]
         last_name = parts[1] if len(parts) > 1 else None
     
-    # Parse vehicle_limit
-    vehicle_limit = data.get('vehicle_limit')
-    if vehicle_limit is None or vehicle_limit == '' or vehicle_limit == 0:
+    # Parse vehicle_limit. R4-32: junk from the admin form used to reach int()
+    # and escape as a 500.
+    try:
+        vehicle_limit = parse_optional_int(data.get('vehicle_limit'),
+                                           'Vehicle limit must be a number')
+    except InvalidFieldError as invalid:
+        payload, status = invalid_field_response(invalid)
+        return jsonify(payload), status
+    if vehicle_limit is None or vehicle_limit == 0:
         vehicle_limit = None  # Unlimited
     else:
-        vehicle_limit = max(1, int(vehicle_limit))
-    
+        vehicle_limit = max(1, vehicle_limit)
+
     # Create new user
     user = User(
         email=data['email'].lower(),
@@ -226,14 +247,17 @@ def update_user(current_user, user_id):
         
         user.is_active = new_is_active
     
-    # Handle vehicle_limit field
+    # Handle vehicle_limit field. R4-32: coerced before use — the raw value
+    # reached int() and a bad one escaped as a 500.
     if 'vehicle_limit' in data:
-        limit = data['vehicle_limit']
-        # Allow None/null for unlimited, or a positive integer
-        if limit is None or limit == '' or limit == 0:
-            user.vehicle_limit = None  # Unlimited
-        else:
-            user.vehicle_limit = max(1, int(limit))
+        try:
+            limit = parse_optional_int(data['vehicle_limit'],
+                                       'Vehicle limit must be a number')
+        except InvalidFieldError as invalid:
+            payload, status = invalid_field_response(invalid)
+            return jsonify(payload), status
+        # None/0 means unlimited; anything else is clamped to at least 1.
+        user.vehicle_limit = None if not limit else max(1, limit)
     
     db.session.commit()
     
@@ -567,14 +591,14 @@ def get_logs(current_user):
         try:
             start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
             query = query.filter(ActivityLog.created_at >= start)
-        except:
+        except Exception:
             pass
     
     if end_date:
         try:
             end = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
             query = query.filter(ActivityLog.created_at <= end)
-        except:
+        except Exception:
             pass
     
     if country:
@@ -722,20 +746,32 @@ def run_cleanup(current_user):
     
     if os.path.exists(attachments_dir):
         from app.models import Attachment
+        # R4-18: every referenced filename in ONE query, instead of an
+        # unindexed `filepath LIKE '%name'` per file on disk. The comparison is
+        # also now exact: LIKE treated `_` and `%` in a filename as wildcards
+        # and matched any path merely ENDING with it, so a file whose name was
+        # a suffix of a referenced one looked referenced and was never cleaned.
+        # Attachments are written to `<user folder>/<uuid>.<ext>` and stored at
+        # that same path (routes/attachments.py:358), so the basename of
+        # `filepath` is exactly the name on disk.
+        referenced_filenames = {
+            os.path.basename(filepath)
+            for (filepath,) in db.session.query(Attachment.filepath).filter(
+                Attachment.filepath.isnot(None)
+            ).all()
+        }
+
         for root, dirs, files in os.walk(attachments_dir):
             for filename in files:
+                if filename in referenced_filenames:
+                    continue
+
                 file_path = os.path.join(root, filename)
-                # Check if this file is referenced in any attachment
-                attachment = Attachment.query.filter(
-                    Attachment.filepath.like(f'%{filename}')
-                ).first()
-                
-                if not attachment:
-                    orphaned_files.append(file_path)
-                    try:
-                        orphaned_size += os.path.getsize(file_path)
-                    except OSError:
-                        pass
+                orphaned_files.append(file_path)
+                try:
+                    orphaned_size += os.path.getsize(file_path)
+                except OSError:
+                    pass
     
     results['items'].append({
         'type': 'orphaned_attachments',
@@ -952,7 +988,14 @@ def block_ip_manually(current_user):
     
     ip_address = data.get('ip_address')
     reason = data.get('reason', 'Manually blocked by admin')
-    expires_hours = data.get('expires_hours')  # Optional expiry
+    # R4-32: coerced before it reaches timedelta(hours=...), which raised
+    # TypeError on the string an admin form submits.
+    try:
+        expires_hours = parse_optional_int(data.get('expires_hours'),
+                                           'Expiry hours must be a number')
+    except InvalidFieldError as invalid:
+        payload, status = invalid_field_response(invalid)
+        return jsonify(payload), status
     
     if not ip_address:
         return jsonify({'error': 'IP address is required'}), 400
@@ -1022,7 +1065,14 @@ def block_device_manually(current_user):
     user_agent = data.get('user_agent')
     device_fingerprint = data.get('device_fingerprint')
     reason = data.get('reason', 'Manually blocked by admin')
-    expires_hours = data.get('expires_hours')
+    # R4-32: coerced before it reaches timedelta(hours=...), which raised
+    # TypeError on the string an admin form submits.
+    try:
+        expires_hours = parse_optional_int(data.get('expires_hours'),
+                                           'Expiry hours must be a number')
+    except InvalidFieldError as invalid:
+        payload, status = invalid_field_response(invalid)
+        return jsonify(payload), status
     
     if not user_agent and not device_fingerprint:
         return jsonify({'error': 'User agent or device fingerprint is required'}), 400

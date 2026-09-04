@@ -5,10 +5,20 @@ GearCargo - Repair Entry Routes
 from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, current_app
 from sqlalchemy import func, case
+from sqlalchemy.orm import selectinload
 
 from app import db
 from app.models import Vehicle, RepairEntry
 from app.routes.auth import token_required
+from app.utils.entryparse import (
+    InvalidFieldError,
+    invalid_field_response,
+    parse_amount,
+    parse_currency_code,
+    parse_iso_date,
+    parse_optional_amount,
+    parse_optional_int,
+)
 
 repairs_bp = Blueprint('repairs', __name__)
 
@@ -24,12 +34,26 @@ VALID_REPAIR_TYPES = {
 }
 
 
-def _opt_int(value):
-    """Coerce an optional numeric field to int, treating ''/invalid as None."""
-    try:
-        return int(value) if value not in (None, '') else None
-    except (TypeError, ValueError):
-        return None
+# Typed columns, by the request key that addresses them. Kept apart from the
+# free-text aliases in update_repair_entry because every one of them needs
+# coercing before it reaches the column (R4-10 / R4-11). Aliases first,
+# canonical name last, so the canonical value wins when both are sent.
+_DATE_FIELDS = {
+    'entry_date': 'date', 'date': 'date',
+}
+_INTEGER_FIELDS = {
+    'mileage': 'odometer', 'odometer': 'odometer',
+    'warranty_months': 'warranty_months',
+    'warranty_km': 'warranty_km',
+}
+_AMOUNT_FIELDS = {
+    'labor_hours': 'labor_hours',
+    'labor_cost': 'labor_cost',
+    'parts_cost': 'parts_cost',
+}
+
+# entries.date is NOT NULL — a falsy value leaves it alone instead of clearing it.
+_NON_CLEARABLE_DATE = 'date'
 
 
 @repairs_bp.route('', methods=['GET'])
@@ -47,7 +71,10 @@ def get_repair_entries(current_user):
     if vehicle_id:
         query = query.filter(RepairEntry.vehicle_id == vehicle_id)
     
-    entries = query.order_by(RepairEntry.date.desc()).paginate(
+    # R4-15: batch the attachments the rows serialize — one query for the
+    # page instead of one per entry.
+    entries = query.options(selectinload(RepairEntry.attachments)) \
+        .order_by(RepairEntry.date.desc()).paginate(
         page=page, per_page=per_page, error_out=False
     )
     
@@ -90,20 +117,42 @@ def create_repair_entry(current_user):
     
     primary_type = repair_types_list[0]
     
-    # Parse date - support both 'date' and 'entry_date' field names
-    entry_date = datetime.now(timezone.utc).date()
-    if data.get('date'):
-        entry_date = datetime.fromisoformat(data['date'].replace('Z', '+00:00')).date()
-    elif data.get('entry_date'):
-        entry_date = datetime.fromisoformat(data['entry_date'].replace('Z', '+00:00')).date()
+    # Every parse below raises InvalidFieldError, caught once — malformed input
+    # used to escape as a 500 (R4-10) or reach a Numeric/Integer column raw
+    # (R4-11). Field names support both the form's and the model's spelling.
+    try:
+        entry_date = datetime.now(timezone.utc).date()
+        if data.get('date'):
+            entry_date = parse_iso_date(data['date'])
+        elif data.get('entry_date'):
+            entry_date = parse_iso_date(data['entry_date'])
+
+        odometer = parse_optional_int(data.get('mileage') or data.get('odometer'),
+                                      'Odometer must be a number')
+        warranty_months = parse_optional_int(data.get('warranty_months'),
+                                             'Warranty months must be a number')
+        warranty_km = parse_optional_int(data.get('warranty_km'),
+                                         'Warranty distance must be a number')
+        labor_hours = parse_optional_amount(data.get('labor_hours'),
+                                            'Labour hours must be a number')
+        labor_cost = parse_optional_amount(data.get('labor_cost'))
+        parts_cost = parse_optional_amount(data.get('parts_cost'))
+        currency = parse_currency_code(
+            data.get('currency') or current_user.currency or 'EUR')
+
+        raw_amount = data.get('total_cost') or data.get('cost') or data.get('amount', 0)
+        amount = parse_amount(raw_amount) if raw_amount else 0.0
+    except InvalidFieldError as invalid:
+        payload, status = invalid_field_response(invalid)
+        return jsonify(payload), status
     
     entry = RepairEntry(
         user_id=current_user.id,
         vehicle_id=vehicle.id,
         date=entry_date,
-        odometer=data.get('mileage') or data.get('odometer'),
-        amount=data.get('total_cost') or data.get('cost') or data.get('amount', 0),
-        currency=data.get('currency') or current_user.currency or 'EUR',
+        odometer=odometer,
+        amount=amount,
+        currency=currency,
         title=', '.join(repair_types_list),
         description=data.get('description'),
         repair_type=primary_type,
@@ -114,18 +163,18 @@ def create_repair_entry(current_user):
         provider=data.get('shop_name') or data.get('provider_name') or data.get('provider'),
         garage_name=data.get('shop_name') or data.get('garage_name') or data.get('provider_name'),
         garage_address=data.get('provider_location') or data.get('garage_address'),
-        labor_hours=data.get('labor_hours'),
-        labor_cost=data.get('labor_cost'),
-        parts_cost=data.get('parts_cost'),
+        labor_hours=labor_hours,
+        labor_cost=labor_cost,
+        parts_cost=parts_cost,
         parts_replaced=data.get('parts_replaced'),
         severity=data.get('severity', 'medium'),
         under_warranty=data.get('warranty_covered') or data.get('under_warranty', False),
-        warranty_months=_opt_int(data.get('warranty_months')),
-        warranty_km=_opt_int(data.get('warranty_km')),
+        warranty_months=warranty_months,
+        warranty_km=warranty_km,
         notes=data.get('notes'),
     )
     
-    if entry.odometer and entry.odometer > vehicle.current_mileage:
+    if entry.odometer and entry.odometer > (vehicle.current_mileage or 0):
         vehicle.current_mileage = entry.odometer
     
     db.session.add(entry)
@@ -197,45 +246,62 @@ def update_repair_entry(current_user, entry_id):
 
     # F18 — request keys mapped to the REAL model columns. Aliases first,
     # canonical names last so the canonical value wins when both are sent.
-    # (is_recurring / insurance_* / provider_phone have no RepairEntry columns.)
+    # (is_recurring / insurance_* / provider_phone have no RepairEntry columns;
+    # dates, integers and amounts live in the typed maps at the top of this
+    # module — none of them may be assigned raw.)
     field_aliases = {
-        'entry_date': 'date', 'date': 'date',
-        'mileage': 'odometer', 'odometer': 'odometer',
         'description': 'description',
         'diagnosis': 'diagnosis', 'symptoms': 'symptoms', 'root_cause': 'root_cause',
         'provider_name': 'provider', 'shop_name': 'provider', 'provider': 'provider',
         'provider_location': 'garage_address', 'garage_address': 'garage_address',
         'parts_replaced': 'parts_replaced',
-        'labor_hours': 'labor_hours',
-        'labor_cost': 'labor_cost', 'parts_cost': 'parts_cost',
-        'currency': 'currency',
         'severity': 'severity',
         'notes': 'notes',
     }
 
+    # Parsed up front so a rejected field cannot leave the earlier ones already
+    # applied — the loop below used to mutate the entry as it went (R4-11).
+    try:
+        parsed_columns = {}
+        for key, column in _DATE_FIELDS.items():
+            if key not in data:
+                continue
+            if data[key]:
+                parsed_columns[column] = parse_iso_date(data[key])
+            elif column != _NON_CLEARABLE_DATE:
+                parsed_columns[column] = None
+        for key, column in _INTEGER_FIELDS.items():
+            if key in data:
+                parsed_columns[column] = parse_optional_int(data[key])
+        for key, column in _AMOUNT_FIELDS.items():
+            if key in data:
+                parsed_columns[column] = parse_optional_amount(data[key])
+        if 'currency' in data:
+            parsed_columns['currency'] = parse_currency_code(data['currency'])
+        if 'cost' in data or 'total_cost' in data:
+            raw_amount = data.get('total_cost') or data.get('cost')
+            parsed_columns['amount'] = parse_amount(raw_amount) if raw_amount else 0.0
+    except InvalidFieldError as invalid:
+        payload, status = invalid_field_response(invalid)
+        return jsonify(payload), status
+
     for key, column in field_aliases.items():
-        if key not in data:
-            continue
-        value = data[key]
-        if column == 'date':
-            if value:
-                entry.date = datetime.fromisoformat(value.replace('Z', '+00:00')).date()
-        elif column == 'odometer':
-            entry.odometer = _opt_int(value)
-        else:
-            setattr(entry, column, value)
+        if key in data:
+            setattr(entry, column, data[key])
+
+    for column, value in parsed_columns.items():
+        setattr(entry, column, value)
 
     # The shop field names both the provider and the garage (mirrors create).
     if data.get('shop_name') or data.get('provider_name'):
         entry.garage_name = data.get('shop_name') or data.get('provider_name')
 
-    # Recalculate amount (mirrors update_service_entry — was missing here).
-    if 'cost' in data or 'total_cost' in data:
-        entry.amount = data.get('total_cost') or data.get('cost') or 0
-    elif 'labor_cost' in data or 'parts_cost' in data:
-        labor = float(entry.labor_cost or 0)
-        parts = float(entry.parts_cost or 0)
-        entry.amount = labor + parts
+    # No explicit total sent, but the parts or labour changed — the two add up
+    # to the amount. Reads the values applied just above.
+    amount_was_sent = 'amount' in parsed_columns
+    labor_or_parts_changed = 'labor_cost' in data or 'parts_cost' in data
+    if not amount_was_sent and labor_or_parts_changed:
+        entry.amount = float(entry.labor_cost or 0) + float(entry.parts_cost or 0)
 
     # Mirror create's mileage bump — vehicle mileage only ever increases.
     if entry.odometer:
@@ -246,10 +312,6 @@ def update_repair_entry(current_user, entry_id):
     # F2 — warranty fields, mapped to the real columns.
     if 'warranty_covered' in data or 'under_warranty' in data:
         entry.under_warranty = bool(data.get('warranty_covered') or data.get('under_warranty'))
-    if 'warranty_months' in data:
-        entry.warranty_months = _opt_int(data['warranty_months'])
-    if 'warranty_km' in data:
-        entry.warranty_km = _opt_int(data['warranty_km'])
 
     db.session.commit()
 

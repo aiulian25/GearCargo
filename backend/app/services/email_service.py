@@ -7,11 +7,24 @@ from datetime import datetime, date, timedelta, timezone
 from flask import current_app, render_template_string
 from flask_mail import Message
 from app import mail, db
-from typing import List, Dict, Any
+from app.utils.timeutils import utc_today
+from typing import List, Dict, Any, Tuple
 import logging
 import re
 
 logger = logging.getLogger(__name__)
+
+
+def build_unsubscribe_url(user):
+    """One-click unsubscribe URL carrying the RAW token (R4-24).
+
+    The column holds only the token's hash, so the URL is built from
+    `generate_unsubscribe_token()` — never from the stored column.
+    """
+    if not user:
+        return None
+    raw_token = user.generate_unsubscribe_token()
+    return f"{link_domain_for(user)}/api/auth/unsubscribe?token={raw_token}"
 
 
 def link_domain_for(user=None) -> str:
@@ -286,7 +299,7 @@ class EmailService:
             full_html = render_template_string(
                 BASE_TEMPLATE,
                 content=content_html,
-                year=datetime.now().year,
+                year=datetime.now(timezone.utc).year,
                 app_url=app_url,
                 logo_url=logo_url,
                 unsubscribe_url=unsubscribe_url or ''
@@ -374,7 +387,7 @@ class EmailService:
         
         user_domain = link_domain_for(user)
         logo_url = f"{user_domain}/icons/logo.png"
-        unsubscribe_url = f"{user_domain}/api/auth/unsubscribe?token={user.unsubscribe_token}" if user.unsubscribe_token else None
+        unsubscribe_url = build_unsubscribe_url(user)
         
         # Determine title and intro based on alert type
         titles = {
@@ -421,10 +434,10 @@ class EmailService:
         
         user_domain = link_domain_for(user)
         logo_url = f"{user_domain}/icons/logo.png"
-        unsubscribe_url = f"{user_domain}/api/auth/unsubscribe?token={user.unsubscribe_token}" if user.unsubscribe_token else None
+        unsubscribe_url = build_unsubscribe_url(user)
         
-        # Calculate period
-        today = date.today()
+        # Calculate period (UTC, matching get_user_weekly_summary's window)
+        today = utc_today()
         week_ago = today - timedelta(days=7)
         period = f"{week_ago.strftime('%d %b')} - {today.strftime('%d %b %Y')}"
         
@@ -461,7 +474,7 @@ class EmailService:
         
         user_domain = link_domain_for(user)
         logo_url = f"{user_domain}/icons/logo.png"
-        unsubscribe_url = f"{user_domain}/api/auth/unsubscribe?token={user.unsubscribe_token}" if user.unsubscribe_token else None
+        unsubscribe_url = build_unsubscribe_url(user)
         
         month_names = [
             "", "January", "February", "March", "April", "May", "June",
@@ -544,7 +557,7 @@ def get_insurance_alerts(user_id: int, days_ahead: int = 30) -> List[Dict]:
     """Get insurance policies expiring within days_ahead."""
     from app.models import InsurancePolicy, Vehicle
     
-    cutoff = date.today() + timedelta(days=days_ahead)
+    cutoff = utc_today() + timedelta(days=days_ahead)
     alerts = []
     
     policies = InsurancePolicy.query.join(Vehicle).filter(
@@ -552,11 +565,11 @@ def get_insurance_alerts(user_id: int, days_ahead: int = 30) -> List[Dict]:
         Vehicle.archived == False,
         InsurancePolicy.end_date.isnot(None),
         InsurancePolicy.end_date <= cutoff,
-        InsurancePolicy.end_date >= date.today()
+        InsurancePolicy.end_date >= utc_today()
     ).all()
     
     for policy in policies:
-        days_left = (policy.end_date - date.today()).days
+        days_left = (policy.end_date - utc_today()).days
         severity = "urgent" if days_left <= 7 else "warning" if days_left <= 14 else "info"
         
         alerts.append({
@@ -575,21 +588,30 @@ def get_tax_alerts(user_id: int, days_ahead: int = 30) -> List[Dict]:
     """Get road taxes expiring within days_ahead."""
     from app.models import TaxEntry, Vehicle
     
-    cutoff = date.today() + timedelta(days=days_ahead)
+    today = utc_today()
+    cutoff = today + timedelta(days=days_ahead)
     alerts = []
-    
-# Get taxes due soon (use next_due_date for recurring, due_date otherwise)
+
+    # R4-23: a recurring tax carries the ORIGINAL date in due_date and the next
+    # occurrence in next_due_date, so filtering on due_date alone hid exactly
+    # the taxes this digest exists for — the repeating ones. Either column may
+    # put the row in range; the loop then reports whichever date is actually
+    # next, and drops rows whose real date falls outside the horizon.
     taxes = db.session.query(TaxEntry).join(Vehicle, Vehicle.id == TaxEntry.vehicle_id).filter(
         TaxEntry.user_id == user_id,
         Vehicle.archived == False,
-        TaxEntry.due_date.isnot(None),
-        TaxEntry.due_date >= date.today(),
-        TaxEntry.due_date <= cutoff
+        db.or_(
+            TaxEntry.due_date.between(today, cutoff),
+            TaxEntry.next_due_date.between(today, cutoff),
+        ),
     ).all()
 
     for tax in taxes:
-        alert_date = tax.due_date
-        days_left = (alert_date - date.today()).days
+        alert_date = tax.next_due_date or tax.due_date
+        if not alert_date or not (today <= alert_date <= cutoff):
+            continue
+
+        days_left = (alert_date - today).days
         severity = "urgent" if days_left <= 7 else "warning" if days_left <= 14 else "info"
 
         alerts.append({
@@ -608,7 +630,7 @@ def get_service_alerts(user_id: int, days_ahead: int = 30) -> List[Dict]:
     """Get service/maintenance reminders due within days_ahead."""
     from app.models import Reminder, Vehicle
 
-    cutoff = date.today() + timedelta(days=days_ahead)
+    cutoff = utc_today() + timedelta(days=days_ahead)
     alerts = []
 
     SERVICE_TYPES = ['service', 'maintenance', 'oil_change', 'inspection', 'mot']
@@ -619,13 +641,13 @@ def get_service_alerts(user_id: int, days_ahead: int = 30) -> List[Dict]:
         Reminder.completed == False,
         Reminder.dismissed == False,
         Reminder.due_date.isnot(None),
-        Reminder.due_date >= date.today(),
+        Reminder.due_date >= utc_today(),
         Reminder.due_date <= cutoff,
         Reminder.reminder_type.in_(SERVICE_TYPES)
     ).all()
 
     for reminder in reminders:
-        days_left = (reminder.due_date - date.today()).days
+        days_left = (reminder.due_date - utc_today()).days
         is_overdue = days_left < 0
         severity = "urgent" if is_overdue or days_left <= 7 else "warning" if days_left <= 14 else "info"
 
@@ -645,7 +667,7 @@ def get_reminder_alerts(user_id: int, days_ahead: int = 30) -> List[Dict]:
     """Get all due/upcoming reminders (any type) with notify_email=True."""
     from app.models import Reminder, Vehicle
 
-    cutoff = date.today() + timedelta(days=days_ahead)
+    cutoff = utc_today() + timedelta(days=days_ahead)
     alerts = []
 
     reminders = Reminder.query.join(Vehicle).filter(
@@ -658,12 +680,12 @@ def get_reminder_alerts(user_id: int, days_ahead: int = 30) -> List[Dict]:
         db.or_(Reminder.snoozed_until.is_(None),
                Reminder.snoozed_until <= datetime.now(timezone.utc)),
         Reminder.due_date.isnot(None),
-        Reminder.due_date >= date.today(),
+        Reminder.due_date >= utc_today(),
         Reminder.due_date <= cutoff,
     ).all()
 
     for reminder in reminders:
-        days_left = (reminder.due_date - date.today()).days
+        days_left = (reminder.due_date - utc_today()).days
         is_overdue = days_left < 0
         severity = "urgent" if is_overdue or days_left <= 7 else "warning" if days_left <= 14 else "info"
 
@@ -689,34 +711,79 @@ def get_all_alerts_for_user(user_id: int, days_ahead: int = 30) -> Dict[str, Lis
     }
 
 
+# ── Money formatting / currency normalization (F1/F28) ───────────────────────
+
+# Symbols for the currencies the app offers. Anything else renders as its own
+# code — labelling a CHF total with '£' is worse than showing "CHF".
+CURRENCY_SYMBOLS = {'GBP': '£', 'EUR': '€', 'USD': '$', 'RON': 'RON '}
+
+
+def _currency_symbol(currency_code: str) -> str:
+    """Prefix rendered in front of an amount in the report e-mails."""
+    code = (currency_code or 'GBP').upper()
+    return CURRENCY_SYMBOLS.get(code, f'{code} ')
+
+
+def _sum_in_display_currency(amounts, display_currency: str) -> float:
+    """Sum ``(currency, amount)`` pairs into ``display_currency``.
+
+    Each entry stores the currency it was logged in (``Entry.currency`` defaults
+    to EUR, ``InsurancePolicy.currency`` to USD) while the user reads one display
+    currency, so a report must convert BEFORE adding — the same F1/F28 rule the
+    dashboard, vehicle stats and the PDF report already follow.
+
+    The FX lookup is skipped entirely when every amount is already in the display
+    currency: that is the common case, and these builders run inside a scheduled
+    job where an avoidable outbound call is pure cost.
+    """
+    pairs = [((currency or 'EUR').upper(), float(amount or 0))
+             for currency, amount in amounts]
+    if not pairs:
+        return 0.0
+    if all(currency == display_currency for currency, _ in pairs):
+        return sum(amount for _, amount in pairs)
+
+    from app.services import currency as currency_service
+    rates = currency_service.get_rates_cached(current_app._get_current_object())
+    total, _converted, _fx_applied = currency_service.sum_to_display(
+        pairs, display_currency, rates)
+    return total
+
+
 def get_user_weekly_summary(user_id: int) -> Dict:
     """Generate weekly summary data for a user."""
     from app.models import User, Vehicle, FuelEntry, ServiceEntry
-    
-    user = User.query.get(user_id)
+
+    user = db.session.get(User, user_id)
     if not user:
         return {}
-    
-    week_ago = date.today() - timedelta(days=7)
-    
-    # Get vehicles
-    vehicles = Vehicle.query.filter_by(user_id=user_id, is_active=True).all()
+
+    # R6: UTC "today", matching the rest of the API and the period label the
+    # e-mail prints, so the window and the label can never disagree by a day.
+    week_ago = utc_today() - timedelta(days=7)
+    display_currency = (user.currency or 'GBP').upper()
+
+    # R4-02: Vehicle has no `is_active` column — "active" means NOT archived.
+    vehicles = Vehicle.query.filter_by(user_id=user_id, archived=False).all()
     vehicle_ids = [v.id for v in vehicles]
-    
-    # Fuel stats
+
+    # Fuel stats. R4-02: the column is `total_price`, not `total_cost`.
     fuel_entries = FuelEntry.query.filter(
         FuelEntry.vehicle_id.in_(vehicle_ids),
         FuelEntry.date >= week_ago
     ).all()
-    
-    fuel_spent = sum(e.total_cost or 0 for e in fuel_entries)
-    
+
+    fuel_spent = _sum_in_display_currency(
+        ((e.currency, e.total_price or e.amount) for e in fuel_entries),
+        display_currency,
+    )
+
     # Services
     services = ServiceEntry.query.filter(
         ServiceEntry.vehicle_id.in_(vehicle_ids),
         ServiceEntry.date >= week_ago
     ).count()
-    
+
     # Estimate distance (from odometer changes)
     distance = 0
     for v in vehicles:
@@ -725,10 +792,10 @@ def get_user_weekly_summary(user_id: int) -> Dict:
             FuelEntry.vehicle_id == v.id,
             FuelEntry.date <= week_ago
         ).order_by(FuelEntry.date.desc()).first()
-        
+
         if latest_fuel and week_ago_fuel and latest_fuel.odometer and week_ago_fuel.odometer:
             distance += (latest_fuel.odometer - week_ago_fuel.odometer)
-    
+
     return {
         'total_vehicles': len(vehicles),
         'fuel_entries': len(fuel_entries),
@@ -736,94 +803,85 @@ def get_user_weekly_summary(user_id: int) -> Dict:
         'services': services,
         'distance': f"{distance:,.0f}",
         'distance_unit': user.distance_unit or 'km',
-        'currency': user.currency or '£'
+        # The template renders "{{ currency }}{{ amount }}", so this must be the
+        # SYMBOL — the raw code rendered as "GBP40.00".
+        'currency': _currency_symbol(display_currency),
     }
 
 
-def get_user_monthly_summary(user_id: int, month: int, year: int) -> Dict:
-    """Generate monthly summary data for a user."""
-    from app.models import User, Vehicle, FuelEntry, ServiceEntry, RepairEntry, TaxEntry, ParkingEntry, InsurancePolicy
-    
-    user = User.query.get(user_id)
+def get_user_monthly_summary(user_id: int, month: int, year: int) -> Tuple[Dict, List[Dict]]:
+    """Generate monthly summary data for a user.
+
+    Always returns a ``(summary, per-vehicle breakdown)`` tuple — its caller in
+    ``send_monthly_reports`` unpacks two values, so a bare dict on the
+    missing-user path would raise inside the scheduled job.
+    """
+    from app.models import (User, Vehicle, FuelEntry, ServiceEntry, RepairEntry,
+                            TaxEntry, ParkingEntry, InsurancePolicy)
+
+    user = db.session.get(User, user_id)
     if not user:
-        return {}
-    
-    # Calculate date range
+        return {}, []
+
+    # Calculate date range (explicit year/month/day — no local-time dependency)
     from calendar import monthrange
     first_day = date(year, month, 1)
     last_day = date(year, month, monthrange(year, month)[1])
-    
-    vehicles = Vehicle.query.filter_by(user_id=user_id, is_active=True).all()
+
+    display_currency = (user.currency or 'GBP').upper()
+
+    # R4-02: "active" means NOT archived (there is no `is_active` column).
+    vehicles = Vehicle.query.filter_by(user_id=user_id, archived=False).all()
     vehicle_ids = [v.id for v in vehicles]
-    
-    # Gather expenses by category
-    fuel_total = sum(
-        e.total_cost or 0 for e in FuelEntry.query.filter(
-            FuelEntry.vehicle_id.in_(vehicle_ids),
-            FuelEntry.date >= first_day,
-            FuelEntry.date <= last_day
+
+    def _in_period(model, date_column):
+        return model.query.filter(
+            model.vehicle_id.in_(vehicle_ids),
+            date_column >= first_day,
+            date_column <= last_day,
         ).all()
-    )
-    
-    services_total = sum(
-        e.cost or 0 for e in ServiceEntry.query.filter(
-            ServiceEntry.vehicle_id.in_(vehicle_ids),
-            ServiceEntry.date >= first_day,
-            ServiceEntry.date <= last_day
-        ).all()
-    )
-    
-    repairs_total = sum(
-        e.cost or 0 for e in RepairEntry.query.filter(
-            RepairEntry.vehicle_id.in_(vehicle_ids),
-            RepairEntry.date >= first_day,
-            RepairEntry.date <= last_day
-        ).all()
-    )
-    
-    parking_total = sum(
-        e.cost or 0 for e in ParkingEntry.query.filter(
-            ParkingEntry.vehicle_id.in_(vehicle_ids),
-            ParkingEntry.date >= first_day,
-            ParkingEntry.date <= last_day
-        ).all()
-    )
-    
-    taxes_total = sum(
-        e.amount or 0 for e in TaxEntry.query.filter(
-            TaxEntry.vehicle_id.in_(vehicle_ids),
-            TaxEntry.date >= first_day,
-            TaxEntry.date <= last_day
-        ).all()
-    )
-    
-    insurance_total = sum(
-        p.premium or 0 for p in InsurancePolicy.query.filter(
-            InsurancePolicy.vehicle_id.in_(vehicle_ids),
-            InsurancePolicy.start_date >= first_day,
-            InsurancePolicy.start_date <= last_day
-        ).all()
-    )
-    
-    grand_total = fuel_total + services_total + repairs_total + parking_total + taxes_total + insurance_total
-    
-    # Per-vehicle breakdown
+
+    # Fetched once and reused for the per-vehicle breakdown below — the previous
+    # code re-queried fuel and service once PER VEHICLE.
+    fuel_entries = _in_period(FuelEntry, FuelEntry.date)
+    service_entries = _in_period(ServiceEntry, ServiceEntry.date)
+    repair_entries = _in_period(RepairEntry, RepairEntry.date)
+    parking_entries = _in_period(ParkingEntry, ParkingEntry.date)
+    tax_entries = _in_period(TaxEntry, TaxEntry.date)
+    policies = _in_period(InsurancePolicy, InsurancePolicy.start_date)
+
+    # R4-02: fuel books its total in `total_price`; every other entry type uses
+    # the shared `amount` column (`cost` exists only as a to_dict alias).
+    def _fuel_amounts(entries):
+        return ((e.currency, e.total_price or e.amount) for e in entries)
+
+    def _entry_amounts(entries):
+        return ((e.currency, e.amount) for e in entries)
+
+    fuel_total = _sum_in_display_currency(_fuel_amounts(fuel_entries), display_currency)
+    services_total = _sum_in_display_currency(_entry_amounts(service_entries), display_currency)
+    repairs_total = _sum_in_display_currency(_entry_amounts(repair_entries), display_currency)
+    parking_total = _sum_in_display_currency(_entry_amounts(parking_entries), display_currency)
+    taxes_total = _sum_in_display_currency(_entry_amounts(tax_entries), display_currency)
+    insurance_total = _sum_in_display_currency(
+        ((p.currency, p.premium) for p in policies), display_currency)
+
+    grand_total = (fuel_total + services_total + repairs_total
+                   + parking_total + taxes_total + insurance_total)
+
+    # Per-vehicle breakdown, grouped from the rows already fetched above.
     vehicle_breakdown = []
     for v in vehicles:
-        v_fuel = sum(e.total_cost or 0 for e in FuelEntry.query.filter(
-            FuelEntry.vehicle_id == v.id,
-            FuelEntry.date >= first_day,
-            FuelEntry.date <= last_day
-        ).all())
-        
-        v_service = sum(e.cost or 0 for e in ServiceEntry.query.filter(
-            ServiceEntry.vehicle_id == v.id,
-            ServiceEntry.date >= first_day,
-            ServiceEntry.date <= last_day
-        ).all())
-        
+        v_fuel = _sum_in_display_currency(
+            _fuel_amounts(e for e in fuel_entries if e.vehicle_id == v.id),
+            display_currency,
+        )
+        v_service = _sum_in_display_currency(
+            _entry_amounts(e for e in service_entries if e.vehicle_id == v.id),
+            display_currency,
+        )
         v_total = v_fuel + v_service
-        
+
         if v_total > 0:
             vehicle_breakdown.append({
                 'name': v.name,
@@ -831,10 +889,7 @@ def get_user_monthly_summary(user_id: int, month: int, year: int) -> Dict:
                 'service': f"{v_service:.2f}",
                 'total': f"{v_total:.2f}"
             })
-    
-    currency_symbols = {'GBP': '£', 'EUR': '€', 'USD': '$', 'RON': 'RON '}
-    currency = currency_symbols.get(user.currency, '£')
-    
+
     return {
         'fuel_total': f"{fuel_total:.2f}",
         'services_total': f"{services_total:.2f}",
@@ -842,7 +897,7 @@ def get_user_monthly_summary(user_id: int, month: int, year: int) -> Dict:
         'parking_total': f"{parking_total:.2f}",
         'taxes_insurance_total': f"{taxes_total + insurance_total:.2f}",
         'grand_total': f"{grand_total:.2f}",
-        'currency': currency
+        'currency': _currency_symbol(display_currency),
     }, vehicle_breakdown
 
 
@@ -1174,7 +1229,7 @@ def send_new_login_alert(user, device_info: dict) -> bool:
         content_html = render_template_string(
             NEW_LOGIN_ALERT_TEMPLATE,
             user_name=user.display_name or user.username,
-            login_time=datetime.now().strftime('%B %d, %Y at %I:%M %p UTC'),
+            login_time=datetime.now(timezone.utc).strftime('%B %d, %Y at %I:%M %p UTC'),
             ip_address=ip_address,
             device_info=device_display,
             device_icon=device_icon,
@@ -1281,7 +1336,7 @@ def send_suspicious_location_alert(user, location_info: dict, known_locations: l
             city=location_info.get('city', 'Unknown'),
             ip_address=location_info.get('ip', 'Unknown'),
             isp=location_info.get('isp', 'Unknown'),
-            login_time=datetime.now().strftime('%B %d, %Y at %I:%M %p UTC'),
+            login_time=datetime.now(timezone.utc).strftime('%B %d, %Y at %I:%M %p UTC'),
             known_locations=known_locations_display,
             logo_url=logo_url,
             change_password_url=f"{user_domain}/settings/security",

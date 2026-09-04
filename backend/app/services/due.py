@@ -38,6 +38,7 @@ from app.models import (
     Attachment, ParkingEntry, ConsumableEntry, DueDismissal, PredictionAlert,
 )
 from app.models.todo import Todo
+from app.utils.timeutils import utc_today
 
 # How close (in the vehicle's distance unit) a mileage-based prediction must be
 # to the current odometer before it surfaces on the feed (F45).
@@ -83,10 +84,10 @@ def build_due_items(user_id, days=None, today=None):
     existing ``/overdue`` semantics. The final list is capped at ``MAX_ITEMS``
     after urgency sorting.
     """
-    today = today or date.today()
+    today = today or utc_today()
     if days is None:
         # One lightweight lookup for the user's preferred horizon.
-        u = User.query.get(user_id)
+        u = db.session.get(User, user_id)
         days = (u.alert_days_before if u and u.alert_days_before else 30)
     cutoff = today + timedelta(days=max(0, days))
 

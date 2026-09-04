@@ -12,6 +12,7 @@ import requests
 
 from app import db
 from app.models import Vehicle, FuelEntry, ServiceEntry, RepairEntry, PredictionAlert
+from app.models.prediction import GENERATED_BY_PREDICTION
 from app.routes.auth import token_required
 from app.services.ollama import (
     chat as ollama_chat, OllamaError, resolve_model,
@@ -302,7 +303,7 @@ def _run_prediction(current_user, vehicle_id, locale='en-US', force=False):
             .filter_by(
                 vehicle_id=vehicle_id,
                 user_id=current_user.id,
-                generated_by='ollama',
+                generated_by=GENERATED_BY_PREDICTION,
                 dismissed=False,
                 actioned=False,
             )
@@ -372,7 +373,7 @@ def _run_prediction(current_user, vehicle_id, locale='en-US', force=False):
                     'prompt_sha256': hashlib.sha256(prompt.encode()).hexdigest()[:16],
                     'prompt_chars': len(prompt),
                 },
-                generated_by='ollama',
+                generated_by=GENERATED_BY_PREDICTION,
                 model_version=model,
             )
             db.session.add(alert)
@@ -590,10 +591,9 @@ def get_ai_status(current_user):
         
         if response.status_code == 200:
             models = response.json().get('models', [])
-            return jsonify({
+            payload = {
                 'enabled': True,
                 'status': 'online',
-                'url': ollama_url,
                 'models': [m.get('name') for m in models],
                 'current_model': current_app.config.get('OLLAMA_MODEL', ''),
                 'task_models': {
@@ -602,7 +602,16 @@ def get_ai_status(current_user):
                     'anomaly':  _resolve_model('anomaly'),
                     'reminder': _resolve_model('reminder'),
                 },
-            })
+            }
+            # R4-27: the resolved Ollama URL is internal infrastructure — a
+            # private host/port on the deployment's own network, fronting an
+            # unauthenticated model API. Admins get it as a diagnostic; ordinary
+            # users (and anyone holding a stolen session) do not. No frontend
+            # reads this field: the user-facing page uses `enabled`, and the
+            # admin panel renders settings.ollama_url from /admin/settings.
+            if current_user.is_admin:
+                payload['url'] = ollama_url
+            return jsonify(payload)
         else:
             return jsonify({
                 'enabled': True,
@@ -719,7 +728,7 @@ def get_checklists(current_user):
         
         # Determine current season
         from datetime import datetime
-        current_month = datetime.now().month
+        current_month = datetime.now(timezone.utc).month
         
         # Build response with progress
         checklists = []

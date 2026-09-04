@@ -5,7 +5,7 @@ Generates comprehensive vehicle expense reports in PDF format.
 
 import io
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dateutil.relativedelta import relativedelta
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -35,6 +35,18 @@ WARNING_COLOR = colors.HexColor('#F59E0B')
 DANGER_COLOR = colors.HexColor('#EF4444')
 
 
+def vehicle_label(vehicle):
+    """Make + model, falling back to the name the owner gave the car.
+
+    R4-09: `f"{vehicle.make} {vehicle.model}"` rendered "None None" for a vehicle
+    identified only by its name — in the report heading, the per-vehicle total
+    row and the download filename.
+    """
+    return (f"{vehicle.make or ''} {vehicle.model or ''}".strip()
+            or vehicle.name
+            or 'Vehicle')
+
+
 def get_period_dates(period, year=None, month=None):
     """
     Calculate start and end dates based on period type.
@@ -47,7 +59,7 @@ def get_period_dates(period, year=None, month=None):
     Returns:
         tuple: (start_date, end_date, period_label)
     """
-    today = datetime.now()
+    today = datetime.now(timezone.utc)
     
     if period == 'current_month':
         start_date = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -140,6 +152,12 @@ def get_vehicle_entries(vehicle, start_date, end_date, currency='EUR', rates=Non
     }
 
     report_ccy = (currency or 'EUR').upper()
+    # R4-09: the odometer column hardcoded "km"; a miles vehicle was reported in
+    # the wrong unit on what is a maintenance/expense record.
+    distance_unit = vehicle.distance_unit or 'km'
+
+    def _odometer(value):
+        return f"{value:,} {distance_unit}" if value else '-'
 
     def convert(amount, entry_ccy):
         """Convert one amount into the report currency, updating the flags, and
@@ -168,10 +186,16 @@ def get_vehicle_entries(vehicle, start_date, end_date, currency='EUR', rates=Non
         amount, suffix = convert(entry.total_price, entry.currency)
         # Price-per-litre is quoted in the entry's OWN currency, not the report's.
         unit_ccy = (entry.currency or report_ccy)
+        # R4-09: liters and price_per_liter are both nullable (the fuel PUT can
+        # clear them, the LubeLog importer writes them empty), and formatting
+        # None with :.2f raises — one such row 500'd the whole report.
+        liters_text = f"{float(entry.liters):.2f}L" if entry.liters is not None else ''
+        price_text = (f" @ {float(entry.price_per_liter):.2f} {unit_ccy}/L"
+                      if entry.price_per_liter is not None else '')
         entries['fuel'].append({
             'date': entry.date.strftime('%d/%m/%Y'),
-            'description': f"{entry.liters:.2f}L @ {entry.price_per_liter:.2f} {unit_ccy}/L{suffix}",
-            'odometer': f"{entry.odometer:,} km" if entry.odometer else '-',
+            'description': f"{liters_text}{price_text}{suffix}".strip() or '-',
+            'odometer': _odometer(entry.odometer),
             'amount': amount
         })
         entries['totals']['fuel'] += amount
@@ -188,7 +212,7 @@ def get_vehicle_entries(vehicle, start_date, end_date, currency='EUR', rates=Non
         entries['service'].append({
             'date': entry.date.strftime('%d/%m/%Y'),
             'description': (entry.service_type or 'Service') + suffix,
-            'odometer': f"{entry.odometer:,} km" if entry.odometer else '-',
+            'odometer': _odometer(entry.odometer),
             'amount': amount
         })
         entries['totals']['service'] += amount
@@ -205,7 +229,7 @@ def get_vehicle_entries(vehicle, start_date, end_date, currency='EUR', rates=Non
         entries['repair'].append({
             'date': entry.date.strftime('%d/%m/%Y'),
             'description': (entry.description or 'Repair') + suffix,
-            'odometer': f"{entry.odometer:,} km" if entry.odometer else '-',
+            'odometer': _odometer(entry.odometer),
             'amount': amount
         })
         entries['totals']['repair'] += amount
@@ -445,11 +469,11 @@ def generate_pdf_report(user, vehicles, period, year=None, month=None, language=
     ))
     
     # Report info box
-    generated_date = datetime.now().strftime('%d %B %Y at %H:%M')
+    generated_date = datetime.now(timezone.utc).strftime('%d %B %Y at %H:%M')
     
     # Build vehicle names list
     if isinstance(vehicles, list) and len(vehicles) > 0:
-        vehicle_names = ', '.join([f"{v.make} {v.model}" + (f" ({v.license_plate})" if v.license_plate else '') for v in vehicles])
+        vehicle_names = ', '.join([vehicle_label(v) + (f" ({v.license_plate})" if v.license_plate else '') for v in vehicles])
         vehicle_count = len(vehicles)
     else:
         vehicle_names = "All Vehicles"
@@ -489,7 +513,7 @@ def generate_pdf_report(user, vehicles, period, year=None, month=None, language=
     
     for vehicle in vehicles:
         # Vehicle header
-        vehicle_name = f"{vehicle.make} {vehicle.model}"
+        vehicle_name = vehicle_label(vehicle)
         if vehicle.year:
             vehicle_name += f" ({vehicle.year})"
         if vehicle.license_plate:
@@ -581,7 +605,7 @@ def generate_pdf_report(user, vehicles, period, year=None, month=None, language=
         # Vehicle total
         elements.append(Spacer(1, 0.1*inch))
         vehicle_total_data = [[
-            f"Total for {vehicle.make} {vehicle.model}:",
+            f"Total for {vehicle_label(vehicle)}:",
             f"{entries['totals']['grand_total']:,.2f} {currency}"
         ]]
         vehicle_total_table = Table(vehicle_total_data, colWidths=[4.5*inch, 1.7*inch])
@@ -694,10 +718,10 @@ def generate_pdf_report(user, vehicles, period, year=None, month=None, language=
 
 def get_report_filename(vehicles, period, year=None, month=None):
     """Generate a descriptive filename for the report."""
-    timestamp = datetime.now().strftime('%Y%m%d')
+    timestamp = datetime.now(timezone.utc).strftime('%Y%m%d')
     
     if len(vehicles) == 1:
-        vehicle_part = f"{vehicles[0].make}_{vehicles[0].model}".replace(' ', '_')
+        vehicle_part = vehicle_label(vehicles[0]).replace(' ', '_')
     else:
         vehicle_part = f"{len(vehicles)}_vehicles"
     

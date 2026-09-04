@@ -6,6 +6,8 @@ from datetime import datetime, timedelta, timezone
 from app.utils.timeutils import utc_naive_now
 import base64
 import hashlib
+import hmac
+import re
 import secrets
 from flask_login import UserMixin
 from app import db, bcrypt, login_manager
@@ -13,7 +15,7 @@ from app import db, bcrypt, login_manager
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    return db.session.get(User, int(user_id))
 
 
 def _prehash_password(password: str) -> str:
@@ -34,6 +36,11 @@ def _prehash_password(password: str) -> str:
 # token was issued from its expiry (there is no separate "issued at" column).
 EMAIL_VERIFICATION_TTL_HOURS = 48
 
+# Lifetime of a password-reset link. A module constant (not just a default arg)
+# so `_password_reset_cooldown_elapsed` can derive the issue time from the
+# stored expiry the way the verification cooldown already does.
+PASSWORD_RESET_TTL_HOURS = 24
+
 
 def _as_utc(dt):
     """Coerce a DB-loaded (naive-UTC) or aware datetime to aware UTC.
@@ -49,6 +56,10 @@ def _as_utc(dt):
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
+
+
+# A SHA-256 hex digest — 64 lowercase hex characters.
+_SHA256_HEX = re.compile(r'[0-9a-f]{64}')
 
 
 class User(UserMixin, db.Model):
@@ -217,7 +228,7 @@ class User(UserMixin, db.Model):
         """Return SHA-256 hex digest of a raw reset token (S08)."""
         return hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
 
-    def generate_reset_token(self, expires_hours=24):
+    def generate_reset_token(self, expires_hours=PASSWORD_RESET_TTL_HOURS):
         """Generate a password reset token.
 
         Stores only the SHA-256 hash in the database (S08).
@@ -370,11 +381,64 @@ class User(UserMixin, db.Model):
             self.notification_email = None
             self.notification_email_hash = None
 
+    def _derive_unsubscribe_token(self) -> str:
+        """The raw one-click-unsubscribe token for this user.
+
+        R4-24: derived from the app SECRET_KEY rather than stored, so the value
+        in the database is only ever its SHA-256 hash and a DB/backup leak
+        yields no working link — the S08/R7 posture the reset and verification
+        tokens already have.
+
+        Derived rather than randomly minted because this token is LONG-LIVED:
+        every digest e-mail rebuilds the same URL, so a random value would have
+        to be re-minted (and the previous e-mail's link broken) on every send.
+        SECRET_KEY rotation invalidates these links, exactly as it already
+        invalidates sessions and reset tokens.
+        """
+        from flask import current_app
+
+        secret = current_app.config['SECRET_KEY']
+        message = f'unsubscribe:{self.id}'.encode('utf-8')
+        return hmac.new(secret.encode('utf-8'), message, hashlib.sha256).hexdigest()
+
     def generate_unsubscribe_token(self):
-        """Generate a unique unsubscribe token if not already set."""
-        if not self.unsubscribe_token:
-            self.unsubscribe_token = secrets.token_urlsafe(48)
-        return self.unsubscribe_token
+        """Return the RAW unsubscribe token, storing only its hash.
+
+        Callers put the return value in the e-mail link and never store it.
+        """
+        raw_token = self._derive_unsubscribe_token()
+        self.unsubscribe_token = User._hash_reset_token(raw_token)
+        return raw_token
+
+    @staticmethod
+    def find_by_unsubscribe_token(raw_token):
+        """Resolve a raw unsubscribe token to its user, or None.
+
+        Rows written before R4-24 hold the raw value; those are matched on the
+        legacy column and upgraded to a hash in place, so links already sitting
+        in users' inboxes keep working. Mirrors calendar_service's transparent
+        re-encryption.
+        """
+        if not raw_token:
+            return None
+
+        hashed = User._hash_reset_token(raw_token)
+        user = User.query.filter_by(unsubscribe_token=hashed).first()
+        if user:
+            return user
+
+        # The legacy path matches the column verbatim, so it must never be
+        # reached with a hash-shaped value — otherwise the stored hash itself
+        # would work as a link, which is precisely what R4-24 removes. Legacy
+        # tokens were secrets.token_urlsafe(48), whose alphabet is far wider
+        # than hex, so no real one is excluded here.
+        if _SHA256_HEX.fullmatch(raw_token):
+            return None
+
+        legacy_user = User.query.filter_by(unsubscribe_token=raw_token).first()
+        if legacy_user:
+            legacy_user.unsubscribe_token = hashed
+        return legacy_user
 
     def get_or_create_calendar_feed_secret(self):
         """Return the ICS-feed secret, creating it on first use (R8)."""
@@ -412,7 +476,7 @@ class User(UserMixin, db.Model):
         from app.utils import sign_upload_url
         return sign_upload_url(self.avatar)
 
-    def to_dict(self, include_private=False):
+    def to_dict(self, include_private=False, vehicle_count=None):
         """Convert to dictionary."""
         data = {
             'id': self.id,
@@ -448,7 +512,10 @@ class User(UserMixin, db.Model):
                 'set_at': self.security_questions_set_at.isoformat() if self.security_questions_set_at else None
             },
             'vehicle_limit': self.vehicle_limit,
-            'vehicle_count': self.vehicles.count(),
+            # R4-17: callers listing many users pass a pre-computed count so
+            # this does not issue one query per serialized user.
+            'vehicle_count': (self.vehicles.count() if vehicle_count is None
+                              else vehicle_count),
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
         
