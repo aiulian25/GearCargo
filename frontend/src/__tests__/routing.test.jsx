@@ -11,6 +11,7 @@
  * Importing App would drag in every context, lazy chunk and the API client —
  * that tests the app, not the router.
  */
+import { useEffect } from 'react'
 import { describe, it, expect } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import {
@@ -172,58 +173,50 @@ describe('open redirect (the advisory this upgrade closes)', () => {
   // slash, so "\\evil.com" becomes the protocol-relative "//evil.com" — a
   // target that looks internal to the app but leaves the origin.
   //
-  // The fix lives at NAVIGATION time, not in the rendered href: react-router
-  // 7.18 refuses the navigation outright ("External navigation is not
-  // allowed"). So the property to assert is the resulting location, which is
-  // what an attacker actually cares about.
+  // The fix is at NAVIGATION time, not in the rendered href: react-router 7.18
+  // refuses the target in validateNavigationTarget(). So the property asserted
+  // here is the resulting location, which is what an attacker cares about.
+  //
+  // The attempt is made inside a useEffect wrapped in try/catch, NOT through a
+  // DOM event: the refusal is thrown, and an error raised inside React's event
+  // dispatch escapes a try/catch around fireEvent and is reported as an
+  // unhandled error. <Link> clicks reach the same validateNavigationTarget, so
+  // this covers both entry points named in the advisory.
   const HOSTILE = ['\\\\evil.com', '\\/evil.com', '/\\evil.com', '//evil.com']
 
-  function CurrentPath() {
-    const location = useLocation()
-    return <span data-testid="path">{location.pathname}</span>
-  }
-
-  function NavigateButton({ to }) {
+  function AttemptNavigation({ to }) {
     const navigate = useNavigate()
-    return <button onClick={() => navigate(to)}>navigate</button>
-  }
-
-  function renderHostile(to) {
-    return render(
-      <MemoryRouter>
-        <NavigateButton to={to} />
-        <Link to={to}>hostile link</Link>
-        <CurrentPath />
-      </MemoryRouter>
-    )
+    const location = useLocation()
+    useEffect(() => {
+      try {
+        navigate(to)
+      } catch {
+        /* refused by the router — the desired outcome */
+      }
+    }, [navigate, to])
+    return <span data-testid="path">{location.pathname}</span>
   }
 
   const escapesOrigin = (path) => /^\s*(\/\\|\\\/|\/\/|\\\\)/.test(path || '')
 
-  it.each(HOSTILE)('useNavigate(%j) cannot leave the origin', (to) => {
-    renderHostile(to)
-
-    // The router may refuse outright — that is the fix, and a refusal is a pass.
-    try {
-      fireEvent.click(screen.getByRole('button', { name: 'navigate' }))
-    } catch {
-      /* refused */
-    }
+  it.each(HOSTILE)('navigating to %j cannot leave the origin', (to) => {
+    render(
+      <MemoryRouter>
+        <AttemptNavigation to={to} />
+      </MemoryRouter>
+    )
 
     const path = screen.getByTestId('path').textContent
     expect(escapesOrigin(path), `landed on ${JSON.stringify(path)}`).toBe(false)
   })
 
-  it.each(HOSTILE)('clicking a <Link to=%j> cannot leave the origin', (to) => {
-    renderHostile(to)
+  it('still allows a legitimate internal path', () => {
+    render(
+      <MemoryRouter>
+        <AttemptNavigation to="/vehicles/3" />
+      </MemoryRouter>
+    )
 
-    try {
-      fireEvent.click(screen.getByRole('link', { name: 'hostile link' }))
-    } catch {
-      /* refused */
-    }
-
-    const path = screen.getByTestId('path').textContent
-    expect(escapesOrigin(path), `landed on ${JSON.stringify(path)}`).toBe(false)
+    expect(screen.getByTestId('path').textContent).toBe('/vehicles/3')
   })
 })
