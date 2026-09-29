@@ -69,6 +69,18 @@ def _is_weak_secret(value) -> bool:
 # URL schemes redis.from_url understands for a session backend.
 REDIS_URL_SCHEMES = ('redis://', 'rediss://', 'unix://')
 
+# SQLAlchemy 2.1 loads psycopg 3 for a bare postgresql:// URL, but this app ships
+# psycopg2 (the entrypoint and migrate scripts import it directly), so the driver is
+# named explicitly. DATABASE_URL itself stays bare: libpq rejects the +psycopg2 form.
+POSTGRES_URL_PREFIX = 'postgresql://'
+POSTGRES_PSYCOPG2_URL_PREFIX = 'postgresql+psycopg2://'
+
+
+def _with_psycopg2_driver(database_url: str) -> str:
+    if not database_url.startswith(POSTGRES_URL_PREFIX):
+        return database_url
+    return POSTGRES_PSYCOPG2_URL_PREFIX + database_url[len(POSTGRES_URL_PREFIX):]
+
 
 def create_app(config_class=None):
     """Application factory pattern."""
@@ -83,6 +95,7 @@ def create_app(config_class=None):
     
     # Load configuration
     app.config.from_object(config_class or 'app.config.Config')
+    app.config['SQLALCHEMY_DATABASE_URI'] = _with_psycopg2_driver(app.config['SQLALCHEMY_DATABASE_URI'])
 
     # Configure general application logging: PII redaction + optional JSON
     # output for ingestion. Does not affect the dedicated security_audit log.
