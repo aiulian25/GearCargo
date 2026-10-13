@@ -114,7 +114,7 @@ export default function UpdatePrompt() {
       <div className="fixed top-4 left-4 right-4 md:left-auto md:right-4 md:max-w-sm z-50 animate-slide-down">
         <div className="bg-amber-500 rounded-xl p-4 shadow-xl">
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center text-white">
+            <div className="shrink-0 w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center text-white">
               {Icons.refresh}
             </div>
             
@@ -144,7 +144,7 @@ export default function UpdatePrompt() {
             
             <button
               onClick={handleDismissUpdate}
-              className="flex-shrink-0 text-white/60 hover:text-white transition-colors"
+              className="shrink-0 text-white/60 hover:text-white transition-colors"
               aria-label={t('common.close') || 'Close'}
             >
               {Icons.close}
@@ -161,7 +161,7 @@ export default function UpdatePrompt() {
       <div className="fixed top-4 left-4 right-4 md:left-auto md:right-4 md:max-w-sm z-50 animate-slide-down">
         <div className="bg-emerald-500 rounded-xl p-4 shadow-xl">
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center text-white">
+            <div className="shrink-0 w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center text-white">
               {Icons.info}
             </div>
             
@@ -176,7 +176,7 @@ export default function UpdatePrompt() {
             
             <button
               onClick={handleDismissOffline}
-              className="flex-shrink-0 text-white/60 hover:text-white transition-colors"
+              className="shrink-0 text-white/60 hover:text-white transition-colors"
               aria-label={t('common.close') || 'Close'}
             >
               {Icons.close}

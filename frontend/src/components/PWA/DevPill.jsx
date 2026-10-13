@@ -21,7 +21,7 @@ export default function DevPill() {
       className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold
                  bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 border border-indigo-500/30
                  hover:bg-indigo-500/25 transition-colors whitespace-nowrap
-                 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/50"
     >
       <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0" aria-hidden="true" />
       {t('update.devPill') || 'dev'}

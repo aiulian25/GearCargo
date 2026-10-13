@@ -34,15 +34,15 @@ export default function EmptyState({
   return (
     <div className="card text-center py-12 px-6 flex flex-col items-center" role="status" aria-live="polite">
       {typeof icon === 'string' ? (
-        <span className="material-icons-outlined icon-xl text-[var(--color-text-muted)] mb-3" aria-hidden="true">
+        <span className="material-icons-outlined icon-xl text-(--color-text-muted) mb-3" aria-hidden="true">
           {icon}
         </span>
       ) : (
-        <span className="text-[var(--color-text-muted)] mb-3" aria-hidden="true">{icon}</span>
+        <span className="text-(--color-text-muted) mb-3" aria-hidden="true">{icon}</span>
       )}
       {title && <h3 className="text-sm font-medium mb-1">{title}</h3>}
       {description && (
-        <p className="text-xs text-[var(--color-text-secondary)] mb-4 max-w-xs leading-relaxed">
+        <p className="text-xs text-(--color-text-secondary) mb-4 max-w-xs leading-relaxed">
           {description}
         </p>
       )}

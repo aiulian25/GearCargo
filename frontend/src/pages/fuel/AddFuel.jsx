@@ -117,7 +117,7 @@ export default function AddFuel() {
   return (
     <div className="pb-4">
       {/* Header */}
-      <div className="bg-[var(--color-bg-card)] border-b border-[var(--color-border)] px-4 py-3 flex items-center gap-3">
+      <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="btn-icon">
           <span className="material-icons-outlined icon-md">close</span>
         </button>
@@ -151,7 +151,7 @@ export default function AddFuel() {
         {/* Vehicle & Date */}
         <div className="card space-y-4">
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('common.vehicle') || 'Vehicle'} *
             </label>
             <select 
@@ -171,7 +171,7 @@ export default function AddFuel() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addFuel.date') || 'Date'} *
               </label>
               <input
@@ -182,7 +182,7 @@ export default function AddFuel() {
             </div>
             
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addFuel.odometer') || 'Odometer'} ({distUnit}) *
               </label>
               <input
@@ -203,11 +203,11 @@ export default function AddFuel() {
         
         {/* Fuel Details */}
         <div className="card space-y-4">
-          <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">{t('addFuel.fuelDetails') || 'Fuel Details'}</h3>
+          <h3 className="text-sm font-medium text-(--color-text-secondary)">{t('addFuel.fuelDetails') || 'Fuel Details'}</h3>
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {usesGallons(user) ? (t('addFuel.gallons') || 'Gallons') : (t('addFuel.liters') || 'Liters')} *
               </label>
               <input
@@ -226,7 +226,7 @@ export default function AddFuel() {
             </div>
             
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {usesGallons(user) ? (t('addFuel.pricePerGallon') || 'Price/Gallon') : (t('addFuel.pricePerLiter') || 'Price/Liter')} *
               </label>
               <input
@@ -246,14 +246,14 @@ export default function AddFuel() {
           </div>
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('addFuel.totalCost') || 'Total Cost'}
             </label>
             <input
               type="number" inputMode="decimal"
               step="0.01"
               {...register('total_cost')}
-              className="input bg-[var(--color-bg-tertiary)]"
+              className="input bg-(--color-bg-tertiary)"
               placeholder={t('addFuel.calculatedAuto') || 'Calculated automatically'}
             />
           </div>
@@ -263,7 +263,7 @@ export default function AddFuel() {
               type="checkbox"
               id="is_full_tank"
               {...register('is_full_tank')}
-              className="w-5 h-5 rounded border-[var(--color-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+              className="w-5 h-5 rounded-sm border-(--color-border) text-(--color-accent) focus:ring-(--color-accent)"
             />
             <label htmlFor="is_full_tank" className="text-sm">
               {t('addFuel.fullTank') || 'Full tank fill-up'}
@@ -273,11 +273,11 @@ export default function AddFuel() {
         
         {/* Additional */}
         <div className="card space-y-4">
-          <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">{t('addFuel.additional') || 'Additional'}</h3>
+          <h3 className="text-sm font-medium text-(--color-text-secondary)">{t('addFuel.additional') || 'Additional'}</h3>
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addFuel.fuelType') || 'Fuel Type'}
               </label>
               <select {...register('fuel_type')} className="input">
@@ -288,7 +288,7 @@ export default function AddFuel() {
             </div>
             
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addFuel.station') || 'Station'}
               </label>
               <input
@@ -301,7 +301,7 @@ export default function AddFuel() {
           </div>
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('addFuel.notes') || 'Notes'}
             </label>
             <textarea

@@ -120,34 +120,34 @@ function UserMenu({ user, onLogout }) {
     <div className="relative" ref={menuRef}>
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors"
+        className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-(--color-bg-tertiary) transition-colors"
       >
-        <span className="text-xs text-[var(--color-text-secondary)] hidden sm:block max-w-[100px] truncate">
+        <span className="text-xs text-(--color-text-secondary) hidden sm:block max-w-[100px] truncate">
           {user?.name}
         </span>
         {userAvatar ? (
           <img 
             src={userAvatar} 
             alt={user?.name} 
-            className="w-8 h-8 rounded-full object-cover ring-2 ring-[var(--color-border)]"
+            className="w-8 h-8 rounded-full object-cover ring-2 ring-(--color-border)"
           />
         ) : (
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--color-accent)] to-blue-700 flex items-center justify-center ring-2 ring-[var(--color-border)]">
+          <div className="w-8 h-8 rounded-full bg-linear-to-br from-(--color-accent) to-blue-700 flex items-center justify-center ring-2 ring-(--color-border)">
             <span className="text-sm font-semibold text-white">
               {userInitial}
             </span>
           </div>
         )}
-        <span className="text-[var(--color-text-muted)]">
+        <span className="text-(--color-text-muted)">
           {isOpen ? Icons.chevronUp : Icons.chevronDown}
         </span>
       </button>
       
       {/* Dropdown Menu */}
       {isOpen && (
-        <div className="absolute right-0 top-full mt-2 w-56 bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border)] shadow-xl shadow-black/20 overflow-hidden z-50">
+        <div className="absolute right-0 top-full mt-2 w-56 bg-(--color-bg-card) rounded-xl border border-(--color-border) shadow-xl shadow-black/20 overflow-hidden z-50">
           {/* User Info */}
-          <div className="p-4 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
+          <div className="p-4 border-b border-(--color-border) bg-(--color-bg-secondary)">
             <div className="flex items-center gap-3">
               {userAvatar ? (
                 <img 
@@ -156,17 +156,17 @@ function UserMenu({ user, onLogout }) {
                   className="w-10 h-10 rounded-full object-cover"
                 />
               ) : (
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--color-accent)] to-blue-700 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-full bg-linear-to-br from-(--color-accent) to-blue-700 flex items-center justify-center">
                   <span className="text-lg font-semibold text-white">
                     {userInitial}
                   </span>
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-[var(--color-text-primary)] truncate">
+                <p className="text-sm font-semibold text-(--color-text-primary) truncate">
                   {user?.name}
                 </p>
-                <p className="text-xs text-[var(--color-text-muted)] truncate">
+                <p className="text-xs text-(--color-text-muted) truncate">
                   {user?.email}
                 </p>
               </div>
@@ -178,7 +178,7 @@ function UserMenu({ user, onLogout }) {
             <NavLink
               to="/settings"
               onClick={() => setIsOpen(false)}
-              className="flex items-center gap-3 px-4 py-2.5 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)] transition-colors"
+              className="flex items-center gap-3 px-4 py-2.5 text-sm text-(--color-text-secondary) hover:bg-(--color-bg-tertiary) hover:text-(--color-text-primary) transition-colors"
             >
               {Icons.settings}
               {t('userMenu.settings')}
@@ -186,7 +186,7 @@ function UserMenu({ user, onLogout }) {
             <NavLink
               to="/settings"
               onClick={() => setIsOpen(false)}
-              className="flex items-center gap-3 px-4 py-2.5 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)] transition-colors"
+              className="flex items-center gap-3 px-4 py-2.5 text-sm text-(--color-text-secondary) hover:bg-(--color-bg-tertiary) hover:text-(--color-text-primary) transition-colors"
             >
               {Icons.help}
               {t('userMenu.helpSupport')}
@@ -194,7 +194,7 @@ function UserMenu({ user, onLogout }) {
           </div>
           
           {/* Logout */}
-          <div className="border-t border-[var(--color-border)] py-2">
+          <div className="border-t border-(--color-border) py-2">
             <button
               onClick={() => {
                 setIsOpen(false)
@@ -238,9 +238,9 @@ export default function AppLayout() {
   }
   
   return (
-    <div className="min-h-screen flex flex-col bg-[var(--color-bg-primary)]">
+    <div className="min-h-screen flex flex-col bg-(--color-bg-primary)">
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-[var(--color-bg-secondary)] border-b border-[var(--color-border)] safe-top">
+      <header className="sticky top-0 z-40 bg-(--color-bg-secondary) border-b border-(--color-border) safe-top">
         <div className="flex items-center justify-between px-4 h-14">
           {/* Logo */}
           <NavLink to="/" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
@@ -249,7 +249,7 @@ export default function AppLayout() {
               alt="GearCargo" 
               className="w-8 h-8 rounded-lg object-contain"
             />
-            <span className="font-bold text-base text-[var(--color-text-primary)]">
+            <span className="font-bold text-base text-(--color-text-primary)">
               GearCargo
             </span>
           </NavLink>
@@ -260,7 +260,7 @@ export default function AppLayout() {
             {/* Search button */}
             <button
               onClick={() => setSearchOpen(true)}
-              className="p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover,rgba(255,255,255,0.06))] transition-colors"
+              className="p-2 rounded-lg text-(--color-text-muted) hover:text-(--color-text-primary) hover:bg-(--color-bg-hover,rgba(255,255,255,0.06)) transition-colors"
               aria-label={t('search.title') || 'Search'}
               title={`${t('search.title') || 'Search'} (Ctrl+K)`}
             >
@@ -276,7 +276,7 @@ export default function AppLayout() {
       
       {/* Main Content */}
       <main className="flex-1 pb-16">
-        <div className="w-full max-w-2xl lg:max-w-screen-2xl 2xl:max-w-[1800px] mx-auto">
+        <div className="w-full max-w-2xl lg:max-w-(--breakpoint-2xl) 2xl:max-w-[1800px] mx-auto">
           {/* Suspense boundary for lazily-loaded route chunks (§2 code splitting).
               Placed inside the layout so the header + bottom nav stay visible
               while the next page's chunk loads — only the content area shows the
@@ -288,7 +288,7 @@ export default function AppLayout() {
       </main>
       
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-[var(--color-bg-secondary)] border-t border-[var(--color-border)] bottom-nav">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-(--color-bg-secondary) border-t border-(--color-border) bottom-nav">
         <div className="flex items-center justify-around h-14 max-w-lg mx-auto">
           {navItems.map((item) => {
             const isActive = item.path === '/' 
@@ -301,8 +301,8 @@ export default function AppLayout() {
                 to={item.path}
                 className={`flex flex-col items-center justify-center w-16 h-full touch-manipulation ${
                   isActive 
-                    ? 'text-[var(--color-accent)]' 
-                    : 'text-[var(--color-text-muted)]'
+                    ? 'text-(--color-accent)' 
+                    : 'text-(--color-text-muted)'
                 }`}
               >
                 {Icons[item.icon](isActive)}

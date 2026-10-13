@@ -166,51 +166,51 @@ export default function SetupSecurityQuestions() {
   }
   
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg-primary)] px-4 py-8">
+    <div className="min-h-screen flex items-center justify-center bg-(--color-bg-primary) px-4 py-8">
       <div className="max-w-lg w-full">
         {/* Step 1: Introduction */}
         {step === 1 && (
           <div className="text-center">
-            <div className="mx-auto h-20 w-20 bg-[var(--color-accent)]/10 rounded-full flex items-center justify-center mb-6">
-              <ShieldIcon className="h-10 w-10 text-[var(--color-accent)]" />
+            <div className="mx-auto h-20 w-20 bg-(--color-accent)/10 rounded-full flex items-center justify-center mb-6">
+              <ShieldIcon className="h-10 w-10 text-(--color-accent)" />
             </div>
             
-            <h1 className="text-2xl font-bold text-[var(--color-text-primary)] mb-3">
+            <h1 className="text-2xl font-bold text-(--color-text-primary) mb-3">
               {t('securityQuestions.welcomeTitle') || 'One More Step for Security'}
             </h1>
             
-            <p className="text-[var(--color-text-secondary)] mb-8">
+            <p className="text-(--color-text-secondary) mb-8">
               {t('securityQuestions.welcomeDescription') || 
                 'Set up security questions to help recover your account if you ever forget your password.'}
             </p>
             
             {/* Benefits */}
-            <div className="bg-[var(--color-bg-card)] rounded-xl p-6 mb-8 text-left border border-[var(--color-border)]">
-              <h3 className="font-medium mb-4 text-[var(--color-text-primary)]">
+            <div className="bg-(--color-bg-card) rounded-xl p-6 mb-8 text-left border border-(--color-border)">
+              <h3 className="font-medium mb-4 text-(--color-text-primary)">
                 {t('securityQuestions.whySetup') || 'Why set up security questions?'}
               </h3>
               <ul className="space-y-3">
                 <li className="flex items-start gap-3">
-                  <div className="mt-0.5 p-1 rounded bg-green-500/10">
+                  <div className="mt-0.5 p-1 rounded-sm bg-green-500/10">
                     <CheckIcon className="w-4 h-4 text-green-500" />
                   </div>
-                  <span className="text-sm text-[var(--color-text-secondary)]">
+                  <span className="text-sm text-(--color-text-secondary)">
                     {t('securityQuestions.benefit1') || 'Recover your account without email access'}
                   </span>
                 </li>
                 <li className="flex items-start gap-3">
-                  <div className="mt-0.5 p-1 rounded bg-green-500/10">
+                  <div className="mt-0.5 p-1 rounded-sm bg-green-500/10">
                     <CheckIcon className="w-4 h-4 text-green-500" />
                   </div>
-                  <span className="text-sm text-[var(--color-text-secondary)]">
+                  <span className="text-sm text-(--color-text-secondary)">
                     {t('securityQuestions.benefit2') || 'Additional layer of account protection'}
                   </span>
                 </li>
                 <li className="flex items-start gap-3">
-                  <div className="mt-0.5 p-1 rounded bg-green-500/10">
+                  <div className="mt-0.5 p-1 rounded-sm bg-green-500/10">
                     <CheckIcon className="w-4 h-4 text-green-500" />
                   </div>
-                  <span className="text-sm text-[var(--color-text-secondary)]">
+                  <span className="text-sm text-(--color-text-secondary)">
                     {t('securityQuestions.benefit3') || 'Quick and easy - takes less than a minute'}
                   </span>
                 </li>
@@ -220,7 +220,7 @@ export default function SetupSecurityQuestions() {
             <div className="space-y-3">
               <button
                 onClick={() => setStep(2)}
-                className="w-full bg-[var(--color-accent)] text-white py-3 px-6 rounded-xl font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                className="w-full bg-(--color-accent) text-white py-3 px-6 rounded-xl font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
               >
                 <QuestionIcon className="w-5 h-5" />
                 {t('securityQuestions.setUpNow') || 'Set Up Security Questions'}
@@ -228,7 +228,7 @@ export default function SetupSecurityQuestions() {
               
               <button
                 onClick={handleSkip}
-                className="w-full text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] py-2 text-sm transition-colors"
+                className="w-full text-(--color-text-muted) hover:text-(--color-text-secondary) py-2 text-sm transition-colors"
               >
                 {t('securityQuestions.skipForNow') || "Skip for now (you can do this later)"}
               </button>
@@ -240,13 +240,13 @@ export default function SetupSecurityQuestions() {
         {step === 2 && (
           <div>
             <div className="text-center mb-8">
-              <div className="mx-auto h-16 w-16 bg-[var(--color-accent)]/10 rounded-full flex items-center justify-center mb-4">
-                <QuestionIcon className="h-8 w-8 text-[var(--color-accent)]" />
+              <div className="mx-auto h-16 w-16 bg-(--color-accent)/10 rounded-full flex items-center justify-center mb-4">
+                <QuestionIcon className="h-8 w-8 text-(--color-accent)" />
               </div>
-              <h1 className="text-xl font-bold text-[var(--color-text-primary)] mb-2">
+              <h1 className="text-xl font-bold text-(--color-text-primary) mb-2">
                 {t('securityQuestions.chooseQuestions') || 'Choose Your Questions'}
               </h1>
-              <p className="text-sm text-[var(--color-text-muted)]">
+              <p className="text-sm text-(--color-text-muted)">
                 {t('securityQuestions.chooseDescription') || 'Pick questions with answers only you would know'}
               </p>
             </div>
@@ -261,10 +261,10 @@ export default function SetupSecurityQuestions() {
               {selectedQuestions.map((q, index) => (
                 <div 
                   key={index} 
-                  className="bg-[var(--color-bg-card)] rounded-xl p-4 border border-[var(--color-border)]"
+                  className="bg-(--color-bg-card) rounded-xl p-4 border border-(--color-border)"
                 >
                   <div className="flex items-center justify-between mb-3">
-                    <span className="text-sm font-medium text-[var(--color-text-primary)]">
+                    <span className="text-sm font-medium text-(--color-text-primary)">
                       {t('securityQuestions.question') || 'Question'} {index + 1}
                     </span>
                     {selectedQuestions.length > 2 && (
@@ -280,7 +280,7 @@ export default function SetupSecurityQuestions() {
                   <select
                     value={q.question}
                     onChange={(e) => handleQuestionChange(index, 'question', e.target.value)}
-                    className="w-full bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-3 py-2.5 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/50"
+                    className="w-full bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg px-3 py-2.5 text-sm mb-3 focus:outline-hidden focus:ring-2 focus:ring-(--color-accent)/50"
                   >
                     <option value="">{t('securityQuestions.selectQuestion') || 'Select a question...'}</option>
                     {availableQuestions
@@ -295,7 +295,7 @@ export default function SetupSecurityQuestions() {
                     value={q.answer}
                     onChange={(e) => handleQuestionChange(index, 'answer', e.target.value)}
                     placeholder={t('securityQuestions.yourAnswer') || 'Your answer...'}
-                    className="w-full bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/50"
+                    className="w-full bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg px-3 py-2.5 text-sm focus:outline-hidden focus:ring-2 focus:ring-(--color-accent)/50"
                   />
                 </div>
               ))}
@@ -303,7 +303,7 @@ export default function SetupSecurityQuestions() {
               {selectedQuestions.length < 5 && (
                 <button
                   onClick={handleAddQuestion}
-                  className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-[var(--color-border)] rounded-xl text-sm text-[var(--color-text-muted)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] transition-colors"
+                  className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-(--color-border) rounded-xl text-sm text-(--color-text-muted) hover:border-(--color-accent) hover:text-(--color-accent) transition-colors"
                 >
                   <PlusIcon className="w-4 h-4" />
                   {t('securityQuestions.addAnother') || 'Add another question (optional)'}
@@ -314,7 +314,7 @@ export default function SetupSecurityQuestions() {
             <div className="flex gap-3">
               <button
                 onClick={() => setStep(1)}
-                className="flex-1 py-3 border border-[var(--color-border)] rounded-xl text-sm font-medium hover:bg-[var(--color-bg-tertiary)] transition-colors"
+                className="flex-1 py-3 border border-(--color-border) rounded-xl text-sm font-medium hover:bg-(--color-bg-tertiary) transition-colors"
                 disabled={isLoading}
               >
                 {t('common.back') || 'Back'}
@@ -322,7 +322,7 @@ export default function SetupSecurityQuestions() {
               <button
                 onClick={handleSubmit}
                 disabled={!isQuestionsValid() || isLoading}
-                className="flex-1 bg-[var(--color-accent)] text-white py-3 rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="flex-1 bg-(--color-accent) text-white py-3 rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {isLoading ? (
                   <>
@@ -354,12 +354,12 @@ export default function SetupSecurityQuestions() {
               {t('securityQuestions.allSet') || "You're All Set!"}
             </h1>
             
-            <p className="text-[var(--color-text-secondary)] mb-6">
+            <p className="text-(--color-text-secondary) mb-6">
               {t('securityQuestions.successMessage') || 
                 'Your security questions have been saved. You can use them to recover your account if needed.'}
             </p>
             
-            <p className="text-sm text-[var(--color-text-muted)]">
+            <p className="text-sm text-(--color-text-muted)">
               {t('securityQuestions.redirecting') || 'Redirecting to dashboard...'}
             </p>
           </div>

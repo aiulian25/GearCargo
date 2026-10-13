@@ -122,17 +122,17 @@ export default function MaintenanceCleanup() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-medium text-[var(--color-text-primary)]">
+          <h3 className="text-sm font-medium text-(--color-text-primary)">
             {t('admin.maintenance') || 'Maintenance'}
           </h3>
-          <p className="text-xs text-[var(--color-text-muted)] mt-1">
+          <p className="text-xs text-(--color-text-muted) mt-1">
             {t('admin.maintenanceDesc') || 'Clean up old data and free disk space'}
           </p>
         </div>
         <button
           onClick={loadPreview}
           disabled={previewing}
-          className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors disabled:opacity-50"
+          className="p-2 text-(--color-text-secondary) hover:text-(--color-accent) rounded-lg hover:bg-(--color-bg-tertiary) transition-colors disabled:opacity-50"
           title={t('common.refresh') || 'Refresh'}
         >
           <span className={previewing ? 'animate-spin' : ''}>
@@ -162,8 +162,8 @@ export default function MaintenanceCleanup() {
 
       {/* Preview Items */}
       {previewing ? (
-        <div className="text-center py-8 text-[var(--color-text-muted)]">
-          <div className="animate-spin w-8 h-8 mx-auto mb-2 border-2 border-[var(--color-accent)] border-t-transparent rounded-full"></div>
+        <div className="text-center py-8 text-(--color-text-muted)">
+          <div className="animate-spin w-8 h-8 mx-auto mb-2 border-2 border-(--color-accent) border-t-transparent rounded-full"></div>
           <p className="text-sm">{t('common.loading') || 'Loading...'}</p>
         </div>
       ) : preview ? (
@@ -173,20 +173,20 @@ export default function MaintenanceCleanup() {
               key={item.type}
               className={`p-3 rounded-lg border ${
                 item.count > 0 
-                  ? 'bg-[var(--color-bg-tertiary)] border-[var(--color-border)]' 
-                  : 'bg-[var(--color-bg-secondary)] border-transparent opacity-60'
+                  ? 'bg-(--color-bg-tertiary) border-(--color-border)' 
+                  : 'bg-(--color-bg-secondary) border-transparent opacity-60'
               }`}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <span className={item.count > 0 ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)]'}>
+                  <span className={item.count > 0 ? 'text-(--color-accent)' : 'text-(--color-text-muted)'}>
                     {getTypeIcon(item.type)}
                   </span>
                   <div>
-                    <p className="text-sm font-medium text-[var(--color-text-primary)]">
+                    <p className="text-sm font-medium text-(--color-text-primary)">
                       {t(`admin.cleanup.${item.type}`) || item.label}
                     </p>
-                    <p className="text-xs text-[var(--color-text-muted)]">
+                    <p className="text-xs text-(--color-text-muted)">
                       {item.type === 'old_backups' && (t('admin.cleanup.backupsDesc') || 'Backup files older than 30 days')}
                       {item.type === 'old_activity_logs' && (t('admin.cleanup.logsDesc') || 'Activity logs older than 90 days')}
                       {item.type === 'orphaned_attachments' && (t('admin.cleanup.orphansDesc') || 'Files without database records')}
@@ -194,11 +194,11 @@ export default function MaintenanceCleanup() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className={`text-sm font-medium ${item.count > 0 ? 'text-[var(--color-text-primary)]' : 'text-[var(--color-text-muted)]'}`}>
+                  <p className={`text-sm font-medium ${item.count > 0 ? 'text-(--color-text-primary)' : 'text-(--color-text-muted)'}`}>
                     {item.count} {t('admin.items') || 'items'}
                   </p>
                   {item.size > 0 && (
-                    <p className="text-xs text-[var(--color-text-muted)]">
+                    <p className="text-xs text-(--color-text-muted)">
                       {formatBytes(item.size)}
                     </p>
                   )}
@@ -209,17 +209,17 @@ export default function MaintenanceCleanup() {
 
           {/* Total */}
           {hasItemsToClean && (
-            <div className="p-3 bg-[var(--color-accent)]/10 border border-[var(--color-accent)]/20 rounded-lg">
+            <div className="p-3 bg-(--color-accent)/10 border border-(--color-accent)/20 rounded-lg">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-[var(--color-text-primary)]">
+                <span className="text-sm font-medium text-(--color-text-primary)">
                   {t('admin.totalToClean') || 'Total to clean'}
                 </span>
                 <div className="text-right">
-                  <span className="text-sm font-bold text-[var(--color-accent)]">
+                  <span className="text-sm font-bold text-(--color-accent)">
                     {preview.total_count} {t('admin.items') || 'items'}
                   </span>
                   {preview.total_size > 0 && (
-                    <span className="text-xs text-[var(--color-text-muted)] ml-2">
+                    <span className="text-xs text-(--color-text-muted) ml-2">
                       ({formatBytes(preview.total_size)})
                     </span>
                   )}
@@ -233,7 +233,7 @@ export default function MaintenanceCleanup() {
       {/* Cleanup Button */}
       <div className="pt-2">
         {!hasItemsToClean ? (
-          <div className="text-center py-4 text-[var(--color-text-muted)]">
+          <div className="text-center py-4 text-(--color-text-muted)">
             <span className="text-green-500 mr-2">{Icons.check}</span>
             <span className="text-sm">{t('admin.nothingToClean') || 'Nothing to clean up!'}</span>
           </div>
@@ -246,7 +246,7 @@ export default function MaintenanceCleanup() {
             <div className="flex gap-2">
               <button
                 onClick={() => setConfirmCleanup(false)}
-                className="flex-1 py-2 px-4 text-sm font-medium text-[var(--color-text-secondary)] bg-[var(--color-bg-tertiary)] rounded-lg hover:bg-[var(--color-bg-secondary)] transition-colors"
+                className="flex-1 py-2 px-4 text-sm font-medium text-(--color-text-secondary) bg-(--color-bg-tertiary) rounded-lg hover:bg-(--color-bg-secondary) transition-colors"
               >
                 {t('common.cancel') || 'Cancel'}
               </button>
@@ -273,7 +273,7 @@ export default function MaintenanceCleanup() {
           <button
             onClick={handleCleanup}
             disabled={loading || previewing}
-            className="w-full py-3 px-4 text-sm font-medium text-white bg-[var(--color-accent)] rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full py-3 px-4 text-sm font-medium text-white bg-(--color-accent) rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {Icons.trash}
             {t('admin.runCleanup') || 'Run Cleanup'}
@@ -282,7 +282,7 @@ export default function MaintenanceCleanup() {
       </div>
 
       {/* Info */}
-      <div className="text-xs text-[var(--color-text-muted)] space-y-1 pt-2 border-t border-[var(--color-border)]">
+      <div className="text-xs text-(--color-text-muted) space-y-1 pt-2 border-t border-(--color-border)">
         <p>• {t('admin.cleanup.backupRetention') || 'Backups are kept for 30 days'}</p>
         <p>• {t('admin.cleanup.logRetention') || 'Activity logs are kept for 90 days'}</p>
         <p>• {t('admin.cleanup.orphanInfo') || 'Orphaned files are attachment files without database records'}</p>

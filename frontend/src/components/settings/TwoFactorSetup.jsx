@@ -91,14 +91,14 @@ const StepIndicator = ({ currentStep, totalSteps, t }) => {
             currentStep > step.num 
               ? 'bg-green-500 text-white' 
               : currentStep === step.num 
-                ? 'bg-[var(--color-accent)] text-white' 
-                : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]'
+                ? 'bg-(--color-accent) text-white' 
+                : 'bg-(--color-bg-tertiary) text-(--color-text-muted)'
           }`}>
             {currentStep > step.num ? Icons.check : step.num}
           </div>
           {idx < totalSteps - 1 && (
             <div className={`w-8 h-0.5 mx-1 ${
-              currentStep > step.num ? 'bg-green-500' : 'bg-[var(--color-bg-tertiary)]'
+              currentStep > step.num ? 'bg-green-500' : 'bg-(--color-bg-tertiary)'
             }`} />
           )}
         </div>
@@ -393,17 +393,17 @@ export default function TwoFactorSetup({ isOpen, onClose, onSuccess, isEnabled =
   if (!isOpen) return null
   
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-[var(--color-bg-card)] rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+      <div className="bg-(--color-bg-card) rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="sticky top-0 bg-[var(--color-bg-card)] px-6 py-4 border-b border-[var(--color-border)] flex items-center justify-between">
+        <div className="sticky top-0 bg-(--color-bg-card) px-6 py-4 border-b border-(--color-border) flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-[var(--color-accent)]/10 flex items-center justify-center text-[var(--color-accent)]">
+            <div className="w-10 h-10 rounded-full bg-(--color-accent)/10 flex items-center justify-center text-(--color-accent)">
               {Icons.shield}
             </div>
             <div>
               <h2 className="font-semibold">{t('twoFactor.title') || 'Two-Factor Authentication'}</h2>
-              <p className="text-xs text-[var(--color-text-muted)]">
+              <p className="text-xs text-(--color-text-muted)">
                 {isEnabled 
                   ? (t('twoFactor.manage') || 'Manage your 2FA settings') 
                   : (t('twoFactor.setup') || 'Secure your account')}
@@ -432,7 +432,7 @@ export default function TwoFactorSetup({ isOpen, onClose, onSuccess, isEnabled =
                   <span className="text-green-500">{Icons.check}</span>
                 </div>
                 <p className="text-green-500 font-medium">{t('twoFactor.enabled') || '2FA is enabled'}</p>
-                <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                <p className="text-xs text-(--color-text-muted) mt-1">
                   {t('twoFactor.accountProtected') || 'Your account is protected with two-factor authentication'}
                 </p>
               </div>
@@ -463,7 +463,7 @@ export default function TwoFactorSetup({ isOpen, onClose, onSuccess, isEnabled =
                 <p className="text-sm text-red-500 font-medium mb-2">
                   {Icons.warning} {t('twoFactor.disableWarning') || 'Warning'}
                 </p>
-                <p className="text-xs text-[var(--color-text-muted)]">
+                <p className="text-xs text-(--color-text-muted)">
                   {t('twoFactor.disableDescription') || 'Disabling 2FA will make your account less secure. Confirm with your password and a current authentication code.'}
                 </p>
               </div>
@@ -500,7 +500,7 @@ export default function TwoFactorSetup({ isOpen, onClose, onSuccess, isEnabled =
                   spellCheck={false}
                   required
                 />
-                <p className="mt-2 text-xs text-[var(--color-text-muted)]">
+                <p className="mt-2 text-xs text-(--color-text-muted)">
                   {t('twoFactor.disableCodeHint') || 'Enter a 6-digit code from your authenticator app, or one of your backup codes.'}
                 </p>
               </div>
@@ -531,7 +531,7 @@ export default function TwoFactorSetup({ isOpen, onClose, onSuccess, isEnabled =
                 <p className="text-sm text-amber-500 font-medium mb-2">
                   {Icons.warning} {t('twoFactor.regenerateWarning') || 'Warning'}
                 </p>
-                <p className="text-xs text-[var(--color-text-muted)]">
+                <p className="text-xs text-(--color-text-muted)">
                   {t('twoFactor.regenerateDescription') || 'This will invalidate all existing backup codes. Make sure to save the new ones.'}
                 </p>
               </div>
@@ -576,14 +576,14 @@ export default function TwoFactorSetup({ isOpen, onClose, onSuccess, isEnabled =
                 <p className="text-sm text-amber-500 font-medium mb-2">
                   {Icons.key} {t('twoFactor.newBackupCodes') || 'New Backup Codes'}
                 </p>
-                <p className="text-xs text-[var(--color-text-muted)]">
+                <p className="text-xs text-(--color-text-muted)">
                   {t('twoFactor.saveNewCodes') || 'Save these new backup codes. Your old codes are no longer valid.'}
                 </p>
               </div>
               
-              <div className="grid grid-cols-2 gap-2 p-4 bg-[var(--color-bg-tertiary)] rounded-xl">
+              <div className="grid grid-cols-2 gap-2 p-4 bg-(--color-bg-tertiary) rounded-xl">
                 {backupCodes.map((code, index) => (
-                  <div key={index} className="font-mono text-sm p-2 bg-[var(--color-bg-secondary)] rounded text-center">
+                  <div key={index} className="font-mono text-sm p-2 bg-(--color-bg-secondary) rounded-sm text-center">
                     {code}
                   </div>
                 ))}
@@ -622,14 +622,14 @@ export default function TwoFactorSetup({ isOpen, onClose, onSuccess, isEnabled =
               
               <div className="text-center">
                 <h3 className="font-medium mb-2">{t('twoFactor.scanQRCode') || 'Scan QR Code'}</h3>
-                <p className="text-xs text-[var(--color-text-muted)] mb-4">
+                <p className="text-xs text-(--color-text-muted) mb-4">
                   {t('twoFactor.scanInstructions') || 'Use an authenticator app like Google Authenticator, Authy, or 1Password to scan this QR code'}
                 </p>
               </div>
               
               {loading ? (
                 <div className="flex justify-center py-8">
-                  <div className="animate-spin w-8 h-8 border-2 border-[var(--color-accent)] border-t-transparent rounded-full" />
+                  <div className="animate-spin w-8 h-8 border-2 border-(--color-accent) border-t-transparent rounded-full" />
                 </div>
               ) : qrCode ? (
                 <>
@@ -637,15 +637,15 @@ export default function TwoFactorSetup({ isOpen, onClose, onSuccess, isEnabled =
                     <img src={qrCode} alt="2FA QR Code" className="w-48 h-48" />
                   </div>
                   
-                  <div className="p-3 bg-[var(--color-bg-tertiary)] rounded-xl">
-                    <p className="text-xs text-[var(--color-text-muted)] mb-2 text-center">
+                  <div className="p-3 bg-(--color-bg-tertiary) rounded-xl">
+                    <p className="text-xs text-(--color-text-muted) mb-2 text-center">
                       {t('twoFactor.cantScan') || "Can't scan? Enter this code manually:"}
                     </p>
                     <div className="flex items-center gap-2 justify-center">
-                      <code className="font-mono text-sm bg-[var(--color-bg-secondary)] px-3 py-1 rounded">
+                      <code className="font-mono text-sm bg-(--color-bg-secondary) px-3 py-1 rounded-sm">
                         {secret}
                       </code>
-                      <button onClick={copySecret} className="btn-icon text-[var(--color-text-secondary)]">
+                      <button onClick={copySecret} className="btn-icon text-(--color-text-secondary)">
                         {Icons.copy}
                       </button>
                     </div>
@@ -670,7 +670,7 @@ export default function TwoFactorSetup({ isOpen, onClose, onSuccess, isEnabled =
               
               <div className="text-center">
                 <h3 className="font-medium mb-2">{t('twoFactor.verifySetup') || 'Verify Setup'}</h3>
-                <p className="text-xs text-[var(--color-text-muted)] mb-4">
+                <p className="text-xs text-(--color-text-muted) mb-4">
                   {t('twoFactor.enterCode') || 'Enter the 6-digit code from your authenticator app'}
                 </p>
               </div>
@@ -720,7 +720,7 @@ export default function TwoFactorSetup({ isOpen, onClose, onSuccess, isEnabled =
               
               <div className="text-center">
                 <h3 className="font-medium mb-2">{t('twoFactor.saveBackupCodes') || 'Save Backup Codes'}</h3>
-                <p className="text-xs text-[var(--color-text-muted)] mb-4">
+                <p className="text-xs text-(--color-text-muted) mb-4">
                   {t('twoFactor.backupCodesDescription') || 'Save these codes in a safe place. You can use them to access your account if you lose your phone.'}
                 </p>
               </div>
@@ -730,14 +730,14 @@ export default function TwoFactorSetup({ isOpen, onClose, onSuccess, isEnabled =
                   {Icons.warning}
                   {t('twoFactor.importantWarning') || 'Important'}
                 </p>
-                <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                <p className="text-xs text-(--color-text-muted) mt-1">
                   {t('twoFactor.codesOnlyOnce') || 'These codes will only be shown once. Download them now!'}
                 </p>
               </div>
               
-              <div className="grid grid-cols-2 gap-2 p-4 bg-[var(--color-bg-tertiary)] rounded-xl">
+              <div className="grid grid-cols-2 gap-2 p-4 bg-(--color-bg-tertiary) rounded-xl">
                 {backupCodes.map((code, index) => (
-                  <div key={index} className="font-mono text-sm p-2 bg-[var(--color-bg-secondary)] rounded text-center">
+                  <div key={index} className="font-mono text-sm p-2 bg-(--color-bg-secondary) rounded-sm text-center">
                     {code}
                   </div>
                 ))}
@@ -789,7 +789,7 @@ export default function TwoFactorSetup({ isOpen, onClose, onSuccess, isEnabled =
               <h3 className="font-medium text-lg text-green-500">
                 {t('twoFactor.setupComplete') || '2FA Setup Complete!'}
               </h3>
-              <p className="text-sm text-[var(--color-text-muted)]">
+              <p className="text-sm text-(--color-text-muted)">
                 {t('twoFactor.accountSecured') || 'Your account is now protected with two-factor authentication'}
               </p>
             </div>

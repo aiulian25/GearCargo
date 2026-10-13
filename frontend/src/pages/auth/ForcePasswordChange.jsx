@@ -135,17 +135,17 @@ export default function ForcePasswordChange() {
   }
   
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg-primary)] px-4">
+    <div className="min-h-screen flex items-center justify-center bg-(--color-bg-primary) px-4">
       <div className="max-w-md w-full space-y-8">
         {/* Header */}
         <div className="text-center">
           <div className="mx-auto h-16 w-16 bg-amber-500/10 rounded-full flex items-center justify-center">
             <ShieldCheckIcon className="h-8 w-8 text-amber-500" />
           </div>
-          <h2 className="mt-6 text-3xl font-extrabold text-[var(--color-text-primary)]">
+          <h2 className="mt-6 text-3xl font-extrabold text-(--color-text-primary)">
             {t('auth.passwordChangeRequired') || 'Password Change Required'}
           </h2>
-          <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
+          <p className="mt-2 text-sm text-(--color-text-secondary)">
             {t('auth.passwordChangeDescription') || 'For security reasons, you must change your password before continuing.'}
           </p>
         </div>
@@ -161,7 +161,7 @@ export default function ForcePasswordChange() {
           <div className="space-y-4">
             {/* Current Password */}
             <div>
-              <label htmlFor="current-password" className="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">
+              <label htmlFor="current-password" className="block text-sm font-medium text-(--color-text-secondary) mb-1">
                 {t('profile.currentPassword') || 'Current Password'}
               </label>
               <div className="relative">
@@ -171,13 +171,13 @@ export default function ForcePasswordChange() {
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
                   required
-                  className="w-full px-3 py-2 bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] pr-10"
+                  className="w-full px-3 py-2 bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg text-(--color-text-primary) focus:outline-hidden focus:ring-2 focus:ring-(--color-accent) pr-10"
                   placeholder={t('profile.enterCurrentPassword') || 'Enter current password'}
                 />
                 <button
                   type="button"
                   onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-(--color-text-tertiary) hover:text-(--color-text-secondary)"
                 >
                   {showCurrentPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
                 </button>
@@ -186,7 +186,7 @@ export default function ForcePasswordChange() {
             
             {/* New Password */}
             <div>
-              <label htmlFor="new-password" className="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">
+              <label htmlFor="new-password" className="block text-sm font-medium text-(--color-text-secondary) mb-1">
                 {t('profile.newPassword') || 'New Password'}
               </label>
               <div className="relative">
@@ -196,13 +196,13 @@ export default function ForcePasswordChange() {
                   value={newPassword}
                   onChange={handleNewPasswordChange}
                   required
-                  className="w-full px-3 py-2 bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] pr-10"
+                  className="w-full px-3 py-2 bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg text-(--color-text-primary) focus:outline-hidden focus:ring-2 focus:ring-(--color-accent) pr-10"
                   placeholder={t('profile.enterNewPassword') || 'Enter new password'}
                 />
                 <button
                   type="button"
                   onClick={() => setShowNewPassword(!showNewPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-(--color-text-tertiary) hover:text-(--color-text-secondary)"
                 >
                   {showNewPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
                 </button>
@@ -212,7 +212,7 @@ export default function ForcePasswordChange() {
               {passwordStrength && (
                 <div className="mt-2">
                   <div className="flex items-center gap-2">
-                    <div className="flex-1 h-2 bg-[var(--color-bg-tertiary)] rounded-full overflow-hidden">
+                    <div className="flex-1 h-2 bg-(--color-bg-tertiary) rounded-full overflow-hidden">
                       <div 
                         className={`h-full transition-all ${getStrengthColor(passwordStrength.strength)}`}
                         style={{ width: `${(passwordStrength.score / 5) * 100}%` }}
@@ -228,7 +228,7 @@ export default function ForcePasswordChange() {
             
             {/* Confirm Password */}
             <div>
-              <label htmlFor="confirm-password" className="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">
+              <label htmlFor="confirm-password" className="block text-sm font-medium text-(--color-text-secondary) mb-1">
                 {t('profile.confirmPassword') || 'Confirm Password'}
               </label>
               <div className="relative">
@@ -238,13 +238,13 @@ export default function ForcePasswordChange() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
-                  className="w-full px-3 py-2 bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] pr-10"
+                  className="w-full px-3 py-2 bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg text-(--color-text-primary) focus:outline-hidden focus:ring-2 focus:ring-(--color-accent) pr-10"
                   placeholder={t('profile.confirmNewPassword') || 'Confirm new password'}
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-(--color-text-tertiary) hover:text-(--color-text-secondary)"
                 >
                   {showConfirmPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
                 </button>
@@ -267,7 +267,7 @@ export default function ForcePasswordChange() {
             <button
               type="submit"
               disabled={isSubmitting || !currentPassword || !newPassword || !confirmPassword || newPassword !== confirmPassword}
-              className="w-full flex justify-center items-center gap-2 py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--color-accent)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="w-full flex justify-center items-center gap-2 py-2.5 px-4 border border-transparent rounded-lg shadow-xs text-sm font-medium text-white bg-(--color-accent) hover:bg-(--color-accent-hover) focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-(--color-accent) disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {isSubmitting ? (
                 <>
@@ -285,7 +285,7 @@ export default function ForcePasswordChange() {
             <button
               type="button"
               onClick={handleLogout}
-              className="w-full py-2.5 px-4 border border-[var(--color-border)] rounded-lg text-sm font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] transition-colors"
+              className="w-full py-2.5 px-4 border border-(--color-border) rounded-lg text-sm font-medium text-(--color-text-secondary) hover:bg-(--color-bg-tertiary) transition-colors"
             >
               {t('common.logout') || 'Logout'}
             </button>
@@ -294,8 +294,8 @@ export default function ForcePasswordChange() {
         
         {/* User Info */}
         {user && (
-          <div className="text-center text-sm text-[var(--color-text-tertiary)]">
-            {t('auth.loggedInAs') || 'Logged in as'}: <span className="text-[var(--color-text-secondary)]">{user.email}</span>
+          <div className="text-center text-sm text-(--color-text-tertiary)">
+            {t('auth.loggedInAs') || 'Logged in as'}: <span className="text-(--color-text-secondary)">{user.email}</span>
           </div>
         )}
       </div>

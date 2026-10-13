@@ -49,7 +49,7 @@ export default function SharedReport() {
 
   // Themed container shared by all states.
   const Shell = ({ children }) => (
-    <div className="min-h-screen bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] px-4 py-8">
+    <div className="min-h-screen bg-(--color-bg-primary) text-(--color-text-primary) px-4 py-8">
       <div className="max-w-2xl mx-auto">{children}</div>
     </div>
   )
@@ -58,7 +58,7 @@ export default function SharedReport() {
     return (
       <Shell>
         <div className="flex items-center justify-center min-h-[60vh]" role="status" aria-label={t('common.loading') || 'Loading...'}>
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-[var(--color-accent)] border-t-transparent" />
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-(--color-accent) border-t-transparent" />
         </div>
       </Shell>
     )
@@ -73,9 +73,9 @@ export default function SharedReport() {
     return (
       <Shell>
         <div className="flex flex-col items-center justify-center text-center min-h-[60vh] gap-3">
-          <div className="w-16 h-16 rounded-2xl bg-[var(--color-bg-secondary)] flex items-center justify-center text-3xl" aria-hidden="true">🔒</div>
+          <div className="w-16 h-16 rounded-2xl bg-(--color-bg-secondary) flex items-center justify-center text-3xl" aria-hidden="true">🔒</div>
           <h1 className="text-lg font-semibold">{t('sharedReport.unavailableTitle') || 'Report unavailable'}</h1>
-          <p className="text-sm text-[var(--color-text-secondary)] max-w-xs">{msg}</p>
+          <p className="text-sm text-(--color-text-secondary) max-w-xs">{msg}</p>
         </div>
       </Shell>
     )
@@ -89,21 +89,21 @@ export default function SharedReport() {
     <Shell>
       {/* Header */}
       <header className="mb-6">
-        <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">{d.app_name || 'GearCargo'}</p>
+        <p className="text-xs text-(--color-text-muted) uppercase tracking-wide">{d.app_name || 'GearCargo'}</p>
         <h1 className="text-xl font-bold mt-1">{d.label || (t('sharedReport.title') || 'Expense Report')}</h1>
-        <p className="text-sm text-[var(--color-text-secondary)] mt-1">
+        <p className="text-sm text-(--color-text-secondary) mt-1">
           {d.period_label} · {fmtDate(d.start_date)} – {fmtDate(d.end_date)}
         </p>
-        <span className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-full text-2xs bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]">
+        <span className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-full text-2xs bg-(--color-bg-tertiary) text-(--color-text-secondary)">
           {t('sharedReport.readOnly') || 'Read-only shared report'}
         </span>
       </header>
 
       {/* Grand total */}
-      <div className="bg-[var(--color-bg-secondary)] rounded-2xl p-6 mb-4">
-        <p className="text-sm text-[var(--color-text-secondary)] mb-1">{t('sharedReport.total') || 'Total expenses'}</p>
+      <div className="bg-(--color-bg-secondary) rounded-2xl p-6 mb-4">
+        <p className="text-sm text-(--color-text-secondary) mb-1">{t('sharedReport.total') || 'Total expenses'}</p>
         <p className="text-3xl font-bold">{fmtMoney(d.currency, grand)}</p>
-        <p className="text-xs text-[var(--color-text-muted)] mt-1">
+        <p className="text-xs text-(--color-text-muted) mt-1">
           {(t('sharedReport.entriesVehicles') || '{entries} entries · {vehicles} vehicle(s)')
             .replace('{entries}', String(d.entry_counts?.total || 0))
             .replace('{vehicles}', String(d.vehicle_count || 0))}
@@ -112,15 +112,15 @@ export default function SharedReport() {
 
       {/* By category */}
       {cats.length > 0 && (
-        <div className="bg-[var(--color-bg-secondary)] rounded-2xl p-6 mb-4">
-          <h2 className="text-sm font-medium text-[var(--color-text-secondary)] mb-3">{t('charts.byCategory') || 'By Category'}</h2>
+        <div className="bg-(--color-bg-secondary) rounded-2xl p-6 mb-4">
+          <h2 className="text-sm font-medium text-(--color-text-secondary) mb-3">{t('charts.byCategory') || 'By Category'}</h2>
           <ul className="space-y-2">
             {cats.map((k) => (
               <li key={k} className="flex items-center justify-between gap-3">
                 <span className="flex items-center gap-2 min-w-0">
                   <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: CAT_COLOR[k] }} />
                   <span className="text-sm truncate">{t(`charts.${k}`) || k}</span>
-                  <span className="text-2xs text-[var(--color-text-muted)] shrink-0">({d.entry_counts?.[k] || 0})</span>
+                  <span className="text-2xs text-(--color-text-muted) shrink-0">({d.entry_counts?.[k] || 0})</span>
                 </span>
                 <span className="text-sm font-medium shrink-0">{fmtMoney(d.currency, d.totals?.[k] || 0)}</span>
               </li>
@@ -131,11 +131,11 @@ export default function SharedReport() {
 
       {/* Vehicles */}
       {d.vehicles?.length > 0 && (
-        <div className="bg-[var(--color-bg-secondary)] rounded-2xl p-6 mb-4">
-          <h2 className="text-sm font-medium text-[var(--color-text-secondary)] mb-3">{t('sharedReport.vehicles') || 'Vehicles'}</h2>
+        <div className="bg-(--color-bg-secondary) rounded-2xl p-6 mb-4">
+          <h2 className="text-sm font-medium text-(--color-text-secondary) mb-3">{t('sharedReport.vehicles') || 'Vehicles'}</h2>
           <ul className="flex flex-wrap gap-2">
             {d.vehicles.map((v, i) => (
-              <li key={i} className="px-3 py-1.5 rounded-lg bg-[var(--color-bg-tertiary)] text-sm">{v.name}</li>
+              <li key={i} className="px-3 py-1.5 rounded-lg bg-(--color-bg-tertiary) text-sm">{v.name}</li>
             ))}
           </ul>
         </div>
@@ -150,7 +150,7 @@ export default function SharedReport() {
         {t('sharedReport.downloadPdf') || 'Download PDF'}
       </a>
 
-      <p className="text-2xs text-[var(--color-text-muted)] text-center mt-4">
+      <p className="text-2xs text-(--color-text-muted) text-center mt-4">
         {d.expires_at
           ? (t('sharedReport.expiresOn') || 'This link expires on {date}').replace('{date}', fmtDate(d.expires_at))
           : ''}

@@ -14,7 +14,7 @@ const Ic = {
 }
 
 const TAG_STYLE = {
-  new: 'bg-[var(--color-accent)]/15 text-[var(--color-accent)]',
+  new: 'bg-(--color-accent)/15 text-(--color-accent)',
   fix: 'bg-green-500/15 text-green-500',
   security: 'bg-amber-500/15 text-amber-500',
 }
@@ -46,20 +46,20 @@ export default function UpdateModal() {
   const onApply = async () => { setApplying(true); await applyUpdate() }
 
   return (
-    <div className="fixed inset-0 z-[130] flex items-end sm:items-center justify-center sm:p-4">
+    <div className="fixed inset-0 z-130 flex items-end sm:items-center justify-center sm:p-4">
       <div className="absolute inset-0 bg-black/55 backdrop-blur-[1px]" aria-hidden="true" onClick={closeModal} />
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="update-title"
-        className="relative w-full sm:max-w-md bg-[var(--color-bg-card)] border border-[var(--color-border)]
+        className="relative w-full sm:max-w-md bg-(--color-bg-card) border border-(--color-border)
                    rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[88vh] overflow-y-auto safe-bottom
                    px-5 pb-6 pt-3"
       >
-        <div className="w-9 h-1 rounded-full bg-[var(--color-border)] mx-auto mb-3 sm:hidden" aria-hidden="true" />
+        <div className="w-9 h-1 rounded-full bg-(--color-border) mx-auto mb-3 sm:hidden" aria-hidden="true" />
 
         <div className="flex items-start gap-3">
-          <span className={`w-10 h-10 rounded-xl grid place-items-center shrink-0 ${isSecurity ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)]' : 'bg-amber-500/15 text-amber-500'}`}>
+          <span className={`w-10 h-10 rounded-xl grid place-items-center shrink-0 ${isSecurity ? 'bg-(--color-accent)/15 text-(--color-accent)' : 'bg-amber-500/15 text-amber-500'}`}>
             {isSecurity ? Ic.shield : Ic.update}
           </span>
           <div className="min-w-0 flex-1">
@@ -68,7 +68,7 @@ export default function UpdateModal() {
                 ? (t('update.newRelease') || 'A newer version is available')
                 : isSecurity ? (t('update.securityTitle') || 'Security update installed') : (t('update.available') || 'Update available')}
             </h2>
-            <p className="text-xs text-[var(--color-text-muted)] mt-0.5 tabular-nums">
+            <p className="text-xs text-(--color-text-muted) mt-0.5 tabular-nums">
               {isRelease
                 ? (t('update.onVersionGithub') || 'You’re on v{current} · v{new} on GitHub').replace('{current}', BUILD.version).replace('{new}', newerRelease.version)
                 : isSecurity
@@ -77,18 +77,18 @@ export default function UpdateModal() {
             </p>
           </div>
           <button type="button" onClick={closeModal} aria-label={t('common.close') || 'Close'}
-            className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] w-8 h-8 grid place-items-center rounded-lg shrink-0">
+            className="text-(--color-text-muted) hover:text-(--color-text-primary) w-8 h-8 grid place-items-center rounded-lg shrink-0">
             {Ic.close}
           </button>
         </div>
 
         {/* Newer release available (admin-facing) */}
         {isRelease && (
-          <div className="mt-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-3.5">
-            <p className="text-sm font-medium text-[var(--color-text-primary)]">
+          <div className="mt-4 rounded-xl border border-(--color-border) bg-(--color-bg-tertiary) p-3.5">
+            <p className="text-sm font-medium text-(--color-text-primary)">
               {t('update.newReleaseLead') || 'A newer version has been published.'}
             </p>
-            <p className="text-xs text-[var(--color-text-muted)] mt-1.5 leading-relaxed">
+            <p className="text-xs text-(--color-text-muted) mt-1.5 leading-relaxed">
               {t('update.newReleaseDesc') || 'Pull the new image tag to upgrade your server — your data is unaffected. Ask your administrator if you don’t manage this server.'}
             </p>
           </div>
@@ -97,18 +97,18 @@ export default function UpdateModal() {
         {/* Feature update — changelog */}
         {!isRelease && !isSecurity && notes.length > 0 && (
           <>
-            <p className="mt-4 mb-2 text-[11px] font-semibold tracking-wider uppercase text-[var(--color-text-muted)]">
+            <p className="mt-4 mb-2 text-[11px] font-semibold tracking-wider uppercase text-(--color-text-muted)">
               {t('update.whatsNew') || 'What’s new'}
             </p>
             <ul className="flex flex-col gap-2.5">
               {notes.map((n, i) => (
                 <li key={i} className="flex gap-2.5 text-sm">
-                  <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${TAG_STYLE[n.type] || TAG_STYLE.new}`}>
+                  <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-sm shrink-0 mt-0.5 ${TAG_STYLE[n.type] || TAG_STYLE.new}`}>
                     {tagLabel[n.type] || n.type}
                   </span>
                   <span className="min-w-0">
-                    <span className="text-[var(--color-text-primary)]">{n.title}</span>
-                    {n.desc && <small className="block text-[var(--color-text-muted)] text-xs mt-0.5 leading-relaxed">{n.desc}</small>}
+                    <span className="text-(--color-text-primary)">{n.title}</span>
+                    {n.desc && <small className="block text-(--color-text-muted) text-xs mt-0.5 leading-relaxed">{n.desc}</small>}
                   </span>
                 </li>
               ))}
@@ -118,24 +118,24 @@ export default function UpdateModal() {
 
         {/* Security rebuild */}
         {!isRelease && isSecurity && (
-          <div className="mt-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-3.5">
-            <div className="flex items-center gap-2 font-medium text-sm text-[var(--color-text-primary)]">
-              <span className="text-[var(--color-accent)] shrink-0">{Ic.shield}</span>
+          <div className="mt-4 rounded-xl border border-(--color-border) bg-(--color-bg-tertiary) p-3.5">
+            <div className="flex items-center gap-2 font-medium text-sm text-(--color-text-primary)">
+              <span className="text-(--color-accent) shrink-0">{Ic.shield}</span>
               {t('update.securityLead') || 'Latest operating-system security patches'}
             </div>
-            <p className="text-xs text-[var(--color-text-muted)] mt-1.5 leading-relaxed">
+            <p className="text-xs text-(--color-text-muted) mt-1.5 leading-relaxed">
               {t('update.securityDesc') || 'We refreshed the app with this week’s OS security fixes. The app itself didn’t change — your data is unchanged. Reload to run the patched build.'}
             </p>
             {patched.length > 0 && (
               <>
                 <button type="button" onClick={() => setShowPkgs((v) => !v)}
-                  className="mt-2.5 text-xs font-medium text-[var(--color-accent)] hover:underline">
+                  className="mt-2.5 text-xs font-medium text-(--color-accent) hover:underline">
                   {showPkgs
                     ? (t('update.patchedHide') || 'Hide updated packages')
                     : (t('update.patchedShow') || 'Show updated packages ({count})').replace('{count}', patched.length)}
                 </button>
                 {showPkgs && (
-                  <ul className="mt-2 max-h-40 overflow-y-auto text-[11px] font-mono text-[var(--color-text-muted)] space-y-0.5 tabular-nums">
+                  <ul className="mt-2 max-h-40 overflow-y-auto text-[11px] font-mono text-(--color-text-muted) space-y-0.5 tabular-nums">
                     {patched.map((p, i) => <li key={i} className="break-all">{p}</li>)}
                   </ul>
                 )}
@@ -147,31 +147,31 @@ export default function UpdateModal() {
         {/* GitHub link (feature/security only — release mode has its own button) */}
         {!isRelease && (
           <a href={REPO_URL} target="_blank" rel="noopener noreferrer"
-            className="mt-4 flex items-center gap-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-3 py-2.5 text-sm text-[var(--color-text-primary)] hover:border-[var(--color-accent)]">
+            className="mt-4 flex items-center gap-2.5 rounded-xl border border-(--color-border) bg-(--color-bg-tertiary) px-3 py-2.5 text-sm text-(--color-text-primary) hover:border-(--color-accent)">
             <span className="shrink-0">{Ic.github}</span>
             <span className="min-w-0 flex-1">
               {isSecurity ? (t('update.viewHistory') || 'See build & release history') : (t('update.viewChangelog') || 'View full changelog')}
-              <small className="block text-[var(--color-text-muted)] text-[11px] truncate">github.com/aiulian25/GearCargo</small>
+              <small className="block text-(--color-text-muted) text-[11px] truncate">github.com/aiulian25/GearCargo</small>
             </span>
-            <span className="text-[var(--color-text-muted)] shrink-0" aria-hidden="true">↗</span>
+            <span className="text-(--color-text-muted) shrink-0" aria-hidden="true">↗</span>
           </a>
         )}
 
         {/* Actions */}
         <div className="flex gap-2.5 mt-5">
           <button type="button" onClick={isRelease ? dismissRelease : dismiss}
-            className="px-4 py-3 rounded-xl border border-[var(--color-border)] text-[var(--color-text-secondary)] text-sm font-medium hover:text-[var(--color-text-primary)] shrink-0">
+            className="px-4 py-3 rounded-xl border border-(--color-border) text-(--color-text-secondary) text-sm font-medium hover:text-(--color-text-primary) shrink-0">
             {t('update.later') || 'Later'}
           </button>
           {isRelease ? (
             <a href={newerRelease.url || REPO_URL} target="_blank" rel="noopener noreferrer" onClick={dismissRelease}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[var(--color-accent)] text-white text-sm font-semibold hover:opacity-90">
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-(--color-accent) text-white text-sm font-semibold hover:opacity-90">
               {Ic.github}
               {t('update.viewRelease') || 'View release'}
             </a>
           ) : (
             <button type="button" onClick={onApply} disabled={applying}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[var(--color-accent)] text-white text-sm font-semibold hover:opacity-90 disabled:opacity-60">
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-(--color-accent) text-white text-sm font-semibold hover:opacity-90 disabled:opacity-60">
               {Ic.reload}
               {applying
                 ? (t('update.updating') || 'Updating…')

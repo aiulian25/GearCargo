@@ -88,7 +88,7 @@ const InsuranceIcon = () => (
 )
 
 const SpinnerIcon = () => (
-  <div className="w-4 h-4 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
+  <div className="w-4 h-4 border-2 border-(--color-accent) border-t-transparent rounded-full animate-spin" />
 )
 
 // ── Entry type → colour mapping ───────────────────────────────────────────────
@@ -220,12 +220,12 @@ export default function GlobalSearch({ isOpen, onClose }) {
     >
       {/* Modal panel — stop propagation so clicking inside doesn't close */}
       <div
-        className="w-full max-w-xl bg-[var(--color-bg-secondary)] rounded-2xl shadow-2xl border border-[var(--color-border)] overflow-hidden"
+        className="w-full max-w-xl bg-(--color-bg-secondary) rounded-2xl shadow-2xl border border-(--color-border) overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Search input row */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--color-border)]">
-          <span className="text-[var(--color-text-muted)] flex-shrink-0">
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-(--color-border)">
+          <span className="text-(--color-text-muted) shrink-0">
             {loading ? <SpinnerIcon /> : <SearchIcon />}
           </span>
           <input
@@ -234,14 +234,14 @@ export default function GlobalSearch({ isOpen, onClose }) {
             value={query}
             onChange={handleInputChange}
             placeholder={t('search.placeholder') || 'Search vehicles, entries, receipts…'}
-            className="flex-1 bg-transparent text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] text-base outline-none"
+            className="flex-1 bg-transparent text-(--color-text-primary) placeholder-(--color-text-muted) text-base outline-hidden"
             maxLength={100}
             autoComplete="off"
             autoCorrect="off"
             spellCheck={false}
           />
           <kbd
-            className="hidden sm:flex items-center gap-1 px-1.5 py-0.5 text-2xs text-[var(--color-text-muted)] border border-[var(--color-border)] rounded"
+            className="hidden sm:flex items-center gap-1 px-1.5 py-0.5 text-2xs text-(--color-text-muted) border border-(--color-border) rounded-sm"
             aria-label="Press Escape to close"
           >
             Esc
@@ -257,21 +257,21 @@ export default function GlobalSearch({ isOpen, onClose }) {
 
           {/* Hint before first search */}
           {!error && results === null && query.length === 0 && (
-            <p className="px-4 py-6 text-sm text-center text-[var(--color-text-muted)]">
+            <p className="px-4 py-6 text-sm text-center text-(--color-text-muted)">
               {t('search.hint') || 'Type to search across all your vehicle data, receipts and notes.'}
             </p>
           )}
 
           {/* Minimum length hint */}
           {!error && results === null && query.length > 0 && query.length < 2 && (
-            <p className="px-4 py-3 text-sm text-[var(--color-text-muted)]">
+            <p className="px-4 py-3 text-sm text-(--color-text-muted)">
               {t('search.minChars') || 'Enter at least 2 characters to search.'}
             </p>
           )}
 
           {/* No results */}
           {!error && searchedButEmpty && (
-            <p className="px-4 py-6 text-sm text-center text-[var(--color-text-muted)]">
+            <p className="px-4 py-6 text-sm text-center text-(--color-text-muted)">
               {t('search.noResults') || 'No results found.'}
             </p>
           )}
@@ -282,20 +282,20 @@ export default function GlobalSearch({ isOpen, onClose }) {
               {/* Vehicles */}
               {hasVehicles && (
                 <section>
-                  <h3 className="px-4 pt-3 pb-1 text-2xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
+                  <h3 className="px-4 pt-3 pb-1 text-2xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
                     {t('search.groupVehicles') || 'Vehicles'}
                   </h3>
                   {results.vehicles.map((v) => (
                     <button
                       key={v.id}
                       onClick={() => handleVehicleClick(v)}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[var(--color-bg-hover,rgba(255,255,255,0.06))] transition-colors text-left"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-(--color-bg-hover,rgba(255,255,255,0.06)) transition-colors text-left"
                     >
-                      <span className="text-cyan-400 flex-shrink-0"><CarIcon /></span>
+                      <span className="text-cyan-400 shrink-0"><CarIcon /></span>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">{v.name}</p>
+                        <p className="text-sm font-medium text-(--color-text-primary) truncate">{v.name}</p>
                         {(v.make || v.year) && (
-                          <p className="text-xs text-[var(--color-text-muted)] truncate">
+                          <p className="text-xs text-(--color-text-muted) truncate">
                             {[v.year, v.make, v.model].filter(Boolean).join(' ')}
                             {v.license_plate && ` · ${v.license_plate}`}
                           </p>
@@ -309,23 +309,23 @@ export default function GlobalSearch({ isOpen, onClose }) {
               {/* Entries */}
               {hasEntries && (
                 <section>
-                  <h3 className="px-4 pt-3 pb-1 text-2xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
+                  <h3 className="px-4 pt-3 pb-1 text-2xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
                     {t('search.groupEntries') || 'Entries'}
                   </h3>
                   {results.entries.map((e) => (
                     <button
                       key={e.id}
                       onClick={() => handleEntryClick(e)}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[var(--color-bg-hover,rgba(255,255,255,0.06))] transition-colors text-left"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-(--color-bg-hover,rgba(255,255,255,0.06)) transition-colors text-left"
                     >
-                      <span className={`flex-shrink-0 ${TYPE_COLOUR[e.type] || 'text-gray-400'}`}>
+                      <span className={`shrink-0 ${TYPE_COLOUR[e.type] || 'text-gray-400'}`}>
                         <EntryIcon type={e.type} />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
+                        <p className="text-sm font-medium text-(--color-text-primary) truncate">
                           {e.title || t(`entryTypes.${e.type}`) || e.type}
                         </p>
-                        <p className="text-xs text-[var(--color-text-muted)] truncate">
+                        <p className="text-xs text-(--color-text-muted) truncate">
                           {e.vehicle_name && `${e.vehicle_name} · `}
                           {e.date}
                           {e.amount && ` · ${formatAmount(e.amount, e.currency)}`}
@@ -339,19 +339,19 @@ export default function GlobalSearch({ isOpen, onClose }) {
               {/* Reminders */}
               {hasReminders && (
                 <section>
-                  <h3 className="px-4 pt-3 pb-1 text-2xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
+                  <h3 className="px-4 pt-3 pb-1 text-2xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
                     {t('search.groupReminders') || 'Reminders'}
                   </h3>
                   {results.reminders.map((r) => (
                     <button
                       key={r.id}
                       onClick={handleReminderClick}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[var(--color-bg-hover,rgba(255,255,255,0.06))] transition-colors text-left"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-(--color-bg-hover,rgba(255,255,255,0.06)) transition-colors text-left"
                     >
-                      <span className="text-amber-400 flex-shrink-0"><ReminderIcon /></span>
+                      <span className="text-amber-400 shrink-0"><ReminderIcon /></span>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">{r.title}</p>
-                        <p className="text-xs text-[var(--color-text-muted)] truncate">
+                        <p className="text-sm font-medium text-(--color-text-primary) truncate">{r.title}</p>
+                        <p className="text-xs text-(--color-text-muted) truncate">
                           {r.vehicle_name && `${r.vehicle_name} · `}
                           {r.due_date}
                         </p>
@@ -364,21 +364,21 @@ export default function GlobalSearch({ isOpen, onClose }) {
               {/* Todos */}
               {hasTodos && (
                 <section>
-                  <h3 className="px-4 pt-3 pb-1 text-2xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
+                  <h3 className="px-4 pt-3 pb-1 text-2xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
                     {t('search.groupTodos') || 'To-dos'}
                   </h3>
                   {results.todos.map((td) => (
                     <button
                       key={td.id}
                       onClick={() => handleTodoClick(td)}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[var(--color-bg-hover,rgba(255,255,255,0.06))] transition-colors text-left"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-(--color-bg-hover,rgba(255,255,255,0.06)) transition-colors text-left"
                     >
-                      <span className="text-green-400 flex-shrink-0"><TodoIcon /></span>
+                      <span className="text-green-400 shrink-0"><TodoIcon /></span>
                       <div className="min-w-0 flex-1">
-                        <p className={`text-sm font-medium truncate ${td.completed ? 'line-through text-[var(--color-text-muted)]' : 'text-[var(--color-text-primary)]'}`}>
+                        <p className={`text-sm font-medium truncate ${td.completed ? 'line-through text-(--color-text-muted)' : 'text-(--color-text-primary)'}`}>
                           {td.title}
                         </p>
-                        <p className="text-xs text-[var(--color-text-muted)] truncate">
+                        <p className="text-xs text-(--color-text-muted) truncate">
                           {td.vehicle_name && `${td.vehicle_name} · `}
                           {td.due_date}
                         </p>
@@ -391,19 +391,19 @@ export default function GlobalSearch({ isOpen, onClose }) {
               {/* Insurance */}
               {hasInsurance && (
                 <section>
-                  <h3 className="px-4 pt-3 pb-1 text-2xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
+                  <h3 className="px-4 pt-3 pb-1 text-2xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
                     {t('search.groupInsurance') || 'Insurance'}
                   </h3>
                   {results.insurance.map((p) => (
                     <button
                       key={p.id}
                       onClick={() => handleInsuranceClick(p)}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[var(--color-bg-hover,rgba(255,255,255,0.06))] transition-colors text-left"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-(--color-bg-hover,rgba(255,255,255,0.06)) transition-colors text-left"
                     >
-                      <span className="text-teal-400 flex-shrink-0"><InsuranceIcon /></span>
+                      <span className="text-teal-400 shrink-0"><InsuranceIcon /></span>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">{p.provider}</p>
-                        <p className="text-xs text-[var(--color-text-muted)] truncate">
+                        <p className="text-sm font-medium text-(--color-text-primary) truncate">{p.provider}</p>
+                        <p className="text-xs text-(--color-text-muted) truncate">
                           {p.vehicle_name && `${p.vehicle_name} · `}
                           {p.policy_number && `${p.policy_number}`}
                           {p.end_date && ` · ${p.end_date}`}
@@ -417,27 +417,27 @@ export default function GlobalSearch({ isOpen, onClose }) {
               {/* Attachments / OCR */}
               {hasAttachments && (
                 <section>
-                  <h3 className="px-4 pt-3 pb-1 text-2xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
+                  <h3 className="px-4 pt-3 pb-1 text-2xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
                     {t('search.groupAttachments') || 'Scanned Documents'}
                   </h3>
                   {results.attachments.map((a) => (
                     <button
                       key={a.id}
                       onClick={() => handleAttachmentClick(a)}
-                      className="w-full flex items-start gap-3 px-4 py-2.5 hover:bg-[var(--color-bg-hover,rgba(255,255,255,0.06))] transition-colors text-left"
+                      className="w-full flex items-start gap-3 px-4 py-2.5 hover:bg-(--color-bg-hover,rgba(255,255,255,0.06)) transition-colors text-left"
                     >
-                      <span className="text-purple-400 flex-shrink-0 mt-0.5"><AttachmentIcon /></span>
+                      <span className="text-purple-400 shrink-0 mt-0.5"><AttachmentIcon /></span>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
+                        <p className="text-sm font-medium text-(--color-text-primary) truncate">
                           {a.filename}
                         </p>
                         {a.ocr_snippet && (
-                          <p className="text-xs text-[var(--color-text-muted)] line-clamp-2 mt-0.5">
+                          <p className="text-xs text-(--color-text-muted) line-clamp-2 mt-0.5">
                             {a.ocr_snippet}
                           </p>
                         )}
                         {a.vehicle_name && (
-                          <p className="text-xs text-[var(--color-text-muted)]">{a.vehicle_name}</p>
+                          <p className="text-xs text-(--color-text-muted)">{a.vehicle_name}</p>
                         )}
                       </div>
                     </button>
@@ -449,7 +449,7 @@ export default function GlobalSearch({ isOpen, onClose }) {
         </div>
 
         {/* Footer hint */}
-        <div className="border-t border-[var(--color-border)] px-4 py-2 flex items-center gap-4 text-2xs text-[var(--color-text-muted)]">
+        <div className="border-t border-(--color-border) px-4 py-2 flex items-center gap-4 text-2xs text-(--color-text-muted)">
           <span>↵ {t('search.selectHint') || 'to open'}</span>
           <span>Esc {t('search.closeHint') || 'to close'}</span>
         </div>

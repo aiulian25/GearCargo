@@ -96,7 +96,7 @@ export default function ShareTarget() {
       <div className="p-4 pb-24 max-w-lg mx-auto">
         <h1 className="text-lg font-semibold mb-2">{t('shareTarget.title')}</h1>
         <div className="card text-center py-10">
-          <p className="text-sm text-[var(--color-text-muted)] mb-4">
+          <p className="text-sm text-(--color-text-muted) mb-4">
             {t('shareTarget.noReceiptDesc')}
           </p>
           <button onClick={() => navigate('/vehicles')} className="btn btn-primary">
@@ -110,7 +110,7 @@ export default function ShareTarget() {
   return (
     <div className="p-4 pb-24 max-w-lg mx-auto">
       <h1 className="text-lg font-semibold mb-1">{t('shareTarget.title')}</h1>
-      <p className="text-sm text-[var(--color-text-muted)] mb-4">{t('shareTarget.description')}</p>
+      <p className="text-sm text-(--color-text-muted) mb-4">{t('shareTarget.description')}</p>
 
       {/* Receipt preview */}
       {previewUrl && (
@@ -118,7 +118,7 @@ export default function ShareTarget() {
           <img
             src={previewUrl}
             alt={t('shareTarget.title')}
-            className="w-full max-h-64 object-contain rounded-lg bg-[var(--color-bg-tertiary)]"
+            className="w-full max-h-64 object-contain rounded-lg bg-(--color-bg-tertiary)"
           />
         </div>
       )}
@@ -134,7 +134,7 @@ export default function ShareTarget() {
       {vehicles.length > 0 && (
         <div className="card space-y-4">
           <div>
-            <label htmlFor="share-vehicle" className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label htmlFor="share-vehicle" className="block text-xs text-(--color-text-muted) mb-1">
               {t('common.vehicle') || 'Vehicle'} *
             </label>
             <select
@@ -171,7 +171,7 @@ export default function ShareTarget() {
 
           {/* Saved confirmation */}
           {uploadedId && (
-            <div className="border-t border-[var(--color-border)] pt-4 space-y-3">
+            <div className="border-t border-(--color-border) pt-4 space-y-3">
               <p className="text-sm text-green-600 dark:text-green-400">
                 {selectedVehicle
                   ? (t('shareTarget.savedFor') || 'Receipt saved to {vehicle}.').replace('{vehicle}', selectedVehicle.name)

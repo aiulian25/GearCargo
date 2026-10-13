@@ -129,9 +129,9 @@ export default function InstallPrompt() {
   if (isIOS) {
     return (
       <div className="fixed bottom-20 left-4 right-4 md:left-auto md:right-4 md:max-w-sm z-50 animate-slide-up">
-        <div className="bg-gradient-to-r from-blue-600 to-cyan-500 rounded-2xl p-4 shadow-xl border border-white/10">
+        <div className="bg-linear-to-r from-blue-600 to-cyan-500 rounded-2xl p-4 shadow-xl border border-white/10">
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center text-white">
+            <div className="shrink-0 w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center text-white">
               {Icons.smartphone}
             </div>
 
@@ -145,20 +145,20 @@ export default function InstallPrompt() {
 
               <ol className="space-y-2 mb-3">
                 <li className="flex items-center gap-2 text-white text-sm">
-                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-2xs font-semibold">1</span>
+                  <span className="shrink-0 w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-2xs font-semibold">1</span>
                   <span className="min-w-0">{t('pwa.iosInstallShare') || 'Tap the Share button'}</span>
-                  <span className="flex-shrink-0 text-white/90">{Icons.share}</span>
+                  <span className="shrink-0 text-white/90">{Icons.share}</span>
                 </li>
                 <li className="flex items-center gap-2 text-white text-sm">
-                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-2xs font-semibold">2</span>
+                  <span className="shrink-0 w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-2xs font-semibold">2</span>
                   <span className="min-w-0">{t('pwa.iosInstallAddToHome') || 'Select “Add to Home Screen”'}</span>
-                  <span className="flex-shrink-0 text-white/90">{Icons.addToHome}</span>
+                  <span className="shrink-0 text-white/90">{Icons.addToHome}</span>
                 </li>
               </ol>
 
               <button
                 onClick={handleDismiss}
-                className="bg-white text-blue-600 font-semibold px-4 py-2 rounded-lg text-sm hover:bg-blue-50 transition-colors focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-blue-600"
+                className="bg-white text-blue-600 font-semibold px-4 py-2 rounded-lg text-sm hover:bg-blue-50 transition-colors focus:outline-hidden focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-blue-600"
               >
                 {t('pwa.gotIt') || 'Got it'}
               </button>
@@ -166,7 +166,7 @@ export default function InstallPrompt() {
 
             <button
               onClick={handleDismiss}
-              className="flex-shrink-0 text-white/60 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-white rounded"
+              className="shrink-0 text-white/60 hover:text-white transition-colors focus:outline-hidden focus:ring-2 focus:ring-white rounded-sm"
               aria-label={t('common.close') || 'Close'}
             >
               {Icons.close}
@@ -180,9 +180,9 @@ export default function InstallPrompt() {
   // Other platforms: native install via beforeinstallprompt
   return (
     <div className="fixed bottom-20 left-4 right-4 md:left-auto md:right-4 md:max-w-sm z-50 animate-slide-up">
-      <div className="bg-gradient-to-r from-blue-600 to-cyan-500 rounded-2xl p-4 shadow-xl border border-white/10">
+      <div className="bg-linear-to-r from-blue-600 to-cyan-500 rounded-2xl p-4 shadow-xl border border-white/10">
         <div className="flex items-start gap-3">
-          <div className="flex-shrink-0 w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center text-white">
+          <div className="shrink-0 w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center text-white">
             {Icons.smartphone}
           </div>
 
@@ -197,14 +197,14 @@ export default function InstallPrompt() {
             <div className="flex items-center gap-2">
               <button
                 onClick={handleInstall}
-                className="flex items-center gap-2 bg-white text-blue-600 font-semibold px-4 py-2 rounded-lg text-sm hover:bg-blue-50 transition-colors focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-blue-600"
+                className="flex items-center gap-2 bg-white text-blue-600 font-semibold px-4 py-2 rounded-lg text-sm hover:bg-blue-50 transition-colors focus:outline-hidden focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-blue-600"
               >
                 {Icons.download}
                 {t('pwa.installButton') || 'Install'}
               </button>
               <button
                 onClick={handleDismiss}
-                className="text-white/80 hover:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-white rounded"
+                className="text-white/80 hover:text-white px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-white rounded-sm"
               >
                 {t('pwa.notNow') || 'Not now'}
               </button>
@@ -213,7 +213,7 @@ export default function InstallPrompt() {
 
           <button
             onClick={handleDismiss}
-            className="flex-shrink-0 text-white/60 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-white rounded"
+            className="shrink-0 text-white/60 hover:text-white transition-colors focus:outline-hidden focus:ring-2 focus:ring-white rounded-sm"
             aria-label={t('common.close') || 'Close'}
           >
             {Icons.close}

@@ -171,7 +171,7 @@ export default function AddReminder() {
   return (
     <div className="pb-4">
       {/* Header */}
-      <div className="bg-[var(--color-bg-card)] border-b border-[var(--color-border)] px-4 py-3 flex items-center gap-3">
+      <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="btn-icon">
           <span className="material-icons-outlined icon-md">close</span>
         </button>
@@ -231,7 +231,7 @@ export default function AddReminder() {
 
             {aiSuggestions.length > 0 && (
               <div className="mt-3 space-y-2">
-                <p className="text-xs text-[var(--color-text-muted)]">
+                <p className="text-xs text-(--color-text-muted)">
                   {t('reminders.aiSuggestions') || 'Suggestions — tap to pre-fill'}
                 </p>
                 {aiSuggestions.map((s, i) => (
@@ -242,7 +242,7 @@ export default function AddReminder() {
                     className="w-full text-left p-3 rounded-lg border border-purple-500/20 bg-purple-500/5 hover:bg-purple-500/10 transition-colors"
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <span className="text-sm font-medium text-[var(--color-text)]">{s.title}</span>
+                      <span className="text-sm font-medium text-(--color-text)">{s.title}</span>
                       <span className={`text-2xs px-1.5 py-0.5 rounded shrink-0 ${
                         s.priority === 'high'
                           ? 'bg-red-500/10 text-red-400'
@@ -255,23 +255,23 @@ export default function AddReminder() {
                     </div>
                     <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
                       {s.due_date && (
-                        <span className="text-2xs text-[var(--color-text-muted)]">
+                        <span className="text-2xs text-(--color-text-muted)">
                           📅 {s.due_date}
                         </span>
                       )}
                       {s.due_mileage && (
-                        <span className="text-2xs text-[var(--color-text-muted)]">
+                        <span className="text-2xs text-(--color-text-muted)">
                           🏁 {s.due_mileage.toLocaleString()}
                         </span>
                       )}
                       {s.repeat_interval && (
-                        <span className="text-2xs text-[var(--color-text-muted)]">
+                        <span className="text-2xs text-(--color-text-muted)">
                           🔁 {t(`reminders.${s.repeat_interval}`) || s.repeat_interval}
                         </span>
                       )}
                     </div>
                     {s.notes && (
-                      <p className="text-2xs text-[var(--color-text-muted)] mt-1 line-clamp-2">{s.notes}</p>
+                      <p className="text-2xs text-(--color-text-muted) mt-1 line-clamp-2">{s.notes}</p>
                     )}
                     <p className="text-2xs text-purple-400 mt-1.5 font-medium">
                       {t('reminders.useSuggestion') || 'Use this suggestion →'}
@@ -285,7 +285,7 @@ export default function AddReminder() {
         
         {/* Type Selection */}
         <div className="card">
-          <label className="block text-xs text-[var(--color-text-muted)] mb-2">
+          <label className="block text-xs text-(--color-text-muted) mb-2">
             {t('reminders.reminderType')}
           </label>
           <div className="grid grid-cols-4 gap-2">
@@ -294,8 +294,8 @@ export default function AddReminder() {
                 key={type.value}
                 className={`flex flex-col items-center gap-1 p-2 rounded-lg border cursor-pointer transition-colors ${
                   reminderType === type.value
-                    ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/10'
-                    : 'border-[var(--color-border)]'
+                    ? 'border-(--color-accent) bg-(--color-accent)/10'
+                    : 'border-(--color-border)'
                 }`}
               >
                 <input
@@ -305,7 +305,7 @@ export default function AddReminder() {
                   className="sr-only"
                 />
                 <span className={`material-icons-outlined icon-sm ${
-                  reminderType === type.value ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)]'
+                  reminderType === type.value ? 'text-(--color-accent)' : 'text-(--color-text-muted)'
                 }`}>
                   {type.icon}
                 </span>
@@ -318,7 +318,7 @@ export default function AddReminder() {
         {/* Basic Info */}
         <div className="card space-y-4">
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('reminders.vehicle')} *
             </label>
             <select 
@@ -336,7 +336,7 @@ export default function AddReminder() {
           </div>
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('reminders.titleLabel')} *
             </label>
             <input
@@ -353,10 +353,10 @@ export default function AddReminder() {
         
         {/* Due Date */}
         <div className="card space-y-4">
-          <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">{t('reminders.dueWhen')}</h3>
+          <h3 className="text-sm font-medium text-(--color-text-secondary)">{t('reminders.dueWhen')}</h3>
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('reminders.dueDateLabel')}
             </label>
             <input
@@ -372,7 +372,7 @@ export default function AddReminder() {
                   key={qd.label}
                   type="button"
                   onClick={() => setValue('due_date', qd.date)}
-                  className="px-2 py-1 text-2xs bg-[var(--color-bg-tertiary)] rounded-md hover:bg-[var(--color-accent)]/10 hover:text-[var(--color-accent)]"
+                  className="px-2 py-1 text-2xs bg-(--color-bg-tertiary) rounded-md hover:bg-(--color-accent)/10 hover:text-(--color-accent)"
                 >
                   {qd.label}
                 </button>
@@ -381,7 +381,7 @@ export default function AddReminder() {
           </div>
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('reminders.dueAtMileage')}
             </label>
             <input
@@ -390,7 +390,7 @@ export default function AddReminder() {
               className="input"
               placeholder={t('reminders.mileagePlaceholder')}
             />
-            <p className="text-2xs text-[var(--color-text-muted)] mt-1">
+            <p className="text-2xs text-(--color-text-muted) mt-1">
               {t('reminders.mileageHint')}
             </p>
           </div>
@@ -398,11 +398,11 @@ export default function AddReminder() {
         
         {/* Repeat */}
         <div className="card space-y-4">
-          <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">{t('reminders.repeat')}</h3>
+          <h3 className="text-sm font-medium text-(--color-text-secondary)">{t('reminders.repeat')}</h3>
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('reminders.interval')}
               </label>
               <select {...register('repeat_interval')} className="input">
@@ -416,7 +416,7 @@ export default function AddReminder() {
             </div>
             
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('reminders.everyXKm')}
               </label>
               <input
@@ -432,7 +432,7 @@ export default function AddReminder() {
         {/* Priority & Notes */}
         <div className="card space-y-4">
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('reminders.priority')}
             </label>
             <div className="flex gap-2">
@@ -446,7 +446,7 @@ export default function AddReminder() {
                         : p === 'medium'
                         ? 'border-amber-500 bg-amber-500/10 text-amber-500'
                         : 'border-green-500 bg-green-500/10 text-green-500'
-                      : 'border-[var(--color-border)]'
+                      : 'border-(--color-border)'
                   }`}
                 >
                   <input
@@ -462,7 +462,7 @@ export default function AddReminder() {
           </div>
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('reminders.notes')}
             </label>
             <textarea

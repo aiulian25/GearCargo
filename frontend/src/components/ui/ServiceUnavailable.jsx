@@ -19,17 +19,17 @@ export default function ServiceUnavailable({ title, onRetry, retrying = false, o
   const { t } = useTranslation()
   return (
     <div
-      className={`rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-4 ${className}`}
+      className={`rounded-xl border border-(--color-border) bg-(--color-bg-tertiary) p-4 ${className}`}
       role="status"
       aria-live="polite"
     >
       <div className="flex items-start gap-3">
-        <span className="material-icons-outlined text-[var(--color-text-muted)] shrink-0" aria-hidden="true">
+        <span className="material-icons-outlined text-(--color-text-muted) shrink-0" aria-hidden="true">
           cloud_off
         </span>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium">{title || t('serviceError.title') || 'Service unavailable'}</p>
-          <p className="text-2xs text-[var(--color-text-secondary)] mt-0.5 leading-relaxed">
+          <p className="text-2xs text-(--color-text-secondary) mt-0.5 leading-relaxed">
             {t('serviceError.desc') || 'We couldn’t load this right now.'}
           </p>
           {onRetry && (
@@ -37,7 +37,7 @@ export default function ServiceUnavailable({ title, onRetry, retrying = false, o
               type="button"
               onClick={onRetry}
               disabled={retrying}
-              className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-[var(--color-accent)] disabled:opacity-50"
+              className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-(--color-accent) disabled:opacity-50"
             >
               <span className={`material-icons-outlined icon-sm ${retrying ? 'animate-spin' : ''}`} aria-hidden="true">
                 {retrying ? 'progress_activity' : 'refresh'}
@@ -51,7 +51,7 @@ export default function ServiceUnavailable({ title, onRetry, retrying = false, o
             type="button"
             onClick={onDismiss}
             aria-label={t('common.dismiss') || 'Dismiss'}
-            className="btn-icon shrink-0 text-[var(--color-text-muted)]"
+            className="btn-icon shrink-0 text-(--color-text-muted)"
           >
             <span className="material-icons-outlined icon-sm" aria-hidden="true">close</span>
           </button>

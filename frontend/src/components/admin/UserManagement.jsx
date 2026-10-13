@@ -201,27 +201,27 @@ export default function UserManagement() {
       {/* Stats Cards */}
       {stats && (
         <div className="grid grid-cols-3 gap-3">
-          <div className="bg-[var(--color-bg-tertiary)] rounded-xl p-4 text-center">
-            <div className="text-2xl font-bold text-[var(--color-accent)]">
+          <div className="bg-(--color-bg-tertiary) rounded-xl p-4 text-center">
+            <div className="text-2xl font-bold text-(--color-accent)">
               {stats.users?.total || 0}
             </div>
-            <div className="text-xs text-[var(--color-text-secondary)]">
+            <div className="text-xs text-(--color-text-secondary)">
               {t('admin.totalUsers') || 'Total Users'}
             </div>
           </div>
-          <div className="bg-[var(--color-bg-tertiary)] rounded-xl p-4 text-center">
+          <div className="bg-(--color-bg-tertiary) rounded-xl p-4 text-center">
             <div className="text-2xl font-bold text-green-500">
               {stats.users?.active || 0}
             </div>
-            <div className="text-xs text-[var(--color-text-secondary)]">
+            <div className="text-xs text-(--color-text-secondary)">
               {t('admin.activeUsers') || 'Active'}
             </div>
           </div>
-          <div className="bg-[var(--color-bg-tertiary)] rounded-xl p-4 text-center">
+          <div className="bg-(--color-bg-tertiary) rounded-xl p-4 text-center">
             <div className="text-2xl font-bold text-amber-500">
               {stats.users?.new_this_week || 0}
             </div>
-            <div className="text-xs text-[var(--color-text-secondary)]">
+            <div className="text-xs text-(--color-text-secondary)">
               {t('admin.newThisWeek') || 'New This Week'}
             </div>
           </div>
@@ -231,7 +231,7 @@ export default function UserManagement() {
       {/* Search and Add User */}
       <div className="flex gap-2">
         <form onSubmit={handleSearch} className="relative flex-1">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-(--color-text-muted)">
             {Icons.search}
           </span>
           <input
@@ -239,12 +239,12 @@ export default function UserManagement() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t('admin.searchUsers') || 'Search users...'}
-            className="w-full pl-10 pr-4 py-3 rounded-xl bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-accent)]"
+            className="w-full pl-10 pr-4 py-3 rounded-xl bg-(--color-bg-tertiary) border border-(--color-border) text-sm focus:outline-hidden focus:border-(--color-accent)"
           />
         </form>
         <button
           onClick={() => setShowAddModal(true)}
-          className="px-4 py-3 rounded-xl bg-[var(--color-accent)] text-white font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
+          className="px-4 py-3 rounded-xl bg-(--color-accent) text-white font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
         >
           {Icons.plus}
           <span className="hidden sm:inline">{t('admin.addUser') || 'Add User'}</span>
@@ -260,19 +260,19 @@ export default function UserManagement() {
             ))}
           </div>
         ) : users.length === 0 ? (
-          <div className="text-center py-8 text-[var(--color-text-secondary)]">
+          <div className="text-center py-8 text-(--color-text-secondary)">
             {t('admin.noUsersFound') || 'No users found'}
           </div>
         ) : (
           users.map(user => (
             <div 
               key={user.id}
-              className="bg-[var(--color-bg-secondary)] rounded-xl p-4 border border-[var(--color-border)]"
+              className="bg-(--color-bg-secondary) rounded-xl p-4 border border-(--color-border)"
             >
               <div className="flex items-start gap-3">
                 {/* Avatar */}
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                  user.is_admin ? 'bg-amber-500/20 text-amber-500' : 'bg-[var(--color-accent)]/20 text-[var(--color-accent)]'
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+                  user.is_admin ? 'bg-amber-500/20 text-amber-500' : 'bg-(--color-accent)/20 text-(--color-accent)'
                 }`}>
                   <span className="text-sm font-bold">
                     {user.display_name?.charAt(0).toUpperCase() || user.username?.charAt(0).toUpperCase() || user.email?.charAt(0).toUpperCase() || 'U'}
@@ -284,19 +284,19 @@ export default function UserManagement() {
                   <div className="flex items-center gap-2">
                     <h3 className="font-medium truncate">{user.display_name || user.username || 'Unnamed User'}</h3>
                     {user.is_admin && (
-                      <span className="px-1.5 py-0.5 rounded text-2xs font-medium bg-amber-500/20 text-amber-500 flex items-center gap-1">
+                      <span className="px-1.5 py-0.5 rounded-sm text-2xs font-medium bg-amber-500/20 text-amber-500 flex items-center gap-1">
                         {Icons.shield}
                         Admin
                       </span>
                     )}
                     {!user.is_active && (
-                      <span className="px-1.5 py-0.5 rounded text-2xs font-medium bg-red-500/20 text-red-500">
+                      <span className="px-1.5 py-0.5 rounded-sm text-2xs font-medium bg-red-500/20 text-red-500">
                         {t('admin.inactive') || 'Inactive'}
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-[var(--color-text-secondary)] truncate">{user.email}</p>
-                  <div className="flex items-center gap-4 mt-2 text-xs text-[var(--color-text-muted)]">
+                  <p className="text-xs text-(--color-text-secondary) truncate">{user.email}</p>
+                  <div className="flex items-center gap-4 mt-2 text-xs text-(--color-text-muted)">
                     <span className="flex items-center gap-1">
                       {Icons.car}
                       {user.vehicle_count || 0}{user.vehicle_limit ? `/${user.vehicle_limit}` : ''} {t('admin.vehicles') || 'vehicles'}
@@ -311,14 +311,14 @@ export default function UserManagement() {
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => handleEditUser(user)}
-                    className="p-2 rounded-lg hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] transition-colors"
+                    className="p-2 rounded-lg hover:bg-(--color-bg-tertiary) text-(--color-text-secondary) hover:text-(--color-accent) transition-colors"
                     title={t('common.edit') || 'Edit'}
                   >
                     {Icons.edit}
                   </button>
                   <button
                     onClick={() => handleDeleteUser(user)}
-                    className="p-2 rounded-lg hover:bg-red-500/10 text-[var(--color-text-secondary)] hover:text-red-500 transition-colors"
+                    className="p-2 rounded-lg hover:bg-red-500/10 text-(--color-text-secondary) hover:text-red-500 transition-colors"
                     title={t('common.delete') || 'Delete'}
                   >
                     {Icons.trash}
@@ -336,17 +336,17 @@ export default function UserManagement() {
           <button
             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
             disabled={currentPage === 1}
-            className="p-2 rounded-lg hover:bg-[var(--color-bg-tertiary)] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-2 rounded-lg hover:bg-(--color-bg-tertiary) disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {Icons.chevronLeft}
           </button>
-          <span className="text-sm text-[var(--color-text-secondary)]">
+          <span className="text-sm text-(--color-text-secondary)">
             {currentPage} / {totalPages}
           </span>
           <button
             onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
             disabled={currentPage === totalPages}
-            className="p-2 rounded-lg hover:bg-[var(--color-bg-tertiary)] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-2 rounded-lg hover:bg-(--color-bg-tertiary) disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {Icons.chevronRight}
           </button>
@@ -356,19 +356,19 @@ export default function UserManagement() {
       {/* Edit User Modal */}
       {showEditModal && selectedUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-[var(--color-bg-secondary)] rounded-2xl p-6 w-full max-w-sm border border-[var(--color-border)]">
+          <div className="bg-(--color-bg-secondary) rounded-2xl p-6 w-full max-w-sm border border-(--color-border)">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">{t('admin.editUser') || 'Edit User'}</h3>
               <button
                 onClick={() => setShowEditModal(false)}
-                className="p-2 rounded-lg hover:bg-[var(--color-bg-tertiary)]"
+                className="p-2 rounded-lg hover:bg-(--color-bg-tertiary)"
               >
                 {Icons.close}
               </button>
             </div>
             
             <div className="mb-4">
-              <p className="text-sm text-[var(--color-text-secondary)] mb-1">{selectedUser.email}</p>
+              <p className="text-sm text-(--color-text-secondary) mb-1">{selectedUser.email}</p>
               <p className="font-medium">{selectedUser.display_name || selectedUser.username || 'Unnamed User'}</p>
             </div>
             
@@ -383,8 +383,8 @@ export default function UserManagement() {
                   onClick={() => setEditForm(f => ({ ...f, is_admin: false }))}
                   className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
                     !editForm.is_admin
-                      ? 'bg-[var(--color-accent)] text-white'
-                      : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]'
+                      ? 'bg-(--color-accent) text-white'
+                      : 'bg-(--color-bg-tertiary) text-(--color-text-secondary)'
                   }`}
                 >
                   {t('admin.roleUser') || 'User'}
@@ -395,7 +395,7 @@ export default function UserManagement() {
                   className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
                     editForm.is_admin
                       ? 'bg-amber-500 text-white'
-                      : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]'
+                      : 'bg-(--color-bg-tertiary) text-(--color-text-secondary)'
                   }`}
                 >
                   {t('admin.roleAdmin') || 'Admin'}
@@ -415,7 +415,7 @@ export default function UserManagement() {
                   className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
                     editForm.is_active
                       ? 'bg-green-500 text-white'
-                      : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]'
+                      : 'bg-(--color-bg-tertiary) text-(--color-text-secondary)'
                   }`}
                 >
                   {Icons.check}
@@ -427,7 +427,7 @@ export default function UserManagement() {
                   className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
                     !editForm.is_active
                       ? 'bg-red-500 text-white'
-                      : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]'
+                      : 'bg-(--color-bg-tertiary) text-(--color-text-secondary)'
                   }`}
                 >
                   {Icons.x}
@@ -448,13 +448,13 @@ export default function UserManagement() {
                   value={editForm.vehicle_limit}
                   onChange={(e) => setEditForm(f => ({ ...f, vehicle_limit: e.target.value }))}
                   placeholder={t('admin.unlimited') || 'Unlimited'}
-                  className="flex-1 px-4 py-2 rounded-xl bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-accent)]"
+                  className="flex-1 px-4 py-2 rounded-xl bg-(--color-bg-tertiary) border border-(--color-border) text-sm focus:outline-hidden focus:border-(--color-accent)"
                 />
-                <span className="text-xs text-[var(--color-text-muted)]">
+                <span className="text-xs text-(--color-text-muted)">
                   {t('admin.vehicleLimitHelp') || '0 = Unlimited'}
                 </span>
               </div>
-              <p className="text-xs text-[var(--color-text-muted)] mt-1">
+              <p className="text-xs text-(--color-text-muted) mt-1">
                 {t('admin.currentVehicles') || 'Current'}: {selectedUser?.vehicle_count || 0}
               </p>
             </div>
@@ -463,14 +463,14 @@ export default function UserManagement() {
             <div className="flex gap-3">
               <button
                 onClick={() => setShowEditModal(false)}
-                className="flex-1 py-3 rounded-xl bg-[var(--color-bg-tertiary)] font-medium"
+                className="flex-1 py-3 rounded-xl bg-(--color-bg-tertiary) font-medium"
               >
                 {t('common.cancel') || 'Cancel'}
               </button>
               <button
                 onClick={handleSaveUser}
                 disabled={isSaving}
-                className="flex-1 py-3 rounded-xl bg-[var(--color-accent)] text-white font-medium disabled:opacity-50"
+                className="flex-1 py-3 rounded-xl bg-(--color-accent) text-white font-medium disabled:opacity-50"
               >
                 {isSaving ? (t('common.saving') || 'Saving...') : (t('common.save') || 'Save')}
               </button>
@@ -482,7 +482,7 @@ export default function UserManagement() {
       {/* Add User Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-[var(--color-bg-secondary)] rounded-2xl p-6 w-full max-w-sm border border-[var(--color-border)] max-h-[90vh] overflow-y-auto">
+          <div className="bg-(--color-bg-secondary) rounded-2xl p-6 w-full max-w-sm border border-(--color-border) max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">{t('admin.addUser') || 'Add User'}</h3>
               <button
@@ -490,7 +490,7 @@ export default function UserManagement() {
                   setShowAddModal(false)
                   setAddForm({ email: '', username: '', display_name: '', password: '', is_admin: false, is_active: true, vehicle_limit: 10 })
                 }}
-                className="p-2 rounded-lg hover:bg-[var(--color-bg-tertiary)]"
+                className="p-2 rounded-lg hover:bg-(--color-bg-tertiary)"
               >
                 {Icons.close}
               </button>
@@ -507,7 +507,7 @@ export default function UserManagement() {
                 onChange={(e) => setAddForm(f => ({ ...f, email: e.target.value }))}
                 placeholder="user@example.com"
                 autoComplete="off"
-                className="w-full px-4 py-3 rounded-xl bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-accent)]"
+                className="w-full px-4 py-3 rounded-xl bg-(--color-bg-tertiary) border border-(--color-border) text-sm focus:outline-hidden focus:border-(--color-accent)"
                 required
               />
             </div>
@@ -523,7 +523,7 @@ export default function UserManagement() {
                 onChange={(e) => setAddForm(f => ({ ...f, username: e.target.value }))}
                 placeholder={t('admin.optionalUsername') || 'Optional username'}
                 autoComplete="off"
-                className="w-full px-4 py-3 rounded-xl bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-accent)]"
+                className="w-full px-4 py-3 rounded-xl bg-(--color-bg-tertiary) border border-(--color-border) text-sm focus:outline-hidden focus:border-(--color-accent)"
               />
             </div>
             
@@ -538,7 +538,7 @@ export default function UserManagement() {
                 onChange={(e) => setAddForm(f => ({ ...f, display_name: e.target.value }))}
                 placeholder={t('admin.optionalDisplayName') || 'Optional display name'}
                 autoComplete="off"
-                className="w-full px-4 py-3 rounded-xl bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-accent)]"
+                className="w-full px-4 py-3 rounded-xl bg-(--color-bg-tertiary) border border-(--color-border) text-sm focus:outline-hidden focus:border-(--color-accent)"
               />
             </div>
             
@@ -553,10 +553,10 @@ export default function UserManagement() {
                 onChange={(e) => setAddForm(f => ({ ...f, password: e.target.value }))}
                 placeholder="••••••••"
                 autoComplete="new-password"
-                className="w-full px-4 py-3 rounded-xl bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-accent)]"
+                className="w-full px-4 py-3 rounded-xl bg-(--color-bg-tertiary) border border-(--color-border) text-sm focus:outline-hidden focus:border-(--color-accent)"
                 required
               />
-              <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+              <p className="mt-1 text-xs text-(--color-text-muted)">
                 {t('admin.mustChangePasswordNote') || 'The user will be required to change this password on first login.'}
               </p>
             </div>
@@ -572,8 +572,8 @@ export default function UserManagement() {
                   onClick={() => setAddForm(f => ({ ...f, is_admin: false }))}
                   className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
                     !addForm.is_admin
-                      ? 'bg-[var(--color-accent)] text-white'
-                      : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]'
+                      ? 'bg-(--color-accent) text-white'
+                      : 'bg-(--color-bg-tertiary) text-(--color-text-secondary)'
                   }`}
                 >
                   {t('admin.roleUser') || 'User'}
@@ -584,7 +584,7 @@ export default function UserManagement() {
                   className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
                     addForm.is_admin
                       ? 'bg-amber-500 text-white'
-                      : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]'
+                      : 'bg-(--color-bg-tertiary) text-(--color-text-secondary)'
                   }`}
                 >
                   {t('admin.roleAdmin') || 'Admin'}
@@ -604,7 +604,7 @@ export default function UserManagement() {
                   className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
                     addForm.is_active
                       ? 'bg-green-500 text-white'
-                      : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]'
+                      : 'bg-(--color-bg-tertiary) text-(--color-text-secondary)'
                   }`}
                 >
                   {Icons.check}
@@ -616,7 +616,7 @@ export default function UserManagement() {
                   className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
                     !addForm.is_active
                       ? 'bg-red-500 text-white'
-                      : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]'
+                      : 'bg-(--color-bg-tertiary) text-(--color-text-secondary)'
                   }`}
                 >
                   {Icons.x}
@@ -637,9 +637,9 @@ export default function UserManagement() {
                   value={addForm.vehicle_limit}
                   onChange={(e) => setAddForm(f => ({ ...f, vehicle_limit: e.target.value }))}
                   placeholder={t('admin.unlimited') || 'Unlimited'}
-                  className="flex-1 px-4 py-2 rounded-xl bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-accent)]"
+                  className="flex-1 px-4 py-2 rounded-xl bg-(--color-bg-tertiary) border border-(--color-border) text-sm focus:outline-hidden focus:border-(--color-accent)"
                 />
-                <span className="text-xs text-[var(--color-text-muted)]">
+                <span className="text-xs text-(--color-text-muted)">
                   {t('admin.vehicleLimitHelp') || '0 = Unlimited'}
                 </span>
               </div>
@@ -652,14 +652,14 @@ export default function UserManagement() {
                   setShowAddModal(false)
                   setAddForm({ email: '', username: '', display_name: '', password: '', is_admin: false, is_active: true, vehicle_limit: 10 })
                 }}
-                className="flex-1 py-3 rounded-xl bg-[var(--color-bg-tertiary)] font-medium"
+                className="flex-1 py-3 rounded-xl bg-(--color-bg-tertiary) font-medium"
               >
                 {t('common.cancel') || 'Cancel'}
               </button>
               <button
                 onClick={handleCreateUser}
                 disabled={isSaving || !addForm.email || !addForm.password}
-                className="flex-1 py-3 rounded-xl bg-[var(--color-accent)] text-white font-medium disabled:opacity-50"
+                className="flex-1 py-3 rounded-xl bg-(--color-accent) text-white font-medium disabled:opacity-50"
               >
                 {isSaving ? (t('common.creating') || 'Creating...') : (t('common.create') || 'Create')}
               </button>

@@ -95,7 +95,7 @@ export default function IntegrationSettings() {
       {/* API Key Section */}
       <div>
         <h4 className="text-sm font-medium mb-2">{t('integrations.apiKey') || 'API Key'}</h4>
-        <p className="text-2xs text-[var(--color-text-muted)] mb-3">
+        <p className="text-2xs text-(--color-text-muted) mb-3">
           {t('integrations.apiKeyDesc') || 'Used to authenticate external services like Gethomepage'}
         </p>
 
@@ -107,12 +107,12 @@ export default function IntegrationSettings() {
               {t('integrations.copyNowWarning') || 'Copy your key now — it will not be shown again.'}
             </p>
             <div className="flex items-center gap-2">
-              <code className="flex-1 bg-[var(--color-bg-tertiary)] text-xs px-3 py-2 rounded-lg font-mono break-all select-all">
+              <code className="flex-1 bg-(--color-bg-tertiary) text-xs px-3 py-2 rounded-lg font-mono break-all select-all">
                 {newKey}
               </code>
               <button
                 onClick={() => copyToClipboard(newKey, 'newKey')}
-                className="btn btn-ghost btn-sm flex-shrink-0"
+                className="btn btn-ghost btn-sm shrink-0"
                 title="Copy"
               >
                 <span className="material-icons-outlined text-sm">
@@ -120,7 +120,7 @@ export default function IntegrationSettings() {
                 </span>
               </button>
             </div>
-            <button onClick={dismissNewKey} className="text-2xs text-[var(--color-text-muted)] hover:underline">
+            <button onClick={dismissNewKey} className="text-2xs text-(--color-text-muted) hover:underline">
               {t('integrations.gotIt') || 'I have copied the key'}
             </button>
           </div>
@@ -130,7 +130,7 @@ export default function IntegrationSettings() {
           <div className="space-y-2">
             {!newKey && (
               <div className="flex items-center gap-2">
-                <code className="flex-1 bg-[var(--color-bg-tertiary)] text-xs px-3 py-2 rounded-lg font-mono truncate text-[var(--color-text-muted)]">
+                <code className="flex-1 bg-(--color-bg-tertiary) text-xs px-3 py-2 rounded-lg font-mono truncate text-(--color-text-muted)">
                   {maskedKey}
                 </code>
               </div>
@@ -156,16 +156,16 @@ export default function IntegrationSettings() {
         <div>
           <h4 className="text-sm font-medium mb-2">
             <span className="inline-flex items-center gap-1.5">
-              <span className="material-icons-outlined text-base text-[var(--color-accent)]">dashboard</span>
+              <span className="material-icons-outlined text-base text-(--color-accent)">dashboard</span>
               {t('integrations.gethomepage') || 'Gethomepage'}
             </span>
           </h4>
-          <p className="text-2xs text-[var(--color-text-muted)] mb-3">
+          <p className="text-2xs text-(--color-text-muted) mb-3">
             {t('integrations.gethomepageDesc') || 'Add to your Gethomepage services.yaml:'}
           </p>
 
           <div className="relative">
-            <pre className="bg-[var(--color-bg-tertiary)] text-xs px-3 py-3 rounded-lg font-mono overflow-x-auto whitespace-pre text-[var(--color-text-secondary)]">{`- GearCargo:
+            <pre className="bg-(--color-bg-tertiary) text-xs px-3 py-3 rounded-lg font-mono overflow-x-auto whitespace-pre text-(--color-text-secondary)">{`- GearCargo:
     icon: ${baseUrl}/icons/logo.png
     href: ${baseUrl}
     widget:
@@ -202,11 +202,11 @@ export default function IntegrationSettings() {
 
           {/* Endpoint reference */}
           <div className="mt-3 space-y-1">
-            <p className="text-2xs text-[var(--color-text-muted)]">
+            <p className="text-2xs text-(--color-text-muted)">
               {t('integrations.endpoints') || 'Available endpoints:'}
             </p>
             <div className="flex items-center gap-2">
-              <code className="text-2xs bg-[var(--color-bg-tertiary)] px-2 py-1 rounded font-mono">
+              <code className="text-2xs bg-(--color-bg-tertiary) px-2 py-1 rounded-sm font-mono">
                 GET /api/widget/v1/homepage
               </code>
               <button
@@ -219,7 +219,7 @@ export default function IntegrationSettings() {
               </button>
             </div>
             <div className="flex items-center gap-2">
-              <code className="text-2xs bg-[var(--color-bg-tertiary)] px-2 py-1 rounded font-mono">
+              <code className="text-2xs bg-(--color-bg-tertiary) px-2 py-1 rounded-sm font-mono">
                 GET /api/widget/v1/vehicles
               </code>
               <button

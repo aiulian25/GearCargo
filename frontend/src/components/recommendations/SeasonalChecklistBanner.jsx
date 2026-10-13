@@ -111,8 +111,8 @@ export default function SeasonalChecklistBanner() {
   const isWinter = bannerData.id === 'winter'
   const icon = isWinter ? Icons.snowflake : Icons.sun
   const bgClass = isWinter 
-    ? 'bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border-blue-500/30' 
-    : 'bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-amber-500/30'
+    ? 'bg-linear-to-r from-blue-500/10 to-cyan-500/10 border-blue-500/30' 
+    : 'bg-linear-to-r from-amber-500/10 to-orange-500/10 border-amber-500/30'
   const iconColor = isWinter ? 'text-blue-400' : 'text-amber-400'
   
   const title = t(`seasonalChecklists.${bannerData.id}.title`)
@@ -128,7 +128,7 @@ export default function SeasonalChecklistBanner() {
     >
       <div className="flex items-center gap-3">
         {/* Icon */}
-        <div className={`flex-shrink-0 ${iconColor}`}>
+        <div className={`shrink-0 ${iconColor}`}>
           {icon}
         </div>
         
@@ -136,24 +136,24 @@ export default function SeasonalChecklistBanner() {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium truncate">{title}</span>
-            <span className="text-2xs px-1.5 py-0.5 rounded-full bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]">
+            <span className="text-2xs px-1.5 py-0.5 rounded-full bg-(--color-bg-tertiary) text-(--color-text-muted)">
               {bannerData.progress}%
             </span>
           </div>
-          <p className="text-xs text-[var(--color-text-muted)]">
+          <p className="text-xs text-(--color-text-muted)">
             {t('seasonalChecklists.bannerTip')} • {bannerData.completed}/{bannerData.total} {t('seasonalChecklists.itemsCompleted')}
           </p>
         </div>
         
         {/* Arrow */}
-        <div className="flex-shrink-0 text-[var(--color-text-muted)]">
+        <div className="shrink-0 text-(--color-text-muted)">
           {Icons.chevronRight}
         </div>
         
         {/* Dismiss button */}
         <button
           onClick={handleDismiss}
-          className="flex-shrink-0 p-1.5 rounded-lg hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
+          className="shrink-0 p-1.5 rounded-lg hover:bg-(--color-bg-tertiary) text-(--color-text-muted) hover:text-(--color-text-secondary) transition-colors"
           aria-label="Dismiss"
         >
           {Icons.x}

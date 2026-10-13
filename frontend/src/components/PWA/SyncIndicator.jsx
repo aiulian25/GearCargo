@@ -68,7 +68,7 @@ export function SyncIndicator({ variant = 'badge' }) {
             type="button"
             onClick={triggerSync}
             disabled={isSyncing || !isOnline}
-            className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 dark:focus:ring-offset-gray-900 ${
+            className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium transition-colors focus:outline-hidden focus:ring-2 focus:ring-offset-1 dark:focus:ring-offset-gray-900 ${
               isSyncing
                 ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 focus:ring-blue-500'
                 : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-900/50 focus:ring-amber-500 disabled:opacity-60 disabled:cursor-not-allowed'
@@ -100,7 +100,7 @@ export function SyncIndicator({ variant = 'badge' }) {
   // ── Card variant — detailed status panel ──────────────────────────────────
   if (variant === 'card') {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4">
         <div className="flex items-center justify-between mb-3 gap-2">
           <h3 className="text-sm font-medium text-gray-900 dark:text-white">
             {t('pwa.sync.syncStatus')}
@@ -121,7 +121,7 @@ export function SyncIndicator({ variant = 'badge' }) {
 
         {/* Offline notice — reassure that data is safe locally */}
         {!isOnline && (
-          <div className="mb-3 p-2 bg-amber-50 dark:bg-amber-900/20 rounded text-xs text-amber-700 dark:text-amber-400">
+          <div className="mb-3 p-2 bg-amber-50 dark:bg-amber-900/20 rounded-sm text-xs text-amber-700 dark:text-amber-400">
             {t('pwa.sync.offlineNotice')}
           </div>
         )}
@@ -158,7 +158,7 @@ export function SyncIndicator({ variant = 'badge' }) {
 
         {/* Generic sync error from the last manual attempt */}
         {syncError && (
-          <div className="mb-3 p-2 bg-red-50 dark:bg-red-900/20 rounded text-sm text-red-600 dark:text-red-400 break-words">
+          <div className="mb-3 p-2 bg-red-50 dark:bg-red-900/20 rounded-sm text-sm text-red-600 dark:text-red-400 wrap-break-word">
             {t('pwa.sync.syncError')}: {syncError}
           </div>
         )}
@@ -169,7 +169,7 @@ export function SyncIndicator({ variant = 'badge' }) {
             type="button"
             onClick={triggerSync}
             disabled={isSyncing}
-            className="w-full mt-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+            className="w-full mt-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
           >
             {isSyncing ? (
               <>

@@ -123,7 +123,7 @@ export default function Repairs() {
               to={`/repairs/${entry.id}`}
               className="card flex items-center gap-3 touch-manipulation"
             >
-              <div className="w-10 h-10 rounded-lg bg-red-500/10 flex items-center justify-center flex-shrink-0">
+              <div className="w-10 h-10 rounded-lg bg-red-500/10 flex items-center justify-center shrink-0">
                 <span className="material-icons-outlined icon-sm text-red-500">
                   {getCategoryIcon(entry.repair_type || entry.category)}
                 </span>
@@ -131,7 +131,7 @@ export default function Repairs() {
               
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{entry.description}</p>
-                <p className="text-2xs text-[var(--color-text-muted)]">
+                <p className="text-2xs text-(--color-text-muted)">
                   {formatDate(entry.date)} • {entry.mileage?.toLocaleString() || '-'} {vehicles.find(v => v.id === entry.vehicle_id)?.distance_unit || 'km'}
                   {vehicles.length > 1 && entry.vehicle_name && ` • ${entry.vehicle_name}`}
                 </p>
@@ -142,16 +142,16 @@ export default function Repairs() {
                 )}
               </div>
               
-              <div className="text-right flex-shrink-0">
+              <div className="text-right shrink-0">
                 <p className="text-sm font-semibold">{entry.total_cost}</p>
                 {entry.shop_name && (
-                  <p className="text-2xs text-[var(--color-text-muted)] truncate max-w-[80px]">
+                  <p className="text-2xs text-(--color-text-muted) truncate max-w-[80px]">
                     {entry.shop_name}
                   </p>
                 )}
               </div>
               
-              <span className="material-icons-outlined icon-sm text-[var(--color-text-muted)]">
+              <span className="material-icons-outlined icon-sm text-(--color-text-muted)">
                 chevron_right
               </span>
             </Link>

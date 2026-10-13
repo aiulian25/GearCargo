@@ -138,7 +138,7 @@ export default function ReceiptUpload({ onFileSelect, onFileRemove, selectedFile
 
   return (
     <div className="space-y-3">
-      <label className="block text-sm font-medium text-[var(--color-text-secondary)]">
+      <label className="block text-sm font-medium text-(--color-text-secondary)">
         {label || t('receipt.label') || 'Receipt / Document'} ({t('receipt.optional') || 'optional'})
       </label>
       
@@ -167,8 +167,8 @@ export default function ReceiptUpload({ onFileSelect, onFileRemove, selectedFile
           className={`
             relative border-2 border-dashed rounded-xl p-6 text-center transition-all
             ${dragActive 
-              ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/5' 
-              : 'border-[var(--color-border)] hover:border-[var(--color-accent)]/50'
+              ? 'border-(--color-accent) bg-(--color-accent)/5' 
+              : 'border-(--color-border) hover:border-(--color-accent)/50'
             }
             ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
           `}
@@ -179,14 +179,14 @@ export default function ReceiptUpload({ onFileSelect, onFileRemove, selectedFile
           onClick={handleBrowseClick}
         >
           <div className="flex flex-col items-center gap-3">
-            <div className="w-12 h-12 rounded-full bg-[var(--color-accent)]/10 flex items-center justify-center text-[var(--color-accent)]">
+            <div className="w-12 h-12 rounded-full bg-(--color-accent)/10 flex items-center justify-center text-(--color-accent)">
               {Icons.image}
             </div>
             <div>
-              <p className="text-sm font-medium text-[var(--color-text-primary)]">
+              <p className="text-sm font-medium text-(--color-text-primary)">
                 {t('receipt.dragDrop') || 'Drag & drop or click to browse'}
               </p>
-              <p className="text-xs text-[var(--color-text-muted)] mt-1">
+              <p className="text-xs text-(--color-text-muted) mt-1">
                 {t('receipt.formats') || 'JPG, PNG, GIF, PDF up to 10MB'}
               </p>
             </div>
@@ -194,7 +194,7 @@ export default function ReceiptUpload({ onFileSelect, onFileRemove, selectedFile
         </div>
       ) : (
         /* Preview area */
-        <div className="relative border border-[var(--color-border)] rounded-xl p-4 bg-[var(--color-bg-tertiary)]">
+        <div className="relative border border-(--color-border) rounded-xl p-4 bg-(--color-bg-tertiary)">
           <button
             type="button"
             onClick={handleRemove}
@@ -206,7 +206,7 @@ export default function ReceiptUpload({ onFileSelect, onFileRemove, selectedFile
           
           <div className="flex items-center gap-4">
             {previewUrl ? (
-              <div className="w-20 h-20 rounded-lg overflow-hidden bg-[var(--color-bg-secondary)] flex-shrink-0">
+              <div className="w-20 h-20 rounded-lg overflow-hidden bg-(--color-bg-secondary) shrink-0">
                 <img 
                   src={previewUrl} 
                   alt="Receipt preview" 
@@ -214,19 +214,19 @@ export default function ReceiptUpload({ onFileSelect, onFileRemove, selectedFile
                 />
               </div>
             ) : (
-              <div className="w-20 h-20 rounded-lg bg-[var(--color-bg-secondary)] flex items-center justify-center flex-shrink-0 text-[var(--color-text-muted)]">
+              <div className="w-20 h-20 rounded-lg bg-(--color-bg-secondary) flex items-center justify-center shrink-0 text-(--color-text-muted)">
                 {Icons.file}
               </div>
             )}
             
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <span className="text-[var(--color-accent)]">{Icons.check}</span>
-                <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
+                <span className="text-(--color-accent)">{Icons.check}</span>
+                <p className="text-sm font-medium text-(--color-text-primary) truncate">
                   {selectedFile.name}
                 </p>
               </div>
-              <p className="text-xs text-[var(--color-text-muted)] mt-1">
+              <p className="text-xs text-(--color-text-muted) mt-1">
                 {formatFileSize(selectedFile.size)}
               </p>
             </div>
@@ -240,9 +240,9 @@ export default function ReceiptUpload({ onFileSelect, onFileRemove, selectedFile
           type="button"
           onClick={handleBrowseClick}
           disabled={disabled}
-          className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-tertiary)] transition-colors disabled:opacity-50"
+          className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-(--color-border) bg-(--color-bg-secondary) hover:bg-(--color-bg-tertiary) transition-colors disabled:opacity-50"
         >
-          <span className="text-[var(--color-accent)]">{Icons.upload}</span>
+          <span className="text-(--color-accent)">{Icons.upload}</span>
           <span className="text-sm font-medium">{t('receipt.browse') || 'Browse Files'}</span>
         </button>
         
@@ -250,9 +250,9 @@ export default function ReceiptUpload({ onFileSelect, onFileRemove, selectedFile
           type="button"
           onClick={handleCameraClick}
           disabled={disabled}
-          className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-tertiary)] transition-colors disabled:opacity-50"
+          className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-(--color-border) bg-(--color-bg-secondary) hover:bg-(--color-bg-tertiary) transition-colors disabled:opacity-50"
         >
-          <span className="text-[var(--color-accent)]">{Icons.camera}</span>
+          <span className="text-(--color-accent)">{Icons.camera}</span>
           <span className="text-sm font-medium">{t('receipt.camera') || 'Use Camera'}</span>
         </button>
       </div>

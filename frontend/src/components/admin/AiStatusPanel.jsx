@@ -170,14 +170,14 @@ export default function AiStatusPanel() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className="animate-spin rounded-full h-6 w-6 border-2 border-[var(--color-accent)] border-t-transparent" />
+        <div className="animate-spin rounded-full h-6 w-6 border-2 border-(--color-accent) border-t-transparent" />
       </div>
     )
   }
 
   if (!settings) {
     return (
-      <p className="text-sm text-[var(--color-text-muted)] text-center py-4">
+      <p className="text-sm text-(--color-text-muted) text-center py-4">
         {t('common.loadFailed') || 'Failed to load settings'}
       </p>
     )
@@ -215,10 +215,10 @@ export default function AiStatusPanel() {
       )}
 
       {/* Status overview */}
-      <div className="bg-[var(--color-bg-tertiary)] rounded-xl p-4 space-y-3">
+      <div className="bg-(--color-bg-tertiary) rounded-xl p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-[var(--color-accent)]">{Icons.cpu}</span>
+            <span className="text-(--color-accent)">{Icons.cpu}</span>
             <span className="text-sm font-medium">
               {t('aiPredictions.statusPanel') || 'AI Predictions Status'}
             </span>
@@ -228,7 +228,7 @@ export default function AiStatusPanel() {
             <button
               onClick={loadSettings}
               title="Refresh"
-              className="p-1 rounded-md text-[var(--color-text-muted)] hover:bg-[var(--color-bg-secondary)] transition-colors"
+              className="p-1 rounded-md text-(--color-text-muted) hover:bg-(--color-bg-secondary) transition-colors"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -239,16 +239,16 @@ export default function AiStatusPanel() {
 
         {/* Config row */}
         <div className="grid grid-cols-2 gap-2 text-xs">
-          <div className="bg-[var(--color-bg-card)] rounded-lg p-2">
-            <p className="text-[var(--color-text-muted)] mb-0.5">
+          <div className="bg-(--color-bg-card) rounded-lg p-2">
+            <p className="text-(--color-text-muted) mb-0.5">
               {t('aiPredictions.configuredModel') || 'Model'}
             </p>
             <p className="font-medium truncate">
               {activeResult.current_model || settings.ollama_live?.current_model || '—'}
             </p>
           </div>
-          <div className="bg-[var(--color-bg-card)] rounded-lg p-2">
-            <p className="text-[var(--color-text-muted)] mb-0.5">
+          <div className="bg-(--color-bg-card) rounded-lg p-2">
+            <p className="text-(--color-text-muted) mb-0.5">
               {t('aiPredictions.lastChecked') || 'Last checked'}
             </p>
             <p className="font-medium">
@@ -259,7 +259,7 @@ export default function AiStatusPanel() {
 
         {/* URL */}
         {settings.ollama_url && (
-          <div className="text-xs text-[var(--color-text-muted)] truncate">
+          <div className="text-xs text-(--color-text-muted) truncate">
             {settings.ollama_url}
           </div>
         )}
@@ -278,7 +278,7 @@ export default function AiStatusPanel() {
         <div>
           <button
             onClick={() => setShowModels(!showModels)}
-            className="flex items-center gap-1 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors mb-2"
+            className="flex items-center gap-1 text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors mb-2"
           >
             {showModels ? Icons.chevronUp : Icons.chevronDown}
             {t('aiPredictions.availableModels') || 'Available Models'} ({models.length})
@@ -292,19 +292,19 @@ export default function AiStatusPanel() {
                     key={m.name}
                     className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs ${
                       isCurrent
-                        ? 'bg-[var(--color-accent)]/10 border border-[var(--color-accent)]/30'
-                        : 'bg-[var(--color-bg-tertiary)]'
+                        ? 'bg-(--color-accent)/10 border border-(--color-accent)/30'
+                        : 'bg-(--color-bg-tertiary)'
                     }`}
                   >
                     <div className="flex items-center gap-2">
                       {isCurrent && (
-                        <span className="text-[var(--color-accent)]">{Icons.check}</span>
+                        <span className="text-(--color-accent)">{Icons.check}</span>
                       )}
-                      <span className={`font-mono ${isCurrent ? 'font-semibold text-[var(--color-accent)]' : ''}`}>
+                      <span className={`font-mono ${isCurrent ? 'font-semibold text-(--color-accent)' : ''}`}>
                         {m.name}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 text-[var(--color-text-muted)]">
+                    <div className="flex items-center gap-2 text-(--color-text-muted)">
                       {formatBytes(m.size) && <span>{formatBytes(m.size)}</span>}
                       {m.digest && <span className="font-mono opacity-60">{m.digest}</span>}
                     </div>
@@ -317,34 +317,34 @@ export default function AiStatusPanel() {
       )}
 
       {models.length === 0 && displayStatus === 'online' && (
-        <p className="text-xs text-[var(--color-text-muted)] text-center py-2">
+        <p className="text-xs text-(--color-text-muted) text-center py-2">
           {t('aiPredictions.noModels') || 'No models loaded in Ollama'}
         </p>
       )}
 
       {/* Prediction stats */}
-      <div className="bg-[var(--color-bg-tertiary)] rounded-xl p-4">
-        <p className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide mb-3">
+      <div className="bg-(--color-bg-tertiary) rounded-xl p-4">
+        <p className="text-xs font-medium text-(--color-text-muted) uppercase tracking-wide mb-3">
           {t('aiPredictions.predictionStats') || 'Prediction Statistics'}
         </p>
         <div className="grid grid-cols-3 gap-2 text-center">
-          <div className="bg-[var(--color-bg-card)] rounded-lg p-2">
-            <p className="text-lg font-bold text-[var(--color-accent)]">{stats.total ?? '—'}</p>
-            <p className="text-2xs text-[var(--color-text-muted)]">
+          <div className="bg-(--color-bg-card) rounded-lg p-2">
+            <p className="text-lg font-bold text-(--color-accent)">{stats.total ?? '—'}</p>
+            <p className="text-2xs text-(--color-text-muted)">
               {t('aiPredictions.totalPredictions') || 'Total'}
             </p>
           </div>
-          <div className="bg-[var(--color-bg-card)] rounded-lg p-2">
+          <div className="bg-(--color-bg-card) rounded-lg p-2">
             <p className="text-lg font-bold text-orange-500">{stats.active ?? '—'}</p>
-            <p className="text-2xs text-[var(--color-text-muted)]">
+            <p className="text-2xs text-(--color-text-muted)">
               {t('aiPredictions.activePredictions') || 'Active'}
             </p>
           </div>
-          <div className="bg-[var(--color-bg-card)] rounded-lg p-2">
+          <div className="bg-(--color-bg-card) rounded-lg p-2">
             <p className="text-xs font-semibold">
               {formatRelativeTime(stats.last_generated_at) || (t('aiPredictions.neverGenerated') || 'Never')}
             </p>
-            <p className="text-2xs text-[var(--color-text-muted)]">
+            <p className="text-2xs text-(--color-text-muted)">
               {t('aiPredictions.lastGenerated') || 'Last run'}
             </p>
           </div>
@@ -353,19 +353,19 @@ export default function AiStatusPanel() {
 
       {/* AI response cache */}
       {settings?.ollama_enabled && (
-        <div className="bg-[var(--color-bg-tertiary)] rounded-xl p-4 space-y-3">
+        <div className="bg-(--color-bg-tertiary) rounded-xl p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">
+            <p className="text-xs font-medium text-(--color-text-muted) uppercase tracking-wide">
               {t('aiPredictions.cacheTitle') || 'AI Response Cache'}
             </p>
             {settings?.ai_cache?.available && (
-              <span className="text-xs text-[var(--color-text-muted)]">
+              <span className="text-xs text-(--color-text-muted)">
                 {(t('aiPredictions.cacheKeys') || '{n} key(s) cached').replace('{n}', settings.ai_cache.keys)}
               </span>
             )}
           </div>
 
-          <p className="text-xs text-[var(--color-text-muted)]">
+          <p className="text-xs text-(--color-text-muted)">
             {t('aiPredictions.cacheHint') || 'Ollama responses are cached in Redis to avoid redundant calls. Flush when you change models or want immediate fresh results.'}
           </p>
 
@@ -406,11 +406,11 @@ export default function AiStatusPanel() {
 
       {/* Task Model Assignment */}
       {settings?.ollama_enabled && (
-        <div className="bg-[var(--color-bg-tertiary)] rounded-xl p-4 space-y-3">
-          <p className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">
+        <div className="bg-(--color-bg-tertiary) rounded-xl p-4 space-y-3">
+          <p className="text-xs font-medium text-(--color-text-muted) uppercase tracking-wide">
             {t('aiPredictions.taskModels') || 'Task Model Assignment'}
           </p>
-          <p className="text-xs text-[var(--color-text-muted)]">
+          <p className="text-xs text-(--color-text-muted)">
             {t('aiPredictions.taskModelsHint') || 'Choose which locally-available model to use for each AI task. Leave blank to use the default model.'}
           </p>
 
@@ -432,16 +432,16 @@ export default function AiStatusPanel() {
             { key: 'reminder', label: t('aiPredictions.modelReminder') || 'Reminder Drafting' },
             { key: 'classifier', label: t('aiPredictions.modelClassifier') || 'Chat Safety Classifier' },
           ].map(({ key, label }) => (
-            <div key={key} className={`flex flex-col gap-1 ${key === 'global' ? 'pb-3 mb-1 border-b border-[var(--color-border)]' : ''}`}>
-              <label className="text-xs font-medium text-[var(--color-text)]">
+            <div key={key} className={`flex flex-col gap-1 ${key === 'global' ? 'pb-3 mb-1 border-b border-(--color-border)' : ''}`}>
+              <label className="text-xs font-medium text-(--color-text)">
                 {label}
                 {key === 'global' && (
-                  <span className="ml-2 text-2xs font-normal text-[var(--color-text-muted)]">
+                  <span className="ml-2 text-2xs font-normal text-(--color-text-muted)">
                     {t('aiPredictions.modelGlobalHint') || '— used when no task-specific model is set'}
                   </span>
                 )}
                 {key === 'classifier' && (
-                  <span className="ml-2 text-2xs font-normal text-[var(--color-text-muted)]">
+                  <span className="ml-2 text-2xs font-normal text-(--color-text-muted)">
                     {t('aiPredictions.modelClassifierHint') || '— small/fast model that blocks off-topic chat'}
                   </span>
                 )}
@@ -449,7 +449,7 @@ export default function AiStatusPanel() {
               <select
                 value={taskModels[key] || ''}
                 onChange={e => setTaskModels(prev => ({ ...prev, [key]: e.target.value }))}
-                className="w-full text-xs bg-[var(--color-bg-card)] border border-[var(--color-border)] rounded-lg px-2.5 py-1.5 text-[var(--color-text)] focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]"
+                className="w-full text-xs bg-(--color-bg-card) border border-(--color-border) rounded-lg px-2.5 py-1.5 text-(--color-text) focus:outline-hidden focus:ring-1 focus:ring-(--color-accent)"
               >
                 <option value="">{key === 'global' ? (t('aiPredictions.selectModel') || '— select a model —') : (t('aiPredictions.useGlobalDefault') || 'Use global default')}</option>
                 {(settings?.ollama_live?.models || []).map(m => (
@@ -460,18 +460,18 @@ export default function AiStatusPanel() {
           ))}
 
           {/* Chat Layer 2 classifier master toggle */}
-          <label className="flex items-start gap-2 pt-3 mt-1 border-t border-[var(--color-border)] cursor-pointer">
+          <label className="flex items-start gap-2 pt-3 mt-1 border-t border-(--color-border) cursor-pointer">
             <input
               type="checkbox"
               checked={classifierEnabled}
               onChange={e => setClassifierEnabled(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-[var(--color-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+              className="mt-0.5 h-4 w-4 rounded-sm border-(--color-border) text-(--color-accent) focus:ring-(--color-accent)"
             />
             <span className="flex flex-col">
-              <span className="text-xs font-medium text-[var(--color-text)]">
+              <span className="text-xs font-medium text-(--color-text)">
                 {t('aiPredictions.classifierEnabled') || 'Enable chat safety classifier'}
               </span>
-              <span className="text-2xs text-[var(--color-text-muted)]">
+              <span className="text-2xs text-(--color-text-muted)">
                 {t('aiPredictions.classifierEnabledHint') || 'Pre-screens chat questions and blocks off-topic ones before the main model. Falls back safely if unavailable.'}
               </span>
             </span>
@@ -483,13 +483,13 @@ export default function AiStatusPanel() {
               type="checkbox"
               checked={outputClassifierEnabled}
               onChange={e => setOutputClassifierEnabled(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-[var(--color-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+              className="mt-0.5 h-4 w-4 rounded-sm border-(--color-border) text-(--color-accent) focus:ring-(--color-accent)"
             />
             <span className="flex flex-col">
-              <span className="text-xs font-medium text-[var(--color-text)]">
+              <span className="text-xs font-medium text-(--color-text)">
                 {t('aiPredictions.outputClassifierEnabled') || 'Also re-check the AI answer (slower)'}
               </span>
-              <span className="text-2xs text-[var(--color-text-muted)]">
+              <span className="text-2xs text-(--color-text-muted)">
                 {t('aiPredictions.outputClassifierEnabledHint') || 'Runs a second safety check over the generated answer. Stronger, but adds one extra model call per reply.'}
               </span>
             </span>
@@ -504,7 +504,7 @@ export default function AiStatusPanel() {
           <button
             onClick={handleSaveModels}
             disabled={savingModels}
-            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-medium bg-[var(--color-accent)]/10 text-[var(--color-accent)] hover:bg-[var(--color-accent)]/20 disabled:opacity-50 transition-colors border border-[var(--color-accent)]/30"
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-medium bg-(--color-accent)/10 text-(--color-accent) hover:bg-(--color-accent)/20 disabled:opacity-50 transition-colors border border-(--color-accent)/30"
           >
             {savingModels ? (
               <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -523,7 +523,7 @@ export default function AiStatusPanel() {
       <button
         onClick={handleTest}
         disabled={testing || !settings.ollama_enabled}
-        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium bg-[var(--color-accent)] text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium bg-(--color-accent) text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
       >
         {testing ? (
           <>
@@ -542,7 +542,7 @@ export default function AiStatusPanel() {
       </button>
 
       {!settings.ollama_enabled && (
-        <p className="text-xs text-center text-[var(--color-text-muted)]">
+        <p className="text-xs text-center text-(--color-text-muted)">
           {t('aiPredictions.disabled') || 'AI predictions are not enabled on this server.'}
         </p>
       )}

@@ -17,7 +17,7 @@ const BellIcon = (
 )
 
 const CheckIcon = (
-  <svg className="w-5 h-5 shrink-0 text-[var(--color-accent)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+  <svg className="w-5 h-5 shrink-0 text-(--color-accent)" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
   </svg>
 )
@@ -47,26 +47,26 @@ export default function PushPrimingModal({ isOpen, onConfirm, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
       onClick={onClose}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="push-priming-title"
-        className="w-full max-w-md bg-[var(--color-bg-card)] rounded-2xl shadow-xl overflow-hidden flex flex-col"
+        className="w-full max-w-md bg-(--color-bg-card) rounded-2xl shadow-xl overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="px-6 pt-6 pb-2 flex items-start gap-4">
-          <div className="shrink-0 w-12 h-12 rounded-xl bg-[var(--color-accent)]/15 text-[var(--color-accent)] flex items-center justify-center">
+          <div className="shrink-0 w-12 h-12 rounded-xl bg-(--color-accent)/15 text-(--color-accent) flex items-center justify-center">
             {BellIcon}
           </div>
           <div className="flex-1 min-w-0">
-            <h2 id="push-priming-title" className="text-lg font-semibold text-[var(--color-text-primary)]">
+            <h2 id="push-priming-title" className="text-lg font-semibold text-(--color-text-primary)">
               {t('settings.pushPrimingTitle')}
             </h2>
-            <p className="text-sm text-[var(--color-text-muted)] mt-1">
+            <p className="text-sm text-(--color-text-muted) mt-1">
               {t('settings.pushPrimingDesc')}
             </p>
           </div>
@@ -75,14 +75,14 @@ export default function PushPrimingModal({ isOpen, onConfirm, onClose }) {
         {/* Benefits */}
         <ul className="px-6 py-4 space-y-2.5">
           {benefits.map((benefit, i) => (
-            <li key={i} className="flex items-start gap-2.5 text-sm text-[var(--color-text-primary)]">
+            <li key={i} className="flex items-start gap-2.5 text-sm text-(--color-text-primary)">
               {CheckIcon}
               <span className="min-w-0">{benefit}</span>
             </li>
           ))}
         </ul>
 
-        <p className="px-6 text-xs text-[var(--color-text-muted)]">
+        <p className="px-6 text-xs text-(--color-text-muted)">
           {t('settings.pushPrimingPrivacy')}
         </p>
 
@@ -91,7 +91,7 @@ export default function PushPrimingModal({ isOpen, onConfirm, onClose }) {
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2.5 rounded-lg text-sm font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+            className="px-4 py-2.5 rounded-lg text-sm font-medium text-(--color-text-secondary) hover:bg-(--color-bg-tertiary) transition-colors focus:outline-hidden focus:ring-2 focus:ring-(--color-accent)"
           >
             {t('pwa.notNow')}
           </button>
@@ -99,7 +99,7 @@ export default function PushPrimingModal({ isOpen, onConfirm, onClose }) {
             ref={confirmRef}
             type="button"
             onClick={onConfirm}
-            className="px-4 py-2.5 rounded-lg text-sm font-medium bg-[var(--color-accent)] text-white hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:ring-offset-2 focus:ring-offset-[var(--color-bg-card)]"
+            className="px-4 py-2.5 rounded-lg text-sm font-medium bg-(--color-accent) text-white hover:opacity-90 transition-opacity focus:outline-hidden focus:ring-2 focus:ring-(--color-accent) focus:ring-offset-2 focus:ring-offset-(--color-bg-card)"
           >
             {t('settings.pushPrimingEnable')}
           </button>

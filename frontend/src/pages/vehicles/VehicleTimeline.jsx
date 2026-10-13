@@ -336,18 +336,18 @@ export default function VehicleTimeline() {
   return (
     <div className="pb-20">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-[var(--color-bg-primary)] border-b border-[var(--color-border)]">
+      <div className="sticky top-0 z-10 bg-(--color-bg-primary) border-b border-(--color-border)">
         <div className="flex items-center justify-between p-4">
           <div className="flex items-center gap-3">
             <button 
               onClick={() => navigate(`/vehicles/${id}`)}
-              className="p-2 -ml-2 rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors"
+              className="p-2 -ml-2 rounded-lg hover:bg-(--color-bg-tertiary) transition-colors"
             >
               {Icons.arrowBack}
             </button>
             <div>
               <h1 className="text-lg font-semibold">{t('timeline.title') || 'Timeline'}</h1>
-              <p className="text-xs text-[var(--color-text-secondary)]">
+              <p className="text-xs text-(--color-text-secondary)">
                 {vehicle?.make} {vehicle?.model} • {total} {t('timeline.entries') || 'entries'}
                 {hasMore && '+'}
               </p>
@@ -357,8 +357,8 @@ export default function VehicleTimeline() {
             onClick={() => setShowFilters(!showFilters)}
             className={`p-2 rounded-lg transition-colors ${
               showFilters || filter !== 'all' 
-                ? 'bg-[var(--color-accent)] text-white' 
-                : 'hover:bg-[var(--color-bg-tertiary)]'
+                ? 'bg-(--color-accent) text-white' 
+                : 'hover:bg-(--color-bg-tertiary)'
             }`}
           >
             {Icons.filter}
@@ -375,8 +375,8 @@ export default function VehicleTimeline() {
                   onClick={() => handleFilterChange(option.id)}
                   className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
                     filter === option.id
-                      ? 'bg-[var(--color-accent)] text-white'
-                      : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]'
+                      ? 'bg-(--color-accent) text-white'
+                      : 'bg-(--color-bg-tertiary) text-(--color-text-secondary) hover:bg-(--color-bg-secondary)'
                   }`}
                 >
                   {option.label}
@@ -406,8 +406,8 @@ export default function VehicleTimeline() {
             {groupedTimeline.map((group, groupIdx) => (
               <div key={groupIdx}>
                 {/* Month header */}
-                <div className="sticky top-[72px] z-[5] bg-[var(--color-bg-primary)] py-2 mb-3">
-                  <h2 className="text-sm font-semibold text-[var(--color-text-secondary)]">
+                <div className="sticky top-[72px] z-5 bg-(--color-bg-primary) py-2 mb-3">
+                  <h2 className="text-sm font-semibold text-(--color-text-secondary)">
                     {group.label}
                   </h2>
                 </div>
@@ -415,7 +415,7 @@ export default function VehicleTimeline() {
                 {/* Timeline entries */}
                 <div className="relative">
                   {/* Vertical line */}
-                  <div className="absolute left-[15px] top-0 bottom-0 w-0.5 bg-[var(--color-border)]" />
+                  <div className="absolute left-[15px] top-0 bottom-0 w-0.5 bg-(--color-border)" />
                   
                   <div className="space-y-4">
                     {group.entries.map((entry, idx) => {
@@ -426,12 +426,12 @@ export default function VehicleTimeline() {
                       return (
                         <div key={idx} id={`tx-${entry.id}`} className="relative pl-10 scroll-mt-24">
                           {/* Timeline dot */}
-                          <div className={`absolute left-0 top-3 w-8 h-8 rounded-full ${style.bgColor} flex items-center justify-center ${style.color} z-[1]`}>
+                          <div className={`absolute left-0 top-3 w-8 h-8 rounded-full ${style.bgColor} flex items-center justify-center ${style.color} z-1`}>
                             {style.icon}
                           </div>
 
                           {/* Entry card */}
-                          <div className={`bg-[var(--color-bg-secondary)] rounded-xl p-4 border transition-shadow duration-500 ${isHighlighted ? 'border-[var(--color-accent)] ring-2 ring-[var(--color-accent)]' : 'border-[var(--color-border)]'}`}>
+                          <div className={`bg-(--color-bg-secondary) rounded-xl p-4 border transition-shadow duration-500 ${isHighlighted ? 'border-(--color-accent) ring-2 ring-(--color-accent)' : 'border-(--color-border)'}`}>
                             <div className="flex items-start justify-between gap-2 mb-2">
                               <div className="flex-1 min-w-0">
                                 <span className={`inline-block px-2 py-0.5 rounded-full text-2xs font-medium ${style.bgColor} ${style.color} mb-1`}>
@@ -442,13 +442,13 @@ export default function VehicleTimeline() {
                                 </h3>
                               </div>
                               {entry.cost !== undefined && entry.cost !== null && (
-                                <span className="font-semibold text-[var(--color-text-primary)] whitespace-nowrap">
+                                <span className="font-semibold text-(--color-text-primary) whitespace-nowrap">
                                   {formatCurrency(entry.cost)}
                                 </span>
                               )}
                             </div>
                             
-                            <div className="flex items-center justify-between text-xs text-[var(--color-text-secondary)]">
+                            <div className="flex items-center justify-between text-xs text-(--color-text-secondary)">
                               <span>{formatDate(entry.date)}</span>
                               {editUrl && (
                                 <Link
@@ -463,13 +463,13 @@ export default function VehicleTimeline() {
                             
                             {/* Additional details */}
                             {entry.mileage && (
-                              <div className="mt-2 pt-2 border-t border-[var(--color-border)] text-xs text-[var(--color-text-secondary)]">
+                              <div className="mt-2 pt-2 border-t border-(--color-border) text-xs text-(--color-text-secondary)">
                                 {t('timeline.mileage') || 'Mileage'}: {entry.mileage.toLocaleString()} km
                               </div>
                             )}
                             
                             {entry.notes && (
-                              <div className="mt-2 pt-2 border-t border-[var(--color-border)] text-xs text-[var(--color-text-secondary)]">
+                              <div className="mt-2 pt-2 border-t border-(--color-border) text-xs text-(--color-text-secondary)">
                                 {entry.notes}
                               </div>
                             )}
@@ -490,7 +490,7 @@ export default function VehicleTimeline() {
             <button
               onClick={handleLoadMore}
               disabled={isLoadingMore}
-              className="px-6 py-2.5 rounded-xl bg-[var(--color-bg-secondary)] border border-[var(--color-border)] text-sm font-medium hover:bg-[var(--color-bg-tertiary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-2.5 rounded-xl bg-(--color-bg-secondary) border border-(--color-border) text-sm font-medium hover:bg-(--color-bg-tertiary) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoadingMore
                 ? (t('common.loading') || 'Loading…')

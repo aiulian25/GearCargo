@@ -53,10 +53,10 @@ const Icons = {
 const PolicySection = ({ icon, title, children }) => (
   <div className="mb-6">
     <div className="flex items-center gap-3 mb-3">
-      <span className="text-[var(--color-accent)]">{icon}</span>
-      <h3 className="text-lg font-semibold text-[var(--color-text)]">{title}</h3>
+      <span className="text-(--color-accent)">{icon}</span>
+      <h3 className="text-lg font-semibold text-(--color-text)">{title}</h3>
     </div>
-    <div className="pl-8 text-[var(--color-text-secondary)] leading-relaxed">
+    <div className="pl-8 text-(--color-text-secondary) leading-relaxed">
       {children}
     </div>
   </div>
@@ -65,7 +65,7 @@ const PolicySection = ({ icon, title, children }) => (
 // Bullet point component
 const BulletPoint = ({ children }) => (
   <div className="flex items-start gap-2 mb-2">
-    <span className="text-green-500 mt-1 flex-shrink-0">{Icons.check}</span>
+    <span className="text-green-500 mt-1 shrink-0">{Icons.check}</span>
     <span>{children}</span>
   </div>
 )
@@ -79,28 +79,28 @@ export default function PrivacyPolicy({ isOpen, onClose }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div 
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/60 backdrop-blur-xs"
         onClick={onClose}
       />
       
       {/* Modal */}
-      <div className="relative bg-[var(--color-bg-secondary)] rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+      <div className="relative bg-(--color-bg-secondary) rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-[var(--color-border)]">
+        <div className="flex items-center justify-between p-6 border-b border-(--color-border)">
           <div className="flex items-center gap-3">
-            <span className="text-[var(--color-accent)]">{Icons.shield}</span>
+            <span className="text-(--color-accent)">{Icons.shield}</span>
             <div>
-              <h2 className="text-xl font-bold text-[var(--color-text)]">
+              <h2 className="text-xl font-bold text-(--color-text)">
                 {t('privacy.title')}
               </h2>
-              <p className="text-sm text-[var(--color-text-muted)]">
+              <p className="text-sm text-(--color-text-muted)">
                 {t('privacy.lastUpdated')}: February 2026
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+            className="p-2 rounded-lg hover:bg-(--color-bg-tertiary) transition-colors text-(--color-text-muted) hover:text-(--color-text)"
           >
             {Icons.close}
           </button>
@@ -109,8 +109,8 @@ export default function PrivacyPolicy({ isOpen, onClose }) {
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
           {/* Introduction */}
-          <div className="mb-6 p-4 bg-[var(--color-accent)]/10 rounded-xl border border-[var(--color-accent)]/20">
-            <p className="text-[var(--color-text)] leading-relaxed">
+          <div className="mb-6 p-4 bg-(--color-accent)/10 rounded-xl border border-(--color-accent)/20">
+            <p className="text-(--color-text) leading-relaxed">
               {t('privacy.intro')}
             </p>
           </div>
@@ -161,16 +161,16 @@ export default function PrivacyPolicy({ isOpen, onClose }) {
           </PolicySection>
 
           {/* Contact */}
-          <div className="mt-8 p-4 bg-[var(--color-bg-tertiary)] rounded-xl">
-            <h3 className="font-semibold text-[var(--color-text)] mb-2">
+          <div className="mt-8 p-4 bg-(--color-bg-tertiary) rounded-xl">
+            <h3 className="font-semibold text-(--color-text) mb-2">
               {t('privacy.contactTitle')}
             </h3>
-            <p className="text-[var(--color-text-secondary)] text-sm">
+            <p className="text-(--color-text-secondary) text-sm">
               {t('privacy.contactDesc')}
             </p>
             <a 
               href="mailto:gearcargo.team@gmail.com" 
-              className="inline-block mt-2 text-[var(--color-accent)] hover:underline text-sm font-medium"
+              className="inline-block mt-2 text-(--color-accent) hover:underline text-sm font-medium"
             >
               gearcargo.team@gmail.com
             </a>
@@ -178,10 +178,10 @@ export default function PrivacyPolicy({ isOpen, onClose }) {
         </div>
         
         {/* Footer */}
-        <div className="p-6 border-t border-[var(--color-border)]">
+        <div className="p-6 border-t border-(--color-border)">
           <button
             onClick={onClose}
-            className="w-full py-3 px-4 bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white rounded-lg font-medium transition-colors"
+            className="w-full py-3 px-4 bg-(--color-accent) hover:bg-(--color-accent-hover) text-white rounded-lg font-medium transition-colors"
           >
             {t('common.close')}
           </button>

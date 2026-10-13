@@ -190,7 +190,7 @@ export default function EditVehicle() {
   if (isLoading) {
     return (
       <div className="pb-4">
-        <div className="bg-[var(--color-bg-card)] border-b border-[var(--color-border)] px-4 py-3 flex items-center gap-3">
+        <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
           <button onClick={() => navigate(-1)} className="btn-icon">
             <span className="material-icons-outlined icon-md">close</span>
           </button>
@@ -201,7 +201,7 @@ export default function EditVehicle() {
             <div className="skeleton w-24 h-24 rounded-2xl" />
           </div>
           <div className="card space-y-4">
-            <div className="skeleton h-4 w-24 rounded" />
+            <div className="skeleton h-4 w-24 rounded-sm" />
             <div className="skeleton h-10 rounded-xl" />
             <div className="grid grid-cols-2 gap-3">
               <div className="skeleton h-10 rounded-xl" />
@@ -216,7 +216,7 @@ export default function EditVehicle() {
   return (
     <div className="pb-4">
       {/* Header */}
-      <div className="bg-[var(--color-bg-card)] border-b border-[var(--color-border)] px-4 py-3 flex items-center gap-3">
+      <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="btn-icon">
           <span className="material-icons-outlined icon-md">close</span>
         </button>
@@ -276,8 +276,8 @@ export default function EditVehicle() {
               </button>
             </div>
           ) : (
-            <div className="w-24 h-24 rounded-2xl bg-[var(--color-bg-tertiary)] flex items-center justify-center mb-3">
-              <span className="material-icons-outlined icon-xl text-[var(--color-text-muted)]">
+            <div className="w-24 h-24 rounded-2xl bg-(--color-bg-tertiary) flex items-center justify-center mb-3">
+              <span className="material-icons-outlined icon-xl text-(--color-text-muted)">
                 directions_car
               </span>
             </div>
@@ -306,10 +306,10 @@ export default function EditVehicle() {
         
         {/* Basic Info */}
         <div className="card space-y-4">
-          <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">{t('vehicles.basicInfo')}</h3>
+          <h3 className="text-sm font-medium text-(--color-text-secondary)">{t('vehicles.basicInfo')}</h3>
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('vehicles.vehicleName')} *
             </label>
             <input
@@ -325,7 +325,7 @@ export default function EditVehicle() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('vehicles.make')} *
               </label>
               <input
@@ -340,7 +340,7 @@ export default function EditVehicle() {
             </div>
             
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('vehicles.model')} *
               </label>
               <input
@@ -357,7 +357,7 @@ export default function EditVehicle() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('vehicles.year')}
               </label>
               <input
@@ -372,7 +372,7 @@ export default function EditVehicle() {
             </div>
             
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('vehicles.licensePlate')}
               </label>
               <input
@@ -387,10 +387,10 @@ export default function EditVehicle() {
         
         {/* Technical */}
         <div className="card space-y-4">
-          <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">{t('vehicles.technical')}</h3>
+          <h3 className="text-sm font-medium text-(--color-text-secondary)">{t('vehicles.technical')}</h3>
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('vehicles.fuelType')}
             </label>
             <select {...register('fuel_type')} className="input">
@@ -402,10 +402,10 @@ export default function EditVehicle() {
           
           {/* Distance Unit Toggle */}
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('vehicles.distanceUnit') || 'Distance Unit'}
             </label>
-            <div className="flex rounded-xl overflow-hidden border border-[var(--color-border)]">
+            <div className="flex rounded-xl overflow-hidden border border-(--color-border)">
               {['km', 'miles'].map(unit => (
                 <button
                   key={unit}
@@ -413,8 +413,8 @@ export default function EditVehicle() {
                   onClick={() => setDistanceUnit(unit)}
                   className={`flex-1 py-2 text-sm font-medium transition-colors ${
                     distanceUnit === unit
-                      ? 'bg-[var(--color-accent)] text-white'
-                      : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-elevated)]'
+                      ? 'bg-(--color-accent) text-white'
+                      : 'bg-(--color-bg-tertiary) text-(--color-text-secondary) hover:bg-(--color-bg-elevated)'
                   }`}
                 >
                   {unit === 'km' ? (t('vehicles.kilometres') || 'Kilometres') : (t('vehicles.miles') || 'Miles')}
@@ -425,7 +425,7 @@ export default function EditVehicle() {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('vehicles.currentMileage')} ({distanceUnit === 'miles' ? (t('vehicles.miles') || 'miles') : 'km'})
               </label>
               <input
@@ -437,7 +437,7 @@ export default function EditVehicle() {
             </div>
             
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('vehicles.tankCapacity')}
               </label>
               <input
@@ -451,7 +451,7 @@ export default function EditVehicle() {
           </div>
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('vehicles.vinOptional')}
             </label>
             <input
@@ -464,7 +464,7 @@ export default function EditVehicle() {
           </div>
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('vehicles.engineSize')}
             </label>
             <input
@@ -476,7 +476,7 @@ export default function EditVehicle() {
           </div>
 
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('vehicles.drivetrain') || 'Drivetrain'}
             </label>
             <select {...register('drivetrain')} className="input">
@@ -490,7 +490,7 @@ export default function EditVehicle() {
           {/* Purchase info (F23) — stored at create, now visible and editable */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('vehicles.purchaseDate') || 'Purchase date'}
               </label>
               <input
@@ -501,7 +501,7 @@ export default function EditVehicle() {
             </div>
 
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('vehicles.purchasePrice') || 'Purchase price'}
               </label>
               <input
@@ -522,23 +522,23 @@ export default function EditVehicle() {
             onClick={() => setShowDimensions(!showDimensions)}
             className="w-full flex items-center justify-between py-1"
           >
-            <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
+            <h3 className="text-sm font-medium text-(--color-text-secondary)">
               {t('vehicles.dimensionsOptional')}
             </h3>
-            <span className={`material-icons-outlined icon-sm text-[var(--color-text-muted)] transition-transform ${showDimensions ? 'rotate-180' : ''}`}>
+            <span className={`material-icons-outlined icon-sm text-(--color-text-muted) transition-transform ${showDimensions ? 'rotate-180' : ''}`}>
               expand_more
             </span>
           </button>
           
           {showDimensions && (
-            <div className="space-y-4 mt-4 pt-4 border-t border-[var(--color-border)]">
-              <p className="text-xs text-[var(--color-text-muted)]">
+            <div className="space-y-4 mt-4 pt-4 border-t border-(--color-border)">
+              <p className="text-xs text-(--color-text-muted)">
                 {t('vehicles.dimensionsHelp')}
               </p>
               
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                  <label className="block text-xs text-(--color-text-muted) mb-1">
                     {t('vehicles.height')}
                   </label>
                   <input
@@ -550,7 +550,7 @@ export default function EditVehicle() {
                 </div>
                 
                 <div>
-                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                  <label className="block text-xs text-(--color-text-muted) mb-1">
                     {t('vehicles.width')}
                   </label>
                   <input
@@ -562,7 +562,7 @@ export default function EditVehicle() {
                 </div>
 
                 <div>
-                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                  <label className="block text-xs text-(--color-text-muted) mb-1">
                     {t('vehicles.length') || 'Length (cm)'}
                   </label>
                   <input
@@ -574,7 +574,7 @@ export default function EditVehicle() {
                 </div>
 
                 <div>
-                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                  <label className="block text-xs text-(--color-text-muted) mb-1">
                     {t('vehicles.weight')}
                   </label>
                   <input
@@ -596,24 +596,24 @@ export default function EditVehicle() {
             onClick={() => setShowIntervals(!showIntervals)}
             className="w-full flex items-center justify-between py-1"
           >
-            <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
+            <h3 className="text-sm font-medium text-(--color-text-secondary)">
               {t('maintenance.intervalsTitle') || 'Maintenance intervals'}
             </h3>
-            <span className={`material-icons-outlined icon-sm text-[var(--color-text-muted)] transition-transform ${showIntervals ? 'rotate-180' : ''}`}>
+            <span className={`material-icons-outlined icon-sm text-(--color-text-muted) transition-transform ${showIntervals ? 'rotate-180' : ''}`}>
               expand_more
             </span>
           </button>
 
           {showIntervals && (
-            <div className="space-y-4 mt-4 pt-4 border-t border-[var(--color-border)]">
-              <p className="text-xs text-[var(--color-text-muted)]">
+            <div className="space-y-4 mt-4 pt-4 border-t border-(--color-border)">
+              <p className="text-xs text-(--color-text-muted)">
                 {(t('maintenance.intervalsHint') || 'Leave empty to use the default')} ({distanceUnit})
               </p>
 
               <div className="grid grid-cols-2 gap-3">
                 {MAINTENANCE_COMPONENTS.map(([key, km]) => (
                   <div key={key}>
-                    <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                    <label className="block text-xs text-(--color-text-muted) mb-1">
                       {t(`vehicleHealth.components_${key}`) || key.replace(/_/g, ' ')}
                     </label>
                     <input

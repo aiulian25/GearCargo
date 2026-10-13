@@ -10,7 +10,7 @@ import { useTranslation } from '../../contexts/LanguageContext'
  * the decorative placeholder boxes marked `aria-hidden`.
  */
 
-// A single shimmer box. Pass sizing via className (e.g. "h-4 w-1/2 rounded").
+// A single shimmer box. Pass sizing via className (e.g. "h-4 w-1/2 rounded-sm").
 export function Skeleton({ className = '' }) {
   return <div className={`skeleton ${className}`} aria-hidden="true" />
 }
@@ -40,10 +40,10 @@ export function SkeletonList({ rows = 5, className = '' }) {
         <div key={i} className="card p-4 flex items-center gap-3">
           <Skeleton className="h-10 w-10 rounded-full shrink-0" />
           <div className="flex-1 space-y-2 min-w-0">
-            <Skeleton className="h-3.5 w-2/3 rounded" />
-            <Skeleton className="h-3 w-1/3 rounded" />
+            <Skeleton className="h-3.5 w-2/3 rounded-sm" />
+            <Skeleton className="h-3 w-1/3 rounded-sm" />
           </div>
-          <Skeleton className="h-4 w-12 rounded shrink-0" />
+          <Skeleton className="h-4 w-12 rounded-sm shrink-0" />
         </div>
       ))}
     </SkeletonScreen>

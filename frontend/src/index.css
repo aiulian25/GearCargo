@@ -1,183 +1,212 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
 
-/* Base styles */
-:root {
-  /* Dark theme (default) */
-  --color-bg-primary: #0f172a;
-  --color-bg-secondary: #1e293b;
-  --color-bg-tertiary: #334155;
-  --color-bg-card: #1e293b;
-  --color-bg-input: #1e293b;
-  --color-text-primary: #f1f5f9;
-  --color-text-secondary: #94a3b8;
-  --color-text-muted: #64748b;
-  --color-border: #334155;
-  --color-accent: #2563eb;
-  --color-accent-hover: #1d4ed8;
-}
+@config '../tailwind.config.js';
 
-.light {
-  --color-bg-primary: #f8fafc;
-  --color-bg-secondary: #f1f5f9;
-  --color-bg-tertiary: #e2e8f0;
-  --color-bg-card: #ffffff;
-  --color-bg-input: #ffffff;
-  --color-text-primary: #0f172a;
-  --color-text-secondary: #475569;
-  --color-text-muted: #94a3b8;
-  --color-border: #e2e8f0;
-  --color-accent: #6b7280;
-  --color-accent-hover: #4b5563;
-}
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
 
-/* Global styles */
-html {
-  -webkit-tap-highlight-color: transparent;
-  scroll-behavior: smooth;
-}
-
-body {
-  @apply bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] antialiased;
-  overscroll-behavior-y: contain;
-}
-
-/* Safe area insets for notched devices */
-.safe-top {
-  padding-top: env(safe-area-inset-top);
-}
-
-.safe-bottom {
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
-.safe-left {
-  padding-left: env(safe-area-inset-left);
-}
-
-.safe-right {
-  padding-right: env(safe-area-inset-right);
-}
-
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  @apply bg-transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  @apply bg-[var(--color-border)] rounded-full;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  @apply bg-[var(--color-text-muted)];
-}
-
-/* Material Icons sizing */
-.icon-xs { font-size: 14px !important; }
-.icon-sm { font-size: 18px !important; }
-.icon-md { font-size: 20px !important; }
-.icon-lg { font-size: 24px !important; }
-.icon-xl { font-size: 32px !important; }
-
-/* Compact button styles */
-@layer components {
-  .btn {
-    @apply inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
   }
-  
-  .btn-primary {
-    @apply bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] focus:ring-[var(--color-accent)];
-  }
-  
-  .btn-secondary {
-    @apply bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-border)] focus:ring-[var(--color-border)];
-  }
-  
-  .btn-ghost {
-    @apply bg-transparent text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)] focus:ring-[var(--color-border)];
-  }
-  
-  .btn-danger {
-    @apply bg-red-600 text-white hover:bg-red-700 focus:ring-red-500;
-  }
-  
-  .btn-icon {
-    @apply p-1.5 rounded-lg;
-  }
-  
-  .btn-sm {
-    @apply px-2 py-1 text-xs;
-  }
-  
-  .btn-lg {
-    @apply px-4 py-2.5 text-base;
-  }
-  
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors duration-200 focus:outline-hidden focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+@utility btn-primary {
+  @apply bg-(--color-accent) text-white hover:bg-(--color-accent-hover) focus:ring-(--color-accent);
+}
+
+@utility btn-secondary {
+  @apply bg-(--color-bg-tertiary) text-(--color-text-primary) hover:bg-(--color-border) focus:ring-(--color-border);
+}
+
+@utility btn-ghost {
+  @apply bg-transparent text-(--color-text-secondary) hover:bg-(--color-bg-tertiary) hover:text-(--color-text-primary) focus:ring-(--color-border);
+}
+
+@utility btn-danger {
+  @apply bg-red-600 text-white hover:bg-red-700 focus:ring-red-500;
+}
+
+@utility btn-icon {
+  @apply p-1.5 rounded-lg;
+}
+
+@utility btn-sm {
+  @apply px-2 py-1 text-xs;
+}
+
+@utility btn-lg {
+  @apply px-4 py-2.5 text-base;
+}
+
+@utility input {
   /* Form inputs */
-  .input {
-    @apply w-full px-3 py-2 text-sm bg-[var(--color-bg-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:border-transparent transition-colors;
-  }
-  
-  .input-sm {
-    @apply px-2 py-1.5 text-xs;
-  }
-  
-  .label {
-    @apply block text-xs font-medium text-[var(--color-text-secondary)] mb-1;
-  }
-  
+  @apply w-full px-3 py-2 text-sm bg-(--color-bg-input) border border-(--color-border) rounded-lg text-(--color-text-primary) placeholder-(--color-text-muted) focus:outline-hidden focus:ring-2 focus:ring-(--color-accent) focus:border-transparent transition-colors;
+}
+
+@utility input-sm {
+  @apply px-2 py-1.5 text-xs;
+}
+
+@utility label {
+  @apply block text-xs font-medium text-(--color-text-secondary) mb-1;
+}
+
+@utility card {
   /* Cards */
-  .card {
-    @apply bg-[var(--color-bg-card)] border border-[var(--color-border)] rounded-xl p-4;
-  }
-  
-  .card-sm {
-    @apply p-3;
-  }
-  
+  @apply bg-(--color-bg-card) border border-(--color-border) rounded-xl p-4;
+}
+
+@utility card-sm {
+  @apply p-3;
+}
+
+@utility tab {
   /* Tab styles */
-  .tab {
-    @apply px-3 py-1.5 text-xs font-medium rounded-lg transition-colors;
-  }
-  
-  .tab-active {
-    @apply bg-[var(--color-accent)] text-white;
-  }
-  
-  .tab-inactive {
-    @apply text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)];
-  }
-  
+  @apply px-3 py-1.5 text-xs font-medium rounded-lg transition-colors;
+}
+
+@utility tab-active {
+  @apply bg-(--color-accent) text-white;
+}
+
+@utility tab-inactive {
+  @apply text-(--color-text-secondary) hover:bg-(--color-bg-tertiary) hover:text-(--color-text-primary);
+}
+
+@utility badge {
   /* Badge styles */
-  .badge {
-    @apply inline-flex items-center px-2 py-0.5 text-2xs font-medium rounded-full;
+  @apply inline-flex items-center px-2 py-0.5 text-2xs font-medium rounded-full;
+}
+
+@utility badge-primary {
+  @apply bg-blue-500/20 text-blue-400;
+}
+
+@utility badge-success {
+  @apply bg-green-500/20 text-green-400;
+}
+
+@utility badge-warning {
+  @apply bg-yellow-500/20 text-yellow-400;
+}
+
+@utility badge-danger {
+  @apply bg-red-500/20 text-red-400;
+}
+
+@utility badge-gray {
+  @apply bg-gray-500/20 text-gray-400;
+}
+
+@layer utilities {
+  /* Base styles */
+  :root {
+    /* Dark theme (default) */
+    --color-bg-primary: #0f172a;
+    --color-bg-secondary: #1e293b;
+    --color-bg-tertiary: #334155;
+    --color-bg-card: #1e293b;
+    --color-bg-input: #1e293b;
+    --color-text-primary: #f1f5f9;
+    --color-text-secondary: #94a3b8;
+    --color-text-muted: #64748b;
+    --color-border: #334155;
+    --color-accent: #2563eb;
+    --color-accent-hover: #1d4ed8;
   }
-  
-  .badge-primary {
-    @apply bg-blue-500/20 text-blue-400;
+
+  .light {
+    --color-bg-primary: #f8fafc;
+    --color-bg-secondary: #f1f5f9;
+    --color-bg-tertiary: #e2e8f0;
+    --color-bg-card: #ffffff;
+    --color-bg-input: #ffffff;
+    --color-text-primary: #0f172a;
+    --color-text-secondary: #475569;
+    --color-text-muted: #94a3b8;
+    --color-border: #e2e8f0;
+    --color-accent: #6b7280;
+    --color-accent-hover: #4b5563;
   }
-  
-  .badge-success {
-    @apply bg-green-500/20 text-green-400;
+
+  /* Global styles */
+  html {
+    -webkit-tap-highlight-color: transparent;
+    scroll-behavior: smooth;
   }
-  
-  .badge-warning {
-    @apply bg-yellow-500/20 text-yellow-400;
+
+  body {
+    @apply bg-(--color-bg-primary) text-(--color-text-primary) antialiased;
+    overscroll-behavior-y: contain;
   }
-  
-  .badge-danger {
-    @apply bg-red-500/20 text-red-400;
+
+  /* Safe area insets for notched devices */
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
   }
-  
-  .badge-gray {
-    @apply bg-gray-500/20 text-gray-400;
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
   }
+
+  .safe-left {
+    padding-left: env(safe-area-inset-left);
+  }
+
+  .safe-right {
+    padding-right: env(safe-area-inset-right);
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-(--color-border) rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-(--color-text-muted);
+  }
+
+  /* Material Icons sizing */
+  .icon-xs {
+    font-size: 14px !important;
+  }
+  .icon-sm {
+    font-size: 18px !important;
+  }
+  .icon-md {
+    font-size: 20px !important;
+  }
+  .icon-lg {
+    font-size: 24px !important;
+  }
+  .icon-xl {
+    font-size: 32px !important;
+  }
+
+  /* Compact button styles */
 }
 
 /* Bottom navigation safe area */
@@ -215,12 +244,12 @@ body {
 
 /* Pull-to-refresh indicator */
 .ptr-indicator {
-  @apply flex items-center justify-center h-12 text-[var(--color-text-muted)] text-sm;
+  @apply flex items-center justify-center h-12 text-(--color-text-muted) text-sm;
 }
 
 /* Skeleton loading */
 .skeleton {
-  @apply bg-[var(--color-bg-tertiary)] rounded animate-pulse;
+  @apply bg-(--color-bg-tertiary) rounded-sm animate-pulse;
 }
 
 /* PWA Install/Update Prompt Animations */

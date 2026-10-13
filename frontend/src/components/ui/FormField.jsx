@@ -24,13 +24,13 @@ export default function FormField({ id, label, hint, error, required = false, ch
   return (
     <div className={className}>
       {label && (
-        <label htmlFor={id} className="block text-xs text-[var(--color-text-muted)] mb-1">
+        <label htmlFor={id} className="block text-xs text-(--color-text-muted) mb-1">
           {label}{required && <span aria-hidden="true"> *</span>}
         </label>
       )}
       {children}
       {hint && !error && (
-        <p id={hintId} className="text-2xs text-[var(--color-text-muted)] mt-1 leading-relaxed">{hint}</p>
+        <p id={hintId} className="text-2xs text-(--color-text-muted) mt-1 leading-relaxed">{hint}</p>
       )}
       {error && (
         <p id={errorId} role="alert" className="text-xs text-red-500 mt-1 leading-relaxed">{error}</p>

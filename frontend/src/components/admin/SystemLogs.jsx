@@ -195,10 +195,10 @@ export default function SystemLogs() {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center gap-3 mb-4">
-        <span className="text-[var(--color-accent)]">{Icons.activity}</span>
+        <span className="text-(--color-accent)">{Icons.activity}</span>
         <div>
           <h3 className="text-sm font-medium">{t('admin.systemLogs') || 'System Logs'}</h3>
-          <p className="text-2xs text-[var(--color-text-muted)]">
+          <p className="text-2xs text-(--color-text-muted)">
             {t('admin.systemLogsDesc') || 'View login activity and security events'}
           </p>
         </div>
@@ -207,17 +207,17 @@ export default function SystemLogs() {
       {/* Stats Cards */}
       {stats && (
         <div className="grid grid-cols-3 gap-3 mb-4">
-          <div className="bg-[var(--color-bg-tertiary)] rounded-lg p-3 text-center">
+          <div className="bg-(--color-bg-tertiary) rounded-lg p-3 text-center">
             <p className="text-lg font-semibold">{stats.total_logs?.toLocaleString() || 0}</p>
-            <p className="text-2xs text-[var(--color-text-muted)]">{t('admin.totalLogs') || 'Total'}</p>
+            <p className="text-2xs text-(--color-text-muted)">{t('admin.totalLogs') || 'Total'}</p>
           </div>
-          <div className="bg-[var(--color-bg-tertiary)] rounded-lg p-3 text-center">
+          <div className="bg-(--color-bg-tertiary) rounded-lg p-3 text-center">
             <p className="text-lg font-semibold text-green-500">{stats.today_logs || 0}</p>
-            <p className="text-2xs text-[var(--color-text-muted)]">{t('admin.todayLogs') || 'Today'}</p>
+            <p className="text-2xs text-(--color-text-muted)">{t('admin.todayLogs') || 'Today'}</p>
           </div>
-          <div className="bg-[var(--color-bg-tertiary)] rounded-lg p-3 text-center">
+          <div className="bg-(--color-bg-tertiary) rounded-lg p-3 text-center">
             <p className="text-lg font-semibold text-red-500">{stats.failed_logins_today || 0}</p>
-            <p className="text-2xs text-[var(--color-text-muted)]">{t('admin.failedToday') || 'Failed Today'}</p>
+            <p className="text-2xs text-(--color-text-muted)">{t('admin.failedToday') || 'Failed Today'}</p>
           </div>
         </div>
       )}
@@ -226,7 +226,7 @@ export default function SystemLogs() {
       <div className="flex gap-2 mb-4">
         <form onSubmit={handleSearch} className="flex-1">
           <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-(--color-text-muted)">
               {Icons.search}
             </span>
             <input
@@ -234,7 +234,7 @@ export default function SystemLogs() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t('admin.searchLogs') || 'Search by IP, description, location...'}
-              className="w-full pl-10 pr-4 py-2 rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] text-sm border border-transparent focus:border-[var(--color-accent)] focus:outline-none"
+              className="w-full pl-10 pr-4 py-2 rounded-lg bg-(--color-bg-tertiary) text-(--color-text-primary) placeholder-(--color-text-muted) text-sm border border-transparent focus:border-(--color-accent) focus:outline-hidden"
             />
           </div>
         </form>
@@ -242,8 +242,8 @@ export default function SystemLogs() {
           onClick={() => setShowFilters(!showFilters)}
           className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
             hasActiveFilters 
-              ? 'bg-[var(--color-accent)] text-white' 
-              : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]'
+              ? 'bg-(--color-accent) text-white' 
+              : 'bg-(--color-bg-tertiary) text-(--color-text-secondary)'
           }`}
         >
           {Icons.filter}
@@ -252,7 +252,7 @@ export default function SystemLogs() {
         </button>
         <button
           onClick={fetchLogs}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]/80 transition-colors"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-(--color-bg-tertiary) text-(--color-text-secondary) hover:bg-(--color-bg-tertiary)/80 transition-colors"
           title={t('common.refresh') || 'Refresh'}
         >
           {Icons.refresh}
@@ -261,17 +261,17 @@ export default function SystemLogs() {
       
       {/* Filters Panel */}
       {showFilters && (
-        <div className="bg-[var(--color-bg-tertiary)] rounded-lg p-4 mb-4 space-y-3">
+        <div className="bg-(--color-bg-tertiary) rounded-lg p-4 mb-4 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             {/* Event Type */}
             <div>
-              <label className="block text-2xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-2xs text-(--color-text-muted) mb-1">
                 {t('admin.eventType') || 'Event Type'}
               </label>
               <select
                 value={eventType}
                 onChange={(e) => { setEventType(e.target.value); setCurrentPage(1) }}
-                className="w-full px-3 py-2 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] text-sm border border-[var(--color-border)]"
+                className="w-full px-3 py-2 rounded-lg bg-(--color-bg-secondary) text-(--color-text-primary) text-sm border border-(--color-border)"
               >
                 <option value="">{t('common.all') || 'All'}</option>
                 {filters?.event_types?.map(type => (
@@ -284,13 +284,13 @@ export default function SystemLogs() {
             
             {/* Success/Failed */}
             <div>
-              <label className="block text-2xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-2xs text-(--color-text-muted) mb-1">
                 {t('admin.status') || 'Status'}
               </label>
               <select
                 value={successFilter}
                 onChange={(e) => { setSuccessFilter(e.target.value); setCurrentPage(1) }}
-                className="w-full px-3 py-2 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] text-sm border border-[var(--color-border)]"
+                className="w-full px-3 py-2 rounded-lg bg-(--color-bg-secondary) text-(--color-text-primary) text-sm border border-(--color-border)"
               >
                 <option value="">{t('common.all') || 'All'}</option>
                 <option value="true">{t('common.success') || 'Success'}</option>
@@ -300,13 +300,13 @@ export default function SystemLogs() {
             
             {/* Country */}
             <div>
-              <label className="block text-2xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-2xs text-(--color-text-muted) mb-1">
                 {t('admin.country') || 'Country'}
               </label>
               <select
                 value={country}
                 onChange={(e) => { setCountry(e.target.value); setCurrentPage(1) }}
-                className="w-full px-3 py-2 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] text-sm border border-[var(--color-border)]"
+                className="w-full px-3 py-2 rounded-lg bg-(--color-bg-secondary) text-(--color-text-primary) text-sm border border-(--color-border)"
               >
                 <option value="">{t('common.all') || 'All'}</option>
                 {filters?.countries?.map(c => (
@@ -317,13 +317,13 @@ export default function SystemLogs() {
             
             {/* Category */}
             <div>
-              <label className="block text-2xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-2xs text-(--color-text-muted) mb-1">
                 {t('admin.category') || 'Category'}
               </label>
               <select
                 value={category}
                 onChange={(e) => { setCategory(e.target.value); setCurrentPage(1) }}
-                className="w-full px-3 py-2 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] text-sm border border-[var(--color-border)]"
+                className="w-full px-3 py-2 rounded-lg bg-(--color-bg-secondary) text-(--color-text-primary) text-sm border border-(--color-border)"
               >
                 <option value="">{t('common.all') || 'All'}</option>
                 {filters?.categories?.map(cat => (
@@ -334,25 +334,25 @@ export default function SystemLogs() {
             
             {/* Date Range */}
             <div>
-              <label className="block text-2xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-2xs text-(--color-text-muted) mb-1">
                 {t('admin.startDate') || 'Start Date'}
               </label>
               <input
                 type="date"
                 value={startDate}
                 onChange={(e) => { setStartDate(e.target.value); setCurrentPage(1) }}
-                className="w-full px-3 py-2 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] text-sm border border-[var(--color-border)]"
+                className="w-full px-3 py-2 rounded-lg bg-(--color-bg-secondary) text-(--color-text-primary) text-sm border border-(--color-border)"
               />
             </div>
             <div>
-              <label className="block text-2xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-2xs text-(--color-text-muted) mb-1">
                 {t('admin.endDate') || 'End Date'}
               </label>
               <input
                 type="date"
                 value={endDate}
                 onChange={(e) => { setEndDate(e.target.value); setCurrentPage(1) }}
-                className="w-full px-3 py-2 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] text-sm border border-[var(--color-border)]"
+                className="w-full px-3 py-2 rounded-lg bg-(--color-bg-secondary) text-(--color-text-primary) text-sm border border-(--color-border)"
               />
             </div>
           </div>
@@ -360,7 +360,7 @@ export default function SystemLogs() {
           {hasActiveFilters && (
             <button
               onClick={clearFilters}
-              className="text-sm text-[var(--color-accent)] hover:underline"
+              className="text-sm text-(--color-accent) hover:underline"
             >
               {t('common.clearFilters') || 'Clear all filters'}
             </button>
@@ -371,10 +371,10 @@ export default function SystemLogs() {
       {/* Logs List */}
       {isLoading ? (
         <div className="flex items-center justify-center py-8">
-          <div className="w-6 h-6 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
+          <div className="w-6 h-6 border-2 border-(--color-accent) border-t-transparent rounded-full animate-spin" />
         </div>
       ) : logs.length === 0 ? (
-        <div className="text-center py-8 text-[var(--color-text-muted)]">
+        <div className="text-center py-8 text-(--color-text-muted)">
           <div className="mb-2">{Icons.activity}</div>
           <p className="text-sm">{t('admin.noLogs') || 'No activity logs found'}</p>
         </div>
@@ -387,12 +387,12 @@ export default function SystemLogs() {
             return (
               <div
                 key={log.id}
-                className="bg-[var(--color-bg-tertiary)] rounded-lg overflow-hidden"
+                className="bg-(--color-bg-tertiary) rounded-lg overflow-hidden"
               >
                 {/* Main row */}
                 <div
                   onClick={() => setExpandedLog(isExpanded ? null : log.id)}
-                  className="flex items-center gap-3 p-3 cursor-pointer hover:bg-[var(--color-bg-tertiary)]/80"
+                  className="flex items-center gap-3 p-3 cursor-pointer hover:bg-(--color-bg-tertiary)/80"
                 >
                   {/* Event badge */}
                   <div className={`px-2 py-1 rounded-md text-2xs font-medium ${config.bg} ${config.color}`}>
@@ -403,11 +403,11 @@ export default function SystemLogs() {
                   <div className="flex items-center gap-2 min-w-0 flex-1">
                     {log.user_email ? (
                       <>
-                        <span className="text-[var(--color-text-muted)]">{Icons.user}</span>
+                        <span className="text-(--color-text-muted)">{Icons.user}</span>
                         <span className="text-sm truncate">{log.user_email}</span>
                       </>
                     ) : (
-                      <span className="text-sm text-[var(--color-text-muted)]">
+                      <span className="text-sm text-(--color-text-muted)">
                         {t('admin.anonymous') || 'Anonymous'}
                       </span>
                     )}
@@ -415,7 +415,7 @@ export default function SystemLogs() {
                   
                   {/* Location */}
                   {(log.city || log.country) && (
-                    <div className="hidden sm:flex items-center gap-1 text-[var(--color-text-muted)]">
+                    <div className="hidden sm:flex items-center gap-1 text-(--color-text-muted)">
                       {Icons.globe}
                       <span className="text-2xs">
                         {[log.city, log.country_code].filter(Boolean).join(', ')}
@@ -424,7 +424,7 @@ export default function SystemLogs() {
                   )}
                   
                   {/* Device */}
-                  <div className="hidden sm:flex items-center text-[var(--color-text-muted)]">
+                  <div className="hidden sm:flex items-center text-(--color-text-muted)">
                     {deviceIcons[log.device_type] || Icons.monitor}
                   </div>
                   
@@ -432,22 +432,22 @@ export default function SystemLogs() {
                   <div className={`w-2 h-2 rounded-full ${log.success ? 'bg-green-500' : 'bg-red-500'}`} />
                   
                   {/* Time */}
-                  <span className="text-2xs text-[var(--color-text-muted)] whitespace-nowrap">
+                  <span className="text-2xs text-(--color-text-muted) whitespace-nowrap">
                     {formatDate(log.created_at)}
                   </span>
                   
                   {/* Expand icon */}
-                  <span className="text-[var(--color-text-muted)]">
+                  <span className="text-(--color-text-muted)">
                     {isExpanded ? Icons.chevronUp : Icons.chevronDown}
                   </span>
                 </div>
                 
                 {/* Expanded details */}
                 {isExpanded && (
-                  <div className="px-4 pb-4 pt-2 border-t border-[var(--color-border)] space-y-3">
+                  <div className="px-4 pb-4 pt-2 border-t border-(--color-border) space-y-3">
                     {/* Description */}
                     {log.description && (
-                      <p className="text-sm text-[var(--color-text-secondary)]">{log.description}</p>
+                      <p className="text-sm text-(--color-text-secondary)">{log.description}</p>
                     )}
                     
                     {/* Error message */}
@@ -461,42 +461,42 @@ export default function SystemLogs() {
                     {/* Details grid */}
                     <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                       <div>
-                        <span className="text-2xs text-[var(--color-text-muted)]">
+                        <span className="text-2xs text-(--color-text-muted)">
                           {t('admin.ipAddress') || 'IP Address'}
                         </span>
                         <p className="font-mono">{log.ip_address || '-'}</p>
                       </div>
                       
                       <div>
-                        <span className="text-2xs text-[var(--color-text-muted)]">
+                        <span className="text-2xs text-(--color-text-muted)">
                           {t('admin.device') || 'Device'}
                         </span>
                         <p className="capitalize">{log.device_type || '-'}</p>
                       </div>
                       
                       <div>
-                        <span className="text-2xs text-[var(--color-text-muted)]">
+                        <span className="text-2xs text-(--color-text-muted)">
                           {t('admin.browser') || 'Browser'}
                         </span>
                         <p>{log.browser ? `${log.browser} ${log.browser_version || ''}` : '-'}</p>
                       </div>
                       
                       <div>
-                        <span className="text-2xs text-[var(--color-text-muted)]">
+                        <span className="text-2xs text-(--color-text-muted)">
                           {t('admin.os') || 'OS'}
                         </span>
                         <p>{log.os ? `${log.os} ${log.os_version || ''}` : '-'}</p>
                       </div>
                       
                       <div>
-                        <span className="text-2xs text-[var(--color-text-muted)]">
+                        <span className="text-2xs text-(--color-text-muted)">
                           {t('admin.location') || 'Location'}
                         </span>
                         <p>{[log.city, log.region, log.country].filter(Boolean).join(', ') || '-'}</p>
                       </div>
                       
                       <div>
-                        <span className="text-2xs text-[var(--color-text-muted)]">
+                        <span className="text-2xs text-(--color-text-muted)">
                           {t('admin.language') || 'Language'}
                         </span>
                         <p>{log.device_language || '-'}</p>
@@ -516,17 +516,17 @@ export default function SystemLogs() {
           <button
             onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
             disabled={currentPage === 1}
-            className="p-2 rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-2 rounded-lg bg-(--color-bg-tertiary) text-(--color-text-secondary) disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {Icons.chevronLeft}
           </button>
-          <span className="text-sm text-[var(--color-text-secondary)]">
+          <span className="text-sm text-(--color-text-secondary)">
             {t('common.page') || 'Page'} {currentPage} / {totalPages}
           </span>
           <button
             onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
             disabled={currentPage === totalPages}
-            className="p-2 rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-2 rounded-lg bg-(--color-bg-tertiary) text-(--color-text-secondary) disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {Icons.chevronRight}
           </button>

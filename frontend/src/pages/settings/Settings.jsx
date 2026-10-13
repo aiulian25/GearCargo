@@ -1071,16 +1071,16 @@ export default function Settings() {
         className="card flex items-center gap-4 mb-4 cursor-pointer"
         onClick={() => navigate('/settings/profile')}
       >
-        <div className="w-14 h-14 rounded-full bg-[var(--color-accent)] flex items-center justify-center flex-shrink-0">
+        <div className="w-14 h-14 rounded-full bg-(--color-accent) flex items-center justify-center shrink-0">
           <span className="text-xl font-bold text-white">
             {user?.name?.charAt(0).toUpperCase() || 'U'}
           </span>
         </div>
         <div className="flex-1 min-w-0">
           <h2 className="text-sm font-medium truncate">{user?.name || 'User'}</h2>
-          <p className="text-xs text-[var(--color-text-secondary)] truncate">{user?.email}</p>
+          <p className="text-xs text-(--color-text-secondary) truncate">{user?.email}</p>
         </div>
-        <span className="text-[var(--color-text-muted)]">
+        <span className="text-(--color-text-muted)">
           {SettingsIcons.chevronRight}
         </span>
       </div>
@@ -1106,7 +1106,7 @@ export default function Settings() {
                     t('settings.documentExpiry') || 'Document Expiry'
                   )}
                 </h3>
-                <p className="text-2xs text-[var(--color-text-muted)]">
+                <p className="text-2xs text-(--color-text-muted)">
                   {expiringAttachments.total_count === 0 ? (
                     <span className="text-green-600 dark:text-green-400">{t('settings.noExpiringDocuments') || 'No expiring documents'}</span>
                   ) : (
@@ -1123,13 +1123,13 @@ export default function Settings() {
                 </p>
               </div>
             </div>
-            <span className="text-[var(--color-text-muted)]">
+            <span className="text-(--color-text-muted)">
               {showExpiringSection ? SettingsIcons.chevronUp : SettingsIcons.chevronDown}
             </span>
           </button>
           
           {showExpiringSection && expiringAttachments.total_count > 0 && (
-            <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+            <div className="mt-4 pt-4 border-t border-(--color-border)">
               {/* Expired Documents */}
               {expiringAttachments.expired.length > 0 && (
                 <div className="mb-4">
@@ -1153,7 +1153,7 @@ export default function Settings() {
                             {t('settings.expiredOn') || 'Expired on'} {formatDate(attachment.expires_at)}
                           </p>
                         </div>
-                        <span className="text-[var(--color-text-muted)]">
+                        <span className="text-(--color-text-muted)">
                           {SettingsIcons.chevronRight}
                         </span>
                       </div>
@@ -1192,7 +1192,7 @@ export default function Settings() {
                               }
                             </p>
                           </div>
-                          <span className="text-[var(--color-text-muted)]">
+                          <span className="text-(--color-text-muted)">
                             {SettingsIcons.chevronRight}
                           </span>
                         </div>
@@ -1208,7 +1208,7 @@ export default function Settings() {
       
       {/* Language & Region */}
       <div className="card mb-4">
-        <h3 className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide mb-3">
+        <h3 className="text-xs font-medium text-(--color-text-muted) uppercase tracking-wide mb-3">
           {t('settings.languageRegion')}
         </h3>
         
@@ -1216,12 +1216,12 @@ export default function Settings() {
           {/* Language Selector */}
           <div className="flex items-center justify-between py-2">
             <div className="flex items-center gap-3">
-              <span className="text-[var(--color-text-muted)]">
+              <span className="text-(--color-text-muted)">
                 {SettingsIcons.language}
               </span>
               <div>
                 <span className="text-sm">{t('settings.language')}</span>
-                <p className="text-2xs text-[var(--color-text-muted)]">
+                <p className="text-2xs text-(--color-text-muted)">
                   {t('settings.languageDesc')}
                 </p>
               </div>
@@ -1236,8 +1236,8 @@ export default function Settings() {
                 onClick={() => setLanguage(lang)}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                   language === lang
-                    ? 'bg-[var(--color-accent)] text-white shadow-md'
-                    : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]/80'
+                    ? 'bg-(--color-accent) text-white shadow-md'
+                    : 'bg-(--color-bg-tertiary) text-(--color-text-secondary) hover:bg-(--color-bg-tertiary)/80'
                 }`}
               >
                 <span>{languageNames[lang]?.flag}</span>
@@ -1247,19 +1247,19 @@ export default function Settings() {
           </div>
           
           {/* Currency Display */}
-          <div className="flex items-center justify-between py-2 border-t border-[var(--color-border)] mt-2 pt-3">
+          <div className="flex items-center justify-between py-2 border-t border-(--color-border) mt-2 pt-3">
             <div className="flex items-center gap-3">
-              <span className="text-lg w-5 h-5 flex items-center justify-center text-[var(--color-text-muted)]">
+              <span className="text-lg w-5 h-5 flex items-center justify-center text-(--color-text-muted)">
                 {currency.symbol === 'lei' ? '₽' : currency.symbol}
               </span>
               <div>
                 <span className="text-sm">{t('settings.currency')}</span>
-                <p className="text-2xs text-[var(--color-text-muted)]">
+                <p className="text-2xs text-(--color-text-muted)">
                   {t('settings.currencyDesc')}
                 </p>
               </div>
             </div>
-            <span className="text-sm font-medium text-[var(--color-accent)]">
+            <span className="text-sm font-medium text-(--color-accent)">
               {currency.code} ({currency.symbol})
             </span>
           </div>
@@ -1268,27 +1268,27 @@ export default function Settings() {
       
       {/* Appearance */}
       <div className="card mb-4">
-        <h3 className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide mb-3">
+        <h3 className="text-xs font-medium text-(--color-text-muted) uppercase tracking-wide mb-3">
           {t('settings.appearance')}
         </h3>
         
         <div className="flex items-center justify-between py-2">
           <div className="flex items-center gap-3">
-            <span className="text-[var(--color-text-muted)]">
+            <span className="text-(--color-text-muted)">
               {theme === 'dark' ? SettingsIcons.darkMode : SettingsIcons.lightMode}
             </span>
             <span className="text-sm">{t('settings.theme')}</span>
           </div>
           
-          <div className="flex bg-[var(--color-bg-tertiary)] rounded-lg p-1">
+          <div className="flex bg-(--color-bg-tertiary) rounded-lg p-1">
             {['light', 'dark'].map(themeOption => (
               <button
                 key={themeOption}
                 onClick={() => setTheme(themeOption)}
                 className={`px-3 py-1 rounded-md text-xs font-medium transition-colors capitalize ${
                   theme === themeOption 
-                    ? 'bg-[var(--color-bg-card)] shadow-sm' 
-                    : 'text-[var(--color-text-secondary)]'
+                    ? 'bg-(--color-bg-card) shadow-xs' 
+                    : 'text-(--color-text-secondary)'
                 }`}
               >
                 {t(`settings.${themeOption}`)}
@@ -1300,19 +1300,19 @@ export default function Settings() {
       
       {/* Notifications */}
       <div className="card mb-4">
-        <h3 className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide mb-3">
+        <h3 className="text-xs font-medium text-(--color-text-muted) uppercase tracking-wide mb-3">
           {t('settings.notifications')}
         </h3>
         
         <div className="space-y-1">
           <div className="flex items-center justify-between py-2">
             <div className="flex items-center gap-3">
-              <span className={pushDenied ? 'text-red-400' : 'text-[var(--color-text-muted)]'}>
+              <span className={pushDenied ? 'text-red-400' : 'text-(--color-text-muted)'}>
                 {SettingsIcons.bell}
               </span>
               <div>
                 <span className="text-sm">{t('settings.pushNotifications')}</span>
-                <p className="text-2xs text-[var(--color-text-muted)]">
+                <p className="text-2xs text-(--color-text-muted)">
                   {pushDenied 
                     ? (t('settings.pushBlockedDesc') || 'Blocked in browser settings')
                     : !pushSupported 
@@ -1327,7 +1327,7 @@ export default function Settings() {
                 <button
                   onClick={handleResubscribe}
                   disabled={pushLoading}
-                  className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-accent)] hover:underline disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] rounded"
+                  className="text-xs text-(--color-text-muted) hover:text-(--color-accent) hover:underline disabled:opacity-50 focus:outline-hidden focus:ring-2 focus:ring-(--color-accent) rounded-sm"
                   title={t('settings.pushResubscribeHint') || 'Refresh your subscription if notifications stop arriving'}
                 >
                   {t('settings.pushResubscribe') || 'Re-subscribe'}
@@ -1336,7 +1336,7 @@ export default function Settings() {
               {pushSubscribed && (
                 <button
                   onClick={handleTestNotification}
-                  className="text-xs text-[var(--color-accent)] hover:underline focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] rounded"
+                  className="text-xs text-(--color-accent) hover:underline focus:outline-hidden focus:ring-2 focus:ring-(--color-accent) rounded-sm"
                 >
                   {t('settings.test') || 'Test'}
                 </button>
@@ -1349,7 +1349,7 @@ export default function Settings() {
                   disabled={!pushSupported || pushDenied || pushLoading}
                   className="sr-only peer"
                 />
-                <div className={`w-10 h-6 bg-[var(--color-bg-tertiary)] peer-focus:ring-2 peer-focus:ring-[var(--color-accent)] rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--color-accent)] ${pushLoading ? 'animate-pulse' : ''}`}></div>
+                <div className={`w-10 h-6 bg-(--color-bg-tertiary) peer-focus:ring-2 peer-focus:ring-(--color-accent) rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-(--color-accent) ${pushLoading ? 'animate-pulse' : ''}`}></div>
               </label>
             </div>
           </div>
@@ -1363,45 +1363,45 @@ export default function Settings() {
           className="w-full flex items-center justify-between"
         >
           <div className="flex items-center gap-3">
-            <span className="text-[var(--color-text-muted)]">{SettingsIcons.clock}</span>
+            <span className="text-(--color-text-muted)">{SettingsIcons.clock}</span>
             <div className="text-left">
               <h3 className="text-sm font-medium">{t('notifications.historyTitle') || 'Notification history'}</h3>
-              <p className="text-2xs text-[var(--color-text-muted)]">
+              <p className="text-2xs text-(--color-text-muted)">
                 {t('notifications.historyDesc') || 'What GearCargo has sent you (push & email).'}
               </p>
             </div>
           </div>
-          <span className="text-[var(--color-text-muted)]">
+          <span className="text-(--color-text-muted)">
             {showHistory ? SettingsIcons.chevronUp : SettingsIcons.chevronDown}
           </span>
         </button>
 
         {showHistory && (
-          <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+          <div className="mt-4 pt-4 border-t border-(--color-border)">
             {historyLoading && history.length === 0 ? (
-              <p className="text-2xs text-[var(--color-text-muted)] py-4 text-center">
+              <p className="text-2xs text-(--color-text-muted) py-4 text-center">
                 {t('common.loading') || 'Loading…'}
               </p>
             ) : history.length === 0 ? (
-              <p className="text-2xs text-[var(--color-text-muted)] py-4 text-center">
+              <p className="text-2xs text-(--color-text-muted) py-4 text-center">
                 {t('notifications.historyEmpty') || 'No notifications yet.'}
               </p>
             ) : (
               <ul className="space-y-1">
                 {history.map((n) => (
-                  <li key={n.id} className="flex items-start gap-3 py-2 border-b border-[var(--color-border)] last:border-0">
+                  <li key={n.id} className="flex items-start gap-3 py-2 border-b border-(--color-border) last:border-0">
                     <span
-                      className="text-[var(--color-text-muted)] flex-shrink-0 mt-0.5"
+                      className="text-(--color-text-muted) shrink-0 mt-0.5"
                       title={n.channel === 'email' ? (t('settings.email') || 'Email') : (t('settings.pushNotifications') || 'Push')}
                     >
                       {n.channel === 'email' ? SettingsIcons.email : SettingsIcons.bell}
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">{n.title}</p>
+                        <p className="text-sm font-medium text-(--color-text-primary) truncate">{n.title}</p>
                         {n.status === 'failed' && (
                           <span
-                            className="inline-flex items-center px-1.5 py-0.5 rounded-full text-2xs font-medium bg-red-500/15 text-red-600 dark:text-red-400 flex-shrink-0"
+                            className="inline-flex items-center px-1.5 py-0.5 rounded-full text-2xs font-medium bg-red-500/15 text-red-600 dark:text-red-400 shrink-0"
                             title={n.error_message || undefined}
                           >
                             {t('notifications.deliveryFailed') || 'Failed'}
@@ -1409,9 +1409,9 @@ export default function Settings() {
                         )}
                       </div>
                       {n.body && (
-                        <p className="text-xs text-[var(--color-text-muted)] line-clamp-2">{n.body}</p>
+                        <p className="text-xs text-(--color-text-muted) line-clamp-2">{n.body}</p>
                       )}
-                      <p className="text-2xs text-[var(--color-text-muted)] mt-0.5">{formatDateTime(n.created_at)}</p>
+                      <p className="text-2xs text-(--color-text-muted) mt-0.5">{formatDateTime(n.created_at)}</p>
                     </div>
                   </li>
                 ))}
@@ -1422,7 +1422,7 @@ export default function Settings() {
               <button
                 onClick={() => loadHistory(historyPage + 1)}
                 disabled={historyLoading}
-                className="w-full mt-3 text-xs text-[var(--color-accent)] hover:underline disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] rounded py-1"
+                className="w-full mt-3 text-xs text-(--color-accent) hover:underline disabled:opacity-50 focus:outline-hidden focus:ring-2 focus:ring-(--color-accent) rounded-sm py-1"
               >
                 {historyLoading ? (t('common.loading') || 'Loading…') : (t('notifications.loadMore') || t('common.loadMore') || 'Load more')}
               </button>
@@ -1438,12 +1438,12 @@ export default function Settings() {
           className="w-full flex items-center justify-between"
         >
           <div className="flex items-center gap-3">
-            <span className={emailSettings.notifications_enabled && emailSettings.email_enabled_on_server ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)]'}>
+            <span className={emailSettings.notifications_enabled && emailSettings.email_enabled_on_server ? 'text-(--color-accent)' : 'text-(--color-text-muted)'}>
               {SettingsIcons.email}
             </span>
             <div className="text-left">
               <h3 className="text-sm font-medium">{t('settings.emailNotifications')}</h3>
-              <p className="text-2xs text-[var(--color-text-muted)]">
+              <p className="text-2xs text-(--color-text-muted)">
                 {emailSettings.email_enabled_on_server 
                   ? t('settings.emailNotificationsDesc')
                   : (t('settings.emailNotConfigured') || 'Email not configured on server')
@@ -1451,18 +1451,18 @@ export default function Settings() {
               </p>
             </div>
           </div>
-          <span className="text-[var(--color-text-muted)]">
+          <span className="text-(--color-text-muted)">
             {showEmailSettings ? SettingsIcons.chevronUp : SettingsIcons.chevronDown}
           </span>
         </button>
         
         {showEmailSettings && (
-          <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+          <div className="mt-4 pt-4 border-t border-(--color-border)">
             {/* Master Toggle */}
             <div className="flex items-center justify-between py-2">
               <div>
                 <span className="text-sm">{t('settings.enableEmailAlerts') || 'Enable Email Alerts'}</span>
-                <p className="text-2xs text-[var(--color-text-muted)]">
+                <p className="text-2xs text-(--color-text-muted)">
                   {emailSettings.notifications_enabled 
                     ? (t('settings.emailAlertsEnabled') || 'You will receive email notifications')
                     : (t('settings.emailAlertsDisabled') || 'Email notifications are disabled')
@@ -1474,7 +1474,7 @@ export default function Settings() {
                   <button
                     onClick={handleSendTestEmail}
                     disabled={sendingTestEmail}
-                    className="text-xs text-[var(--color-accent)] hover:underline disabled:opacity-50"
+                    className="text-xs text-(--color-accent) hover:underline disabled:opacity-50"
                   >
                     {sendingTestEmail ? '...' : (t('settings.test') || 'Test')}
                   </button>
@@ -1487,7 +1487,7 @@ export default function Settings() {
                     disabled={!emailSettings.email_enabled_on_server}
                     className="sr-only peer"
                   />
-                  <div className="w-10 h-6 bg-[var(--color-bg-tertiary)] peer-focus:ring-2 peer-focus:ring-[var(--color-accent)] rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--color-accent)]"></div>
+                  <div className="w-10 h-6 bg-(--color-bg-tertiary) peer-focus:ring-2 peer-focus:ring-(--color-accent) rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-(--color-accent)"></div>
                 </label>
               </div>
             </div>
@@ -1496,11 +1496,11 @@ export default function Settings() {
             {emailSettings.notifications_enabled && emailSettings.email_enabled_on_server && (
               <div className="mt-4 space-y-2">
                 {/* Custom Notification Email - GDPR */}
-                <div className="bg-[var(--color-bg-tertiary)] rounded-lg p-3 mb-4">
-                  <p className="text-2xs text-[var(--color-text-muted)] font-medium uppercase tracking-wide mb-2">
+                <div className="bg-(--color-bg-tertiary) rounded-lg p-3 mb-4">
+                  <p className="text-2xs text-(--color-text-muted) font-medium uppercase tracking-wide mb-2">
                     {t('settings.notifEmailTitle') || 'Custom Notification Email'}
                   </p>
-                  <p className="text-2xs text-[var(--color-text-muted)] mb-3">
+                  <p className="text-2xs text-(--color-text-muted) mb-3">
                     {t('settings.notifEmailDesc') || 'Set a separate email address to receive notifications. Your email is encrypted and stored securely.'}
                   </p>
                   
@@ -1512,7 +1512,7 @@ export default function Settings() {
                           <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
                           {t('settings.notifEmailStatusVerified') || 'Verified'}
                         </span>
-                        <span className="text-sm text-[var(--color-text)]">{notifEmail}</span>
+                        <span className="text-sm text-(--color-text)">{notifEmail}</span>
                       </div>
                       <button
                         onClick={handleRemoveNotificationEmail}
@@ -1530,14 +1530,14 @@ export default function Settings() {
                           {t('settings.notifEmailStatusPending') || 'Pending Verification'}
                         </span>
                       </div>
-                      <p className="text-2xs text-[var(--color-text-muted)]">
+                      <p className="text-2xs text-(--color-text-muted)">
                         {t('settings.notifEmailCheckInbox') || 'Check your inbox and click the verification link.'}
                       </p>
                       <div className="flex gap-2">
                         <button
                           onClick={handleResendVerification}
                           disabled={notifEmailResending}
-                          className="text-xs text-[var(--color-accent)] hover:underline disabled:opacity-50"
+                          className="text-xs text-(--color-accent) hover:underline disabled:opacity-50"
                         >
                           {notifEmailResending ? '...' : (t('settings.notifEmailResend') || 'Resend Verification')}
                         </button>
@@ -1557,23 +1557,23 @@ export default function Settings() {
                         value={notifEmail}
                         onChange={(e) => setNotifEmail(e.target.value)}
                         placeholder={t('settings.notifEmailPlaceholder') || 'your-alerts@example.com'}
-                        className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+                        className="w-full bg-(--color-bg-input) border border-(--color-border) rounded-lg px-3 py-2 text-sm text-(--color-text-primary) placeholder-(--color-text-muted) focus:outline-hidden focus:ring-2 focus:ring-(--color-accent)"
                       />
                       <label className="flex items-start gap-2 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={notifEmailConsent}
                           onChange={(e) => setNotifEmailConsent(e.target.checked)}
-                          className="w-4 h-4 mt-0.5 rounded border-[var(--color-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+                          className="w-4 h-4 mt-0.5 rounded-sm border-(--color-border) text-(--color-accent) focus:ring-(--color-accent)"
                         />
-                        <span className="text-2xs text-[var(--color-text-muted)]">
+                        <span className="text-2xs text-(--color-text-muted)">
                           {t('settings.notifEmailConsent') || 'I consent to receiving email notifications at this address. My email will be encrypted and I can withdraw consent at any time.'}
                         </span>
                       </label>
                       <button
                         onClick={handleSetNotificationEmail}
                         disabled={!notifEmail || !notifEmailConsent || notifEmailSaving}
-                        className="px-3 py-1.5 rounded-lg bg-[var(--color-accent)] text-white text-xs font-medium disabled:opacity-50"
+                        className="px-3 py-1.5 rounded-lg bg-(--color-accent) text-white text-xs font-medium disabled:opacity-50"
                       >
                         {notifEmailSaving ? '...' : (t('settings.notifEmailSave') || 'Set & Verify Email')}
                       </button>
@@ -1583,7 +1583,7 @@ export default function Settings() {
                   {/* Consent History */}
                   <button
                     onClick={handleLoadConsentHistory}
-                    className="mt-2 text-2xs text-[var(--color-text-muted)] hover:underline"
+                    className="mt-2 text-2xs text-(--color-text-muted) hover:underline"
                   >
                     {showConsentHistory
                       ? (t('settings.notifEmailHideHistory') || 'Hide consent history')
@@ -1593,7 +1593,7 @@ export default function Settings() {
                   {showConsentHistory && consentHistory.length > 0 && (
                     <div className="mt-2 space-y-1 max-h-32 overflow-y-auto">
                       {consentHistory.map((entry, i) => (
-                        <div key={i} className="text-2xs text-[var(--color-text-muted)] flex justify-between">
+                        <div key={i} className="text-2xs text-(--color-text-muted) flex justify-between">
                           <span className="capitalize">{entry.action}</span>
                           <span>{formatDateTime(entry.created_at)}</span>
                         </div>
@@ -1601,17 +1601,17 @@ export default function Settings() {
                     </div>
                   )}
                   {showConsentHistory && consentHistory.length === 0 && (
-                    <p className="mt-2 text-2xs text-[var(--color-text-muted)]">
+                    <p className="mt-2 text-2xs text-(--color-text-muted)">
                       {t('settings.notifEmailNoHistory') || 'No consent history yet.'}
                     </p>
                   )}
                 </div>
                 
                 {/* Alert Types */}
-                <p className="text-2xs text-[var(--color-text-muted)] font-medium uppercase tracking-wide mb-1">
+                <p className="text-2xs text-(--color-text-muted) font-medium uppercase tracking-wide mb-1">
                   {t('settings.alertTypes') || 'Alert Types'}
                 </p>
-                <p className="text-2xs text-[var(--color-text-muted)] mb-2">
+                <p className="text-2xs text-(--color-text-muted) mb-2">
                   {t('settings.alertTypesDesc') || 'Sent as a daily digest when items are due within your alert window. Toggle types below to control what appears in the digest.'}
                 </p>
                 
@@ -1621,7 +1621,7 @@ export default function Settings() {
                     type="checkbox"
                     checked={emailSettings.email_insurance_alerts}
                     onChange={(e) => handleEmailSettingChange('email_insurance_alerts', e.target.checked)}
-                    className="w-4 h-4 rounded border-[var(--color-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+                    className="w-4 h-4 rounded-sm border-(--color-border) text-(--color-accent) focus:ring-(--color-accent)"
                   />
                 </label>
                 
@@ -1631,7 +1631,7 @@ export default function Settings() {
                     type="checkbox"
                     checked={emailSettings.email_tax_alerts}
                     onChange={(e) => handleEmailSettingChange('email_tax_alerts', e.target.checked)}
-                    className="w-4 h-4 rounded border-[var(--color-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+                    className="w-4 h-4 rounded-sm border-(--color-border) text-(--color-accent) focus:ring-(--color-accent)"
                   />
                 </label>
                 
@@ -1641,7 +1641,7 @@ export default function Settings() {
                     type="checkbox"
                     checked={emailSettings.email_service_alerts}
                     onChange={(e) => handleEmailSettingChange('email_service_alerts', e.target.checked)}
-                    className="w-4 h-4 rounded border-[var(--color-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+                    className="w-4 h-4 rounded-sm border-(--color-border) text-(--color-accent) focus:ring-(--color-accent)"
                   />
                 </label>
                 
@@ -1651,7 +1651,7 @@ export default function Settings() {
                     type="checkbox"
                     checked={emailSettings.email_reminder_alerts}
                     onChange={(e) => handleEmailSettingChange('email_reminder_alerts', e.target.checked)}
-                    className="w-4 h-4 rounded border-[var(--color-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+                    className="w-4 h-4 rounded-sm border-(--color-border) text-(--color-accent) focus:ring-(--color-accent)"
                   />
                 </label>
                 
@@ -1661,19 +1661,19 @@ export default function Settings() {
                     type="checkbox"
                     checked={emailSettings.email_smart_alerts}
                     onChange={(e) => handleEmailSettingChange('email_smart_alerts', e.target.checked)}
-                    className="w-4 h-4 rounded border-[var(--color-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+                    className="w-4 h-4 rounded-sm border-(--color-border) text-(--color-accent) focus:ring-(--color-accent)"
                   />
                 </label>
 
                 {/* Security Alerts */}
-                <p className="text-2xs text-[var(--color-text-muted)] font-medium uppercase tracking-wide mt-4 mb-1">
+                <p className="text-2xs text-(--color-text-muted) font-medium uppercase tracking-wide mt-4 mb-1">
                   {t('settings.securityAlerts') || 'Security Alerts'}
                 </p>
 
                 <div className="flex items-start justify-between py-1 gap-4">
                   <div>
                     <span className="text-sm">{t('settings.loginAlerts') || 'Suspicious Login Alerts'}</span>
-                    <p className="text-2xs text-[var(--color-text-muted)] mt-0.5">
+                    <p className="text-2xs text-(--color-text-muted) mt-0.5">
                       {t('settings.loginAlertsDesc') || 'Get notified when a login occurs from an unrecognised location or device. Your IP address is used locally for geolocation — never shared with third parties.'}
                     </p>
                   </div>
@@ -1681,12 +1681,12 @@ export default function Settings() {
                     type="checkbox"
                     checked={emailSettings.login_alerts_enabled}
                     onChange={(e) => handleEmailSettingChange('login_alerts_enabled', e.target.checked)}
-                    className="w-4 h-4 rounded border-[var(--color-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)] mt-0.5 shrink-0"
+                    className="w-4 h-4 rounded-sm border-(--color-border) text-(--color-accent) focus:ring-(--color-accent) mt-0.5 shrink-0"
                   />
                 </div>
                 
                 {/* Reports */}
-                <p className="text-2xs text-[var(--color-text-muted)] font-medium uppercase tracking-wide mt-4 mb-2">
+                <p className="text-2xs text-(--color-text-muted) font-medium uppercase tracking-wide mt-4 mb-2">
                   {t('settings.scheduledReports') || 'Scheduled Reports'}
                 </p>
 
@@ -1696,7 +1696,7 @@ export default function Settings() {
                     type="checkbox"
                     checked={emailSettings.daily_alerts_enabled}
                     onChange={(e) => handleEmailSettingChange('daily_alerts_enabled', e.target.checked)}
-                    className="w-4 h-4 rounded border-[var(--color-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+                    className="w-4 h-4 rounded-sm border-(--color-border) text-(--color-accent) focus:ring-(--color-accent)"
                   />
                 </label>
 
@@ -1706,7 +1706,7 @@ export default function Settings() {
                     type="checkbox"
                     checked={emailSettings.weekly_report_enabled}
                     onChange={(e) => handleEmailSettingChange('weekly_report_enabled', e.target.checked)}
-                    className="w-4 h-4 rounded border-[var(--color-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+                    className="w-4 h-4 rounded-sm border-(--color-border) text-(--color-accent) focus:ring-(--color-accent)"
                   />
                 </label>
                 
@@ -1716,12 +1716,12 @@ export default function Settings() {
                     type="checkbox"
                     checked={emailSettings.monthly_report_enabled}
                     onChange={(e) => handleEmailSettingChange('monthly_report_enabled', e.target.checked)}
-                    className="w-4 h-4 rounded border-[var(--color-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+                    className="w-4 h-4 rounded-sm border-(--color-border) text-(--color-accent) focus:ring-(--color-accent)"
                   />
                 </label>
                 
                 {/* Alert timing */}
-                <p className="text-2xs text-[var(--color-text-muted)] font-medium uppercase tracking-wide mt-4 mb-2">
+                <p className="text-2xs text-(--color-text-muted) font-medium uppercase tracking-wide mt-4 mb-2">
                   {t('settings.alertTiming') || 'Alert Timing'}
                 </p>
                 
@@ -1730,7 +1730,7 @@ export default function Settings() {
                   <select
                     value={emailSettings.alert_days_before}
                     onChange={(e) => handleEmailSettingChange('alert_days_before', parseInt(e.target.value))}
-                    className="bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded px-2 py-1 text-sm"
+                    className="bg-(--color-bg-tertiary) border border-(--color-border) rounded-sm px-2 py-1 text-sm"
                   >
                     <option value={7}>7 {t('common.days') || 'days'}</option>
                     <option value={14}>14 {t('common.days') || 'days'}</option>
@@ -1750,28 +1750,28 @@ export default function Settings() {
           className="w-full flex items-center justify-between"
         >
           <div className="flex items-center gap-3">
-            <span className={calendarSettings.enabled ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)]'}>
+            <span className={calendarSettings.enabled ? 'text-(--color-accent)' : 'text-(--color-text-muted)'}>
               {SettingsIcons.calendar}
             </span>
             <div className="text-left">
               <h3 className="text-sm font-medium">{t('settings.calendarSync') || 'Calendar Sync'}</h3>
-              <p className="text-2xs text-[var(--color-text-muted)]">
+              <p className="text-2xs text-(--color-text-muted)">
                 {t('settings.calendarSyncDesc') || 'Sync entries to Google Calendar, Nextcloud, etc.'}
               </p>
             </div>
           </div>
-          <span className="text-[var(--color-text-muted)]">
+          <span className="text-(--color-text-muted)">
             {showCalendarSettings ? SettingsIcons.chevronUp : SettingsIcons.chevronDown}
           </span>
         </button>
         
         {showCalendarSettings && (
-          <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+          <div className="mt-4 pt-4 border-t border-(--color-border)">
             {/* Master Toggle */}
             <div className="flex items-center justify-between py-2">
               <div>
                 <span className="text-sm">{t('settings.enableCalendarSync') || 'Enable Calendar Sync'}</span>
-                <p className="text-2xs text-[var(--color-text-muted)]">
+                <p className="text-2xs text-(--color-text-muted)">
                   {calendarSettings.enabled 
                     ? (t('settings.calendarSyncEnabled') || 'New entries will be synced automatically')
                     : (t('settings.calendarSyncDisabled') || 'Calendar sync is disabled')
@@ -1785,19 +1785,19 @@ export default function Settings() {
                   onChange={(e) => setCalendarSettings(prev => ({ ...prev, enabled: e.target.checked }))}
                   className="sr-only peer"
                 />
-                <div className="w-10 h-6 bg-[var(--color-bg-tertiary)] peer-focus:ring-2 peer-focus:ring-[var(--color-accent)] rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--color-accent)]"></div>
+                <div className="w-10 h-6 bg-(--color-bg-tertiary) peer-focus:ring-2 peer-focus:ring-(--color-accent) rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-(--color-accent)"></div>
               </label>
             </div>
             
             {/* Calendar Configuration */}
             <div className="mt-4 space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-[var(--color-text-muted)]">
+                <span className="text-xs text-(--color-text-muted)">
                   {t('settings.calendarSourcesConfigured') || 'Configured sources'}: {(calendarSettings.sources || []).length}
                 </span>
                 <button
                   onClick={addCalendarSource}
-                  className="px-3 py-1.5 rounded-lg bg-[var(--color-accent)]/10 text-[var(--color-accent)] text-xs font-medium hover:bg-[var(--color-accent)]/20"
+                  className="px-3 py-1.5 rounded-lg bg-(--color-accent)/10 text-(--color-accent) text-xs font-medium hover:bg-(--color-accent)/20"
                 >
                   + {t('settings.addCalendarSource') || 'Add Source'}
                 </button>
@@ -1806,16 +1806,16 @@ export default function Settings() {
               {(calendarSettings.sources || []).length > 0 && (
                 <div className="space-y-2">
                   {(calendarSettings.sources || []).map((source) => (
-                    <div key={source.id} className={`rounded-lg border p-2 ${selectedCalendarSourceId === source.id ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/5' : 'border-[var(--color-border)]'}`}>
+                    <div key={source.id} className={`rounded-lg border p-2 ${selectedCalendarSourceId === source.id ? 'border-(--color-accent) bg-(--color-accent)/5' : 'border-(--color-border)'}`}>
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => setSelectedCalendarSourceId(source.id)}
                           className="flex-1 min-w-0 text-left"
                         >
                           <div className="text-sm font-medium truncate">{source.name || source.provider || 'Source'}</div>
-                          <div className="text-2xs text-[var(--color-text-muted)] truncate">{source.url || t('settings.calendarUrlNotSet') || 'URL not set'}</div>
+                          <div className="text-2xs text-(--color-text-muted) truncate">{source.url || t('settings.calendarUrlNotSet') || 'URL not set'}</div>
                         </button>
-                        <label className="flex items-center gap-1 text-xs text-[var(--color-text-muted)] shrink-0">
+                        <label className="flex items-center gap-1 text-xs text-(--color-text-muted) shrink-0">
                           <input
                             type="checkbox"
                             checked={source.enabled !== false}
@@ -1825,7 +1825,7 @@ export default function Settings() {
                         </label>
                         <button
                           onClick={() => removeCalendarSource(source.id)}
-                          className="px-2 py-1 text-xs text-red-500 hover:bg-red-500/10 rounded shrink-0"
+                          className="px-2 py-1 text-xs text-red-500 hover:bg-red-500/10 rounded-sm shrink-0"
                           disabled={(calendarSettings.sources || []).length <= 1}
                         >
                           {t('settings.removeSource') || 'Remove'}
@@ -1846,7 +1846,7 @@ export default function Settings() {
                       type="text"
                       value={selectedCalendarSource.name || ''}
                       onChange={(e) => handleCalendarSettingChange('name', e.target.value)}
-                      className="w-full bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm"
+                      className="w-full bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg px-3 py-2 text-sm"
                     />
                   </div>
 
@@ -1858,7 +1858,7 @@ export default function Settings() {
                 <select
                   value={selectedCalendarSource.provider || ''}
                   onChange={(e) => handleCalendarProviderChange(e.target.value)}
-                  className="w-full bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm"
+                  className="w-full bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg px-3 py-2 text-sm"
                 >
                   <option value="">{t('settings.selectProvider') || 'Select a provider...'}</option>
                   {calendarProviders.map(provider => (
@@ -1869,7 +1869,7 @@ export default function Settings() {
               
               {/* Setup Guide */}
               {selectedCalendarSource.provider && (
-                <div className="bg-[var(--color-bg-tertiary)] rounded-lg p-3">
+                <div className="bg-(--color-bg-tertiary) rounded-lg p-3">
                   <button
                     onClick={() => setShowSetupGuide(!showSetupGuide)}
                     className="w-full flex items-center justify-between text-sm font-medium"
@@ -1878,12 +1878,12 @@ export default function Settings() {
                       {SettingsIcons.info}
                       {t('settings.setupGuide') || 'Setup Guide'}
                     </span>
-                    <span className="text-[var(--color-text-muted)]">
+                    <span className="text-(--color-text-muted)">
                       {showSetupGuide ? SettingsIcons.chevronUp : SettingsIcons.chevronDown}
                     </span>
                   </button>
                   {showSetupGuide && (
-                    <p className="mt-3 text-sm text-[var(--color-text-muted)]">
+                    <p className="mt-3 text-sm text-(--color-text-muted)">
                       {t(calendarProviders.find(p => p.id === selectedCalendarSource.provider)?.setup_guide_key) || t('settings.calendarSetupGuideFallback') || 'Use your provider app-password and CalDAV URL.'}
                     </p>
                   )}
@@ -1901,7 +1901,7 @@ export default function Settings() {
                     value={selectedCalendarSource.url || ''}
                     onChange={(e) => handleCalendarSettingChange('url', e.target.value)}
                     placeholder={calendarProviders.find(p => p.id === selectedCalendarSource.provider)?.default_url || 'https://...'}
-                    className="w-full bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm"
+                    className="w-full bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg px-3 py-2 text-sm"
                   />
                 </div>
               )}
@@ -1917,7 +1917,7 @@ export default function Settings() {
                     value={selectedCalendarSource.username || ''}
                     onChange={(e) => handleCalendarSettingChange('username', e.target.value)}
                     placeholder={selectedCalendarSource.provider === 'google' ? 'your.email@gmail.com' : 'username'}
-                    className="w-full bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm"
+                    className="w-full bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg px-3 py-2 text-sm"
                   />
                 </div>
               )}
@@ -1936,7 +1936,7 @@ export default function Settings() {
                     value={selectedCalendarSource.password || ''}
                     onChange={(e) => handleCalendarSettingChange('password', e.target.value)}
                     placeholder="••••••••••••••••"
-                    className="w-full bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm"
+                    className="w-full bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg px-3 py-2 text-sm"
                   />
                 </div>
               )}
@@ -1946,7 +1946,7 @@ export default function Settings() {
                 <button
                   onClick={handleTestCalendarConnection}
                   disabled={calendarTesting}
-                  className="w-full bg-[var(--color-accent)] text-white rounded-lg px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="w-full bg-(--color-accent) text-white rounded-lg px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {calendarTesting ? (
                     <>
@@ -1974,7 +1974,7 @@ export default function Settings() {
                   <select
                     value={selectedCalendarSource.calendar_id || ''}
                     onChange={(e) => handleCalendarSettingChange('calendar_id', e.target.value)}
-                    className="w-full bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm"
+                    className="w-full bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg px-3 py-2 text-sm"
                   >
                     {availableCalendars.map(cal => (
                       <option key={cal.id} value={cal.id}>{cal.name}</option>
@@ -1988,7 +1988,7 @@ export default function Settings() {
                 <button
                   onClick={handleSaveCalendarSettings}
                   disabled={calendarLoading}
-                  className="w-full bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-4 py-2 text-sm font-medium hover:bg-[var(--color-bg-secondary)] disabled:opacity-50"
+                  className="w-full bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg px-4 py-2 text-sm font-medium hover:bg-(--color-bg-secondary) disabled:opacity-50"
                 >
                   {calendarLoading ? (t('common.saving') || 'Saving...') : (t('settings.saveCalendarSettings') || 'Save Calendar Settings')}
                 </button>
@@ -1996,8 +1996,8 @@ export default function Settings() {
               
               {/* Sync All Button */}
               {calendarSettings.enabled && selectedCalendarSource?.calendar_id && (
-                <div className="pt-4 border-t border-[var(--color-border)]">
-                  <p className="text-2xs text-[var(--color-text-muted)] mb-2">
+                <div className="pt-4 border-t border-(--color-border)">
+                  <p className="text-2xs text-(--color-text-muted) mb-2">
                     {t('settings.syncAllDesc') || 'Sync all existing services, reminders, insurance, and tax entries to your calendar'}
                   </p>
                   <button
@@ -2026,11 +2026,11 @@ export default function Settings() {
               )}
 
               {/* F46 — Subscribe (ICS) feed for Google/Apple Calendar */}
-              <div className="pt-4 border-t border-[var(--color-border)]">
+              <div className="pt-4 border-t border-(--color-border)">
                 <h4 className="text-sm font-medium mb-1">
                   {t('calendar.subscribeTitle') || 'Subscribe in your calendar app'}
                 </h4>
-                <p className="text-2xs text-[var(--color-text-muted)] mb-3">
+                <p className="text-2xs text-(--color-text-muted) mb-3">
                   {t('calendar.subscribeHint') || 'Read-only feed of your GearCargo events. Link is valid for 90 days.'}
                 </p>
 
@@ -2038,7 +2038,7 @@ export default function Settings() {
                   <button
                     onClick={handleGenerateFeed}
                     disabled={feedLoading}
-                    className="w-full bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-4 py-2 text-sm font-medium hover:bg-[var(--color-bg-secondary)] disabled:opacity-50"
+                    className="w-full bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg px-4 py-2 text-sm font-medium hover:bg-(--color-bg-secondary) disabled:opacity-50"
                   >
                     {feedLoading ? (t('common.loading') || 'Loading…') : (t('calendar.generateLink') || 'Generate link')}
                   </button>
@@ -2056,7 +2056,7 @@ export default function Settings() {
                       />
                       <button
                         onClick={() => copyShareLink(feedUrl)}
-                        className="px-3 py-2 rounded-lg bg-[var(--color-accent)]/10 text-[var(--color-accent)] text-xs font-medium hover:bg-[var(--color-accent)]/20 whitespace-nowrap"
+                        className="px-3 py-2 rounded-lg bg-(--color-accent)/10 text-(--color-accent) text-xs font-medium hover:bg-(--color-accent)/20 whitespace-nowrap"
                       >
                         {t('reportShare.copy') || t('calendar.copyLink') || 'Copy'}
                       </button>
@@ -2074,28 +2074,28 @@ export default function Settings() {
                       />
                       <button
                         onClick={() => copyShareLink(feedUrl.replace(/^https?:\/\//, 'webcal://'))}
-                        className="px-3 py-2 rounded-lg bg-[var(--color-accent)]/10 text-[var(--color-accent)] text-xs font-medium hover:bg-[var(--color-accent)]/20 whitespace-nowrap"
+                        className="px-3 py-2 rounded-lg bg-(--color-accent)/10 text-(--color-accent) text-xs font-medium hover:bg-(--color-accent)/20 whitespace-nowrap"
                       >
                         {t('reportShare.copy') || t('calendar.copyLink') || 'Copy'}
                       </button>
                     </div>
 
                     {/* Where to paste it */}
-                    <p className="text-2xs text-[var(--color-text-muted)]">
+                    <p className="text-2xs text-(--color-text-muted)">
                       {t('calendar.subscribeWhere') || 'Google: Settings → Add calendar → From URL. Apple: File → New Calendar Subscription.'}
                     </p>
 
                     {/* R8 — kill switch for a link that leaked */}
-                    <div className="pt-2 border-t border-[var(--color-border)]">
+                    <div className="pt-2 border-t border-(--color-border)">
                       <button
                         type="button"
                         onClick={handleRevokeFeed}
                         disabled={feedLoading}
-                        className="text-xs font-medium text-red-500 hover:text-red-400 hover:underline disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-red-500 rounded px-1 py-0.5"
+                        className="text-xs font-medium text-red-500 hover:text-red-400 hover:underline disabled:opacity-50 disabled:cursor-not-allowed focus:outline-hidden focus:ring-2 focus:ring-red-500 rounded-sm px-1 py-0.5"
                       >
                         {feedLoading ? (t('common.loading') || 'Loading…') : (t('calendar.revokeLink') || 'Revoke all links')}
                       </button>
-                      <p className="mt-1 text-2xs text-[var(--color-text-muted)]">
+                      <p className="mt-1 text-2xs text-(--color-text-muted)">
                         {t('calendar.revokeHint') || 'Stops every link already shared. Calendars using them will no longer update.'}
                       </p>
                     </div>
@@ -2103,7 +2103,7 @@ export default function Settings() {
                     <button
                       onClick={handleGenerateFeed}
                       disabled={feedLoading}
-                      className="text-xs text-[var(--color-accent)] hover:underline disabled:opacity-50"
+                      className="text-xs text-(--color-accent) hover:underline disabled:opacity-50"
                     >
                       {t('calendar.generateNewLink') || 'Generate new link'}
                     </button>
@@ -2122,26 +2122,26 @@ export default function Settings() {
           className="w-full flex items-center justify-between"
         >
           <div className="flex items-center gap-3">
-            <span className="text-[var(--color-accent)]">
+            <span className="text-(--color-accent)">
               {SettingsIcons.chartBar}
             </span>
             <div className="text-left">
               <h3 className="text-sm font-medium">{t('settings.reports') || 'PDF Reports'}</h3>
-              <p className="text-2xs text-[var(--color-text-muted)]">
+              <p className="text-2xs text-(--color-text-muted)">
                 {t('settings.reportsDesc') || 'Export vehicle expense reports as PDF'}
               </p>
             </div>
           </div>
-          <span className="text-[var(--color-text-muted)]">
+          <span className="text-(--color-text-muted)">
             {showReportsSection ? SettingsIcons.chevronUp : SettingsIcons.chevronDown}
           </span>
         </button>
         
         {showReportsSection && (
-          <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+          <div className="mt-4 pt-4 border-t border-(--color-border)">
             {reportLoading && reportVehicles.length === 0 ? (
               <div className="flex items-center justify-center py-4">
-                <svg className="animate-spin h-5 w-5 text-[var(--color-accent)]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <svg className="animate-spin h-5 w-5 text-(--color-accent)" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
@@ -2156,7 +2156,7 @@ export default function Settings() {
                   <select
                     value={reportSettings.vehicleId}
                     onChange={(e) => handleReportSettingChange('vehicleId', e.target.value)}
-                    className="w-full bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm"
+                    className="w-full bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg px-3 py-2 text-sm"
                   >
                     <option value="all">{t('settings.allVehicles') || 'All Vehicles'}</option>
                     {reportVehicles.map(vehicle => (
@@ -2175,7 +2175,7 @@ export default function Settings() {
                   <select
                     value={reportSettings.period}
                     onChange={(e) => handleReportSettingChange('period', e.target.value)}
-                    className="w-full bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm"
+                    className="w-full bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg px-3 py-2 text-sm"
                   >
                     {reportPeriods.map(period => (
                       <option key={period.id} value={period.id}>
@@ -2194,7 +2194,7 @@ export default function Settings() {
                     <select
                       value={reportSettings.year}
                       onChange={(e) => handleReportSettingChange('year', parseInt(e.target.value))}
-                      className="w-full bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm"
+                      className="w-full bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg px-3 py-2 text-sm"
                     >
                       {reportYears.map(year => (
                         <option key={year} value={year}>{year}</option>
@@ -2212,7 +2212,7 @@ export default function Settings() {
                     <select
                       value={reportSettings.month}
                       onChange={(e) => handleReportSettingChange('month', parseInt(e.target.value))}
-                      className="w-full bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm"
+                      className="w-full bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg px-3 py-2 text-sm"
                     >
                       {reportMonths.map(month => (
                         <option key={month.id} value={month.id}>
@@ -2227,65 +2227,65 @@ export default function Settings() {
                 <button
                   onClick={handlePreviewReport}
                   disabled={reportLoading || reportVehicles.length === 0}
-                  className="w-full bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-4 py-2 text-sm font-medium hover:bg-[var(--color-bg-secondary)] disabled:opacity-50"
+                  className="w-full bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg px-4 py-2 text-sm font-medium hover:bg-(--color-bg-secondary) disabled:opacity-50"
                 >
                   {reportLoading ? (t('common.loading') || 'Loading...') : (t('settings.previewReport') || 'Preview Report Info')}
                 </button>
                 
                 {/* Preview Info */}
                 {reportPreview && (
-                  <div className="bg-[var(--color-bg-tertiary)] rounded-lg p-4 space-y-3">
+                  <div className="bg-(--color-bg-tertiary) rounded-lg p-4 space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-[var(--color-text-muted)]">{t('settings.periodLabel') || 'Period'}:</span>
+                      <span className="text-sm text-(--color-text-muted)">{t('settings.periodLabel') || 'Period'}:</span>
                       <span className="text-sm font-medium">{reportPreview.period_label}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-[var(--color-text-muted)]">{t('settings.vehiclesIncluded') || 'Vehicles'}:</span>
+                      <span className="text-sm text-(--color-text-muted)">{t('settings.vehiclesIncluded') || 'Vehicles'}:</span>
                       <span className="text-sm font-medium">{reportPreview.vehicle_count} {t('settings.vehiclesCount') || 'vehicle(s)'}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-[var(--color-text-muted)]">{t('settings.totalEntries') || 'Total Entries'}:</span>
+                      <span className="text-sm text-(--color-text-muted)">{t('settings.totalEntries') || 'Total Entries'}:</span>
                       <span className="text-sm font-medium">{reportPreview.entry_counts?.total || 0}</span>
                     </div>
                     
                     {/* Entry breakdown */}
-                    <div className="pt-2 border-t border-[var(--color-border)]">
-                      <p className="text-2xs text-[var(--color-text-muted)] uppercase tracking-wide mb-2">
+                    <div className="pt-2 border-t border-(--color-border)">
+                      <p className="text-2xs text-(--color-text-muted) uppercase tracking-wide mb-2">
                         {t('settings.breakdown') || 'Breakdown'}
                       </p>
                       <div className="grid grid-cols-2 gap-2 text-sm">
                         <div className="flex justify-between">
-                          <span className="text-[var(--color-text-muted)]">⛽ {t('nav.fuel') || 'Fuel'}:</span>
+                          <span className="text-(--color-text-muted)">⛽ {t('nav.fuel') || 'Fuel'}:</span>
                           <span>{reportPreview.entry_counts?.fuel || 0}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-[var(--color-text-muted)]">🔧 {t('settings.service') || 'Service'}:</span>
+                          <span className="text-(--color-text-muted)">🔧 {t('settings.service') || 'Service'}:</span>
                           <span>{reportPreview.entry_counts?.service || 0}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-[var(--color-text-muted)]">🛠️ {t('settings.repairs') || 'Repairs'}:</span>
+                          <span className="text-(--color-text-muted)">🛠️ {t('settings.repairs') || 'Repairs'}:</span>
                           <span>{reportPreview.entry_counts?.repair || 0}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-[var(--color-text-muted)]">📋 {t('settings.tax') || 'Tax'}:</span>
+                          <span className="text-(--color-text-muted)">📋 {t('settings.tax') || 'Tax'}:</span>
                           <span>{reportPreview.entry_counts?.tax || 0}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-[var(--color-text-muted)]">🅿️ {t('settings.parking') || 'Parking'}:</span>
+                          <span className="text-(--color-text-muted)">🅿️ {t('settings.parking') || 'Parking'}:</span>
                           <span>{reportPreview.entry_counts?.parking || 0}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-[var(--color-text-muted)]">🛡️ {t('settings.insurance') || 'Insurance'}:</span>
+                          <span className="text-(--color-text-muted)">🛡️ {t('settings.insurance') || 'Insurance'}:</span>
                           <span>{reportPreview.entry_counts?.insurance || 0}</span>
                         </div>
                       </div>
                     </div>
                     
                     {/* Total cost */}
-                    <div className="pt-2 border-t border-[var(--color-border)]">
+                    <div className="pt-2 border-t border-(--color-border)">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">{t('settings.totalCost') || 'Total Cost'}:</span>
-                        <span className="text-lg font-bold text-[var(--color-accent)]">
+                        <span className="text-lg font-bold text-(--color-accent)">
                           {(reportPreview.totals?.grand_total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {reportPreview.currency}
                         </span>
                       </div>
@@ -2297,7 +2297,7 @@ export default function Settings() {
                 <button
                   onClick={handleGenerateReport}
                   disabled={reportGenerating || reportVehicles.length === 0}
-                  className="w-full bg-[var(--color-accent)] text-white rounded-lg px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="w-full bg-(--color-accent) text-white rounded-lg px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {reportGenerating ? (
                     <>
@@ -2316,31 +2316,31 @@ export default function Settings() {
                 </button>
                 
                 {reportVehicles.length === 0 && !reportLoading && (
-                  <p className="text-sm text-[var(--color-text-muted)] text-center">
+                  <p className="text-sm text-(--color-text-muted) text-center">
                     {t('settings.noVehiclesForReport') || 'Add vehicles to generate reports'}
                   </p>
                 )}
 
                 {/* F05 — Shareable read-only link */}
                 {reportVehicles.length > 0 && (
-                  <div className="pt-4 mt-2 border-t border-[var(--color-border)] space-y-3">
+                  <div className="pt-4 mt-2 border-t border-(--color-border) space-y-3">
                     <div>
                       <p className="text-sm font-medium">{t('reportShare.title') || 'Share a read-only link'}</p>
-                      <p className="text-2xs text-[var(--color-text-muted)] mt-0.5">
+                      <p className="text-2xs text-(--color-text-muted) mt-0.5">
                         {t('reportShare.desc') || 'Anyone with the link can view this report (no login). The link expires and can be revoked.'}
                       </p>
                     </div>
 
                     <div className="flex items-end gap-2">
                       <div className="flex-1">
-                        <label className="block text-2xs text-[var(--color-text-muted)] mb-1" htmlFor="shareExpiry">
+                        <label className="block text-2xs text-(--color-text-muted) mb-1" htmlFor="shareExpiry">
                           {t('reportShare.expiresIn') || 'Expires in'}
                         </label>
                         <select
                           id="shareExpiry"
                           value={shareExpiryDays}
                           onChange={(e) => setShareExpiryDays(parseInt(e.target.value))}
-                          className="w-full px-3 py-2 rounded-lg bg-[var(--color-bg-secondary)] border border-[var(--color-border)] text-sm"
+                          className="w-full px-3 py-2 rounded-lg bg-(--color-bg-secondary) border border-(--color-border) text-sm"
                         >
                           <option value={1}>{t('reportShare.days1') || '1 day'}</option>
                           <option value={7}>{t('reportShare.days7') || '7 days'}</option>
@@ -2351,7 +2351,7 @@ export default function Settings() {
                       <button
                         onClick={handleCreateShare}
                         disabled={shareCreating}
-                        className="px-4 py-2 rounded-lg bg-[var(--color-bg-tertiary)] text-sm font-medium hover:opacity-90 disabled:opacity-50 whitespace-nowrap"
+                        className="px-4 py-2 rounded-lg bg-(--color-bg-tertiary) text-sm font-medium hover:opacity-90 disabled:opacity-50 whitespace-nowrap"
                       >
                         {shareCreating ? (t('reportShare.creating') || 'Creating…') : (t('reportShare.createButton') || 'Create link')}
                       </button>
@@ -2359,8 +2359,8 @@ export default function Settings() {
 
                     {/* Freshly-created link — shown ONCE */}
                     {createdShare?.url && (
-                      <div className="p-3 rounded-lg bg-[var(--color-accent)]/10 border border-[var(--color-accent)]/20 space-y-2">
-                        <p className="text-2xs text-[var(--color-text-secondary)]">
+                      <div className="p-3 rounded-lg bg-(--color-accent)/10 border border-(--color-accent)/20 space-y-2">
+                        <p className="text-2xs text-(--color-text-secondary)">
                           {t('reportShare.copyNow') || 'Copy this link now — it will not be shown again.'}
                         </p>
                         <div className="flex items-center gap-2">
@@ -2368,11 +2368,11 @@ export default function Settings() {
                             readOnly
                             value={createdShare.url}
                             onFocus={(e) => e.target.select()}
-                            className="flex-1 min-w-0 px-2 py-1.5 rounded bg-[var(--color-bg-secondary)] border border-[var(--color-border)] text-2xs"
+                            className="flex-1 min-w-0 px-2 py-1.5 rounded-sm bg-(--color-bg-secondary) border border-(--color-border) text-2xs"
                           />
                           <button
                             onClick={() => copyShareLink(createdShare.url)}
-                            className="px-3 py-1.5 rounded bg-[var(--color-accent)] text-white text-xs font-medium whitespace-nowrap"
+                            className="px-3 py-1.5 rounded-sm bg-(--color-accent) text-white text-xs font-medium whitespace-nowrap"
                           >
                             {t('reportShare.copy') || 'Copy'}
                           </button>
@@ -2384,7 +2384,7 @@ export default function Settings() {
                     {shareLinks.length > 0 && (
                       <ul className="space-y-2">
                         {shareLinks.map((s) => (
-                          <li key={s.id} className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-[var(--color-bg-secondary)]">
+                          <li key={s.id} className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-(--color-bg-secondary)">
                             <div className="min-w-0">
                               <p className="text-xs font-medium truncate">
                                 {s.label || `${s.token_prefix}…`}
@@ -2396,14 +2396,14 @@ export default function Settings() {
                                   {t(`reportShare.status_${s.status}`) || s.status}
                                 </span>
                               </p>
-                              <p className="text-2xs text-[var(--color-text-muted)] truncate">
+                              <p className="text-2xs text-(--color-text-muted) truncate">
                                 {(t('reportShare.views') || '{n} views').replace('{n}', String(s.access_count || 0))}
                               </p>
                             </div>
                             {s.status !== 'revoked' && (
                               <button
                                 onClick={() => handleRevokeShare(s.id)}
-                                className="px-2.5 py-1 rounded text-xs text-red-500 hover:bg-red-500/10 whitespace-nowrap shrink-0"
+                                className="px-2.5 py-1 rounded-sm text-xs text-red-500 hover:bg-red-500/10 whitespace-nowrap shrink-0"
                               >
                                 {t('reportShare.revoke') || 'Revoke'}
                               </button>
@@ -2422,7 +2422,7 @@ export default function Settings() {
       
       {/* Security */}
       <div className="card mb-4">
-        <h3 className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide mb-3">
+        <h3 className="text-xs font-medium text-(--color-text-muted) uppercase tracking-wide mb-3">
           {t('profile.security') || 'Security'}
         </h3>
         
@@ -2430,12 +2430,12 @@ export default function Settings() {
           onClick={() => setShow2FASetup(true)}
           className="flex items-center gap-3 w-full py-2 text-left"
         >
-          <span className={user?.two_factor_enabled ? 'text-green-500' : 'text-[var(--color-text-muted)]'}>
+          <span className={user?.two_factor_enabled ? 'text-green-500' : 'text-(--color-text-muted)'}>
             {SettingsIcons.shield}
           </span>
           <div className="flex-1">
             <span className="text-sm">{t('auth.twoFactorAuth') || 'Two-Factor Authentication'}</span>
-            <p className="text-2xs text-[var(--color-text-muted)]">
+            <p className="text-2xs text-(--color-text-muted)">
               {t('profile.addExtraSecurity') || 'Add an extra layer of security'}
             </p>
           </div>
@@ -2452,14 +2452,14 @@ export default function Settings() {
           onClick={() => setShowSecurityQuestionsSetup(true)}
           className="flex items-center gap-3 w-full py-2 text-left"
         >
-          <span className={user?.security_questions_status?.configured ? 'text-green-500' : 'text-[var(--color-text-muted)]'}>
+          <span className={user?.security_questions_status?.configured ? 'text-green-500' : 'text-(--color-text-muted)'}>
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
             </svg>
           </span>
           <div className="flex-1">
             <span className="text-sm">{t('securityQuestions.title') || 'Security Questions'}</span>
-            <p className="text-2xs text-[var(--color-text-muted)]">
+            <p className="text-2xs text-(--color-text-muted)">
               {t('securityQuestions.accountRecovery') || 'Account recovery backup option'}
             </p>
           </div>
@@ -2478,16 +2478,16 @@ export default function Settings() {
           onClick={() => navigate('/settings/profile')}
           className="flex items-center gap-3 w-full py-2 text-left"
         >
-          <span className="text-[var(--color-text-muted)]">
+          <span className="text-(--color-text-muted)">
             {SettingsIcons.lock}
           </span>
           <div className="flex-1">
             <span className="text-sm">{t('profile.updateProfile') || 'Update Profile'}</span>
-            <p className="text-2xs text-[var(--color-text-muted)]">
+            <p className="text-2xs text-(--color-text-muted)">
               {t('profile.updateProfileDesc') || 'Avatar, password & account settings'}
             </p>
           </div>
-          <span className="text-[var(--color-text-muted)]">
+          <span className="text-(--color-text-muted)">
             {SettingsIcons.chevronRight}
           </span>
         </button>
@@ -2500,23 +2500,23 @@ export default function Settings() {
           className="w-full flex items-center justify-between"
         >
           <div className="flex items-center gap-3">
-            <span className="text-[var(--color-accent)]">
+            <span className="text-(--color-accent)">
               {SettingsIcons.download}
             </span>
             <div className="text-left">
               <h3 className="text-sm font-medium">{t('settings.dataBackup')}</h3>
-              <p className="text-2xs text-[var(--color-text-muted)]">
+              <p className="text-2xs text-(--color-text-muted)">
                 {t('backup.description') || 'Auto backups, restore & external sync'}
               </p>
             </div>
           </div>
-          <span className="text-[var(--color-text-muted)]">
+          <span className="text-(--color-text-muted)">
             {showBackupSettings ? SettingsIcons.chevronUp : SettingsIcons.chevronDown}
           </span>
         </button>
         
         {showBackupSettings && (
-          <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+          <div className="mt-4 pt-4 border-t border-(--color-border)">
             <BackupSettings />
           </div>
         )}
@@ -2541,18 +2541,18 @@ export default function Settings() {
             </span>
             <div className="text-left">
               <h3 className="text-sm font-medium">{t('integrations.title') || 'Integrations'}</h3>
-              <p className="text-2xs text-[var(--color-text-muted)]">
+              <p className="text-2xs text-(--color-text-muted)">
                 {t('integrations.description') || 'Gethomepage widget & API access'}
               </p>
             </div>
           </div>
-          <span className="text-[var(--color-text-muted)]">
+          <span className="text-(--color-text-muted)">
             {showIntegrations ? SettingsIcons.chevronUp : SettingsIcons.chevronDown}
           </span>
         </button>
         
         {showIntegrations && (
-          <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+          <div className="mt-4 pt-4 border-t border-(--color-border)">
             <IntegrationSettings />
           </div>
         )}
@@ -2565,29 +2565,29 @@ export default function Settings() {
           className="w-full flex items-center justify-between"
         >
           <div className="flex items-center gap-3">
-            <span className="text-[var(--color-text-muted)]">
+            <span className="text-(--color-text-muted)">
               {SettingsIcons.archive}
             </span>
             <div className="text-left">
               <h3 className="text-sm font-medium">{t('archive.title') || 'Archived Vehicles'}</h3>
-              <p className="text-2xs text-[var(--color-text-muted)]">
+              <p className="text-2xs text-(--color-text-muted)">
                 {t('archive.description') || 'View and manage archived vehicles'}
               </p>
             </div>
           </div>
-          <span className="text-[var(--color-text-muted)]">
+          <span className="text-(--color-text-muted)">
             {showArchiveSection ? SettingsIcons.chevronUp : SettingsIcons.chevronDown}
           </span>
         </button>
         
         {showArchiveSection && (
-          <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+          <div className="mt-4 pt-4 border-t border-(--color-border)">
             {loadingArchived ? (
               <div className="flex justify-center py-4">
-                <div className="animate-spin rounded-full h-6 w-6 border-2 border-[var(--color-accent)] border-t-transparent"></div>
+                <div className="animate-spin rounded-full h-6 w-6 border-2 border-(--color-accent) border-t-transparent"></div>
               </div>
             ) : archivedVehicles.length === 0 ? (
-              <div className="text-center py-6 text-[var(--color-text-muted)]">
+              <div className="text-center py-6 text-(--color-text-muted)">
                 <div className="mb-2">{SettingsIcons.archive}</div>
                 <p className="text-sm">{t('archive.empty') || 'No archived vehicles'}</p>
                 <p className="text-2xs mt-1">{t('archive.emptyHint') || 'Archived vehicles will appear here'}</p>
@@ -2597,11 +2597,11 @@ export default function Settings() {
                 {archivedVehicles.map(vehicle => (
                   <div 
                     key={vehicle.id} 
-                    className="flex items-center gap-3 p-3 rounded-lg bg-[var(--color-bg-tertiary)] cursor-pointer hover:bg-[var(--color-bg-tertiary)]/80 transition-colors"
+                    className="flex items-center gap-3 p-3 rounded-lg bg-(--color-bg-tertiary) cursor-pointer hover:bg-(--color-bg-tertiary)/80 transition-colors"
                     onClick={() => navigate(`/vehicles/${vehicle.id}`)}
                   >
                     {/* Vehicle photo or icon */}
-                    <div className="w-12 h-12 rounded-lg bg-[var(--color-bg-primary)] flex items-center justify-center overflow-hidden flex-shrink-0">
+                    <div className="w-12 h-12 rounded-lg bg-(--color-bg-primary) flex items-center justify-center overflow-hidden shrink-0">
                       {vehicle.photo ? (
                         <img 
                           src={vehicle.photo} 
@@ -2609,18 +2609,18 @@ export default function Settings() {
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <span className="text-[var(--color-text-muted)]">{SettingsIcons.car}</span>
+                        <span className="text-(--color-text-muted)">{SettingsIcons.car}</span>
                       )}
                     </div>
                     
                     {/* Vehicle info */}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{vehicle.name}</p>
-                      <p className="text-2xs text-[var(--color-text-muted)]">
+                      <p className="text-2xs text-(--color-text-muted)">
                         {vehicle.make} {vehicle.model} {vehicle.year ? `(${vehicle.year})` : ''}
                       </p>
                       {vehicle.archived_at && (
-                        <p className="text-2xs text-[var(--color-text-muted)]">
+                        <p className="text-2xs text-(--color-text-muted)">
                           {t('archive.archivedOn') || 'Archived'}: {formatDate(vehicle.archived_at)}
                         </p>
                       )}
@@ -2664,7 +2664,7 @@ export default function Settings() {
               </span>
               <div className="text-left">
                 <h3 className="text-sm font-medium">{t('settings.storageStats') || 'Storage Statistics'}</h3>
-                <p className="text-2xs text-[var(--color-text-muted)]">
+                <p className="text-2xs text-(--color-text-muted)">
                   {storageLoading ? (
                     t('common.loading') || 'Loading...'
                   ) : storageStats ? (
@@ -2675,41 +2675,41 @@ export default function Settings() {
                 </p>
               </div>
             </div>
-            <span className="text-[var(--color-text-muted)]">
+            <span className="text-(--color-text-muted)">
               {showStorageSection ? SettingsIcons.chevronUp : SettingsIcons.chevronDown}
             </span>
           </button>
           
           {showStorageSection && storageStats && (
-            <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+            <div className="mt-4 pt-4 border-t border-(--color-border)">
               {/* Total Storage */}
               <div className="mb-4 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-[var(--color-text-secondary)]">{t('settings.totalStorage') || 'Total Storage Used'}</span>
+                  <span className="text-sm text-(--color-text-secondary)">{t('settings.totalStorage') || 'Total Storage Used'}</span>
                   <span className="text-lg font-semibold text-blue-600 dark:text-blue-400">{storageStats.total_size_human}</span>
                 </div>
-                <div className="text-2xs text-[var(--color-text-muted)] mt-1">
+                <div className="text-2xs text-(--color-text-muted) mt-1">
                   {storageStats.total_count} {t('settings.totalFiles') || 'total files'}
                 </div>
               </div>
               
               {/* By Category */}
               <div className="mb-4">
-                <p className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide mb-2">
+                <p className="text-xs font-medium text-(--color-text-muted) uppercase tracking-wide mb-2">
                   {t('settings.byCategory') || 'By Category'}
                 </p>
                 <div className="space-y-2">
                   {Object.entries(storageStats.by_category || {}).map(([category, data]) => (
-                    <div key={category} className="flex items-center justify-between p-2 rounded-lg bg-[var(--color-bg-tertiary)]">
+                    <div key={category} className="flex items-center justify-between p-2 rounded-lg bg-(--color-bg-tertiary)">
                       <div className="flex items-center gap-2">
                         <span className="text-sm capitalize">{t(`attachmentCategories.${category}`) || category}</span>
-                        <span className="text-2xs text-[var(--color-text-muted)]">({data.count})</span>
+                        <span className="text-2xs text-(--color-text-muted)">({data.count})</span>
                       </div>
                       <span className="text-sm font-medium">{_humanSize(data.size)}</span>
                     </div>
                   ))}
                   {Object.keys(storageStats.by_category || {}).length === 0 && (
-                    <p className="text-sm text-[var(--color-text-muted)] text-center py-2">
+                    <p className="text-sm text-(--color-text-muted) text-center py-2">
                       {t('settings.noAttachments') || 'No attachments yet'}
                     </p>
                   )}
@@ -2718,23 +2718,23 @@ export default function Settings() {
               
               {/* By Type */}
               <div>
-                <p className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide mb-2">
+                <p className="text-xs font-medium text-(--color-text-muted) uppercase tracking-wide mb-2">
                   {t('settings.byType') || 'By File Type'}
                 </p>
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-[var(--color-bg-tertiary)]">
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-(--color-bg-tertiary)">
                     <span className="text-sm">📷 {t('settings.images') || 'Images'}</span>
                     <span className="text-sm font-medium">{storageStats.by_type?.images || 0}</span>
                   </div>
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-[var(--color-bg-tertiary)]">
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-(--color-bg-tertiary)">
                     <span className="text-sm">📄 {t('settings.pdfs') || 'PDFs'}</span>
                     <span className="text-sm font-medium">{storageStats.by_type?.pdfs || 0}</span>
                   </div>
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-[var(--color-bg-tertiary)]">
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-(--color-bg-tertiary)">
                     <span className="text-sm">📝 {t('settings.documents') || 'Documents'}</span>
                     <span className="text-sm font-medium">{storageStats.by_type?.documents || 0}</span>
                   </div>
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-[var(--color-bg-tertiary)]">
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-(--color-bg-tertiary)">
                     <span className="text-sm">📎 {t('settings.otherFiles') || 'Other'}</span>
                     <span className="text-sm font-medium">{storageStats.by_type?.other || 0}</span>
                   </div>
@@ -2758,26 +2758,26 @@ export default function Settings() {
               </span>
               <div className="text-left">
                 <h3 className="text-sm font-medium">{t('admin.title') || 'Admin Panel'}</h3>
-                <p className="text-2xs text-[var(--color-text-muted)]">
+                <p className="text-2xs text-(--color-text-muted)">
                   {t('admin.description') || 'Manage users and system settings'}
                 </p>
               </div>
             </div>
-            <span className="text-[var(--color-text-muted)]">
+            <span className="text-(--color-text-muted)">
               {showAdminSection ? SettingsIcons.chevronUp : SettingsIcons.chevronDown}
             </span>
           </button>
           
           {showAdminSection && (
-            <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+            <div className="mt-4 pt-4 border-t border-(--color-border)">
               {/* Admin Tabs */}
-              <div className="flex bg-[var(--color-bg-tertiary)] rounded-lg p-1 mb-4">
+              <div className="flex bg-(--color-bg-tertiary) rounded-lg p-1 mb-4">
                 <button
                   onClick={() => setAdminTab('users')}
                   className={`flex-1 py-2 rounded-md text-xs font-medium transition-colors ${
                     adminTab === 'users'
-                      ? 'bg-[var(--color-bg-card)] text-[var(--color-accent)] shadow-sm'
-                      : 'text-[var(--color-text-secondary)]'
+                      ? 'bg-(--color-bg-card) text-(--color-accent) shadow-xs'
+                      : 'text-(--color-text-secondary)'
                   }`}
                 >
                   {t('admin.users') || 'Users'}
@@ -2786,8 +2786,8 @@ export default function Settings() {
                   onClick={() => setAdminTab('security')}
                   className={`flex-1 py-2 rounded-md text-xs font-medium transition-colors ${
                     adminTab === 'security'
-                      ? 'bg-[var(--color-bg-card)] text-[var(--color-accent)] shadow-sm'
-                      : 'text-[var(--color-text-secondary)]'
+                      ? 'bg-(--color-bg-card) text-(--color-accent) shadow-xs'
+                      : 'text-(--color-text-secondary)'
                   }`}
                 >
                   {t('admin.security.title') || 'Security'}
@@ -2796,8 +2796,8 @@ export default function Settings() {
                   onClick={() => setAdminTab('logs')}
                   className={`flex-1 py-2 rounded-md text-xs font-medium transition-colors ${
                     adminTab === 'logs'
-                      ? 'bg-[var(--color-bg-card)] text-[var(--color-accent)] shadow-sm'
-                      : 'text-[var(--color-text-secondary)]'
+                      ? 'bg-(--color-bg-card) text-(--color-accent) shadow-xs'
+                      : 'text-(--color-text-secondary)'
                   }`}
                 >
                   {t('admin.systemLogs') || 'Logs'}
@@ -2806,8 +2806,8 @@ export default function Settings() {
                   onClick={() => setAdminTab('maintenance')}
                   className={`flex-1 py-2 rounded-md text-xs font-medium transition-colors ${
                     adminTab === 'maintenance'
-                      ? 'bg-[var(--color-bg-card)] text-[var(--color-accent)] shadow-sm'
-                      : 'text-[var(--color-text-secondary)]'
+                      ? 'bg-(--color-bg-card) text-(--color-accent) shadow-xs'
+                      : 'text-(--color-text-secondary)'
                   }`}
                 >
                   {t('admin.maintenance') || 'Cleanup'}
@@ -2816,8 +2816,8 @@ export default function Settings() {
                   onClick={() => setAdminTab('ai')}
                   className={`flex-1 py-2 rounded-md text-xs font-medium transition-colors ${
                     adminTab === 'ai'
-                      ? 'bg-[var(--color-bg-card)] text-[var(--color-accent)] shadow-sm'
-                      : 'text-[var(--color-text-secondary)]'
+                      ? 'bg-(--color-bg-card) text-(--color-accent) shadow-xs'
+                      : 'text-(--color-text-secondary)'
                   }`}
                 >
                   {t('admin.ai') || 'AI'}
@@ -2837,30 +2837,30 @@ export default function Settings() {
       
       {/* About */}
       <div className="card mb-4">
-        <h3 className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide mb-3">
+        <h3 className="text-xs font-medium text-(--color-text-muted) uppercase tracking-wide mb-3">
           {t('settings.about')}
         </h3>
         
         <div className="space-y-1">
           <div className="flex items-center gap-3 py-2">
-            <span className="text-[var(--color-text-muted)]">
+            <span className="text-(--color-text-muted)">
               {SettingsIcons.info}
             </span>
             <div className="flex-1">
               <span className="text-sm">{t('settings.version')}</span>
             </div>
-            <span className="text-sm text-[var(--color-text-muted)] tabular-nums">{DISPLAY_VERSION}</span>
+            <span className="text-sm text-(--color-text-muted) tabular-nums">{DISPLAY_VERSION}</span>
           </div>
           
           <button 
             onClick={() => setShowPrivacyPolicy(true)}
             className="flex items-center gap-3 w-full py-2 text-left"
           >
-            <span className="text-[var(--color-text-muted)]">
+            <span className="text-(--color-text-muted)">
               {SettingsIcons.document}
             </span>
             <span className="text-sm flex-1">{t('settings.privacyPolicy')}</span>
-            <span className="text-[var(--color-text-muted)]">
+            <span className="text-(--color-text-muted)">
               {SettingsIcons.externalLink}
             </span>
           </button>
@@ -2869,11 +2869,11 @@ export default function Settings() {
             onClick={() => setShowTermsOfService(true)}
             className="flex items-center gap-3 w-full py-2 text-left"
           >
-            <span className="text-[var(--color-text-muted)]">
+            <span className="text-(--color-text-muted)">
               {SettingsIcons.gavel}
             </span>
             <span className="text-sm flex-1">{t('settings.termsOfService')}</span>
-            <span className="text-[var(--color-text-muted)]">
+            <span className="text-(--color-text-muted)">
               {SettingsIcons.externalLink}
             </span>
           </button>

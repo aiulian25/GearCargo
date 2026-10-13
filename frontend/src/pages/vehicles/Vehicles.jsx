@@ -63,7 +63,7 @@ export default function Vehicles() {
               className="card flex items-center gap-4 touch-manipulation"
             >
               {/* Icon/Photo */}
-              <div className="w-14 h-14 rounded-xl bg-[var(--color-bg-tertiary)] flex items-center justify-center flex-shrink-0">
+              <div className="w-14 h-14 rounded-xl bg-(--color-bg-tertiary) flex items-center justify-center shrink-0">
                 {vehicle.photo_url ? (
                   <img 
                     src={vehicle.photo_url} 
@@ -71,7 +71,7 @@ export default function Vehicles() {
                     className="w-full h-full object-cover rounded-xl"
                   />
                 ) : (
-                  <span className="material-icons-outlined icon-lg text-[var(--color-text-muted)]">
+                  <span className="material-icons-outlined icon-lg text-(--color-text-muted)">
                     directions_car
                   </span>
                 )}
@@ -80,27 +80,27 @@ export default function Vehicles() {
               {/* Info */}
               <div className="flex-1 min-w-0">
                 <h3 className="text-sm font-medium truncate">{vehicle.name}</h3>
-                <p className="text-xs text-[var(--color-text-secondary)]">
+                <p className="text-xs text-(--color-text-secondary)">
                   {vehicle.make} {vehicle.model}
                   {vehicle.year && ` • ${vehicle.year}`}
                 </p>
                 {vehicle.license_plate && (
-                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+                  <p className="text-xs text-(--color-text-muted) mt-0.5">
                     {vehicle.license_plate}
                   </p>
                 )}
               </div>
               
               {/* Mileage */}
-              <div className="text-right flex-shrink-0">
+              <div className="text-right shrink-0">
                 <p className="text-sm font-semibold">
                   {vehicle.current_mileage?.toLocaleString() || 0}
                 </p>
-                <p className="text-2xs text-[var(--color-text-muted)]">{vehicle.distance_unit || 'km'}</p>
+                <p className="text-2xs text-(--color-text-muted)">{vehicle.distance_unit || 'km'}</p>
               </div>
               
               {/* Arrow */}
-              <span className="material-icons-outlined icon-sm text-[var(--color-text-muted)]">
+              <span className="material-icons-outlined icon-sm text-(--color-text-muted)">
                 chevron_right
               </span>
             </Link>

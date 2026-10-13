@@ -218,7 +218,7 @@ export default function AddVehicleInsurance() {
   return (
     <div className="pb-4">
       {/* Header */}
-      <div className="bg-[var(--color-bg-card)] border-b border-[var(--color-border)] px-4 py-3 flex items-center gap-3">
+      <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="btn-icon">
           {Icons.close}
         </button>
@@ -226,7 +226,7 @@ export default function AddVehicleInsurance() {
           <h1 className="text-base font-semibold">
             {isEditMode ? (t('common.edit') || 'Edit') + ' ' + (t('nav.insurance') || 'Insurance') : (t('addInsurance.title') || 'Add Insurance')}
           </h1>
-          <p className="text-xs text-[var(--color-text-secondary)]">{vehicle?.name}</p>
+          <p className="text-xs text-(--color-text-secondary)">{vehicle?.name}</p>
         </div>
         <button 
           onClick={handleSubmit(onSubmit)}
@@ -251,7 +251,7 @@ export default function AddVehicleInsurance() {
           </div>
           <div className="flex-1">
             <p className="font-medium">{vehicle?.name}</p>
-            <p className="text-xs text-[var(--color-text-secondary)]">
+            <p className="text-xs text-(--color-text-secondary)">
               {vehicle?.make} {vehicle?.model} • {vehicle?.license_plate}
             </p>
           </div>
@@ -259,12 +259,12 @@ export default function AddVehicleInsurance() {
         
         {/* Provider & Policy Details */}
         <div className="card space-y-4">
-          <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
+          <h3 className="text-sm font-medium text-(--color-text-secondary)">
             {t('addInsurance.policyDetails') || 'Policy Details'}
           </h3>
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('addInsurance.provider') || 'Insurance Provider'} *
             </label>
             <input
@@ -280,7 +280,7 @@ export default function AddVehicleInsurance() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addInsurance.policyNumber') || 'Policy Number'}
               </label>
               <input
@@ -292,7 +292,7 @@ export default function AddVehicleInsurance() {
             </div>
             
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addInsurance.policyType') || 'Policy Type'} *
               </label>
               <select 
@@ -309,13 +309,13 @@ export default function AddVehicleInsurance() {
         
         {/* Premium & Payment */}
         <div className="card space-y-4">
-          <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
+          <h3 className="text-sm font-medium text-(--color-text-secondary)">
             {t('addInsurance.costDetails') || 'Cost & Payment'}
           </h3>
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addInsurance.premium') || 'Premium'} ({currency.symbol}) *
               </label>
               <input
@@ -334,7 +334,7 @@ export default function AddVehicleInsurance() {
             </div>
             
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addInsurance.paymentFrequency') || 'Payment Frequency'}
               </label>
               <select
@@ -362,7 +362,7 @@ export default function AddVehicleInsurance() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addInsurance.coverageAmount') || 'Coverage Amount'} ({currency.symbol})
               </label>
               <input
@@ -375,7 +375,7 @@ export default function AddVehicleInsurance() {
             </div>
             
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addInsurance.deductible') || 'Deductible'} ({currency.symbol})
               </label>
               <input
@@ -397,7 +397,7 @@ export default function AddVehicleInsurance() {
             </div>
             <div>
               <p className="font-medium text-sm">{t('addInsurance.policyPeriod') || 'Policy Period'}</p>
-              <p className="text-xs text-[var(--color-text-muted)]">
+              <p className="text-xs text-(--color-text-muted)">
                 {t('addInsurance.policyPeriodHint') || 'When does the coverage start and end?'}
               </p>
             </div>
@@ -405,7 +405,7 @@ export default function AddVehicleInsurance() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addInsurance.startDate') || 'Start Date'} *
               </label>
               <input
@@ -416,7 +416,7 @@ export default function AddVehicleInsurance() {
             </div>
             
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addInsurance.endDate') || 'End Date'} *
               </label>
               <input
@@ -427,10 +427,10 @@ export default function AddVehicleInsurance() {
             </div>
           </div>
           
-          <div className="flex items-center justify-between pt-2 border-t border-[var(--color-border)]">
+          <div className="flex items-center justify-between pt-2 border-t border-(--color-border)">
             <div>
               <p className="font-medium text-sm">{t('addInsurance.autoRenew') || 'Auto-Renew'}</p>
-              <p className="text-xs text-[var(--color-text-muted)]">
+              <p className="text-xs text-(--color-text-muted)">
                 {t('addInsurance.autoRenewHint') || 'Policy renews automatically'}
               </p>
             </div>
@@ -440,7 +440,7 @@ export default function AddVehicleInsurance() {
                 {...register('auto_renew')}
                 className="sr-only peer"
               />
-              <div className="w-11 h-6 bg-gray-200 dark:bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+              <div className="w-11 h-6 bg-gray-200 dark:bg-gray-700 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:rtl:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:inset-s-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
             </label>
           </div>
         </div>
@@ -453,7 +453,7 @@ export default function AddVehicleInsurance() {
             </div>
             <div>
               <p className="font-medium text-sm">{t('addInsurance.agentContact') || 'Agent Contact'}</p>
-              <p className="text-xs text-[var(--color-text-muted)]">
+              <p className="text-xs text-(--color-text-muted)">
                 {t('addInsurance.agentContactHint') || 'Optional - for quick reference'}
               </p>
             </div>
@@ -461,7 +461,7 @@ export default function AddVehicleInsurance() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addInsurance.agentName') || 'Agent Name'}
               </label>
               <input
@@ -473,7 +473,7 @@ export default function AddVehicleInsurance() {
             </div>
             
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addInsurance.agentPhone') || 'Agent Phone'}
               </label>
               <input
@@ -487,7 +487,7 @@ export default function AddVehicleInsurance() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addInsurance.agentEmail') || 'Agent Email'}
               </label>
               <input
@@ -499,7 +499,7 @@ export default function AddVehicleInsurance() {
             </div>
             
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addInsurance.claimsPhone') || 'Claims Phone'}
               </label>
               <input
@@ -515,7 +515,7 @@ export default function AddVehicleInsurance() {
         {/* Notes */}
         <div className="card space-y-4">
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('addInsurance.notes') || 'Notes'}
             </label>
             <textarea

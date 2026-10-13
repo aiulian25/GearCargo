@@ -222,12 +222,12 @@ export default function ScanReceiptBanner({ receiptFile, vehicleId, onPrefill, o
       {/* ── Banner row ── */}
       <div className="flex items-center gap-2 px-3 py-2.5">
         {/* Leading icon */}
-        <span className={`flex-shrink-0 ${iconCls}`}>
+        <span className={`shrink-0 ${iconCls}`}>
           {isBusy ? Icons.spinner : isSuccess ? Icons.check : isError ? Icons.warning : Icons.scan}
         </span>
 
         {/* Status text */}
-        <span className="flex-1 text-sm text-[var(--color-text-primary)]">
+        <span className="flex-1 text-sm text-(--color-text-primary)">
           {phase === 'uploading' && (t('receipt.scanBannerUploading') || 'Uploading receipt…')}
           {phase === 'scanning' && (t('receipt.scanBannerScanning') || 'Scanning receipt…')}
           {phase === 'scanning_slow' && (t('receipt.scanBannerSlow') || 'Still scanning — check back shortly')}
@@ -243,7 +243,7 @@ export default function ScanReceiptBanner({ receiptFile, vehicleId, onPrefill, o
           <button
             type="button"
             onClick={handleExtract}
-            className="flex-shrink-0 flex items-center gap-1.5 text-xs bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white px-2.5 py-1.5 rounded-lg transition-colors font-medium touch-manipulation"
+            className="shrink-0 flex items-center gap-1.5 text-xs bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white px-2.5 py-1.5 rounded-lg transition-colors font-medium touch-manipulation"
           >
             {Icons.wand}
             {t('receipt.scanBannerExtract') || 'Extract'}
@@ -253,7 +253,7 @@ export default function ScanReceiptBanner({ receiptFile, vehicleId, onPrefill, o
           <button
             type="button"
             onClick={() => setExpanded(v => !v)}
-            className={`flex-shrink-0 transition-colors ${iconCls} hover:opacity-70`}
+            className={`shrink-0 transition-colors ${iconCls} hover:opacity-70`}
             aria-label={expanded ? 'Collapse' : 'Expand'}
           >
             {expanded ? Icons.chevronUp : Icons.chevronDown}
@@ -263,7 +263,7 @@ export default function ScanReceiptBanner({ receiptFile, vehicleId, onPrefill, o
           <button
             type="button"
             onClick={() => { pollAttemptsRef.current = 0; _pollOcr(attachmentId) }}
-            className="flex-shrink-0 text-xs text-purple-400 underline hover:text-purple-300 transition-colors"
+            className="shrink-0 text-xs text-purple-400 underline hover:text-purple-300 transition-colors"
           >
             {t('receipt.scanBannerCheck') || 'Check'}
           </button>
@@ -281,26 +281,26 @@ export default function ScanReceiptBanner({ receiptFile, vehicleId, onPrefill, o
           <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
             {parsedData.date && (
               <>
-                <dt className="text-[var(--color-text-muted)]">{t('attachments.ocrDate') || 'Date'}</dt>
-                <dd className="text-[var(--color-text-primary)] font-medium">{parsedData.date}</dd>
+                <dt className="text-(--color-text-muted)">{t('attachments.ocrDate') || 'Date'}</dt>
+                <dd className="text-(--color-text-primary) font-medium">{parsedData.date}</dd>
               </>
             )}
             {parsedData.vendor && (
               <>
-                <dt className="text-[var(--color-text-muted)]">{t('attachments.ocrVendor') || 'Vendor'}</dt>
-                <dd className="text-[var(--color-text-primary)] font-medium truncate">{parsedData.vendor}</dd>
+                <dt className="text-(--color-text-muted)">{t('attachments.ocrVendor') || 'Vendor'}</dt>
+                <dd className="text-(--color-text-primary) font-medium truncate">{parsedData.vendor}</dd>
               </>
             )}
             {parsedData.amount != null && (
               <>
-                <dt className="text-[var(--color-text-muted)]">{t('attachments.ocrAmount') || 'Amount'}</dt>
-                <dd className="text-[var(--color-text-primary)] font-medium">{parsedData.amount}</dd>
+                <dt className="text-(--color-text-muted)">{t('attachments.ocrAmount') || 'Amount'}</dt>
+                <dd className="text-(--color-text-primary) font-medium">{parsedData.amount}</dd>
               </>
             )}
             {parsedData.line_items?.[0]?.description && (
               <>
-                <dt className="text-[var(--color-text-muted)]">{t('attachments.ocrLineItems') || 'Items'}</dt>
-                <dd className="text-[var(--color-text-primary)] truncate">{parsedData.line_items[0].description}</dd>
+                <dt className="text-(--color-text-muted)">{t('attachments.ocrLineItems') || 'Items'}</dt>
+                <dd className="text-(--color-text-primary) truncate">{parsedData.line_items[0].description}</dd>
               </>
             )}
           </dl>

@@ -226,7 +226,7 @@ export default function AddVehicleParking() {
   return (
     <div className="pb-4">
       {/* Header */}
-      <div className="bg-[var(--color-bg-card)] border-b border-[var(--color-border)] px-4 py-3 flex items-center gap-3">
+      <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="btn-icon">
           {Icons.close}
         </button>
@@ -234,7 +234,7 @@ export default function AddVehicleParking() {
           <h1 className="text-base font-semibold">
             {isEditMode ? (t('common.edit') || 'Edit') + ' ' + (t('expenses.parking') || 'Parking') : (t('addParking.title') || 'Add Parking')}
           </h1>
-          <p className="text-xs text-[var(--color-text-secondary)]">{vehicle?.name}</p>
+          <p className="text-xs text-(--color-text-secondary)">{vehicle?.name}</p>
         </div>
         <button 
           onClick={handleSubmit(onSubmit)}
@@ -259,7 +259,7 @@ export default function AddVehicleParking() {
           </div>
           <div className="flex-1">
             <p className="font-medium">{vehicle?.name}</p>
-            <p className="text-xs text-[var(--color-text-secondary)]">
+            <p className="text-xs text-(--color-text-secondary)">
               {vehicle?.make} {vehicle?.model} • {vehicle?.license_plate}
             </p>
           </div>
@@ -268,7 +268,7 @@ export default function AddVehicleParking() {
         {/* Parking Details */}
         <div className="card space-y-4">
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('addParking.parkingType') || 'Parking Type'} *
             </label>
             <select 
@@ -287,7 +287,7 @@ export default function AddVehicleParking() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addParking.date') || 'Date'} *
               </label>
               <input
@@ -299,7 +299,7 @@ export default function AddVehicleParking() {
             
             <div className="flex gap-3">
               <div className="flex-1">
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addParking.amount') || 'Amount'} ({currency.symbol}) *
               </label>
               <input
@@ -316,12 +316,12 @@ export default function AddVehicleParking() {
                 <p className="text-xs text-red-500 mt-1">{errors.amount.message}</p>
               )}
               </div>
-              <CurrencySelect register={register} className="w-28 flex-shrink-0" />
+              <CurrencySelect register={register} className="w-28 shrink-0" />
             </div>
           </div>
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('addParking.location') || 'Location'}
             </label>
             <input
@@ -336,12 +336,12 @@ export default function AddVehicleParking() {
         {/* Fine details — only for parking fines (F14) */}
         {isFine && (
           <div className="card space-y-4">
-            <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
+            <h3 className="text-sm font-medium text-(--color-text-secondary)">
               {t('addParking.fineDetails') || 'Fine Details'}
             </h3>
 
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addParking.fineReason') || 'Reason'}
               </label>
               <input
@@ -353,7 +353,7 @@ export default function AddVehicleParking() {
             </div>
 
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addParking.fineStatus') || 'Status'}
               </label>
               <select {...register('fine_status')} className="input">
@@ -374,13 +374,13 @@ export default function AddVehicleParking() {
         {/* Time */}
         {!isFine && (
         <div className="card space-y-4">
-          <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
+          <h3 className="text-sm font-medium text-(--color-text-secondary)">
             {t('addParking.duration') || 'Duration (Optional)'}
           </h3>
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addParking.startTime') || 'Start Time'}
               </label>
               <input
@@ -391,7 +391,7 @@ export default function AddVehicleParking() {
             </div>
             
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addParking.endTime') || 'End Time'}
               </label>
               <input
@@ -414,7 +414,7 @@ export default function AddVehicleParking() {
               </div>
               <div>
                 <p className="font-medium text-sm">{t('recurring.parkingPermit') || 'Parking Permit/Subscription'}</p>
-                <p className="text-xs text-[var(--color-text-muted)]">
+                <p className="text-xs text-(--color-text-muted)">
                   {t('recurring.parkingDescription') || 'For monthly permits or recurring parking subscriptions'}
                 </p>
               </div>
@@ -425,15 +425,15 @@ export default function AddVehicleParking() {
                 {...register('recurring')}
                 className="sr-only peer"
               />
-              <div className="w-11 h-6 bg-gray-200 dark:bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-500"></div>
+              <div className="w-11 h-6 bg-gray-200 dark:bg-gray-700 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:rtl:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:inset-s-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-500"></div>
             </label>
           </div>
           
           {isRecurring && (
-            <div className="space-y-4 pt-2 border-t border-[var(--color-border)]">
+            <div className="space-y-4 pt-2 border-t border-(--color-border)">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                  <label className="block text-xs text-(--color-text-muted) mb-1">
                     {t('recurring.permitNumber') || 'Permit Number'}
                   </label>
                   <input
@@ -445,7 +445,7 @@ export default function AddVehicleParking() {
                 </div>
                 
                 <div>
-                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                  <label className="block text-xs text-(--color-text-muted) mb-1">
                     {t('recurring.expiresOn') || 'Expires On'}
                   </label>
                   <input
@@ -457,7 +457,7 @@ export default function AddVehicleParking() {
               </div>
               
               <div>
-                <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                <label className="block text-xs text-(--color-text-muted) mb-1">
                   {t('recurring.frequency') || 'Renewal Frequency'}
                 </label>
                 <select
@@ -472,7 +472,7 @@ export default function AddVehicleParking() {
               </div>
               
               <div>
-                <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                <label className="block text-xs text-(--color-text-muted) mb-1">
                   {t('recurring.reminderDays') || 'Remind me (days before expiry)'}
                 </label>
                 <select
@@ -499,7 +499,7 @@ export default function AddVehicleParking() {
         {/* Notes */}
         <div className="card space-y-4">
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('addParking.notes') || 'Notes'}
             </label>
             <textarea

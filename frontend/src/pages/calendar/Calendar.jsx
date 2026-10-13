@@ -257,10 +257,10 @@ export default function Calendar() {
     <div className="px-4 py-4 pb-20">
       {/* Header */}
       <div className="mb-4">
-        <h1 className="text-xl font-bold text-[var(--color-text-primary)]">
+        <h1 className="text-xl font-bold text-(--color-text-primary)">
           {t('calendar.title')}
         </h1>
-        <p className="text-sm text-[var(--color-text-muted)]">
+        <p className="text-sm text-(--color-text-muted)">
           {t('calendar.subtitle')}
         </p>
       </div>
@@ -270,7 +270,7 @@ export default function Calendar() {
         <select
           value={selectedVehicle || ''}
           onChange={(e) => setSelectedVehicle(e.target.value || null)}
-          className="w-full px-3 py-2 bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg text-sm text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-accent)]"
+          className="w-full px-3 py-2 bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg text-sm text-(--color-text-primary) focus:outline-hidden focus:border-(--color-accent)"
         >
           <option value="">{t('calendar.allVehicles')}</option>
           {vehicles.map(v => (
@@ -280,12 +280,12 @@ export default function Calendar() {
       </div>
       
       {/* Calendar Navigation */}
-      <div className="flex items-center justify-between mb-4 bg-[var(--color-bg-card)] rounded-xl p-3 border border-[var(--color-border)]">
+      <div className="flex items-center justify-between mb-4 bg-(--color-bg-card) rounded-xl p-3 border border-(--color-border)">
         <button
           onClick={goToPrevMonth}
-          className="p-2 hover:bg-[var(--color-bg-tertiary)] rounded-lg transition-colors"
+          className="p-2 hover:bg-(--color-bg-tertiary) rounded-lg transition-colors"
         >
-          <svg className="w-5 h-5 text-[var(--color-text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="w-5 h-5 text-(--color-text-secondary)" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
@@ -293,7 +293,7 @@ export default function Calendar() {
         <div className="text-center">
           <button
             onClick={goToToday}
-            className="text-lg font-semibold text-[var(--color-text-primary)] hover:text-[var(--color-accent)] transition-colors"
+            className="text-lg font-semibold text-(--color-text-primary) hover:text-(--color-accent) transition-colors"
           >
             {monthNames[month]} {year}
           </button>
@@ -301,9 +301,9 @@ export default function Calendar() {
         
         <button
           onClick={goToNextMonth}
-          className="p-2 hover:bg-[var(--color-bg-tertiary)] rounded-lg transition-colors"
+          className="p-2 hover:bg-(--color-bg-tertiary) rounded-lg transition-colors"
         >
-          <svg className="w-5 h-5 text-[var(--color-text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="w-5 h-5 text-(--color-text-secondary)" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
         </button>
@@ -314,19 +314,19 @@ export default function Calendar() {
         {Object.entries(entryConfig).map(([type, config]) => (
           <div key={type} className="flex items-center gap-1.5 text-xs">
             <div className={`w-2 h-2 rounded-full ${config.dotColor}`}></div>
-            <span className="text-[var(--color-text-muted)]">{t(`calendar.types.${type}`)}</span>
+            <span className="text-(--color-text-muted)">{t(`calendar.types.${type}`)}</span>
           </div>
         ))}
       </div>
       
       {/* Calendar Grid */}
-      <div className="bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border)] overflow-hidden">
+      <div className="bg-(--color-bg-card) rounded-xl border border-(--color-border) overflow-hidden">
         {/* Day Headers */}
-        <div className="grid grid-cols-7 border-b border-[var(--color-border)]">
+        <div className="grid grid-cols-7 border-b border-(--color-border)">
           {dayNames.map((day, index) => (
             <div
               key={index}
-              className="py-2 text-center text-xs font-medium text-[var(--color-text-muted)]"
+              className="py-2 text-center text-xs font-medium text-(--color-text-muted)"
             >
               {day}
             </div>
@@ -338,8 +338,8 @@ export default function Calendar() {
           {loading ? (
             <SkeletonScreen className="col-span-7 grid grid-cols-7">
               {Array.from({ length: 42 }).map((_, i) => (
-                <div key={i} className="aspect-square border border-[var(--color-border)] p-1">
-                  <Skeleton className="h-4 w-4 rounded" />
+                <div key={i} className="aspect-square border border-(--color-border) p-1">
+                  <Skeleton className="h-4 w-4 rounded-sm" />
                 </div>
               ))}
             </SkeletonScreen>
@@ -353,19 +353,19 @@ export default function Calendar() {
                   key={index}
                   onClick={() => handleDayClick(dayInfo.date)}
                   className={`
-                    relative min-h-[60px] p-1 border-b border-r border-[var(--color-border)]
+                    relative min-h-[60px] p-1 border-b border-r border-(--color-border)
                     transition-colors touch-manipulation
-                    ${dayInfo.isCurrentMonth ? 'bg-transparent' : 'bg-[var(--color-bg-secondary)]'}
-                    ${dayInfo.isToday ? 'bg-[var(--color-accent)]/10' : ''}
-                    ${hasEntries ? 'hover:bg-[var(--color-bg-tertiary)]' : ''}
-                    active:bg-[var(--color-bg-tertiary)]
+                    ${dayInfo.isCurrentMonth ? 'bg-transparent' : 'bg-(--color-bg-secondary)'}
+                    ${dayInfo.isToday ? 'bg-(--color-accent)/10' : ''}
+                    ${hasEntries ? 'hover:bg-(--color-bg-tertiary)' : ''}
+                    active:bg-(--color-bg-tertiary)
                   `}
                 >
                   <span
                     className={`
                       text-sm font-medium
-                      ${dayInfo.isCurrentMonth ? 'text-[var(--color-text-primary)]' : 'text-[var(--color-text-muted)]'}
-                      ${dayInfo.isToday ? 'bg-[var(--color-accent)] text-white w-6 h-6 rounded-full flex items-center justify-center mx-auto' : ''}
+                      ${dayInfo.isCurrentMonth ? 'text-(--color-text-primary)' : 'text-(--color-text-muted)'}
+                      ${dayInfo.isToday ? 'bg-(--color-accent) text-white w-6 h-6 rounded-full flex items-center justify-center mx-auto' : ''}
                     `}
                   >
                     {dayInfo.day}
@@ -390,10 +390,10 @@ export default function Calendar() {
       </div>
       
       {/* Entry Count Summary */}
-      <div className="mt-4 p-3 bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border)]">
+      <div className="mt-4 p-3 bg-(--color-bg-card) rounded-xl border border-(--color-border)">
         <div className="flex items-center justify-between text-sm">
-          <span className="text-[var(--color-text-muted)]">{t('calendar.entriesThisMonth')}</span>
-          <span className="font-semibold text-[var(--color-text-primary)]">
+          <span className="text-(--color-text-muted)">{t('calendar.entriesThisMonth')}</span>
+          <span className="font-semibold text-(--color-text-primary)">
             {entries.filter(e => {
               const entryDate = new Date(e.date)
               return entryDate.getMonth() === month && entryDate.getFullYear() === year
@@ -409,14 +409,14 @@ export default function Calendar() {
           onClick={() => setShowDayModal(false)}
         >
           <div 
-            className="w-full max-w-lg bg-[var(--color-bg-secondary)] rounded-t-2xl max-h-[80vh] overflow-hidden"
+            className="w-full max-w-lg bg-(--color-bg-secondary) rounded-t-2xl max-h-[80vh] overflow-hidden"
             onClick={e => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="sticky top-0 bg-[var(--color-bg-secondary)] px-4 py-3 border-b border-[var(--color-border)]">
+            <div className="sticky top-0 bg-(--color-bg-secondary) px-4 py-3 border-b border-(--color-border)">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">
+                  <h2 className="text-lg font-semibold text-(--color-text-primary)">
                     {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-GB', { 
                       weekday: 'long', 
                       year: 'numeric', 
@@ -424,15 +424,15 @@ export default function Calendar() {
                       day: 'numeric' 
                     })}
                   </h2>
-                  <p className="text-sm text-[var(--color-text-muted)]">
+                  <p className="text-sm text-(--color-text-muted)">
                     {selectedDateEntries.length} {t('calendar.entries')}
                   </p>
                 </div>
                 <button
                   onClick={() => setShowDayModal(false)}
-                  className="p-2 hover:bg-[var(--color-bg-tertiary)] rounded-lg"
+                  className="p-2 hover:bg-(--color-bg-tertiary) rounded-lg"
                 >
-                  <svg className="w-5 h-5 text-[var(--color-text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-5 h-5 text-(--color-text-muted)" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
@@ -447,8 +447,8 @@ export default function Calendar() {
                     className={`
                       px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors
                       ${filterType === type.key 
-                        ? 'bg-[var(--color-accent)] text-white' 
-                        : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]'}
+                        ? 'bg-(--color-accent) text-white' 
+                        : 'bg-(--color-bg-tertiary) text-(--color-text-secondary)'}
                     `}
                   >
                     {type.label}
@@ -461,10 +461,10 @@ export default function Calendar() {
             <div className="overflow-y-auto max-h-[60vh] p-4 space-y-3">
               {selectedDateEntries.length === 0 ? (
                 <div className="text-center py-8">
-                  <svg className="w-12 h-12 mx-auto text-[var(--color-text-muted)] mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-12 h-12 mx-auto text-(--color-text-muted) mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
                   </svg>
-                  <p className="text-[var(--color-text-muted)]">{t('calendar.noEntries')}</p>
+                  <p className="text-(--color-text-muted)">{t('calendar.noEntries')}</p>
                 </div>
               ) : (
                 selectedDateEntries.map(entry => {
@@ -485,16 +485,16 @@ export default function Calendar() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2">
-                            <h3 className="font-medium text-[var(--color-text-primary)] truncate">
+                            <h3 className="font-medium text-(--color-text-primary) truncate">
                               {entry.title}
                             </h3>
                             {entry.cost > 0 && (
-                              <span className="text-sm font-semibold text-[var(--color-text-primary)] whitespace-nowrap">
+                              <span className="text-sm font-semibold text-(--color-text-primary) whitespace-nowrap">
                                 {entry.cost.toFixed(2)}
                               </span>
                             )}
                           </div>
-                          <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+                          <p className="text-xs text-(--color-text-muted) mt-0.5">
                             {t(`calendar.types.${entry.type}`)}
                             {entry.vehicle_name && ` • ${entry.vehicle_name}`}
                           </p>

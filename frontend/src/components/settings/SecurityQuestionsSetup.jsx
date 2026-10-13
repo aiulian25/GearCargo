@@ -188,26 +188,26 @@ export default function SecurityQuestionsSetup({ isOpen, onClose, onSuccess, isC
   if (!isOpen) return null
   
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-[var(--color-bg-card)] rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+      <div className="bg-(--color-bg-card) rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-xl">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
+        <div className="flex items-center justify-between p-4 border-b border-(--color-border)">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-[var(--color-accent)]/10">
-              <span className="text-[var(--color-accent)]">{Icons.shield}</span>
+            <div className="p-2 rounded-lg bg-(--color-accent)/10">
+              <span className="text-(--color-accent)">{Icons.shield}</span>
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">
+              <h2 className="text-lg font-semibold text-(--color-text-primary)">
                 {t('securityQuestions.title') || 'Security Questions'}
               </h2>
-              <p className="text-xs text-[var(--color-text-muted)]">
+              <p className="text-xs text-(--color-text-muted)">
                 {t('securityQuestions.subtitle') || 'For account recovery'}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]"
+            className="p-2 rounded-lg hover:bg-(--color-bg-tertiary) text-(--color-text-muted)"
           >
             {Icons.close}
           </button>
@@ -218,7 +218,7 @@ export default function SecurityQuestionsSetup({ isOpen, onClose, onSuccess, isC
           {/* Step 1: Introduction */}
           {step === 1 && (
             <div className="text-center">
-              <div className="mx-auto w-16 h-16 bg-[var(--color-accent)]/10 rounded-full flex items-center justify-center mb-4">
+              <div className="mx-auto w-16 h-16 bg-(--color-accent)/10 rounded-full flex items-center justify-center mb-4">
                 {Icons.questionMark}
               </div>
               <h3 className="text-lg font-medium mb-2">
@@ -226,7 +226,7 @@ export default function SecurityQuestionsSetup({ isOpen, onClose, onSuccess, isC
                   ? (t('securityQuestions.updateTitle') || 'Update Security Questions')
                   : (t('securityQuestions.setupTitle') || 'Set Up Security Questions')}
               </h3>
-              <p className="text-sm text-[var(--color-text-muted)] mb-6">
+              <p className="text-sm text-(--color-text-muted) mb-6">
                 {t('securityQuestions.description') || 
                   'Security questions provide an alternative way to recover your account if you forget your password and cannot access your email.'}
               </p>
@@ -235,7 +235,7 @@ export default function SecurityQuestionsSetup({ isOpen, onClose, onSuccess, isC
                 <h4 className="font-medium text-amber-600 dark:text-amber-400 mb-2">
                   {t('securityQuestions.tipsTitle') || 'Tips for good answers:'}
                 </h4>
-                <ul className="text-sm text-[var(--color-text-muted)] space-y-1">
+                <ul className="text-sm text-(--color-text-muted) space-y-1">
                   <li>• {t('securityQuestions.tip1') || 'Choose answers only you would know'}</li>
                   <li>• {t('securityQuestions.tip2') || 'Answers are case-insensitive'}</li>
                   <li>• {t('securityQuestions.tip3') || "Don't share your answers with anyone"}</li>
@@ -244,7 +244,7 @@ export default function SecurityQuestionsSetup({ isOpen, onClose, onSuccess, isC
               
               <button
                 onClick={() => setStep(2)}
-                className="w-full bg-[var(--color-accent)] text-white py-3 rounded-lg font-medium hover:opacity-90 transition-opacity"
+                className="w-full bg-(--color-accent) text-white py-3 rounded-lg font-medium hover:opacity-90 transition-opacity"
               >
                 {t('common.continue') || 'Continue'}
               </button>
@@ -257,13 +257,13 @@ export default function SecurityQuestionsSetup({ isOpen, onClose, onSuccess, isC
               <h3 className="text-lg font-medium mb-4">
                 {t('securityQuestions.chooseQuestions') || 'Choose Your Questions'}
               </h3>
-              <p className="text-sm text-[var(--color-text-muted)] mb-6">
+              <p className="text-sm text-(--color-text-muted) mb-6">
                 {t('securityQuestions.chooseDescription') || 'Select at least 2 questions and provide memorable answers.'}
               </p>
               
               <div className="space-y-4">
                 {selectedQuestions.map((q, index) => (
-                  <div key={index} className="bg-[var(--color-bg-tertiary)] rounded-lg p-4">
+                  <div key={index} className="bg-(--color-bg-tertiary) rounded-lg p-4">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium">
                         {t('securityQuestions.question') || 'Question'} {index + 1}
@@ -271,7 +271,7 @@ export default function SecurityQuestionsSetup({ isOpen, onClose, onSuccess, isC
                       {selectedQuestions.length > 2 && (
                         <button
                           onClick={() => handleRemoveQuestion(index)}
-                          className="p-1 text-red-500 hover:bg-red-500/10 rounded"
+                          className="p-1 text-red-500 hover:bg-red-500/10 rounded-sm"
                         >
                           {Icons.trash}
                         </button>
@@ -281,7 +281,7 @@ export default function SecurityQuestionsSetup({ isOpen, onClose, onSuccess, isC
                     <select
                       value={q.question}
                       onChange={(e) => handleQuestionChange(index, 'question', e.target.value)}
-                      className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm mb-2"
+                      className="w-full bg-(--color-bg-secondary) border border-(--color-border) rounded-lg px-3 py-2 text-sm mb-2"
                     >
                       <option value="">{t('securityQuestions.selectQuestion') || 'Select a question...'}</option>
                       {availableQuestions
@@ -296,7 +296,7 @@ export default function SecurityQuestionsSetup({ isOpen, onClose, onSuccess, isC
                       value={q.answer}
                       onChange={(e) => handleQuestionChange(index, 'answer', e.target.value)}
                       placeholder={t('securityQuestions.yourAnswer') || 'Your answer...'}
-                      className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm"
+                      className="w-full bg-(--color-bg-secondary) border border-(--color-border) rounded-lg px-3 py-2 text-sm"
                     />
                   </div>
                 ))}
@@ -304,7 +304,7 @@ export default function SecurityQuestionsSetup({ isOpen, onClose, onSuccess, isC
                 {selectedQuestions.length < 5 && (
                   <button
                     onClick={handleAddQuestion}
-                    className="w-full flex items-center justify-center gap-2 py-2 border border-dashed border-[var(--color-border)] rounded-lg text-sm text-[var(--color-text-muted)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] transition-colors"
+                    className="w-full flex items-center justify-center gap-2 py-2 border border-dashed border-(--color-border) rounded-lg text-sm text-(--color-text-muted) hover:border-(--color-accent) hover:text-(--color-accent) transition-colors"
                   >
                     {Icons.plus}
                     {t('securityQuestions.addAnother') || 'Add another question'}
@@ -315,14 +315,14 @@ export default function SecurityQuestionsSetup({ isOpen, onClose, onSuccess, isC
               <div className="flex gap-3 mt-6">
                 <button
                   onClick={() => setStep(1)}
-                  className="flex-1 py-2 border border-[var(--color-border)] rounded-lg text-sm hover:bg-[var(--color-bg-tertiary)]"
+                  className="flex-1 py-2 border border-(--color-border) rounded-lg text-sm hover:bg-(--color-bg-tertiary)"
                 >
                   {t('common.back') || 'Back'}
                 </button>
                 <button
                   onClick={() => setStep(3)}
                   disabled={!isQuestionsValid()}
-                  className="flex-1 bg-[var(--color-accent)] text-white py-2 rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 bg-(--color-accent) text-white py-2 rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {t('common.continue') || 'Continue'}
                 </button>
@@ -336,7 +336,7 @@ export default function SecurityQuestionsSetup({ isOpen, onClose, onSuccess, isC
               <h3 className="text-lg font-medium mb-4">
                 {t('securityQuestions.verifyIdentity') || 'Verify Your Identity'}
               </h3>
-              <p className="text-sm text-[var(--color-text-muted)] mb-6">
+              <p className="text-sm text-(--color-text-muted) mb-6">
                 {t('securityQuestions.verifyDescription') || 'Enter your password to confirm these changes.'}
               </p>
               
@@ -352,14 +352,14 @@ export default function SecurityQuestionsSetup({ isOpen, onClose, onSuccess, isC
                     {t('profile.currentPassword') || 'Current Password'}
                   </label>
                   <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-(--color-text-muted)">
                       {Icons.lock}
                     </span>
                     <input
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="w-full bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg pl-10 pr-3 py-2"
+                      className="w-full bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg pl-10 pr-3 py-2"
                       placeholder="••••••••"
                     />
                   </div>
@@ -374,7 +374,7 @@ export default function SecurityQuestionsSetup({ isOpen, onClose, onSuccess, isC
                       type="text"
                       value={totpCode}
                       onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      className="w-full bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-center tracking-widest font-mono"
+                      className="w-full bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg px-3 py-2 text-center tracking-widest font-mono"
                       placeholder="000000"
                       maxLength={6}
                     />
@@ -385,7 +385,7 @@ export default function SecurityQuestionsSetup({ isOpen, onClose, onSuccess, isC
               <div className="flex gap-3 mt-6">
                 <button
                   onClick={() => setStep(2)}
-                  className="flex-1 py-2 border border-[var(--color-border)] rounded-lg text-sm hover:bg-[var(--color-bg-tertiary)]"
+                  className="flex-1 py-2 border border-(--color-border) rounded-lg text-sm hover:bg-(--color-bg-tertiary)"
                   disabled={isLoading}
                 >
                   {t('common.back') || 'Back'}
@@ -393,7 +393,7 @@ export default function SecurityQuestionsSetup({ isOpen, onClose, onSuccess, isC
                 <button
                   onClick={handleSubmit}
                   disabled={!password || isLoading || (requires2FA && totpCode.length !== 6)}
-                  className="flex-1 bg-[var(--color-accent)] text-white py-2 rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="flex-1 bg-(--color-accent) text-white py-2 rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {isLoading ? (
                     <>
@@ -420,13 +420,13 @@ export default function SecurityQuestionsSetup({ isOpen, onClose, onSuccess, isC
               <h3 className="text-lg font-medium mb-2 text-green-500">
                 {t('securityQuestions.successTitle') || 'Security Questions Saved!'}
               </h3>
-              <p className="text-sm text-[var(--color-text-muted)] mb-6">
+              <p className="text-sm text-(--color-text-muted) mb-6">
                 {t('securityQuestions.successDescription') || 
                   'You can now use these questions to recover your account if you forget your password.'}
               </p>
               <button
                 onClick={onClose}
-                className="px-6 py-2 bg-[var(--color-accent)] text-white rounded-lg font-medium hover:opacity-90"
+                className="px-6 py-2 bg-(--color-accent) text-white rounded-lg font-medium hover:opacity-90"
               >
                 {t('common.done') || 'Done'}
               </button>

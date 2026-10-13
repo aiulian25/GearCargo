@@ -257,7 +257,7 @@ export default function AddVehicleService() {
   return (
     <div className="pb-4">
       {/* Header */}
-      <div className="bg-[var(--color-bg-card)] border-b border-[var(--color-border)] px-4 py-3 flex items-center gap-3">
+      <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="btn-icon">
           {Icons.close}
         </button>
@@ -265,7 +265,7 @@ export default function AddVehicleService() {
           <h1 className="text-base font-semibold">
             {isEditMode ? (t('common.edit') || 'Edit') + ' ' + (t('expenses.service') || 'Service') : (t('addService.title') || 'Add Service')}
           </h1>
-          <p className="text-xs text-[var(--color-text-secondary)]">{vehicle?.name}</p>
+          <p className="text-xs text-(--color-text-secondary)">{vehicle?.name}</p>
         </div>
         <button 
           onClick={handleSubmit(onSubmit)}
@@ -290,7 +290,7 @@ export default function AddVehicleService() {
           </div>
           <div className="flex-1">
             <p className="font-medium">{vehicle?.name}</p>
-            <p className="text-xs text-[var(--color-text-secondary)]">
+            <p className="text-xs text-(--color-text-secondary)">
               {vehicle?.make} {vehicle?.model} • {(vehicle?.current_mileage || 0).toLocaleString()} {vehicle?.distance_unit || 'km'}
             </p>
           </div>
@@ -300,7 +300,7 @@ export default function AddVehicleService() {
         <div className="card space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addService.date') || 'Date'} *
               </label>
               <input
@@ -311,7 +311,7 @@ export default function AddVehicleService() {
             </div>
             
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addService.odometer') || 'Odometer'} ({distUnit})
               </label>
               <input
@@ -324,10 +324,10 @@ export default function AddVehicleService() {
           </div>
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('addService.serviceType') || 'Service Type'} *
             </label>
-            <p className="text-xs text-[var(--color-text-secondary)] mb-2">
+            <p className="text-xs text-(--color-text-secondary) mb-2">
               {t('addService.multiSelectHint') || 'Tap to select one or more service types'}
             </p>
             <div className="flex flex-wrap gap-2">
@@ -346,8 +346,8 @@ export default function AddVehicleService() {
                     }}
                     className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
                       isSelected
-                        ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)]'
-                        : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]'
+                        ? 'bg-(--color-primary) text-white border-(--color-primary)'
+                        : 'bg-(--color-bg-tertiary) text-(--color-text-secondary) border-(--color-border) hover:border-(--color-primary) hover:text-(--color-primary)'
                     }`}
                   >
                     {isSelected && (
@@ -376,7 +376,7 @@ export default function AddVehicleService() {
           </div>
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('addService.description') || 'Description'}
             </label>
             <textarea
@@ -388,7 +388,7 @@ export default function AddVehicleService() {
           </div>
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('addService.nextServiceDue') || 'Next Service Due'}
             </label>
             <input
@@ -396,7 +396,7 @@ export default function AddVehicleService() {
               {...register('next_due_date')}
               className="input"
             />
-            <p className="text-2xs text-[var(--color-text-muted)] mt-1">
+            <p className="text-2xs text-(--color-text-muted) mt-1">
               {t('addService.nextServiceDueHint') || 'Optional - When should this service be done again?'}
             </p>
           </div>
@@ -404,13 +404,13 @@ export default function AddVehicleService() {
         
         {/* Costs */}
         <div className="card space-y-4">
-          <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
+          <h3 className="text-sm font-medium text-(--color-text-secondary)">
             {t('addService.costs') || 'Costs'}
           </h3>
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addService.partsCost') || 'Parts Cost'} ({currency.symbol})
               </label>
               <input
@@ -423,7 +423,7 @@ export default function AddVehicleService() {
             </div>
             
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addService.laborCost') || 'Labor Cost'} ({currency.symbol})
               </label>
               <input
@@ -438,7 +438,7 @@ export default function AddVehicleService() {
           
           <div className="flex gap-3">
             <div className="flex-1">
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addService.totalCost') || 'Total Cost'} ({currency.symbol})
               </label>
               <input
@@ -449,13 +449,13 @@ export default function AddVehicleService() {
                 placeholder="0.00"
               />
             </div>
-            <CurrencySelect register={register} className="w-28 flex-shrink-0" />
+            <CurrencySelect register={register} className="w-28 shrink-0" />
           </div>
 
           {/* F56 — structured workshop fields (previously only fit in notes) */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addService.workOrder') || 'Work order #'}
               </label>
               <input
@@ -466,7 +466,7 @@ export default function AddVehicleService() {
               />
             </div>
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addService.laborHours') || 'Labor hours'}
               </label>
               <input
@@ -482,13 +482,13 @@ export default function AddVehicleService() {
 
         {/* Warranty (F2) — feeds the "Under warranty" ledger in Vehicle Health */}
         <div className="card space-y-4">
-          <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
+          <h3 className="text-sm font-medium text-(--color-text-secondary)">
             {t('warranty.section') || 'Warranty'}
           </h3>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('warranty.months') || 'Warranty (months)'}
               </label>
               <input
@@ -500,7 +500,7 @@ export default function AddVehicleService() {
             </div>
 
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {(t('warranty.distance') || 'Warranty ({unit})').replace('{unit}', vehicle?.distance_unit || 'km')}
               </label>
               <input
@@ -513,7 +513,7 @@ export default function AddVehicleService() {
           </div>
 
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('warranty.expiresOn') || 'Warranty expires on'}
             </label>
             <input
@@ -521,7 +521,7 @@ export default function AddVehicleService() {
               {...register('warranty_expires')}
               className="input"
             />
-            <p className="text-2xs text-[var(--color-text-muted)] mt-1">
+            <p className="text-2xs text-(--color-text-muted) mt-1">
               {t('warranty.hint') || 'Optional — whichever limit is reached first ends the coverage.'}
             </p>
           </div>
@@ -529,12 +529,12 @@ export default function AddVehicleService() {
 
         {/* Additional */}
         <div className="card space-y-4">
-          <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
+          <h3 className="text-sm font-medium text-(--color-text-secondary)">
             {t('addService.additional') || 'Additional'}
           </h3>
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('addService.shopName') || 'Shop/Mechanic'}
             </label>
             <input
@@ -546,7 +546,7 @@ export default function AddVehicleService() {
           </div>
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('addService.notes') || 'Notes'}
             </label>
             <textarea

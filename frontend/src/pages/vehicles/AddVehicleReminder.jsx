@@ -198,7 +198,7 @@ export default function AddVehicleReminder() {
   return (
     <div className="pb-4">
       {/* Header */}
-      <div className="bg-[var(--color-bg-card)] border-b border-[var(--color-border)] px-4 py-3 flex items-center gap-3">
+      <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="btn-icon">
           {Icons.close}
         </button>
@@ -206,7 +206,7 @@ export default function AddVehicleReminder() {
           <h1 className="text-base font-semibold">
             {isEditMode ? (t('common.edit') || 'Edit') + ' ' + (t('expenses.reminders') || 'Reminder') : (t('addReminder.title') || 'Add Reminder')}
           </h1>
-          <p className="text-xs text-[var(--color-text-secondary)]">{vehicle?.name}</p>
+          <p className="text-xs text-(--color-text-secondary)">{vehicle?.name}</p>
         </div>
         <button 
           onClick={handleSubmit(onSubmit)}
@@ -231,7 +231,7 @@ export default function AddVehicleReminder() {
           </div>
           <div className="flex-1">
             <p className="font-medium">{vehicle?.name}</p>
-            <p className="text-xs text-[var(--color-text-secondary)]">
+            <p className="text-xs text-(--color-text-secondary)">
               {vehicle?.make} {vehicle?.model} • {(vehicle?.current_mileage || 0).toLocaleString()} {vehicle?.distance_unit || 'km'}
             </p>
           </div>
@@ -240,7 +240,7 @@ export default function AddVehicleReminder() {
         {/* Reminder Details */}
         <div className="card space-y-4">
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('addReminder.reminderType') || 'Reminder Type'} *
             </label>
             <select 
@@ -259,7 +259,7 @@ export default function AddVehicleReminder() {
           
           {reminderType === 'custom' && (
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addReminder.customTitle') || 'Custom Title'} *
               </label>
               <input
@@ -279,13 +279,13 @@ export default function AddVehicleReminder() {
         
         {/* Due Date/Mileage */}
         <div className="card space-y-4">
-          <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
+          <h3 className="text-sm font-medium text-(--color-text-secondary)">
             {t('addReminder.dueWhen') || 'When is it due?'}
           </h3>
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addReminder.dueDate') || 'Due Date'}
               </label>
               <input
@@ -296,7 +296,7 @@ export default function AddVehicleReminder() {
             </div>
             
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addReminder.dueMileage') || 'Due Mileage'} ({distUnit})
               </label>
               <input
@@ -308,20 +308,20 @@ export default function AddVehicleReminder() {
             </div>
           </div>
           
-          <p className="text-xs text-[var(--color-text-muted)]">
+          <p className="text-xs text-(--color-text-muted)">
             {t('addReminder.dueHint') || 'Set either a date, mileage, or both. The reminder will trigger when either condition is met.'}
           </p>
         </div>
         
         {/* Repeat */}
         <div className="card space-y-4">
-          <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
+          <h3 className="text-sm font-medium text-(--color-text-secondary)">
             {t('addReminder.repeat') || 'Repeat'}
           </h3>
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addReminder.repeatInterval') || 'Repeat Interval'}
               </label>
               <select {...register('repeat_interval')} className="input">
@@ -332,7 +332,7 @@ export default function AddVehicleReminder() {
             </div>
             
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addReminder.repeatMileage') || 'Repeat Every'} ({distUnit})
               </label>
               <input
@@ -348,7 +348,7 @@ export default function AddVehicleReminder() {
         {/* Notes */}
         <div className="card space-y-4">
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('addReminder.notes') || 'Notes'}
             </label>
             <textarea

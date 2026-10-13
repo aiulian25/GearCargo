@@ -169,7 +169,7 @@ export default function AddVehicleConsumable() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]" role="status" aria-label={t('common.loading') || 'Loading...'}>
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-[var(--color-accent)] border-t-transparent" />
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-(--color-accent) border-t-transparent" />
       </div>
     )
   }
@@ -239,8 +239,8 @@ export default function AddVehicleConsumable() {
         </div>
 
         {/* Expected lifespan — drives the wear estimate */}
-        <fieldset className="border border-[var(--color-border)] rounded-xl p-3">
-          <legend className="px-1 text-xs text-[var(--color-text-muted)]">{t('addConsumable.lifespanLegend') || 'Expected lifespan (for wear estimate)'}</legend>
+        <fieldset className="border border-(--color-border) rounded-xl p-3">
+          <legend className="px-1 text-xs text-(--color-text-muted)">{t('addConsumable.lifespanLegend') || 'Expected lifespan (for wear estimate)'}</legend>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label" htmlFor="expected_lifespan_km">{t('addConsumable.lifespanKm') || 'Distance'} ({distanceUnit})</label>
@@ -251,7 +251,7 @@ export default function AddVehicleConsumable() {
               <input id="expected_lifespan_months" type="number" inputMode="numeric" min="0" className="input" placeholder={t('common.optional') || 'Optional'} {...register('expected_lifespan_months')} />
             </div>
           </div>
-          <p className="text-2xs text-[var(--color-text-muted)] mt-2">
+          <p className="text-2xs text-(--color-text-muted) mt-2">
             {t('addConsumable.lifespanHint') || 'Set at least one to track wear. Whichever is reached first determines the estimate.'}
           </p>
         </fieldset>

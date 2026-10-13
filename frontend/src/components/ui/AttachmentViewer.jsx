@@ -609,11 +609,11 @@ const AttachmentViewer = ({
                   <button
                     onClick={handleParseOcr}
                     disabled={ocrParsing}
-                    className="flex items-center gap-1 text-xs text-purple-300 hover:text-white transition-colors px-2 py-1 rounded hover:bg-white/10 disabled:opacity-50"
+                    className="flex items-center gap-1 text-xs text-purple-300 hover:text-white transition-colors px-2 py-1 rounded-sm hover:bg-white/10 disabled:opacity-50"
                     title={t('attachments.ocrExtract') || 'Extract Data with AI'}
                   >
                     {ocrParsing ? (
-                      <div className="w-3 h-3 border-2 border-purple-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                      <div className="w-3 h-3 border-2 border-purple-400 border-t-transparent rounded-full animate-spin shrink-0" />
                     ) : Icons.wand}
                     {ocrParsing
                       ? (t('attachments.ocrExtracting') || 'Extracting…')
@@ -623,7 +623,7 @@ const AttachmentViewer = ({
                 {ocrData?.has_text && (
                   <button
                     onClick={handleCopyOcr}
-                    className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors px-2 py-1 rounded hover:bg-white/10"
+                    className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors px-2 py-1 rounded-sm hover:bg-white/10"
                   >
                     {Icons.copy}
                     {ocrCopied ? (t('attachments.ocrCopied') || 'Copied!') : (t('attachments.copyText') || 'Copy')}
@@ -633,7 +633,7 @@ const AttachmentViewer = ({
             </div>
             {ocrLoading ? (
               <div className="flex items-center gap-2 text-sm text-gray-400">
-                <div className="w-4 h-4 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                <div className="w-4 h-4 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin shrink-0" />
                 {t('attachments.ocrPending') || 'Scanning…'}
               </div>
             ) : !ocrData?.ocr_processed ? (
@@ -646,7 +646,7 @@ const AttachmentViewer = ({
                 {!ocrRetrying && (
                   <button
                     onClick={handleRetryOcr}
-                    className="flex-shrink-0 flex items-center gap-1 text-xs text-cyan-400 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition-colors touch-manipulation min-h-[36px]"
+                    className="shrink-0 flex items-center gap-1 text-xs text-cyan-400 hover:text-white px-2 py-1 rounded-sm hover:bg-white/10 transition-colors touch-manipulation min-h-[36px]"
                     title={t('attachments.ocrRetry') || 'Re-scan'}
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -678,7 +678,7 @@ const AttachmentViewer = ({
                       {onPrefill && (
                         <button
                           onClick={handlePrefillForm}
-                          className="flex items-center gap-1 text-xs bg-purple-600 hover:bg-purple-700 text-white px-2 py-1 rounded transition-colors"
+                          className="flex items-center gap-1 text-xs bg-purple-600 hover:bg-purple-700 text-white px-2 py-1 rounded-sm transition-colors"
                         >
                           {Icons.prefill}
                           {t('attachments.ocrPrefill') || 'Pre-fill Form'}
@@ -718,7 +718,7 @@ const AttachmentViewer = ({
                           {ocrParsed.line_items.map((item, i) => (
                             <li key={i} className="flex justify-between text-xs text-gray-300">
                               <span className="truncate max-w-[160px]">{item.description}</span>
-                              {item.cost != null && <span className="ml-2 flex-shrink-0">{item.cost}</span>}
+                              {item.cost != null && <span className="ml-2 shrink-0">{item.cost}</span>}
                             </li>
                           ))}
                         </ul>
@@ -738,11 +738,11 @@ const AttachmentViewer = ({
                 <button
                   onClick={handleRetryOcr}
                   disabled={ocrRetrying}
-                  className="flex items-center gap-1.5 text-xs text-cyan-400 hover:text-white px-3 py-1.5 rounded border border-cyan-500/30 hover:border-cyan-400/60 hover:bg-white/5 transition-colors disabled:opacity-50 touch-manipulation min-h-[36px]"
+                  className="flex items-center gap-1.5 text-xs text-cyan-400 hover:text-white px-3 py-1.5 rounded-sm border border-cyan-500/30 hover:border-cyan-400/60 hover:bg-white/5 transition-colors disabled:opacity-50 touch-manipulation min-h-[36px]"
                 >
                   {ocrRetrying ? (
                     <>
-                      <div className="w-3 h-3 border border-cyan-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                      <div className="w-3 h-3 border border-cyan-400 border-t-transparent rounded-full animate-spin shrink-0" />
                       {t('attachments.ocrRetrying') || 'Re-scanning…'}
                     </>
                   ) : (
@@ -813,7 +813,7 @@ const AttachmentViewer = ({
                     setLoading(true)
                     setError(null)
                   }}
-                  className={`relative flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 transition-all touch-manipulation ${
+                  className={`relative shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 transition-all touch-manipulation ${
                     isActive
                       ? 'border-cyan-400 ring-1 ring-cyan-400/50'
                       : 'border-transparent hover:border-white/40'
@@ -885,21 +885,21 @@ const AttachmentViewer = ({
       {/* Edit Attachment Modal */}
       {showEditModal && (
         <div 
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4"
+          className="fixed inset-0 z-60 flex items-center justify-center bg-black/70 p-4"
           onClick={() => setShowEditModal(false)}
         >
           <div 
-            className="bg-[var(--color-bg-card)] rounded-2xl w-full max-w-md overflow-hidden"
+            className="bg-(--color-bg-card) rounded-2xl w-full max-w-md overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
-              <h3 className="text-base font-semibold text-[var(--color-text)]">
+            <div className="flex items-center justify-between p-4 border-b border-(--color-border)">
+              <h3 className="text-base font-semibold text-(--color-text)">
                 {t('attachments.editAttachment') || 'Edit Attachment'}
               </h3>
               <button 
                 onClick={() => setShowEditModal(false)}
-                className="p-1 hover:bg-[var(--color-bg-tertiary)] rounded-lg transition-colors text-[var(--color-text-muted)]"
+                className="p-1 hover:bg-(--color-bg-tertiary) rounded-lg transition-colors text-(--color-text-muted)"
               >
                 {Icons.close}
               </button>
@@ -915,7 +915,7 @@ const AttachmentViewer = ({
               
               {/* Description */}
               <div>
-                <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                <label className="block text-xs text-(--color-text-muted) mb-1">
                   {t('common.description') || 'Description'}
                 </label>
                 <textarea
@@ -929,7 +929,7 @@ const AttachmentViewer = ({
               
               {/* Category */}
               <div>
-                <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                <label className="block text-xs text-(--color-text-muted) mb-1">
                   {t('common.category') || 'Category'}
                 </label>
                 <select
@@ -946,14 +946,14 @@ const AttachmentViewer = ({
               </div>
               
               {/* File info (read-only) */}
-              <div className="text-xs text-[var(--color-text-muted)] p-3 bg-[var(--color-bg-tertiary)] rounded-lg">
+              <div className="text-xs text-(--color-text-muted) p-3 bg-(--color-bg-tertiary) rounded-lg">
                 <p><strong>{t('common.filename') || 'Filename'}:</strong> {currentAttachment.original_filename || currentAttachment.filename}</p>
                 <p><strong>{t('common.size') || 'Size'}:</strong> {currentAttachment.file_size ? `${(currentAttachment.file_size / 1024).toFixed(1)} KB` : '-'}</p>
               </div>
             </div>
             
             {/* Modal Footer */}
-            <div className="flex gap-3 p-4 border-t border-[var(--color-border)]">
+            <div className="flex gap-3 p-4 border-t border-(--color-border)">
               <button
                 onClick={() => setShowEditModal(false)}
                 className="flex-1 btn btn-secondary"

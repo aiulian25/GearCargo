@@ -51,10 +51,10 @@ const BarChart = ({ data, maxValue, color, label }) => {
     <div className="space-y-2">
       {data.map((item, idx) => (
         <div key={idx} className="flex items-center gap-3">
-          <span className="text-xs text-[var(--color-text-secondary)] w-12 text-right shrink-0">
+          <span className="text-xs text-(--color-text-secondary) w-12 text-right shrink-0">
             {item.label}
           </span>
-          <div className="flex-1 h-6 bg-[var(--color-bg-tertiary)] rounded-full overflow-hidden">
+          <div className="flex-1 h-6 bg-(--color-bg-tertiary) rounded-full overflow-hidden">
             <div 
               className={`h-full ${color} rounded-full transition-all duration-500`}
               style={{ width: `${maxValue > 0 ? (item.value / maxValue) * 100 : 0}%` }}
@@ -113,7 +113,7 @@ const DonutChart = ({ data, total, centerLabel, totalLabel = 'Total' }) => {
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-2xl font-bold">{centerLabel}</span>
-        <span className="text-xs text-[var(--color-text-secondary)]">{totalLabel}</span>
+        <span className="text-xs text-(--color-text-secondary)">{totalLabel}</span>
       </div>
     </div>
   )
@@ -185,7 +185,7 @@ const LineChart = ({ points, formatValue, ariaLabel, color = 'var(--color-accent
             fill={color} stroke="var(--color-bg-secondary)" strokeWidth="2" />
           {formatValue && (
             <text x={xAt(lastIdx) - 6} y={yAt(points[lastIdx].value) - 8} textAnchor="end"
-              className="fill-[var(--color-text-primary)]" style={{ fontSize: '10px', fontWeight: 700 }}>
+              className="fill-(--color-text-primary)" style={{ fontSize: '10px', fontWeight: 700 }}>
               {formatValue(points[lastIdx].value)}
             </text>
           )}
@@ -193,7 +193,7 @@ const LineChart = ({ points, formatValue, ariaLabel, color = 'var(--color-accent
       )}
       {points.map((p, i) => labelIdx.has(i) && (
         <text key={`t${i}`} x={xAt(i)} y={H + 8} textAnchor="middle"
-          className="fill-[var(--color-text-muted)]" style={{ fontSize: '9px' }}>{p.label}</text>
+          className="fill-(--color-text-muted)" style={{ fontSize: '9px' }}>{p.label}</text>
       ))}
     </svg>
   )
@@ -204,7 +204,7 @@ const TrendBadge = ({ trend, t }) => {
   const map = {
     up: { arrow: '↑', cls: 'text-red-500 bg-red-500/10', label: t('charts.trendUp') || 'Rising' },
     down: { arrow: '↓', cls: 'text-emerald-500 bg-emerald-500/10', label: t('charts.trendDown') || 'Falling' },
-    flat: { arrow: '→', cls: 'text-[var(--color-text-secondary)] bg-[var(--color-bg-tertiary)]', label: t('charts.trendFlat') || 'Stable' },
+    flat: { arrow: '→', cls: 'text-(--color-text-secondary) bg-(--color-bg-tertiary)', label: t('charts.trendFlat') || 'Stable' },
   }
   const s = map[trend] || map.flat
   return (
@@ -247,14 +247,14 @@ const ForecastChart = ({ buckets, budget, formatCurrency, monthShort, t }) => {
           <line x1={PL} x2={W - PR} y1={budgetY} y2={budgetY}
             stroke="var(--color-text-muted)" strokeWidth="1.5" strokeDasharray="4 3" />
           <text x={W - PR} y={Math.max(8, budgetY - 3)} textAnchor="end"
-            className="fill-[var(--color-text-muted)]" style={{ fontSize: '8px', fontWeight: 600 }}>
+            className="fill-(--color-text-muted)" style={{ fontSize: '8px', fontWeight: 600 }}>
             {t('forecast.budgetLine') || 'Budget'} {formatCurrency(budget)}
           </text>
         </g>
       )}
       {buckets.map((b, i) => (i % 2 === 0) && (
         <text key={`t${i}`} x={xAt(i)} y={H - 8} textAnchor="middle"
-          className="fill-[var(--color-text-muted)]" style={{ fontSize: '8px' }}>
+          className="fill-(--color-text-muted)" style={{ fontSize: '8px' }}>
           {monthShort(b.month)}
         </text>
       ))}
@@ -430,18 +430,18 @@ export default function VehicleCharts() {
   return (
     <div className="pb-20">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-[var(--color-bg-primary)] border-b border-[var(--color-border)]">
+      <div className="sticky top-0 z-10 bg-(--color-bg-primary) border-b border-(--color-border)">
         <div className="flex items-center justify-between p-4">
           <div className="flex items-center gap-3">
             <button 
               onClick={() => navigate(`/vehicles/${id}`)}
-              className="p-2 -ml-2 rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors"
+              className="p-2 -ml-2 rounded-lg hover:bg-(--color-bg-tertiary) transition-colors"
             >
               {Icons.arrowBack}
             </button>
             <div>
               <h1 className="text-lg font-semibold">{t('charts.title') || 'Charts'}</h1>
-              <p className="text-xs text-[var(--color-text-secondary)]">
+              <p className="text-xs text-(--color-text-secondary)">
                 {vehicle?.make} {vehicle?.model}
               </p>
             </div>
@@ -452,7 +452,7 @@ export default function VehicleCharts() {
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-              className="px-3 py-2 rounded-lg bg-[var(--color-bg-secondary)] border border-[var(--color-border)] text-sm"
+              className="px-3 py-2 rounded-lg bg-(--color-bg-secondary) border border-(--color-border) text-sm"
             >
               {chartData.years.map(year => (
                 <option key={year} value={year}>{year}</option>
@@ -473,7 +473,7 @@ export default function VehicleCharts() {
           return (
             <>
             {(analytics.converted === false || analytics.fx_applied) && (
-              <p className="text-2xs text-[var(--color-text-muted)] flex items-start gap-1.5">
+              <p className="text-2xs text-(--color-text-muted) flex items-start gap-1.5">
                 <span aria-hidden="true">≈</span>
                 <span>
                   {analytics.converted === false
@@ -484,19 +484,19 @@ export default function VehicleCharts() {
             )}
             <div className="grid md:grid-cols-2 gap-4">
               {/* Cost per distance */}
-              <div className="bg-[var(--color-bg-secondary)] rounded-2xl p-6">
+              <div className="bg-(--color-bg-secondary) rounded-2xl p-6">
                 <div className="flex items-start justify-between gap-3 mb-1">
-                  <h2 className="text-sm font-medium text-[var(--color-text-secondary)]">
+                  <h2 className="text-sm font-medium text-(--color-text-secondary)">
                     {(t('charts.costPerDistance') || 'Cost per {unit}').replace('{unit}', unit)}
                   </h2>
                   {analytics.cost_per_distance_lifetime != null && (
                     <span className="text-lg font-bold whitespace-nowrap shrink-0">
                       {formatPerDistance(analytics.cost_per_distance_lifetime)}
-                      <span className="text-xs text-[var(--color-text-secondary)] font-normal">/{unit}</span>
+                      <span className="text-xs text-(--color-text-secondary) font-normal">/{unit}</span>
                     </span>
                   )}
                 </div>
-                <p className="text-2xs text-[var(--color-text-muted)] mb-4">
+                <p className="text-2xs text-(--color-text-muted) mb-4">
                   {t('charts.costPerDistanceDesc') || 'Lifetime average and recent monthly trend'}
                 </p>
                 {hasCpd ? (
@@ -506,7 +506,7 @@ export default function VehicleCharts() {
                     ariaLabel={(t('charts.costPerDistance') || 'Cost per {unit}').replace('{unit}', unit)}
                   />
                 ) : (
-                  <p className="text-xs text-[var(--color-text-muted)]">
+                  <p className="text-xs text-(--color-text-muted)">
                     {t('charts.costPerDistanceNoOdo') || 'Add odometer readings to your entries to see cost per distance over time.'}
                   </p>
                 )}
@@ -514,18 +514,18 @@ export default function VehicleCharts() {
 
               {/* 12-month forecast */}
               {analytics.forecast && (
-                <div className="bg-[var(--color-bg-secondary)] rounded-2xl p-6">
-                  <h2 className="text-sm font-medium text-[var(--color-text-secondary)] mb-1">
+                <div className="bg-(--color-bg-secondary) rounded-2xl p-6">
+                  <h2 className="text-sm font-medium text-(--color-text-secondary) mb-1">
                     {t('charts.forecastTitle') || 'Predicted next 12 months'}
                   </h2>
-                  <p className="text-2xs text-[var(--color-text-muted)] mb-4">
+                  <p className="text-2xs text-(--color-text-muted) mb-4">
                     {(t('charts.forecastDesc') || 'Estimated from {n} months of history')
                       .replace('{n}', String(analytics.forecast.months_of_history))}
                   </p>
                   <div className="flex items-end justify-between gap-3 mb-4 flex-wrap">
                     <div>
                       <p className="text-3xl font-bold">{formatCurrency(analytics.forecast.projected_next_12_total)}</p>
-                      <p className="text-xs text-[var(--color-text-secondary)]">
+                      <p className="text-xs text-(--color-text-secondary)">
                         {(t('charts.forecastAvg') || '~{v}/month').replace('{v}', formatCurrency(analytics.forecast.avg_monthly))}
                       </p>
                     </div>
@@ -537,7 +537,7 @@ export default function VehicleCharts() {
                     ariaLabel={t('charts.forecastTitle') || 'Predicted next 12 months'}
                     color="#22c55e"
                   />
-                  <p className="text-2xs text-[var(--color-text-muted)] mt-3">
+                  <p className="text-2xs text-(--color-text-muted) mt-3">
                     {t('charts.forecastDisclaimer') || 'Estimate based on past spending — actual costs may vary.'}
                   </p>
                 </div>
@@ -545,21 +545,21 @@ export default function VehicleCharts() {
             </div>
 
             {/* Cost of ownership (F24) — purchase price folded into lifetime cost */}
-            <div className="bg-[var(--color-bg-secondary)] rounded-2xl p-6">
-              <h2 className="text-sm font-medium text-[var(--color-text-secondary)] mb-1">
+            <div className="bg-(--color-bg-secondary) rounded-2xl p-6">
+              <h2 className="text-sm font-medium text-(--color-text-secondary) mb-1">
                 {t('ownership.title') || 'Cost of ownership'}
               </h2>
               {analytics.ownership ? (
                 <>
-                  <p className="text-2xs text-[var(--color-text-muted)] mb-4">
+                  <p className="text-2xs text-(--color-text-muted) mb-4">
                     {formatCurrency(analytics.ownership.purchase_price)}
                     {analytics.ownership.purchase_date && ` • ${analytics.ownership.purchase_date}`}
                     {analytics.ownership.months_owned != null &&
                       ` • ${analytics.ownership.months_owned} ${t('ownership.months') || 'months'}`}
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="rounded-lg p-3 bg-[var(--color-bg-tertiary)]">
-                      <p className="text-xs text-[var(--color-text-muted)]">
+                    <div className="rounded-lg p-3 bg-(--color-bg-tertiary)">
+                      <p className="text-xs text-(--color-text-muted)">
                         {t('ownership.totalWithPurchase') || 'Total incl. purchase'}
                       </p>
                       <p className="text-lg font-bold tabular-nums whitespace-nowrap">
@@ -568,8 +568,8 @@ export default function VehicleCharts() {
                     </div>
 
                     {analytics.ownership.avg_monthly_ownership != null && (
-                      <div className="rounded-lg p-3 bg-[var(--color-bg-tertiary)]">
-                        <p className="text-xs text-[var(--color-text-muted)]">
+                      <div className="rounded-lg p-3 bg-(--color-bg-tertiary)">
+                        <p className="text-xs text-(--color-text-muted)">
                           {t('ownership.perMonth') || 'Per month owned'}
                         </p>
                         <p className="text-lg font-bold tabular-nums whitespace-nowrap">
@@ -579,21 +579,21 @@ export default function VehicleCharts() {
                     )}
 
                     {analytics.ownership.cost_per_distance_with_purchase != null && (
-                      <div className="rounded-lg p-3 bg-[var(--color-bg-tertiary)]">
-                        <p className="text-xs text-[var(--color-text-muted)]">
+                      <div className="rounded-lg p-3 bg-(--color-bg-tertiary)">
+                        <p className="text-xs text-(--color-text-muted)">
                           {(t('ownership.perDistanceWithPurchase') || 'Per {unit} incl. purchase').replace('{unit}', unit)}
                         </p>
                         <p className="text-lg font-bold tabular-nums whitespace-nowrap">
                           {formatPerDistance(analytics.ownership.cost_per_distance_with_purchase)}
-                          <span className="text-xs text-[var(--color-text-secondary)] font-normal">/{unit}</span>
+                          <span className="text-xs text-(--color-text-secondary) font-normal">/{unit}</span>
                         </p>
                       </div>
                     )}
                   </div>
                 </>
               ) : (
-                <p className="text-xs text-[var(--color-text-muted)]">
-                  <Link to={`/vehicles/${id}/edit`} className="underline hover:text-[var(--color-text-primary)]">
+                <p className="text-xs text-(--color-text-muted)">
+                  <Link to={`/vehicles/${id}/edit`} className="underline hover:text-(--color-text-primary)">
                     {t('ownership.addPurchaseHint') || 'Add a purchase price to see ownership costs'}
                   </Link>
                 </p>
@@ -610,19 +610,19 @@ export default function VehicleCharts() {
           const total = forecast.buckets.reduce((a, b) => a + (b.projected || 0), 0)
           const overCount = forecast.buckets.filter((b) => b.over_budget).length
           return (
-            <div className="bg-[var(--color-bg-secondary)] rounded-2xl p-6">
+            <div className="bg-(--color-bg-secondary) rounded-2xl p-6">
               <div className="flex items-start justify-between gap-3 mb-1">
-                <h2 className="text-sm font-medium text-[var(--color-text-secondary)]">
+                <h2 className="text-sm font-medium text-(--color-text-secondary)">
                   {t('forecast.title') || 'Projected costs — next 12 months'}
                 </h2>
                 <span className="text-lg font-bold whitespace-nowrap shrink-0">{formatCurrency(total)}</span>
               </div>
-              <p className="text-2xs text-[var(--color-text-muted)] mb-4">
+              <p className="text-2xs text-(--color-text-muted) mb-4">
                 {t('forecast.projected') || 'Recurring taxes, insurance, permits and predicted maintenance'}
               </p>
 
               {(forecast.converted === false || forecast.fx_applied) && (
-                <p className="text-2xs text-[var(--color-text-muted)] flex items-start gap-1.5 mb-3">
+                <p className="text-2xs text-(--color-text-muted) flex items-start gap-1.5 mb-3">
                   <span aria-hidden="true">≈</span>
                   <span>
                     {forecast.converted === false
@@ -640,16 +640,16 @@ export default function VehicleCharts() {
                 t={t}
               />
 
-              <div className="flex items-center justify-between flex-wrap gap-2 mt-3 text-2xs text-[var(--color-text-muted)]">
+              <div className="flex items-center justify-between flex-wrap gap-2 mt-3 text-2xs text-(--color-text-muted)">
                 {forecast.monthly_budget != null ? (
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="inline-block w-3 border-t border-dashed border-[var(--color-text-muted)]" aria-hidden="true" />
+                    <span className="inline-block w-3 border-t border-dashed border-(--color-text-muted)" aria-hidden="true" />
                     {t('forecast.budgetLine') || 'Monthly budget'}: {formatCurrency(forecast.monthly_budget)}
                   </span>
                 ) : <span />}
                 {overCount > 0 && (
                   <span className="inline-flex items-center gap-1.5 text-red-500">
-                    <span className="inline-block w-2.5 h-2.5 rounded-sm bg-red-500" aria-hidden="true" />
+                    <span className="inline-block w-2.5 h-2.5 rounded-xs bg-red-500" aria-hidden="true" />
                     {(t('forecast.overBudget') || 'Over budget')} · {overCount}
                   </span>
                 )}
@@ -666,32 +666,32 @@ export default function VehicleCharts() {
         {!chartData ? (
           /* Case 1: vehicle has no expenses recorded at all */
           <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-            <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-[var(--color-bg-secondary)] flex items-center justify-center opacity-60">
+            <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-(--color-bg-secondary) flex items-center justify-center opacity-60">
               {Icons.calendar}
             </div>
             <h3 className="text-lg font-semibold mb-2">{t('charts.noData')}</h3>
-            <p className="text-sm text-[var(--color-text-secondary)] max-w-xs leading-relaxed">
+            <p className="text-sm text-(--color-text-secondary) max-w-xs leading-relaxed">
               {t('charts.noDataDesc')}
             </p>
           </div>
         ) : chartData.totalExpenses === 0 ? (
           /* Case 2: entries exist but none in the currently selected year */
           <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-            <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-[var(--color-bg-secondary)] flex items-center justify-center opacity-60">
+            <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-(--color-bg-secondary) flex items-center justify-center opacity-60">
               {Icons.calendar}
             </div>
             <h3 className="text-lg font-semibold mb-2">
               {t('charts.noDataForYear').replace('{year}', String(selectedYear))}
             </h3>
-            <p className="text-sm text-[var(--color-text-secondary)] max-w-xs leading-relaxed">
+            <p className="text-sm text-(--color-text-secondary) max-w-xs leading-relaxed">
               {t('charts.noDataForYearDesc')}
             </p>
           </div>
         ) : (
           <>
             {/* Total expenses card */}
-            <div className="bg-[var(--color-bg-secondary)] rounded-2xl p-6">
-              <h2 className="text-sm font-medium text-[var(--color-text-secondary)] mb-2">
+            <div className="bg-(--color-bg-secondary) rounded-2xl p-6">
+              <h2 className="text-sm font-medium text-(--color-text-secondary) mb-2">
                 {t('charts.totalExpenses') || 'Total Expenses'} ({selectedYear})
               </h2>
               <p className="text-3xl font-bold">{formatCurrency(chartData.totalExpenses)}</p>
@@ -700,8 +700,8 @@ export default function VehicleCharts() {
             {/* Category breakdown + monthly spend — two per row; stacks on phones */}
             <div className="grid md:grid-cols-2 gap-4">
             {/* Category breakdown donut */}
-            <div className="bg-[var(--color-bg-secondary)] rounded-2xl p-6">
-              <h2 className="text-sm font-medium text-[var(--color-text-secondary)] mb-4">
+            <div className="bg-(--color-bg-secondary) rounded-2xl p-6">
+              <h2 className="text-sm font-medium text-(--color-text-secondary) mb-4">
                 {t('charts.byCategory') || 'By Category'}
               </h2>
 
@@ -726,7 +726,7 @@ export default function VehicleCharts() {
                       </div>
                       <div className="text-right">
                         <span className="text-sm font-medium">{formatCurrency(item.value)}</span>
-                        <span className="text-xs text-[var(--color-text-secondary)] ml-2">
+                        <span className="text-xs text-(--color-text-secondary) ml-2">
                           ({item.percentage}%)
                         </span>
                       </div>
@@ -737,31 +737,31 @@ export default function VehicleCharts() {
             </div>
             
             {/* Monthly expenses bar chart */}
-            <div className="bg-[var(--color-bg-secondary)] rounded-2xl p-6">
-              <h2 className="text-sm font-medium text-[var(--color-text-secondary)] mb-4">
+            <div className="bg-(--color-bg-secondary) rounded-2xl p-6">
+              <h2 className="text-sm font-medium text-(--color-text-secondary) mb-4">
                 {t('charts.monthlyExpenses') || 'Monthly Expenses'}
               </h2>
               
               <BarChart 
                 data={chartData.monthlyData}
                 maxValue={chartData.maxMonthly}
-                color="bg-[var(--color-accent)]"
+                color="bg-(--color-accent)"
                 label={t('charts.amount') || 'Amount'}
               />
             </div>
             </div>
 
             {/* Stats summary */}
-            <div className="bg-[var(--color-bg-secondary)] rounded-2xl p-6">
-              <h2 className="text-sm font-medium text-[var(--color-text-secondary)] mb-4">
+            <div className="bg-(--color-bg-secondary) rounded-2xl p-6">
+              <h2 className="text-sm font-medium text-(--color-text-secondary) mb-4">
                 {t('charts.quickStats') || 'Quick Stats'}
               </h2>
               
               <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-[var(--color-bg-tertiary)] rounded-xl">
+                <div className="p-4 bg-(--color-bg-tertiary) rounded-xl">
                   <div className="flex items-center gap-2 mb-1">
                     {Icons.fuel}
-                    <span className="text-xs text-[var(--color-text-secondary)]">
+                    <span className="text-xs text-(--color-text-secondary)">
                       {t('charts.fuelCost') || 'Fuel Cost'}
                     </span>
                   </div>
@@ -770,10 +770,10 @@ export default function VehicleCharts() {
                   </p>
                 </div>
                 
-                <div className="p-4 bg-[var(--color-bg-tertiary)] rounded-xl">
+                <div className="p-4 bg-(--color-bg-tertiary) rounded-xl">
                   <div className="flex items-center gap-2 mb-1">
                     {Icons.wrench}
-                    <span className="text-xs text-[var(--color-text-secondary)]">
+                    <span className="text-xs text-(--color-text-secondary)">
                       {t('charts.serviceCost') || 'Service Cost'}
                     </span>
                   </div>
@@ -782,10 +782,10 @@ export default function VehicleCharts() {
                   </p>
                 </div>
                 
-                <div className="p-4 bg-[var(--color-bg-tertiary)] rounded-xl">
+                <div className="p-4 bg-(--color-bg-tertiary) rounded-xl">
                   <div className="flex items-center gap-2 mb-1">
                     {Icons.tools}
-                    <span className="text-xs text-[var(--color-text-secondary)]">
+                    <span className="text-xs text-(--color-text-secondary)">
                       {t('charts.repairCost') || 'Repair Cost'}
                     </span>
                   </div>
@@ -794,10 +794,10 @@ export default function VehicleCharts() {
                   </p>
                 </div>
                 
-                <div className="p-4 bg-[var(--color-bg-tertiary)] rounded-xl">
+                <div className="p-4 bg-(--color-bg-tertiary) rounded-xl">
                   <div className="flex items-center gap-2 mb-1">
                     {Icons.receipt}
-                    <span className="text-xs text-[var(--color-text-secondary)]">
+                    <span className="text-xs text-(--color-text-secondary)">
                       {t('charts.taxCost') || 'Tax Cost'}
                     </span>
                   </div>

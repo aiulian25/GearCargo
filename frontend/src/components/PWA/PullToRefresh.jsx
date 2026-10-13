@@ -85,11 +85,11 @@ export default function PullToRefresh() {
 
   return (
     <div
-      className="fixed top-0 left-0 right-0 z-[100] flex justify-center pointer-events-none"
+      className="fixed top-0 left-0 right-0 z-100 flex justify-center pointer-events-none"
       style={{ transform: `translateY(${Math.max(pullDistance - 40, 0)}px)`, transition: refreshing ? 'none' : pullDistance === 0 ? 'transform 0.2s ease-out' : 'none' }}
     >
       <div
-        className={`w-10 h-10 rounded-full bg-[var(--color-bg-card)] shadow-lg flex items-center justify-center border border-[var(--color-border)] ${refreshing ? 'animate-spin' : ''}`}
+        className={`w-10 h-10 rounded-full bg-(--color-bg-card) shadow-lg flex items-center justify-center border border-(--color-border) ${refreshing ? 'animate-spin' : ''}`}
         style={{ opacity: refreshing ? 1 : progress }}
       >
         <svg

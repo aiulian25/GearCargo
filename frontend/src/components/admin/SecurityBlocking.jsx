@@ -196,7 +196,7 @@ export default function SecurityBlocking() {
   if (loading && !summary) {
     return (
       <div className="flex justify-center py-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-[var(--color-accent)] border-t-transparent" />
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-(--color-accent) border-t-transparent" />
       </div>
     )
   }
@@ -204,7 +204,7 @@ export default function SecurityBlocking() {
   return (
     <div className="space-y-4">
       {/* Tabs */}
-      <div className="flex bg-[var(--color-bg-tertiary)] rounded-lg p-1">
+      <div className="flex bg-(--color-bg-tertiary) rounded-lg p-1">
         {[
           { key: 'overview', label: t('admin.security.overview') || 'Overview' },
           { key: 'ips', label: t('admin.security.blockedIPs') || 'Blocked IPs' },
@@ -216,8 +216,8 @@ export default function SecurityBlocking() {
             onClick={() => setActiveTab(tab.key)}
             className={`flex-1 py-1.5 rounded-md text-2xs font-medium transition-colors ${
               activeTab === tab.key
-                ? 'bg-[var(--color-bg-card)] text-[var(--color-accent)] shadow-sm'
-                : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
+                ? 'bg-(--color-bg-card) text-(--color-accent) shadow-xs'
+                : 'text-(--color-text-secondary) hover:text-(--color-text-primary)'
             }`}
           >
             {tab.label}
@@ -230,40 +230,40 @@ export default function SecurityBlocking() {
         <div className="space-y-4">
           {/* Stats Cards */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="bg-[var(--color-bg-tertiary)] rounded-lg p-3">
+            <div className="bg-(--color-bg-tertiary) rounded-lg p-3">
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-red-500">{Icons.ban}</span>
-                <span className="text-2xs text-[var(--color-text-muted)]">{t('admin.security.blockedIPs') || 'Blocked IPs'}</span>
+                <span className="text-2xs text-(--color-text-muted)">{t('admin.security.blockedIPs') || 'Blocked IPs'}</span>
               </div>
               <div className="text-xl font-bold text-red-500">{summary.blocked_ips?.total || 0}</div>
-              <div className="text-2xs text-[var(--color-text-muted)] mt-1">
+              <div className="text-2xs text-(--color-text-muted) mt-1">
                 {summary.blocked_ips?.auto || 0} {t('admin.security.auto') || 'auto'} / {summary.blocked_ips?.manual || 0} {t('admin.security.manual') || 'manual'}
               </div>
             </div>
             
-            <div className="bg-[var(--color-bg-tertiary)] rounded-lg p-3">
+            <div className="bg-(--color-bg-tertiary) rounded-lg p-3">
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-orange-500">{Icons.monitor}</span>
-                <span className="text-2xs text-[var(--color-text-muted)]">{t('admin.security.blockedDevices') || 'Blocked Devices'}</span>
+                <span className="text-2xs text-(--color-text-muted)">{t('admin.security.blockedDevices') || 'Blocked Devices'}</span>
               </div>
               <div className="text-xl font-bold text-orange-500">{summary.blocked_devices?.total || 0}</div>
-              <div className="text-2xs text-[var(--color-text-muted)] mt-1">
+              <div className="text-2xs text-(--color-text-muted) mt-1">
                 {summary.blocked_devices?.auto || 0} {t('admin.security.auto') || 'auto'} / {summary.blocked_devices?.manual || 0} {t('admin.security.manual') || 'manual'}
               </div>
             </div>
             
-            <div className="bg-[var(--color-bg-tertiary)] rounded-lg p-3">
+            <div className="bg-(--color-bg-tertiary) rounded-lg p-3">
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-amber-500">{Icons.alertTriangle}</span>
-                <span className="text-2xs text-[var(--color-text-muted)]">{t('admin.security.failed24h') || 'Failed (24h)'}</span>
+                <span className="text-2xs text-(--color-text-muted)">{t('admin.security.failed24h') || 'Failed (24h)'}</span>
               </div>
               <div className="text-xl font-bold text-amber-500">{summary.failed_logins?.last_24h || 0}</div>
             </div>
             
-            <div className="bg-[var(--color-bg-tertiary)] rounded-lg p-3">
+            <div className="bg-(--color-bg-tertiary) rounded-lg p-3">
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-yellow-500">{Icons.alertTriangle}</span>
-                <span className="text-2xs text-[var(--color-text-muted)]">{t('admin.security.failed7d') || 'Failed (7d)'}</span>
+                <span className="text-2xs text-(--color-text-muted)">{t('admin.security.failed7d') || 'Failed (7d)'}</span>
               </div>
               <div className="text-xl font-bold text-yellow-500">{summary.failed_logins?.last_7d || 0}</div>
             </div>
@@ -272,10 +272,10 @@ export default function SecurityBlocking() {
           {/* Recent Blocked IPs */}
           {summary.blocked_ips?.recent?.length > 0 && (
             <div>
-              <h4 className="text-xs font-medium text-[var(--color-text-muted)] mb-2">{t('admin.security.recentBlockedIPs') || 'Recent Blocked IPs'}</h4>
+              <h4 className="text-xs font-medium text-(--color-text-muted) mb-2">{t('admin.security.recentBlockedIPs') || 'Recent Blocked IPs'}</h4>
               <div className="space-y-2">
                 {summary.blocked_ips.recent.slice(0, 3).map(ip => (
-                  <div key={ip.id} className="bg-[var(--color-bg-tertiary)] rounded-lg p-2 flex items-center justify-between">
+                  <div key={ip.id} className="bg-(--color-bg-tertiary) rounded-lg p-2 flex items-center justify-between">
                     <div>
                       <span className="text-sm font-mono">{ip.ip_address}</span>
                       <span className={`ml-2 px-1.5 py-0.5 rounded text-2xs ${
@@ -284,12 +284,12 @@ export default function SecurityBlocking() {
                         {ip.block_type}
                       </span>
                       {ip.country && (
-                        <span className="ml-2 text-2xs text-[var(--color-text-muted)]">
+                        <span className="ml-2 text-2xs text-(--color-text-muted)">
                           {ip.country}
                         </span>
                       )}
                     </div>
-                    <span className="text-2xs text-[var(--color-text-muted)]">
+                    <span className="text-2xs text-(--color-text-muted)">
                       {ip.failed_attempts} {t('admin.security.attempts') || 'attempts'}
                     </span>
                   </div>
@@ -301,10 +301,10 @@ export default function SecurityBlocking() {
           {/* Recent Blocked Devices */}
           {summary.blocked_devices?.recent?.length > 0 && (
             <div>
-              <h4 className="text-xs font-medium text-[var(--color-text-muted)] mb-2">{t('admin.security.blockedDevices') || 'Recent Blocked Devices'}</h4>
+              <h4 className="text-xs font-medium text-(--color-text-muted) mb-2">{t('admin.security.blockedDevices') || 'Recent Blocked Devices'}</h4>
               <div className="space-y-2">
                 {summary.blocked_devices.recent.slice(0, 3).map(device => (
-                  <div key={device.id} className="bg-[var(--color-bg-tertiary)] rounded-lg p-2 flex items-center justify-between">
+                  <div key={device.id} className="bg-(--color-bg-tertiary) rounded-lg p-2 flex items-center justify-between">
                     <div>
                       <span className="text-sm">{device.browser || 'Unknown'} / {device.os || 'Unknown'}</span>
                       <span className={`ml-2 px-1.5 py-0.5 rounded text-2xs ${
@@ -313,7 +313,7 @@ export default function SecurityBlocking() {
                         {device.block_type}
                       </span>
                     </div>
-                    <span className="text-2xs text-[var(--color-text-muted)]">
+                    <span className="text-2xs text-(--color-text-muted)">
                       {device.failed_attempts} {t('admin.security.attempts') || 'attempts'}
                     </span>
                   </div>
@@ -324,7 +324,7 @@ export default function SecurityBlocking() {
           
           <button 
             onClick={loadSummary}
-            className="w-full py-2 rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] text-sm flex items-center justify-center gap-2 hover:bg-[var(--color-bg-tertiary)]/80"
+            className="w-full py-2 rounded-lg bg-(--color-bg-tertiary) text-(--color-text-secondary) text-sm flex items-center justify-center gap-2 hover:bg-(--color-bg-tertiary)/80"
           >
             {Icons.refresh}
             {t('admin.security.refresh') || 'Refresh'}
@@ -336,7 +336,7 @@ export default function SecurityBlocking() {
       {activeTab === 'ips' && (
         <div className="space-y-3">
           <div className="flex justify-between items-center">
-            <span className="text-sm text-[var(--color-text-muted)]">
+            <span className="text-sm text-(--color-text-muted)">
               {blockedIPs.length} blocked IP{blockedIPs.length !== 1 ? 's' : ''}
             </span>
             <button
@@ -348,7 +348,7 @@ export default function SecurityBlocking() {
           </div>
           
           {blockedIPs.length === 0 ? (
-            <div className="text-center py-8 text-[var(--color-text-muted)]">
+            <div className="text-center py-8 text-(--color-text-muted)">
               <div className="mb-2">{Icons.shield}</div>
               <p className="text-sm">No blocked IPs</p>
               <p className="text-2xs">IPs are auto-blocked after 3 failed login attempts</p>
@@ -356,7 +356,7 @@ export default function SecurityBlocking() {
           ) : (
             <div className="space-y-2">
               {blockedIPs.map(ip => (
-                <div key={ip.id} className="bg-[var(--color-bg-tertiary)] rounded-lg overflow-hidden">
+                <div key={ip.id} className="bg-(--color-bg-tertiary) rounded-lg overflow-hidden">
                   <div 
                     className="p-3 flex items-center justify-between cursor-pointer"
                     onClick={() => setExpandedRow(expandedRow === `ip-${ip.id}` ? null : `ip-${ip.id}`)}
@@ -365,7 +365,7 @@ export default function SecurityBlocking() {
                       <span className="text-red-500">{Icons.ban}</span>
                       <div>
                         <div className="font-mono text-sm">{ip.ip_address}</div>
-                        <div className="text-2xs text-[var(--color-text-muted)]">
+                        <div className="text-2xs text-(--color-text-muted)">
                           {ip.country && `${ip.country} • `}{ip.failed_attempts} attempts
                         </div>
                       </div>
@@ -381,28 +381,28 @@ export default function SecurityBlocking() {
                   </div>
                   
                   {expandedRow === `ip-${ip.id}` && (
-                    <div className="px-3 pb-3 pt-0 border-t border-[var(--color-border)] space-y-2">
+                    <div className="px-3 pb-3 pt-0 border-t border-(--color-border) space-y-2">
                       <div className="grid grid-cols-2 gap-2 text-2xs">
                         <div>
-                          <span className="text-[var(--color-text-muted)]">Target Email:</span>
+                          <span className="text-(--color-text-muted)">Target Email:</span>
                           <span className="ml-1">{ip.target_email || '-'}</span>
                         </div>
                         <div>
-                          <span className="text-[var(--color-text-muted)]">ISP:</span>
+                          <span className="text-(--color-text-muted)">ISP:</span>
                           <span className="ml-1">{ip.isp || '-'}</span>
                         </div>
                         <div>
-                          <span className="text-[var(--color-text-muted)]">Blocked:</span>
+                          <span className="text-(--color-text-muted)">Blocked:</span>
                           <span className="ml-1">{formatDate(ip.created_at)}</span>
                         </div>
                         <div>
-                          <span className="text-[var(--color-text-muted)]">Last Attempt:</span>
+                          <span className="text-(--color-text-muted)">Last Attempt:</span>
                           <span className="ml-1">{formatDate(ip.last_failed_attempt)}</span>
                         </div>
                       </div>
                       {ip.reason && (
                         <div className="text-2xs">
-                          <span className="text-[var(--color-text-muted)]">Reason:</span>
+                          <span className="text-(--color-text-muted)">Reason:</span>
                           <span className="ml-1">{ip.reason}</span>
                         </div>
                       )}
@@ -411,7 +411,7 @@ export default function SecurityBlocking() {
                           e.stopPropagation()
                           setShowUnblockModal({ type: 'ip', item: ip })
                         }}
-                        className="w-full py-1.5 rounded bg-green-500/10 text-green-500 text-xs flex items-center justify-center gap-1 hover:bg-green-500/20"
+                        className="w-full py-1.5 rounded-sm bg-green-500/10 text-green-500 text-xs flex items-center justify-center gap-1 hover:bg-green-500/20"
                       >
                         {Icons.unlock} Unblock IP
                       </button>
@@ -428,13 +428,13 @@ export default function SecurityBlocking() {
       {activeTab === 'devices' && (
         <div className="space-y-3">
           <div className="flex justify-between items-center">
-            <span className="text-sm text-[var(--color-text-muted)]">
+            <span className="text-sm text-(--color-text-muted)">
               {blockedDevices.length} blocked device{blockedDevices.length !== 1 ? 's' : ''}
             </span>
           </div>
           
           {blockedDevices.length === 0 ? (
-            <div className="text-center py-8 text-[var(--color-text-muted)]">
+            <div className="text-center py-8 text-(--color-text-muted)">
               <div className="mb-2">{Icons.monitor}</div>
               <p className="text-sm">No blocked devices</p>
               <p className="text-2xs">Devices are auto-blocked after 3 failed login attempts</p>
@@ -442,7 +442,7 @@ export default function SecurityBlocking() {
           ) : (
             <div className="space-y-2">
               {blockedDevices.map(device => (
-                <div key={device.id} className="bg-[var(--color-bg-tertiary)] rounded-lg overflow-hidden">
+                <div key={device.id} className="bg-(--color-bg-tertiary) rounded-lg overflow-hidden">
                   <div 
                     className="p-3 flex items-center justify-between cursor-pointer"
                     onClick={() => setExpandedRow(expandedRow === `device-${device.id}` ? null : `device-${device.id}`)}
@@ -451,7 +451,7 @@ export default function SecurityBlocking() {
                       <span className="text-orange-500">{Icons.monitor}</span>
                       <div>
                         <div className="text-sm">{device.browser || 'Unknown Browser'} / {device.os || 'Unknown OS'}</div>
-                        <div className="text-2xs text-[var(--color-text-muted)]">
+                        <div className="text-2xs text-(--color-text-muted)">
                           {device.device_type} • {device.failed_attempts} attempts
                         </div>
                       </div>
@@ -467,34 +467,34 @@ export default function SecurityBlocking() {
                   </div>
                   
                   {expandedRow === `device-${device.id}` && (
-                    <div className="px-3 pb-3 pt-0 border-t border-[var(--color-border)] space-y-2">
+                    <div className="px-3 pb-3 pt-0 border-t border-(--color-border) space-y-2">
                       <div className="grid grid-cols-2 gap-2 text-2xs">
                         <div>
-                          <span className="text-[var(--color-text-muted)]">Target Email:</span>
+                          <span className="text-(--color-text-muted)">Target Email:</span>
                           <span className="ml-1">{device.target_email || '-'}</span>
                         </div>
                         <div>
-                          <span className="text-[var(--color-text-muted)]">Browser Version:</span>
+                          <span className="text-(--color-text-muted)">Browser Version:</span>
                           <span className="ml-1">{device.browser_version || '-'}</span>
                         </div>
                         <div>
-                          <span className="text-[var(--color-text-muted)]">OS Version:</span>
+                          <span className="text-(--color-text-muted)">OS Version:</span>
                           <span className="ml-1">{device.os_version || '-'}</span>
                         </div>
                         <div>
-                          <span className="text-[var(--color-text-muted)]">Fingerprint:</span>
+                          <span className="text-(--color-text-muted)">Fingerprint:</span>
                           <span className="ml-1 font-mono">{device.device_fingerprint?.substring(0, 12)}...</span>
                         </div>
                       </div>
                       {device.associated_ips?.length > 0 && (
                         <div className="text-2xs">
-                          <span className="text-[var(--color-text-muted)]">Associated IPs:</span>
+                          <span className="text-(--color-text-muted)">Associated IPs:</span>
                           <span className="ml-1 font-mono">{device.associated_ips.join(', ')}</span>
                         </div>
                       )}
                       {device.reason && (
                         <div className="text-2xs">
-                          <span className="text-[var(--color-text-muted)]">Reason:</span>
+                          <span className="text-(--color-text-muted)">Reason:</span>
                           <span className="ml-1">{device.reason}</span>
                         </div>
                       )}
@@ -503,7 +503,7 @@ export default function SecurityBlocking() {
                           e.stopPropagation()
                           setShowUnblockModal({ type: 'device', item: device })
                         }}
-                        className="w-full py-1.5 rounded bg-green-500/10 text-green-500 text-xs flex items-center justify-center gap-1 hover:bg-green-500/20"
+                        className="w-full py-1.5 rounded-sm bg-green-500/10 text-green-500 text-xs flex items-center justify-center gap-1 hover:bg-green-500/20"
                       >
                         {Icons.unlock} Unblock Device
                       </button>
@@ -520,13 +520,13 @@ export default function SecurityBlocking() {
       {activeTab === 'failed-logins' && (
         <div className="space-y-3">
           {failedLoginsSummary && (
-            <div className="bg-[var(--color-bg-tertiary)] rounded-lg p-3">
+            <div className="bg-(--color-bg-tertiary) rounded-lg p-3">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium">Last {failedLoginsSummary.days_included} days</span>
                 <span className="text-lg font-bold text-red-500">{failedLoginsSummary.total_failed} failed</span>
               </div>
               {failedLoginsSummary.top_ips?.length > 0 && (
-                <div className="text-2xs text-[var(--color-text-muted)]">
+                <div className="text-2xs text-(--color-text-muted)">
                   Top IPs: {failedLoginsSummary.top_ips.slice(0, 3).map(ip => `${ip.ip} (${ip.count})`).join(', ')}
                 </div>
               )}
@@ -534,24 +534,24 @@ export default function SecurityBlocking() {
           )}
           
           {failedLogins.length === 0 ? (
-            <div className="text-center py-8 text-[var(--color-text-muted)]">
+            <div className="text-center py-8 text-(--color-text-muted)">
               <div className="mb-2">{Icons.check}</div>
               <p className="text-sm">No recent failed logins</p>
             </div>
           ) : (
             <div className="space-y-2">
               {failedLogins.map(log => (
-                <div key={log.id} className="bg-[var(--color-bg-tertiary)] rounded-lg p-3">
+                <div key={log.id} className="bg-(--color-bg-tertiary) rounded-lg p-3">
                   <div className="flex items-start justify-between">
                     <div>
                       <div className="text-sm font-medium">
                         {log.extra_data?.email || log.description?.match(/email: ([^\s(]+)/)?.[1] || 'Unknown'}
                       </div>
-                      <div className="text-2xs text-[var(--color-text-muted)] mt-1">
+                      <div className="text-2xs text-(--color-text-muted) mt-1">
                         {log.ip_address && <span className="font-mono">{log.ip_address}</span>}
                         {log.country && <span className="ml-2">{log.country}</span>}
                       </div>
-                      <div className="text-2xs text-[var(--color-text-muted)] mt-1">
+                      <div className="text-2xs text-(--color-text-muted) mt-1">
                         {log.browser && `${log.browser} / `}{log.os || 'Unknown OS'}
                       </div>
                     </div>
@@ -564,7 +564,7 @@ export default function SecurityBlocking() {
                       }`}>
                         {log.event_type?.replace(/_/g, ' ')}
                       </div>
-                      <div className="text-2xs text-[var(--color-text-muted)] mt-1">
+                      <div className="text-2xs text-(--color-text-muted) mt-1">
                         {formatDate(log.created_at)}
                       </div>
                     </div>
@@ -576,7 +576,7 @@ export default function SecurityBlocking() {
           
           <button 
             onClick={loadFailedLogins}
-            className="w-full py-2 rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] text-sm flex items-center justify-center gap-2 hover:bg-[var(--color-bg-tertiary)]/80"
+            className="w-full py-2 rounded-lg bg-(--color-bg-tertiary) text-(--color-text-secondary) text-sm flex items-center justify-center gap-2 hover:bg-(--color-bg-tertiary)/80"
           >
             {Icons.refresh}
             Refresh
@@ -587,35 +587,35 @@ export default function SecurityBlocking() {
       {/* Block IP Modal */}
       {showBlockIPModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-[var(--color-bg-card)] rounded-xl p-4 w-full max-w-sm">
+          <div className="bg-(--color-bg-card) rounded-xl p-4 w-full max-w-sm">
             <h3 className="text-lg font-semibold mb-4">Block IP Address</h3>
             <form onSubmit={handleBlockIP} className="space-y-3">
               <div>
-                <label className="text-xs text-[var(--color-text-muted)] mb-1 block">IP Address</label>
+                <label className="text-xs text-(--color-text-muted) mb-1 block">IP Address</label>
                 <input
                   type="text"
                   value={newBlockIP}
                   onChange={(e) => setNewBlockIP(e.target.value)}
                   placeholder="e.g., 192.168.1.100"
-                  className="w-full px-3 py-2 rounded-lg bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] text-sm"
+                  className="w-full px-3 py-2 rounded-lg bg-(--color-bg-tertiary) border border-(--color-border) text-sm"
                   autoFocus
                 />
               </div>
               <div>
-                <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Reason (optional)</label>
+                <label className="text-xs text-(--color-text-muted) mb-1 block">Reason (optional)</label>
                 <input
                   type="text"
                   value={newBlockReason}
                   onChange={(e) => setNewBlockReason(e.target.value)}
                   placeholder="e.g., Suspicious activity"
-                  className="w-full px-3 py-2 rounded-lg bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] text-sm"
+                  className="w-full px-3 py-2 rounded-lg bg-(--color-bg-tertiary) border border-(--color-border) text-sm"
                 />
               </div>
               <div className="flex gap-2 mt-4">
                 <button
                   type="button"
                   onClick={() => setShowBlockIPModal(false)}
-                  className="flex-1 py-2 rounded-lg bg-[var(--color-bg-tertiary)] text-sm"
+                  className="flex-1 py-2 rounded-lg bg-(--color-bg-tertiary) text-sm"
                 >
                   Cancel
                 </button>
@@ -634,24 +634,24 @@ export default function SecurityBlocking() {
       {/* Unblock Modal */}
       {showUnblockModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-[var(--color-bg-card)] rounded-xl p-4 w-full max-w-sm">
+          <div className="bg-(--color-bg-card) rounded-xl p-4 w-full max-w-sm">
             <h3 className="text-lg font-semibold mb-2">
               Unblock {showUnblockModal.type === 'ip' ? 'IP Address' : 'Device'}
             </h3>
-            <p className="text-sm text-[var(--color-text-muted)] mb-4">
+            <p className="text-sm text-(--color-text-muted) mb-4">
               {showUnblockModal.type === 'ip' 
                 ? `Are you sure you want to unblock ${showUnblockModal.item.ip_address}?`
                 : `Are you sure you want to unblock this ${showUnblockModal.item.browser || 'unknown'} / ${showUnblockModal.item.os || 'unknown'} device?`
               }
             </p>
             <div className="mb-4">
-              <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Reason (optional)</label>
+              <label className="text-xs text-(--color-text-muted) mb-1 block">Reason (optional)</label>
               <input
                 type="text"
                 value={unblockReason}
                 onChange={(e) => setUnblockReason(e.target.value)}
                 placeholder="e.g., User verified identity"
-                className="w-full px-3 py-2 rounded-lg bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] text-sm"
+                className="w-full px-3 py-2 rounded-lg bg-(--color-bg-tertiary) border border-(--color-border) text-sm"
               />
             </div>
             <div className="flex gap-2">
@@ -660,7 +660,7 @@ export default function SecurityBlocking() {
                   setShowUnblockModal(null)
                   setUnblockReason('')
                 }}
-                className="flex-1 py-2 rounded-lg bg-[var(--color-bg-tertiary)] text-sm"
+                className="flex-1 py-2 rounded-lg bg-(--color-bg-tertiary) text-sm"
               >
                 Cancel
               </button>

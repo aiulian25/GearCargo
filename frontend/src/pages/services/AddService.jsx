@@ -113,7 +113,7 @@ export default function AddService() {
   return (
     <div className="pb-4">
       {/* Header */}
-      <div className="bg-[var(--color-bg-card)] border-b border-[var(--color-border)] px-4 py-3 flex items-center gap-3">
+      <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="btn-icon">
           <span className="material-icons-outlined icon-md">close</span>
         </button>
@@ -141,7 +141,7 @@ export default function AddService() {
         {/* Vehicle & Date */}
         <div className="card space-y-4">
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('common.vehicle') || 'Vehicle'} *
             </label>
             <select 
@@ -160,7 +160,7 @@ export default function AddService() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addService.date') || 'Date'} *
               </label>
               <input
@@ -171,7 +171,7 @@ export default function AddService() {
             </div>
             
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addService.odometer') || 'Odometer'} ({distUnit})
               </label>
               <input
@@ -186,13 +186,13 @@ export default function AddService() {
         
         {/* Service Details */}
         <div className="card space-y-4">
-          <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">{t('addService.serviceDetails') || 'Service Details'}</h3>
+          <h3 className="text-sm font-medium text-(--color-text-secondary)">{t('addService.serviceDetails') || 'Service Details'}</h3>
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('addService.serviceType') || 'Service Type'} *
             </label>
-            <p className="text-xs text-[var(--color-text-secondary)] mb-2">
+            <p className="text-xs text-(--color-text-secondary) mb-2">
               {t('addService.multiSelectHint') || 'Tap to select one or more service types'}
             </p>
             <div className="flex flex-wrap gap-2">
@@ -211,8 +211,8 @@ export default function AddService() {
                     }}
                     className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
                       isSelected
-                        ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)]'
-                        : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]'
+                        ? 'bg-(--color-primary) text-white border-(--color-primary)'
+                        : 'bg-(--color-bg-tertiary) text-(--color-text-secondary) border-(--color-border) hover:border-(--color-primary) hover:text-(--color-primary)'
                     }`}
                   >
                     {isSelected && (
@@ -231,7 +231,7 @@ export default function AddService() {
           </div>
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('addService.description') || 'Description'}
             </label>
             <input
@@ -243,7 +243,7 @@ export default function AddService() {
           </div>
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('addService.shopName') || 'Service Shop'}
             </label>
             <input
@@ -257,11 +257,11 @@ export default function AddService() {
         
         {/* Costs */}
         <div className="card space-y-4">
-          <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">{t('addService.costs') || 'Costs'}</h3>
+          <h3 className="text-sm font-medium text-(--color-text-secondary)">{t('addService.costs') || 'Costs'}</h3>
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addService.laborCost') || 'Labor Cost'}
               </label>
               <input
@@ -274,7 +274,7 @@ export default function AddService() {
             </div>
             
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addService.partsCost') || 'Parts Cost'}
               </label>
               <input
@@ -288,7 +288,7 @@ export default function AddService() {
           </div>
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('addService.totalCost') || 'Total Cost'}
             </label>
             <input
@@ -303,7 +303,7 @@ export default function AddService() {
         
         {/* Notes */}
         <div className="card">
-          <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+          <label className="block text-xs text-(--color-text-muted) mb-1">
             {t('addService.notes') || 'Notes'}
           </label>
           <textarea

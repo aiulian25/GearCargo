@@ -87,30 +87,30 @@ function FuelPricesWidget({ fuelPrices, history, currency, t, onRefresh, isRefre
   }
 
   return (
-    <div className="bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border)] overflow-hidden h-full">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)]">
+    <div className="bg-(--color-bg-card) rounded-xl border border-(--color-border) overflow-hidden h-full">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-(--color-border)">
         <div className="flex items-center gap-2">
           <span className="text-lg">⛽</span>
           <h3 className="text-sm font-semibold">{t('fuelPrices.title')}</h3>
           {fuelPrices?.country && (
-            <span className="text-xs px-1.5 py-0.5 bg-[var(--color-bg-tertiary)] rounded text-[var(--color-text-muted)]">
+            <span className="text-xs px-1.5 py-0.5 bg-(--color-bg-tertiary) rounded-sm text-(--color-text-muted)">
               {fuelPrices.country}
             </span>
           )}
         </div>
         <div className="flex items-center gap-2">
           {isRefreshing ? (
-            <span className="text-xs text-[var(--color-text-muted)] animate-pulse">
+            <span className="text-xs text-(--color-text-muted) animate-pulse">
               {t('fuelPrices.autoRefreshing') || 'Refreshing...'}
             </span>
           ) : timeAgoLabel ? (
-            <span className="text-xs text-[var(--color-text-muted)]">{timeAgoLabel}</span>
+            <span className="text-xs text-(--color-text-muted)">{timeAgoLabel}</span>
           ) : null}
           <button
             onClick={onRefresh}
             disabled={isRefreshing}
             title={t('fuelPrices.refresh') || 'Refresh fuel prices'}
-            className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-tertiary)] transition-colors disabled:opacity-50"
+            className="p-1.5 rounded-lg text-(--color-text-muted) hover:text-(--color-text-primary) hover:bg-(--color-bg-tertiary) transition-colors disabled:opacity-50"
           >
             <svg className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
@@ -123,11 +123,11 @@ function FuelPricesWidget({ fuelPrices, history, currency, t, onRefresh, isRefre
           Detected location sits on the left; the three fuel types spread
           across the remaining width with hairline dividers between them. */}
       <div className="px-4 py-4 flex flex-col gap-4 lg:flex-row lg:items-center">
-        <p className="text-sm text-[var(--color-text-secondary)] lg:w-52 lg:shrink-0 truncate">
+        <p className="text-sm text-(--color-text-secondary) lg:w-52 lg:shrink-0 truncate">
           {fuelPrices?.location || t('common.loading') || 'Loading...'}
         </p>
 
-        <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-[var(--color-border)]">
+        <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-(--color-border)">
           {[
             { type: 'diesel', labelKey: 'fuelPrices.diesel', color: 'bg-blue-500', text: 'text-blue-500' },
             { type: 'lpg', labelKey: 'fuelPrices.lpg', color: 'bg-green-500', text: 'text-green-500' },
@@ -140,14 +140,14 @@ function FuelPricesWidget({ fuelPrices, history, currency, t, onRefresh, isRefre
                 <div className="flex items-center justify-between gap-2">
                   <span className="flex items-center gap-2 min-w-0">
                     <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${fuel.color}`} aria-hidden="true"></span>
-                    <span className="text-sm text-[var(--color-text-primary)] truncate">{t(fuel.labelKey)}</span>
+                    <span className="text-sm text-(--color-text-primary) truncate">{t(fuel.labelKey)}</span>
                   </span>
                   <span className="flex items-center gap-1.5 whitespace-nowrap">
-                    <span className="font-semibold text-[var(--color-text-primary)] tabular-nums">
+                    <span className="font-semibold text-(--color-text-primary) tabular-nums">
                       {fuelCurrency}{price != null ? price.toFixed(2) : '--'}/L
                     </span>
                     {price != null && (
-                      <svg className="w-3.5 h-3.5 text-[var(--color-text-muted)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <svg className="w-3.5 h-3.5 text-(--color-text-muted)" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <polyline points="20 6 9 17 4 12" />
                       </svg>
                     )}
@@ -157,7 +157,7 @@ function FuelPricesWidget({ fuelPrices, history, currency, t, onRefresh, isRefre
                 {trend && (
                   <div className="mt-1 flex items-center justify-end gap-1.5">
                     <span className={fuel.text}><Sparkline points={trend.values} /></span>
-                    <span className="text-2xs text-[var(--color-text-muted)] whitespace-nowrap tabular-nums">
+                    <span className="text-2xs text-(--color-text-muted) whitespace-nowrap tabular-nums">
                       {trend.deltaPct > 0.05 ? '↑' : trend.deltaPct < -0.05 ? '↓' : '→'}{' '}
                       {Math.abs(trend.deltaPct).toFixed(1)}% {t('fuelPrices.trendVsMonth') || 'vs last month'}
                     </span>
@@ -169,8 +169,8 @@ function FuelPricesWidget({ fuelPrices, history, currency, t, onRefresh, isRefre
         </div>
       </div>
 
-      <div className="px-4 py-2.5 border-t border-[var(--color-border)]">
-        <p className="text-xs text-[var(--color-text-muted)]">
+      <div className="px-4 py-2.5 border-t border-(--color-border)">
+        <p className="text-xs text-(--color-text-muted)">
           {fuelPrices?.source || t('fuelPrices.dataSource')}
           {fuelPrices?.last_update && (
             <span className="ml-1">• {formatLastUpdate(fuelPrices.last_update)}</span>
@@ -215,8 +215,8 @@ function RecentTransactions({ transactions, loading, error, t, formatCurrency })
   }
 
   return (
-    <div className="bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border)] overflow-hidden h-full flex flex-col">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--color-border)]">
+    <div className="bg-(--color-bg-card) rounded-xl border border-(--color-border) overflow-hidden h-full flex flex-col">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-(--color-border)">
         <span className="text-lg" aria-hidden="true">🧾</span>
         <h3 className="text-sm font-semibold">{t('recentTransactions.title') || 'Recent Transactions'}</h3>
       </div>
@@ -228,14 +228,14 @@ function RecentTransactions({ transactions, loading, error, t, formatCurrency })
       ) : error || !transactions?.length ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center px-4 py-10">
           <span className="text-3xl mb-2" aria-hidden="true">🚗</span>
-          <p className="text-sm text-[var(--color-text-secondary)]">
+          <p className="text-sm text-(--color-text-secondary)">
             {error
               ? (t('recentTransactions.error') || 'Could not load transactions')
               : (t('recentTransactions.empty') || 'No transactions yet')}
           </p>
         </div>
       ) : (
-        <ul className="divide-y divide-[var(--color-border)]" role="list">
+        <ul className="divide-y divide-(--color-border)" role="list">
           {transactions.map((tx) => {
             const cat = TX_CATEGORY[tx.type] || _DEFAULT_TX
             const categoryLabel = t(`timeline.${tx.type}`) || tx.type
@@ -243,7 +243,7 @@ function RecentTransactions({ transactions, loading, error, t, formatCurrency })
               <li key={`${tx.type}-${tx.id}`}>
                 <Link
                   to={txLink(tx)}
-                  className="flex items-center gap-3 px-4 py-3 hover:bg-[var(--color-bg-tertiary)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-inset"
+                  className="flex items-center gap-3 px-4 py-3 hover:bg-(--color-bg-tertiary) transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-(--color-accent) focus-visible:ring-inset"
                   aria-label={`${categoryLabel} · ${tx.vehicle_name} · ${tx.description || ''}`}
                 >
                   <span className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${cat.bg} ${cat.color}`} aria-hidden="true">
@@ -252,10 +252,10 @@ function RecentTransactions({ transactions, loading, error, t, formatCurrency })
                     </svg>
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
+                    <p className="text-sm font-medium text-(--color-text-primary) truncate">
                       {tx.description || categoryLabel}
                     </p>
-                    <p className="text-xs text-[var(--color-text-muted)] truncate">
+                    <p className="text-xs text-(--color-text-muted) truncate">
                       <span className={cat.color}>{categoryLabel}</span>
                       <span aria-hidden="true"> · </span>
                       {tx.vehicle_name}
@@ -270,11 +270,11 @@ function RecentTransactions({ transactions, loading, error, t, formatCurrency })
                     </p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-sm font-semibold text-[var(--color-text-primary)] tabular-nums whitespace-nowrap">
+                    <p className="text-sm font-semibold text-(--color-text-primary) tabular-nums whitespace-nowrap">
                       {tx.cost != null ? formatCurrency(tx.cost) : '—'}
                     </p>
                     {tx.date && (
-                      <p className="text-xs text-[var(--color-text-muted)] tabular-nums whitespace-nowrap">
+                      <p className="text-xs text-(--color-text-muted) tabular-nums whitespace-nowrap">
                         {formatDateShort(tx.date)}
                       </p>
                     )}
@@ -309,7 +309,7 @@ const _DEFAULT_DUE = { color: 'text-gray-500', bg: 'bg-gray-500/10', icon: <><ci
 const DUE_SEVERITY = {
   critical: { stripe: 'bg-red-500',   chip: 'text-red-600 dark:text-red-400 bg-red-500/10' },
   warning:  { stripe: 'bg-amber-500', chip: 'text-amber-600 dark:text-amber-400 bg-amber-500/10' },
-  info:     { stripe: 'bg-[var(--color-border)]', chip: 'text-[var(--color-text-muted)] bg-[var(--color-bg-tertiary)]' },
+  info:     { stripe: 'bg-(--color-border)', chip: 'text-(--color-text-muted) bg-(--color-bg-tertiary)' },
 }
 
 // Coming up — unified "what needs attention?" feed across all sources (F4).
@@ -334,7 +334,7 @@ function HealthChip({ score, t, spaced }) {
     : (t('vehicleHealth.statusNeedsAttention') || 'Needs Attention')
   return (
     <span
-      className={`inline-block px-2.5 py-1 text-xs font-semibold rounded mb-2 ${spaced ? 'ml-1.5' : ''} ${cls}`}
+      className={`inline-block px-2.5 py-1 text-xs font-semibold rounded-sm mb-2 ${spaced ? 'ml-1.5' : ''} ${cls}`}
       title={`${t('vehicleHealth.score') || 'Score'}: ${score}/100`}
     >
       {label}
@@ -365,12 +365,12 @@ function DueSoon({ items, loading, error, t, onDismiss }) {
   }
 
   return (
-    <div className="bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border)] overflow-hidden h-full flex flex-col">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--color-border)]">
+    <div className="bg-(--color-bg-card) rounded-xl border border-(--color-border) overflow-hidden h-full flex flex-col">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-(--color-border)">
         <span className="text-lg" aria-hidden="true">📅</span>
         <h3 className="text-sm font-semibold">{t('due.title') || 'Coming up'}</h3>
         {!loading && !error && items?.length > 0 && (
-          <span className="ml-auto text-2xs font-semibold tabular-nums px-2 py-0.5 rounded-full bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]">
+          <span className="ml-auto text-2xs font-semibold tabular-nums px-2 py-0.5 rounded-full bg-(--color-bg-tertiary) text-(--color-text-muted)">
             {items.length}
           </span>
         )}
@@ -383,7 +383,7 @@ function DueSoon({ items, loading, error, t, onDismiss }) {
       ) : error || !items?.length ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center px-4 py-10">
           <span className="text-3xl mb-2" aria-hidden="true">{error ? '⚠️' : '✅'}</span>
-          <p className="text-sm text-[var(--color-text-secondary)]">
+          <p className="text-sm text-(--color-text-secondary)">
             {error
               ? (t('due.error') || 'Could not load what’s due')
               : (t('due.empty') || 'Nothing due — you’re all caught up')}
@@ -391,7 +391,7 @@ function DueSoon({ items, loading, error, t, onDismiss }) {
         </div>
       ) : (
         <>
-          <ul id="due-soon-list" className="divide-y divide-[var(--color-border)]" role="list">
+          <ul id="due-soon-list" className="divide-y divide-(--color-border)" role="list">
             {(expanded ? items : items.slice(0, DUE_COLLAPSED_COUNT)).map((it) => {
               const cat = DUE_KIND[it.kind] || _DEFAULT_DUE
               const sev = DUE_SEVERITY[it.severity] || DUE_SEVERITY.info
@@ -402,10 +402,10 @@ function DueSoon({ items, loading, error, t, onDismiss }) {
               return (
                 <li key={`${it.kind}-${it.ref_id}`} className="relative">
                   <span className={`absolute inset-y-0 left-0 w-1 ${sev.stripe}`} aria-hidden="true" />
-                  <div className="flex items-center pr-2 hover:bg-[var(--color-bg-tertiary)] transition-colors">
+                  <div className="flex items-center pr-2 hover:bg-(--color-bg-tertiary) transition-colors">
                     <Link
                       to={it.link}
-                      className="flex items-center gap-3 pl-5 pr-2 py-3 min-w-0 flex-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-inset"
+                      className="flex items-center gap-3 pl-5 pr-2 py-3 min-w-0 flex-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-(--color-accent) focus-visible:ring-inset"
                       aria-label={`${kindLabel} · ${it.title} · ${dueLabel(it)}${similar ? ` · ${similar}` : ''}`}
                     >
                       <span className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${cat.bg} ${cat.color}`} aria-hidden="true">
@@ -414,11 +414,11 @@ function DueSoon({ items, loading, error, t, onDismiss }) {
                         </svg>
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
+                        <p className="text-sm font-medium text-(--color-text-primary) truncate">
                           {it.title}
                           {it.count > 1 && (
                             <span
-                              className="ml-1.5 align-middle text-2xs font-semibold tabular-nums px-1.5 py-0.5 rounded-full bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]"
+                              className="ml-1.5 align-middle text-2xs font-semibold tabular-nums px-1.5 py-0.5 rounded-full bg-(--color-bg-tertiary) text-(--color-text-muted)"
                               title={similar}
                               aria-hidden="true"
                             >
@@ -426,7 +426,7 @@ function DueSoon({ items, loading, error, t, onDismiss }) {
                             </span>
                           )}
                         </p>
-                        <p className="text-xs text-[var(--color-text-muted)] truncate">
+                        <p className="text-xs text-(--color-text-muted) truncate">
                           <span className={cat.color}>{kindLabel}</span>
                           {it.vehicle_name && (
                             <>
@@ -445,7 +445,7 @@ function DueSoon({ items, loading, error, t, onDismiss }) {
                       onClick={() => onDismiss?.(it)}
                       title={t('due.dismiss') || 'Dismiss'}
                       aria-label={(t('due.dismissItem') || 'Dismiss {title}').replace('{title}', it.title)}
-                      className="shrink-0 p-2.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-secondary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+                      className="shrink-0 p-2.5 rounded-lg text-(--color-text-muted) hover:text-(--color-text-primary) hover:bg-(--color-bg-secondary) focus:outline-hidden focus-visible:ring-2 focus-visible:ring-(--color-accent)"
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -462,7 +462,7 @@ function DueSoon({ items, loading, error, t, onDismiss }) {
               onClick={() => setExpanded(v => !v)}
               aria-expanded={expanded}
               aria-controls="due-soon-list"
-              className="w-full flex items-center justify-center gap-1.5 px-4 py-3 text-xs font-semibold text-[var(--color-accent)] border-t border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-inset"
+              className="w-full flex items-center justify-center gap-1.5 px-4 py-3 text-xs font-semibold text-(--color-accent) border-t border-(--color-border) hover:bg-(--color-bg-tertiary) transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-(--color-accent) focus-visible:ring-inset"
             >
               {expanded
                 ? (t('due.showLess') || 'Show less')
@@ -752,7 +752,7 @@ export default function Dashboard() {
           {t('due.dismissed') || 'Dismissed'}
           <button
             type="button"
-            className="font-semibold text-[var(--color-accent)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] rounded"
+            className="font-semibold text-(--color-accent) focus:outline-hidden focus-visible:ring-2 focus-visible:ring-(--color-accent) rounded-sm"
             onClick={async () => {
               toast.dismiss(tst.id)
               try {
@@ -1174,23 +1174,23 @@ export default function Dashboard() {
       <button
         type="button"
         onClick={() => setChatOpen(true)}
-        className="w-full mb-4 flex items-center gap-3 text-left rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-card)] px-4 py-3 hover:border-[var(--color-accent)] hover:bg-[var(--color-bg-tertiary)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+        className="w-full mb-4 flex items-center gap-3 text-left rounded-xl border border-(--color-border) bg-(--color-bg-card) px-4 py-3 hover:border-(--color-accent) hover:bg-(--color-bg-tertiary) transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-(--color-accent)"
         aria-haspopup="dialog"
       >
-        <span className="shrink-0 w-10 h-10 rounded-lg bg-[var(--color-accent)]/10 text-[var(--color-accent)] flex items-center justify-center" aria-hidden="true">
+        <span className="shrink-0 w-10 h-10 rounded-lg bg-(--color-accent)/10 text-(--color-accent) flex items-center justify-center" aria-hidden="true">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="8" width="18" height="12" rx="2" /><path d="M12 8V5M9 3h6M8 13h.01M16 13h.01M9 17h6" />
           </svg>
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-2xs font-semibold uppercase tracking-wide text-[var(--color-accent)]">
+          <span className="block text-2xs font-semibold uppercase tracking-wide text-(--color-accent)">
             {t('dashboard.assistantEyebrow') || 'AI Assistant'}
           </span>
-          <span className="block text-sm text-[var(--color-text-primary)] truncate">
+          <span className="block text-sm text-(--color-text-primary) truncate">
             {t('dashboard.assistantPrompt') || 'How can I help you today?'}
           </span>
         </span>
-        <span className="shrink-0 inline-flex items-center gap-1 text-sm font-medium text-[var(--color-accent)]">
+        <span className="shrink-0 inline-flex items-center gap-1 text-sm font-medium text-(--color-accent)">
           {t('dashboard.assistantCta') || 'Chat'}
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <polyline points="9 18 15 12 9 6" />
@@ -1218,7 +1218,7 @@ export default function Dashboard() {
           {vehicles.length > 1 && !isReorderMode && (
             <button
               onClick={() => setIsReorderMode(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-(--color-bg-secondary) hover:bg-(--color-bg-tertiary) text-(--color-text-secondary) hover:text-(--color-text-primary) transition-colors"
               title={t('dashboard.reorderVehicles')}
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1234,14 +1234,14 @@ export default function Dashboard() {
             <>
               <button
                 onClick={cancelReorder}
-                className="px-3 py-1.5 text-sm rounded-lg bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors"
+                className="px-3 py-1.5 text-sm rounded-lg bg-(--color-bg-secondary) hover:bg-(--color-bg-tertiary) text-(--color-text-secondary) transition-colors"
                 disabled={isSavingOrder}
               >
                 {t('common.cancel')}
               </button>
               <button
                 onClick={saveVehicleOrder}
-                className="px-3 py-1.5 text-sm rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white transition-colors flex items-center gap-1.5"
+                className="px-3 py-1.5 text-sm rounded-lg bg-(--color-accent) hover:bg-(--color-accent-hover) text-white transition-colors flex items-center gap-1.5"
                 disabled={isSavingOrder}
               >
                 {isSavingOrder ? (
@@ -1278,9 +1278,9 @@ export default function Dashboard() {
       
       {/* Reorder Mode Instructions */}
       {isReorderMode && (
-        <div className="mb-4 p-3 rounded-lg bg-[var(--color-accent)]/10 border border-[var(--color-accent)]/20">
-          <p className="text-sm text-[var(--color-text-secondary)] flex items-center gap-2">
-            <svg className="w-5 h-5 text-[var(--color-accent)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <div className="mb-4 p-3 rounded-lg bg-(--color-accent)/10 border border-(--color-accent)/20">
+          <p className="text-sm text-(--color-text-secondary) flex items-center gap-2">
+            <svg className="w-5 h-5 text-(--color-accent)" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             {t('dashboard.reorderInstructions')}
@@ -1293,14 +1293,14 @@ export default function Dashboard() {
         <div
           role="status"
           aria-live="polite"
-          className="bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border)] text-center py-16 px-4"
+          className="bg-(--color-bg-card) rounded-xl border border-(--color-border) text-center py-16 px-4"
         >
-          <svg className="w-10 h-10 mx-auto mb-4 text-[var(--color-text-muted)] animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+          <svg className="w-10 h-10 mx-auto mb-4 text-(--color-text-muted) animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
           <h3 className="text-lg font-medium mb-2">{t('dashboard.startingUpTitle')}</h3>
-          <p className="text-sm text-[var(--color-text-secondary)] mb-6 max-w-md mx-auto">
+          <p className="text-sm text-(--color-text-secondary) mb-6 max-w-md mx-auto">
             {t('dashboard.startingUpMessage')}
           </p>
           <button
@@ -1314,10 +1314,10 @@ export default function Dashboard() {
           </button>
         </div>
       ) : vehicles.length === 0 ? (
-        <div className="bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border)] text-center py-16">
+        <div className="bg-(--color-bg-card) rounded-xl border border-(--color-border) text-center py-16">
           <span className="text-6xl mb-4 block">🚗</span>
           <h3 className="text-lg font-medium mb-2">{t('dashboard.noVehicles')}</h3>
-          <p className="text-sm text-[var(--color-text-secondary)] mb-6">
+          <p className="text-sm text-(--color-text-secondary) mb-6">
             {t('dashboard.addFirstVehicle')}
           </p>
           <Link to="/vehicles/add" className="btn btn-primary">
@@ -1343,18 +1343,18 @@ export default function Dashboard() {
               onTouchMove={(e) => handleTouchMove(e, vehicle)}
               onTouchEnd={handleTouchEnd}
               className={`
-                group bg-[var(--color-bg-card)] rounded-xl border overflow-hidden transition-all duration-300
+                group bg-(--color-bg-card) rounded-xl border overflow-hidden transition-all duration-300
                 ${isReorderMode 
-                  ? 'cursor-grab active:cursor-grabbing border-dashed border-2 border-[var(--color-accent)]/50' 
-                  : 'border-[var(--color-border)] hover:border-[var(--color-accent)] hover:shadow-lg hover:shadow-[var(--color-accent)]/10'}
-                ${dragOverVehicle?.id === vehicle.id ? 'ring-2 ring-[var(--color-accent)] scale-[1.02]' : ''}
+                  ? 'cursor-grab active:cursor-grabbing border-dashed border-2 border-(--color-accent)/50' 
+                  : 'border-(--color-border) hover:border-(--color-accent) hover:shadow-lg hover:shadow-(--color-accent)/10'}
+                ${dragOverVehicle?.id === vehicle.id ? 'ring-2 ring-(--color-accent) scale-[1.02]' : ''}
                 ${draggedVehicle?.id === vehicle.id ? 'opacity-50' : ''}
-                ${touchedVehicle?.id === vehicle.id ? 'ring-2 ring-[var(--color-accent)]' : ''}
+                ${touchedVehicle?.id === vehicle.id ? 'ring-2 ring-(--color-accent)' : ''}
               `}
             >
               {/* Drag Handle - only shown in reorder mode */}
               {isReorderMode && (
-                <div className="absolute top-2 left-2 z-10 w-8 h-8 rounded-lg bg-[var(--color-accent)] flex items-center justify-center text-white shadow-lg">
+                <div className="absolute top-2 left-2 z-10 w-8 h-8 rounded-lg bg-(--color-accent) flex items-center justify-center text-white shadow-lg">
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 8h16M4 16h16" />
                   </svg>
@@ -1363,7 +1363,7 @@ export default function Dashboard() {
               
               {/* Order Number Badge - only shown in reorder mode */}
               {isReorderMode && (
-                <div className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-[var(--color-bg-card)] border border-[var(--color-border)] flex items-center justify-center text-xs font-bold text-[var(--color-text-secondary)]">
+                <div className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-(--color-bg-card) border border-(--color-border) flex items-center justify-center text-xs font-bold text-(--color-text-secondary)">
                   {index + 1}
                 </div>
               )}
@@ -1372,7 +1372,7 @@ export default function Dashboard() {
               {isReorderMode ? (
                 <>
                   {/* Vehicle Image */}
-                  <div className="relative aspect-[16/10] bg-[var(--color-bg-tertiary)] overflow-hidden">
+                  <div className="relative aspect-16/10 bg-(--color-bg-tertiary) overflow-hidden">
                     {vehicle.photo_url || vehicle.photo ? (
                       <img 
                         src={vehicle.photo_url || vehicle.photo} 
@@ -1381,7 +1381,7 @@ export default function Dashboard() {
                         draggable={false}
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[var(--color-bg-secondary)] to-[var(--color-bg-tertiary)]">
+                      <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-(--color-bg-secondary) to-(--color-bg-tertiary)">
                         <span className="text-6xl opacity-30">🚗</span>
                       </div>
                     )}
@@ -1389,20 +1389,20 @@ export default function Dashboard() {
                   
                   {/* Vehicle Info */}
                   <div className="p-4">
-                    <h3 className="text-base font-bold mb-0.5 text-[var(--color-text-primary)]">{vehicle.name}</h3>
-                    <p className="text-sm text-[var(--color-text-secondary)] mb-2">
+                    <h3 className="text-base font-bold mb-0.5 text-(--color-text-primary)">{vehicle.name}</h3>
+                    <p className="text-sm text-(--color-text-secondary) mb-2">
                       {vehicle.make} {vehicle.model} ({vehicle.year})
                     </p>
                     
                     {vehicle.license_plate && (
-                      <span className="inline-block px-2.5 py-1 text-xs font-bold rounded bg-[var(--color-accent)] text-white mb-2">
+                      <span className="inline-block px-2.5 py-1 text-xs font-bold rounded-sm bg-(--color-accent) text-white mb-2">
                         {vehicle.license_plate}
                       </span>
                     )}
                     <HealthChip score={vehicle.health_score} t={t} spaced={!!vehicle.license_plate} />
 
-                    <p className="text-sm text-[var(--color-text-secondary)]">
-                      {t('dashboard.odometer')}: <span className="text-[var(--color-text-primary)] font-semibold">
+                    <p className="text-sm text-(--color-text-secondary)">
+                      {t('dashboard.odometer')}: <span className="text-(--color-text-primary) font-semibold">
                         {vehicle.current_mileage?.toLocaleString() || 0} {vehicle.distance_unit || 'km'}
                       </span>
                     </p>
@@ -1414,7 +1414,7 @@ export default function Dashboard() {
                   className="block"
                 >
                   {/* Vehicle Image */}
-                  <div className="relative aspect-[16/10] bg-[var(--color-bg-tertiary)] overflow-hidden">
+                  <div className="relative aspect-16/10 bg-(--color-bg-tertiary) overflow-hidden">
                     {vehicle.photo_url || vehicle.photo ? (
                       <img 
                         src={vehicle.photo_url || vehicle.photo} 
@@ -1422,7 +1422,7 @@ export default function Dashboard() {
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[var(--color-bg-secondary)] to-[var(--color-bg-tertiary)]">
+                      <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-(--color-bg-secondary) to-(--color-bg-tertiary)">
                         <span className="text-6xl opacity-30">🚗</span>
                       </div>
                     )}
@@ -1431,14 +1431,14 @@ export default function Dashboard() {
                     <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-1 group-hover:translate-y-0">
                       <button 
                         onClick={(e) => handleEditVehicle(e, vehicle.id)}
-                        className="w-8 h-8 rounded-lg bg-black/60 backdrop-blur-md flex items-center justify-center text-white hover:bg-[var(--color-accent)] transition-colors"
+                        className="w-8 h-8 rounded-lg bg-black/60 backdrop-blur-md flex items-center justify-center text-white hover:bg-(--color-accent) transition-colors"
                         title="Edit"
                       >
                         <span className="material-icons-outlined text-sm">edit</span>
                       </button>
                       <button 
                         onClick={(e) => handleViewDetails(e, vehicle.id)}
-                        className="w-8 h-8 rounded-lg bg-black/60 backdrop-blur-md flex items-center justify-center text-white hover:bg-[var(--color-accent)] transition-colors"
+                        className="w-8 h-8 rounded-lg bg-black/60 backdrop-blur-md flex items-center justify-center text-white hover:bg-(--color-accent) transition-colors"
                         title="Details"
                       >
                         <span className="material-icons-outlined text-sm">list</span>
@@ -1456,7 +1456,7 @@ export default function Dashboard() {
                     <div className="absolute bottom-2 left-2 flex items-center gap-1">
                       {vehicleInsurance[vehicle.id]?.expiring ? (
                         <div 
-                          className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/90 backdrop-blur-sm text-white text-xs font-medium shadow-lg"
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/90 backdrop-blur-xs text-white text-xs font-medium shadow-lg"
                           title={`${t('dashboard.insuranceExpiring') || 'Insurance expiring'}: ${formatDate(vehicleInsurance[vehicle.id].expiring.end_date)}`}
                         >
                           <span className="material-icons-outlined text-sm">warning</span>
@@ -1464,7 +1464,7 @@ export default function Dashboard() {
                         </div>
                       ) : vehicleInsurance[vehicle.id]?.active ? (
                         <div 
-                          className="flex items-center gap-1 px-2 py-1 rounded-lg bg-green-500/90 backdrop-blur-sm text-white text-xs font-medium shadow-lg"
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg bg-green-500/90 backdrop-blur-xs text-white text-xs font-medium shadow-lg"
                           title={t('dashboard.insuranceActive') || 'Insurance active'}
                         >
                           <span className="material-icons-outlined text-sm">verified_user</span>
@@ -1476,20 +1476,20 @@ export default function Dashboard() {
                   
                   {/* Vehicle Info */}
                   <div className="p-4">
-                    <h3 className="text-base font-bold mb-0.5 text-[var(--color-text-primary)]">{vehicle.name}</h3>
-                    <p className="text-sm text-[var(--color-text-secondary)] mb-2">
+                    <h3 className="text-base font-bold mb-0.5 text-(--color-text-primary)">{vehicle.name}</h3>
+                    <p className="text-sm text-(--color-text-secondary) mb-2">
                       {vehicle.make} {vehicle.model} ({vehicle.year})
                     </p>
                     
                     {vehicle.license_plate && (
-                      <span className="inline-block px-2.5 py-1 text-xs font-bold rounded bg-[var(--color-accent)] text-white mb-2">
+                      <span className="inline-block px-2.5 py-1 text-xs font-bold rounded-sm bg-(--color-accent) text-white mb-2">
                         {vehicle.license_plate}
                       </span>
                     )}
                     <HealthChip score={vehicle.health_score} t={t} spaced={!!vehicle.license_plate} />
 
-                    <p className="text-sm text-[var(--color-text-secondary)]">
-                      {t('dashboard.odometer')}: <span className="text-[var(--color-text-primary)] font-semibold">
+                    <p className="text-sm text-(--color-text-secondary)">
+                      {t('dashboard.odometer')}: <span className="text-(--color-text-primary) font-semibold">
                         {vehicle.current_mileage?.toLocaleString() || 0} {vehicle.distance_unit || 'km'}
                       </span>
                     </p>
@@ -1540,9 +1540,9 @@ export default function Dashboard() {
             transform: 'rotate(-2deg) scale(1.02)',
           }}
         >
-          <div className="bg-[var(--color-bg-card)] rounded-xl border-2 border-[var(--color-accent)] shadow-2xl shadow-[var(--color-accent)]/30 overflow-hidden opacity-90">
+          <div className="bg-(--color-bg-card) rounded-xl border-2 border-(--color-accent) shadow-2xl shadow-(--color-accent)/30 overflow-hidden opacity-90">
             {/* Drag indicator */}
-            <div className="absolute -top-2 left-1/2 -translate-x-1/2 bg-[var(--color-accent)] text-white text-xs px-3 py-1 rounded-full font-medium shadow-lg flex items-center gap-1">
+            <div className="absolute -top-2 left-1/2 -translate-x-1/2 bg-(--color-accent) text-white text-xs px-3 py-1 rounded-full font-medium shadow-lg flex items-center gap-1">
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
               </svg>
@@ -1550,7 +1550,7 @@ export default function Dashboard() {
             </div>
             
             {/* Vehicle Image */}
-            <div className="relative aspect-[16/10] bg-[var(--color-bg-tertiary)] overflow-hidden">
+            <div className="relative aspect-16/10 bg-(--color-bg-tertiary) overflow-hidden">
               {touchedVehicle.photo_url || touchedVehicle.photo ? (
                 <img 
                   src={touchedVehicle.photo_url || touchedVehicle.photo} 
@@ -1559,7 +1559,7 @@ export default function Dashboard() {
                   draggable={false}
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[var(--color-bg-secondary)] to-[var(--color-bg-tertiary)]">
+                <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-(--color-bg-secondary) to-(--color-bg-tertiary)">
                   <span className="text-5xl opacity-30">🚗</span>
                 </div>
               )}
@@ -1567,8 +1567,8 @@ export default function Dashboard() {
             
             {/* Vehicle Info */}
             <div className="p-3">
-              <h3 className="text-sm font-bold text-[var(--color-text-primary)]">{touchedVehicle.name}</h3>
-              <p className="text-xs text-[var(--color-text-secondary)]">
+              <h3 className="text-sm font-bold text-(--color-text-primary)">{touchedVehicle.name}</h3>
+              <p className="text-xs text-(--color-text-secondary)">
                 {touchedVehicle.make} {touchedVehicle.model}
               </p>
             </div>

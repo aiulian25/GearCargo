@@ -117,23 +117,23 @@ export default function FuelEntries() {
       {stats && (
         <div className="grid grid-cols-3 gap-2 mb-4">
           <div className="card text-center py-3">
-            <p className="text-lg font-bold text-[var(--color-accent)]">
+            <p className="text-lg font-bold text-(--color-accent)">
               {formatFuelEconomy(avgFuelEconomy, selectedVehicleUnit, 1, economyOpts).split(' ')[0]}
             </p>
-            <p className="text-2xs text-[var(--color-text-muted)]">{economyUnitLabel(selectedVehicleUnit)}</p>
+            <p className="text-2xs text-(--color-text-muted)">{economyUnitLabel(selectedVehicleUnit)}</p>
           </div>
           <div className="card text-center py-3">
             <p className="text-lg font-bold">
               {stats.total_liters != null
                 ? litersToDisplayVolume(stats.total_liters, user).toFixed(0) : 0}
             </p>
-            <p className="text-2xs text-[var(--color-text-muted)]">{volumeUnitLabel(user, t)}</p>
+            <p className="text-2xs text-(--color-text-muted)">{volumeUnitLabel(user, t)}</p>
           </div>
           <div className="card text-center py-3">
             <p className="text-lg font-bold">
               {stats.total_cost?.toFixed(0) || 0}
             </p>
-            <p className="text-2xs text-[var(--color-text-muted)]">Total Cost</p>
+            <p className="text-2xs text-(--color-text-muted)">Total Cost</p>
           </div>
         </div>
       )}
@@ -147,28 +147,28 @@ export default function FuelEntries() {
             className="w-full flex items-center justify-between py-1"
             aria-expanded={showStations}
           >
-            <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
+            <h3 className="text-sm font-medium text-(--color-text-secondary)">
               {t('stations.title') || 'Your stations'}
             </h3>
-            <span className={`material-icons-outlined icon-sm text-[var(--color-text-muted)] transition-transform ${showStations ? 'rotate-180' : ''}`}>
+            <span className={`material-icons-outlined icon-sm text-(--color-text-muted) transition-transform ${showStations ? 'rotate-180' : ''}`}>
               expand_more
             </span>
           </button>
 
           {showStations && (
-            <div className="mt-2 divide-y divide-[var(--color-border)]">
+            <div className="mt-2 divide-y divide-(--color-border)">
               {stations.map(s => (
                 <div key={s.name} className="flex items-center gap-3 py-2.5">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">
                       {s.name}
                       {s.name === cheapestName && (
-                        <span className="ml-1.5 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-2xs font-semibold bg-green-500/15 text-green-600 dark:text-green-400 align-middle">
+                        <span className="ml-1.5 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm text-2xs font-semibold bg-green-500/15 text-green-600 dark:text-green-400 align-middle">
                           ★ {t('stations.cheapest') || 'Best value'}
                         </span>
                       )}
                     </p>
-                    <p className="text-2xs text-[var(--color-text-muted)]">
+                    <p className="text-2xs text-(--color-text-muted)">
                       {s.fills} {t('stations.fills') || 'fills'}
                       {s.last_date && ` • ${formatDate(s.last_date)}`}
                     </p>
@@ -176,7 +176,7 @@ export default function FuelEntries() {
                   <div className="text-right shrink-0">
                     <p className="text-sm font-semibold tabular-nums whitespace-nowrap">
                       {s.avg_price != null ? s.avg_price.toFixed(2) : '--'}/L
-                      <span className="ml-1 text-2xs font-normal text-[var(--color-text-muted)]">
+                      <span className="ml-1 text-2xs font-normal text-(--color-text-muted)">
                         {t('stations.avgPrice') || 'avg price'}
                       </span>
                     </p>
@@ -216,7 +216,7 @@ export default function FuelEntries() {
               to={`/fuel/${entry.id}`}
               className="card flex items-center gap-3 touch-manipulation"
             >
-              <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+              <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
                 <span className="material-icons-outlined icon-sm text-amber-500">
                   local_gas_station
                 </span>
@@ -231,22 +231,22 @@ export default function FuelEntries() {
                     <span className="badge badge-sm bg-green-500/10 text-green-500">Full</span>
                   )}
                 </div>
-                <p className="text-2xs text-[var(--color-text-muted)]">
+                <p className="text-2xs text-(--color-text-muted)">
                   {formatDate(entry.date)} • {entry.mileage?.toLocaleString()} {vehicles.find(v => v.id === entry.vehicle_id)?.distance_unit || 'km'}
                   {vehicles.length > 1 && entry.vehicle_name && ` • ${entry.vehicle_name}`}
                 </p>
               </div>
               
-              <div className="text-right flex-shrink-0">
+              <div className="text-right shrink-0">
                 <p className="text-sm font-semibold">{entry.total_cost}</p>
                 {entry.consumption && (
-                  <p className="text-2xs text-[var(--color-text-muted)]">
+                  <p className="text-2xs text-(--color-text-muted)">
                     {formatFuelEconomy(entry.consumption, getVehicleDistanceUnit(entry.vehicle_id), 1, economyOpts)}
                   </p>
                 )}
               </div>
               
-              <span className="material-icons-outlined icon-sm text-[var(--color-text-muted)]">
+              <span className="material-icons-outlined icon-sm text-(--color-text-muted)">
                 chevron_right
               </span>
             </Link>

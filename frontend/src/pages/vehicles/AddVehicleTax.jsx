@@ -215,7 +215,7 @@ export default function AddVehicleTax() {
   return (
     <div className="pb-4">
       {/* Header */}
-      <div className="bg-[var(--color-bg-card)] border-b border-[var(--color-border)] px-4 py-3 flex items-center gap-3">
+      <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="btn-icon">
           {Icons.close}
         </button>
@@ -223,7 +223,7 @@ export default function AddVehicleTax() {
           <h1 className="text-base font-semibold">
             {isEditMode ? (t('common.edit') || 'Edit') + ' ' + (t('expenses.tax') || 'Tax') : (t('addTax.title') || 'Add Tax/Fee')}
           </h1>
-          <p className="text-xs text-[var(--color-text-secondary)]">{vehicle?.name}</p>
+          <p className="text-xs text-(--color-text-secondary)">{vehicle?.name}</p>
         </div>
         <button 
           onClick={handleSubmit(onSubmit)}
@@ -248,7 +248,7 @@ export default function AddVehicleTax() {
           </div>
           <div className="flex-1">
             <p className="font-medium">{vehicle?.name}</p>
-            <p className="text-xs text-[var(--color-text-secondary)]">
+            <p className="text-xs text-(--color-text-secondary)">
               {vehicle?.make} {vehicle?.model} • {vehicle?.license_plate}
             </p>
           </div>
@@ -257,7 +257,7 @@ export default function AddVehicleTax() {
         {/* Tax Details */}
         <div className="card space-y-4">
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('addTax.taxType') || 'Tax Type'} *
             </label>
             <select 
@@ -276,7 +276,7 @@ export default function AddVehicleTax() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addTax.paymentDate') || 'Payment Date'} *
               </label>
               <input
@@ -288,7 +288,7 @@ export default function AddVehicleTax() {
             
             <div className="flex gap-3">
               <div className="flex-1">
-                <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                <label className="block text-xs text-(--color-text-muted) mb-1">
                   {t('addTax.amount') || 'Amount'} ({currency.symbol}) *
                 </label>
                 <input
@@ -305,14 +305,14 @@ export default function AddVehicleTax() {
                   <p className="text-xs text-red-500 mt-1">{errors.amount.message}</p>
                 )}
               </div>
-              <CurrencySelect register={register} className="w-28 flex-shrink-0" />
+              <CurrencySelect register={register} className="w-28 shrink-0" />
             </div>
           </div>
 
           {/* F47 — payment status. 'paid' keeps today's behaviour; 'pending'
               creates an unpaid tax that ranks in the Coming-up feed until paid. */}
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('taxes.status') || 'Status'}
             </label>
             <select {...register('status')} className="input">
@@ -324,12 +324,12 @@ export default function AddVehicleTax() {
 
         {/* Validity Period */}
         <div className="card space-y-4">
-          <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
+          <h3 className="text-sm font-medium text-(--color-text-secondary)">
             {t('addTax.validityPeriod') || 'Validity Period'}
           </h3>
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('addTax.validUntil') || 'Valid Until'}
             </label>
             <input
@@ -349,14 +349,14 @@ export default function AddVehicleTax() {
               </div>
               <div className="flex-1">
                 <p className="font-medium text-sm">{t('addTax.linkedInsurance') || 'Linked Insurance'}</p>
-                <p className="text-xs text-[var(--color-text-muted)]">
+                <p className="text-xs text-(--color-text-muted)">
                   {t('addTax.linkedInsuranceHint') || 'Link this tax to an insurance policy (optional)'}
                 </p>
               </div>
             </div>
             
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addTax.selectInsurance') || 'Select Insurance Policy'}
               </label>
               <select
@@ -389,7 +389,7 @@ export default function AddVehicleTax() {
               </div>
               <div>
                 <p className="font-medium text-sm">{t('recurring.enableRecurring') || 'Recurring Payment'}</p>
-                <p className="text-xs text-[var(--color-text-muted)]">
+                <p className="text-xs text-(--color-text-muted)">
                   {t('recurring.taxDescription') || 'Automatically remind you when this tax is due again'}
                 </p>
               </div>
@@ -400,14 +400,14 @@ export default function AddVehicleTax() {
                 {...register('recurring')}
                 className="sr-only peer"
               />
-              <div className="w-11 h-6 bg-gray-200 dark:bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
+              <div className="w-11 h-6 bg-gray-200 dark:bg-gray-700 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:rtl:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:inset-s-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
             </label>
           </div>
           
           {isRecurring && (
-            <div className="space-y-4 pt-2 border-t border-[var(--color-border)]">
+            <div className="space-y-4 pt-2 border-t border-(--color-border)">
               <div>
-                <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                <label className="block text-xs text-(--color-text-muted) mb-1">
                   {t('recurring.frequency') || 'Frequency'}
                 </label>
                 <select
@@ -422,7 +422,7 @@ export default function AddVehicleTax() {
               </div>
               
               <div>
-                <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                <label className="block text-xs text-(--color-text-muted) mb-1">
                   {t('recurring.reminderDays') || 'Remind me (days before)'}
                 </label>
                 <select
@@ -448,12 +448,12 @@ export default function AddVehicleTax() {
         
         {/* Additional */}
         <div className="card space-y-4">
-          <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
+          <h3 className="text-sm font-medium text-(--color-text-secondary)">
             {t('addTax.additional') || 'Additional'}
           </h3>
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('addTax.referenceNumber') || 'Reference Number'}
             </label>
             <input
@@ -465,7 +465,7 @@ export default function AddVehicleTax() {
           </div>
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('addTax.notes') || 'Notes'}
             </label>
             <textarea

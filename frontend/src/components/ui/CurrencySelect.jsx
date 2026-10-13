@@ -22,7 +22,7 @@ export default function CurrencySelect({ register, name = 'currency', className 
   const { t } = useTranslation()
   return (
     <div className={className}>
-      <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+      <label className="block text-xs text-(--color-text-muted) mb-1">
         {t('settings.currency') || 'Currency'}
       </label>
       <select {...register(name)} className="input">

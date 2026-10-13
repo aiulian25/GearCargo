@@ -298,17 +298,17 @@ export default function VehicleAlerts() {
   return (
     <div className="pb-20">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-[var(--color-bg-primary)] border-b border-[var(--color-border)]">
+      <div className="sticky top-0 z-10 bg-(--color-bg-primary) border-b border-(--color-border)">
         <div className="flex items-center gap-3 p-4">
           <button 
             onClick={() => navigate(`/vehicles/${id}`)}
-            className="p-2 -ml-2 rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors"
+            className="p-2 -ml-2 rounded-lg hover:bg-(--color-bg-tertiary) transition-colors"
           >
             {Icons.arrowBack}
           </button>
           <div>
             <h1 className="text-lg font-semibold">{t('alerts.title') || 'Prediction Alerts'}</h1>
-            <p className="text-xs text-[var(--color-text-secondary)]">
+            <p className="text-xs text-(--color-text-secondary)">
               {vehicle?.make} {vehicle?.model}
             </p>
           </div>
@@ -347,13 +347,13 @@ export default function VehicleAlerts() {
               {Icons.check}
             </div>
             <h3 className="font-medium mb-1">{t('alerts.allGood') || 'All Good!'}</h3>
-            <p className="text-sm text-[var(--color-text-secondary)]">
+            <p className="text-sm text-(--color-text-secondary)">
               {t('alerts.noAlerts') || 'No upcoming maintenance alerts'}
             </p>
           </div>
         ) : (
           <div className="space-y-3">
-            <h2 className="text-sm font-medium text-[var(--color-text-secondary)]">
+            <h2 className="text-sm font-medium text-(--color-text-secondary)">
               {t('alerts.predictions') || 'Predictions'}
             </h2>
             
@@ -364,7 +364,7 @@ export default function VehicleAlerts() {
               return (
                 <div 
                   key={prediction.id}
-                  className={`bg-[var(--color-bg-secondary)] rounded-xl p-4 border-l-4 ${typeStyle.borderColor}`}
+                  className={`bg-(--color-bg-secondary) rounded-xl p-4 border-l-4 ${typeStyle.borderColor}`}
                 >
                   <div className="flex items-start gap-3">
                     <div className={`p-2 rounded-lg ${typeStyle.bgColor} ${typeStyle.color}`}>
@@ -379,14 +379,14 @@ export default function VehicleAlerts() {
                         </span>
                       </div>
                       
-                      <p className="text-sm text-[var(--color-text-secondary)] mb-2">
+                      <p className="text-sm text-(--color-text-secondary) mb-2">
                         {prediction.description}
                       </p>
                       
                       {prediction.daysUntil !== undefined && (
                         <div className="flex items-center gap-2 text-xs">
                           {Icons.calendar}
-                          <span className={prediction.daysUntil <= 7 ? 'text-red-500 font-medium' : 'text-[var(--color-text-secondary)]'}>
+                          <span className={prediction.daysUntil <= 7 ? 'text-red-500 font-medium' : 'text-(--color-text-secondary)'}>
                             {prediction.daysUntil <= 0 
                               ? t('alerts.overdue') || 'Overdue!'
                               : `${prediction.daysUntil} ${t('common.days') || 'days'} ${t('alerts.remaining') || 'remaining'}`
@@ -398,12 +398,12 @@ export default function VehicleAlerts() {
                       {prediction.progress !== undefined && (
                         <div className="mt-2">
                           <div className="flex items-center justify-between text-xs mb-1">
-                            <span className="text-[var(--color-text-secondary)]">
+                            <span className="text-(--color-text-secondary)">
                               {t('alerts.progress') || 'Progress'}
                             </span>
                             <span className="font-medium">{Math.round(prediction.progress)}%</span>
                           </div>
-                          <div className="h-2 bg-[var(--color-bg-tertiary)] rounded-full overflow-hidden">
+                          <div className="h-2 bg-(--color-bg-tertiary) rounded-full overflow-hidden">
                             <div 
                               className={`h-full rounded-full transition-all ${
                                 prediction.progress >= 90 ? 'bg-red-500' : 
@@ -423,14 +423,14 @@ export default function VehicleAlerts() {
         )}
         
         {/* Info card */}
-        <div className="bg-[var(--color-bg-secondary)] rounded-xl p-4 mt-6">
+        <div className="bg-(--color-bg-secondary) rounded-xl p-4 mt-6">
           <div className="flex items-start gap-3">
             <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500">
               {Icons.trendUp}
             </div>
             <div>
               <h3 className="font-medium mb-1">{t('alerts.howItWorks') || 'How It Works'}</h3>
-              <p className="text-sm text-[var(--color-text-secondary)]">
+              <p className="text-sm text-(--color-text-secondary)">
                 {t('alerts.howItWorksDesc') || 'Predictions are based on your vehicle\'s mileage, service history, and typical maintenance intervals. Keep your records updated for accurate predictions.'}
               </p>
             </div>

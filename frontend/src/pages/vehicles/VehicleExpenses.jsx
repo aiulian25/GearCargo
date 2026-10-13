@@ -182,11 +182,11 @@ const DonutChart = ({ data, centerText, centerSubtext }) => {
           <div key={i} className="flex items-center justify-between text-sm">
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
-              <span className="text-[var(--color-text-primary)]">{item.label}</span>
+              <span className="text-(--color-text-primary)">{item.label}</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[var(--color-accent)]">{item.value.toFixed(2)}</span>
-              <span className="text-[var(--color-text-muted)]">({((item.value / (total || 1)) * 100).toFixed(1)}%)</span>
+              <span className="text-(--color-accent)">{item.value.toFixed(2)}</span>
+              <span className="text-(--color-text-muted)">({((item.value / (total || 1)) * 100).toFixed(1)}%)</span>
             </div>
           </div>
         ))}
@@ -204,8 +204,8 @@ const BarChart = ({ data, categories, title, onMonthClick, selectedMonth, hintTe
 
   return (
     <div className="h-full flex flex-col">
-      <h3 className="text-[var(--color-accent)] text-sm font-medium mb-1 text-center">{title}</h3>
-      {hintText && <p className="text-[10px] text-center text-[var(--color-text-muted)] mb-3">{hintText}</p>}
+      <h3 className="text-(--color-accent) text-sm font-medium mb-1 text-center">{title}</h3>
+      {hintText && <p className="text-[10px] text-center text-(--color-text-muted) mb-3">{hintText}</p>}
 
       <div className="flex-1 flex items-end gap-1 px-2">
         {MONTH_NAMES_SHORT.map((month, i) => {
@@ -225,7 +225,7 @@ const BarChart = ({ data, categories, title, onMonthClick, selectedMonth, hintTe
             >
               <div className={`w-full flex flex-col justify-end h-32 relative transition-opacity duration-200 ${isDimmed ? 'opacity-30' : 'opacity-100'}`}>
                 {isSelected && (
-                  <div className="absolute inset-x-0 -top-0.5 bottom-0 rounded border-2 border-[var(--color-accent)] pointer-events-none" />
+                  <div className="absolute inset-x-0 -top-0.5 bottom-0 rounded-sm border-2 border-(--color-accent) pointer-events-none" />
                 )}
                 {/* Stacked bars */}
                 <div
@@ -239,7 +239,7 @@ const BarChart = ({ data, categories, title, onMonthClick, selectedMonth, hintTe
                   }}
                 />
               </div>
-              <span className={`text-[10px] mt-1 transition-colors duration-200 ${isSelected ? 'text-[var(--color-accent)] font-semibold' : 'text-[var(--color-text-muted)]'}`}>
+              <span className={`text-[10px] mt-1 transition-colors duration-200 ${isSelected ? 'text-(--color-accent) font-semibold' : 'text-(--color-text-muted)'}`}>
                 {month}
               </span>
             </div>
@@ -252,7 +252,7 @@ const BarChart = ({ data, categories, title, onMonthClick, selectedMonth, hintTe
         {categories.map((cat, i) => (
           <span
             key={i}
-            className="px-2 py-0.5 rounded text-xs font-medium"
+            className="px-2 py-0.5 rounded-sm text-xs font-medium"
             style={{ backgroundColor: cat.color, color: '#fff' }}
           >
             {cat.label}
@@ -281,14 +281,14 @@ const TabButton = ({ active, icon, label, count, onClick, tabId }) => (
     onClick={onClick}
     className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
       active 
-        ? `${tabColors[tabId] || 'bg-[var(--color-accent)]'} text-white` 
-        : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-bg-secondary)]'
+        ? `${tabColors[tabId] || 'bg-(--color-accent)'} text-white` 
+        : 'bg-(--color-bg-tertiary) text-(--color-text-primary) hover:bg-(--color-bg-secondary)'
     }`}
   >
-    <span className={active ? 'text-white' : 'text-[var(--color-text-secondary)]'}>{icon}</span>
+    <span className={active ? 'text-white' : 'text-(--color-text-secondary)'}>{icon}</span>
     <span>{label}</span>
     {count !== undefined && count > 0 && (
-      <span className={`text-xs ${active ? 'text-white/80' : 'text-[var(--color-text-muted)]'}`}>({count})</span>
+      <span className={`text-xs ${active ? 'text-white/80' : 'text-(--color-text-muted)'}`}>({count})</span>
     )}
   </button>
 )
@@ -794,7 +794,7 @@ export default function VehicleExpenses() {
   // Render attachment button for entries
   const renderAttachmentButton = (entry) => {
     const attachments = entry.attachments || []
-    if (attachments.length === 0) return <span className="text-[var(--color-text-muted)]">-</span>
+    if (attachments.length === 0) return <span className="text-(--color-text-muted)">-</span>
     
     const ocrIndex = attachments.findIndex(a => a.ocr_processed && a.has_text)
     const hasOcrText = ocrIndex !== -1
@@ -812,7 +812,7 @@ export default function VehicleExpenses() {
         {hasOcrText && (
           <button
             onClick={(e) => { e.stopPropagation(); openAttachmentViewer(attachments, ocrIndex, true) }}
-            className="flex items-center gap-0.5 px-1 py-0.5 rounded text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 transition-colors"
+            className="flex items-center gap-0.5 px-1 py-0.5 rounded-sm text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 transition-colors"
             title={t('attachments.ocrBadgeTitle') || 'Has scanned text — tap to view'}
           >
             {Icons.scan}
@@ -841,7 +841,7 @@ export default function VehicleExpenses() {
         return (
           <table className="w-full">
             <thead>
-              <tr className="text-left text-[var(--color-text-secondary)] text-sm border-b border-[var(--color-border)]">
+              <tr className="text-left text-(--color-text-secondary) text-sm border-b border-(--color-border)">
                 <th className="pb-3 px-4">{t('common.date') || 'Date'}</th>
                 <th className="pb-3 px-4">{t('addFuel.odometer') || 'Odometer'}</th>
                 <th className="pb-3 px-4">{usesGallons(user) ? (t('addFuel.gallons') || 'Gallons') : (t('addFuel.liters') || 'Liters')}</th>
@@ -855,16 +855,16 @@ export default function VehicleExpenses() {
             </thead>
             <tbody>
               {fuelEntries.map(entry => (
-                <tr key={entry.id} className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)]">
+                <tr key={entry.id} className="border-b border-(--color-border) hover:bg-(--color-bg-tertiary)">
                   <td className="py-3 px-4">{formatDate(entry.date)}</td>
                   <td className="py-3 px-4">{entry.odometer?.toLocaleString()} {vehicle?.distance_unit || 'km'}</td>
                   <td className="py-3 px-4">
                     {entry.liters != null ? litersToDisplayVolume(entry.liters, user).toFixed(2) : '--'} {volumeUnitLabel(user, t)}
                   </td>
-                  <td className="py-3 px-4 text-[var(--color-accent)]">
+                  <td className="py-3 px-4 text-(--color-accent)">
                     {formatCurrency(entry.price_per_liter != null ? pricePerLiterToDisplay(entry.price_per_liter, user) : entry.price_per_liter)}
                   </td>
-                  <td className="py-3 px-4 text-[var(--color-accent)] font-medium">{formatCurrency(entry.total_price)}</td>
+                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.total_price)}</td>
                   <td className="py-3 px-4">{entry.fuel_type || '-'}</td>
                   <td className="py-3 px-4">{entry.station || '-'}</td>
                   <td className="py-3 px-4">
@@ -874,7 +874,7 @@ export default function VehicleExpenses() {
                     <div className="flex items-center gap-2">
                       <button 
                         onClick={() => handleEdit('fuel', entry.id)}
-                        className="text-[var(--color-accent)] hover:text-[var(--color-accent)] p-1"
+                        className="text-(--color-accent) hover:text-(--color-accent) p-1"
                         title={t('common.edit') || 'Edit'}
                       >
                         {Icons.edit}
@@ -891,7 +891,7 @@ export default function VehicleExpenses() {
                 </tr>
               ))}
               {fuelEntries.length === 0 && (
-                <tr><td colSpan={9} className="py-8 text-center text-[var(--color-text-muted)]">{t('expenses.noEntries') || 'No entries found'}</td></tr>
+                <tr><td colSpan={9} className="py-8 text-center text-(--color-text-muted)">{t('expenses.noEntries') || 'No entries found'}</td></tr>
               )}
             </tbody>
           </table>
@@ -901,7 +901,7 @@ export default function VehicleExpenses() {
         return (
           <table className="w-full">
             <thead>
-              <tr className="text-left text-[var(--color-text-secondary)] text-sm border-b border-[var(--color-border)]">
+              <tr className="text-left text-(--color-text-secondary) text-sm border-b border-(--color-border)">
                 <th className="pb-3 px-4">{t('common.date') || 'Date'}</th>
                 <th className="pb-3 px-4">{t('addService.serviceType') || 'Service Type'}</th>
                 <th className="pb-3 px-4">{t('addFuel.odometer') || 'Odometer'}</th>
@@ -915,18 +915,18 @@ export default function VehicleExpenses() {
             </thead>
             <tbody>
               {serviceEntries.map(entry => (
-                <tr key={entry.id} className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)]">
+                <tr key={entry.id} className="border-b border-(--color-border) hover:bg-(--color-bg-tertiary)">
                   <td className="py-3 px-4">{formatDate(entry.date)}</td>
                   <td className="py-3 px-4">{(entry.service_types?.length > 0 ? entry.service_types.map(st => st.replace(/_/g, ' ')).join(', ') : entry.service_type || entry.title || '-')}</td>
                   <td className="py-3 px-4">{entry.odometer?.toLocaleString()} {vehicle?.distance_unit || 'km'}</td>
                   <td className="py-3 px-4">{formatCurrency(entry.parts_cost || 0)}</td>
                   <td className="py-3 px-4">{formatCurrency(entry.labor_cost || 0)}</td>
-                  <td className="py-3 px-4 text-[var(--color-accent)] font-medium">{formatCurrency(entry.amount)}</td>
+                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.amount)}</td>
                   <td className="py-3 px-4">
                     <div title={entry.work_order_number ? `${t('addService.workOrder') || 'Work order #'}: ${entry.work_order_number}` : undefined}>
                       <span>{entry.provider || '-'}</span>
                       {entry.work_order_number && (
-                        <span className="block text-xs text-[var(--color-text-muted)]">
+                        <span className="block text-xs text-(--color-text-muted)">
                           #{entry.work_order_number}
                         </span>
                       )}
@@ -937,7 +937,7 @@ export default function VehicleExpenses() {
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => handleEdit('service', entry.id)}
-                        className="text-[var(--color-accent)] hover:text-[var(--color-accent)] p-1"
+                        className="text-(--color-accent) hover:text-(--color-accent) p-1"
                         title={t('common.edit') || 'Edit'}
                       >
                         {Icons.edit}
@@ -954,7 +954,7 @@ export default function VehicleExpenses() {
                 </tr>
               ))}
               {serviceEntries.length === 0 && (
-                <tr><td colSpan={9} className="py-8 text-center text-[var(--color-text-muted)]">{t('expenses.noEntries') || 'No entries found'}</td></tr>
+                <tr><td colSpan={9} className="py-8 text-center text-(--color-text-muted)">{t('expenses.noEntries') || 'No entries found'}</td></tr>
               )}
             </tbody>
           </table>
@@ -964,7 +964,7 @@ export default function VehicleExpenses() {
         return (
           <table className="w-full">
             <thead>
-              <tr className="text-left text-[var(--color-text-secondary)] text-sm border-b border-[var(--color-border)]">
+              <tr className="text-left text-(--color-text-secondary) text-sm border-b border-(--color-border)">
                 <th className="pb-3 px-4">{t('common.date') || 'Date'}</th>
                 <th className="pb-3 px-4">{t('addTax.taxType') || 'Tax Type'}</th>
                 <th className="pb-3 px-4">{t('addTax.amount') || 'Amount'}</th>
@@ -977,7 +977,7 @@ export default function VehicleExpenses() {
             </thead>
             <tbody>
               {taxEntries.map(entry => (
-                <tr key={entry.id} className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)]">
+                <tr key={entry.id} className="border-b border-(--color-border) hover:bg-(--color-bg-tertiary)">
                   <td className="py-3 px-4">{formatDate(entry.date)}</td>
                   <td className="py-3 px-4">
                     <span className="inline-flex items-center gap-2">
@@ -989,7 +989,7 @@ export default function VehicleExpenses() {
                       )}
                     </span>
                   </td>
-                  <td className="py-3 px-4 text-[var(--color-accent)] font-medium">{formatCurrency(entry.amount)}</td>
+                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.amount)}</td>
                   <td className="py-3 px-4">{formatDate(entry.due_date)}</td>
                   <td className="py-3 px-4">
                     {entry.insurance_policy ? (
@@ -1015,7 +1015,7 @@ export default function VehicleExpenses() {
                       )}
                       <button
                         onClick={() => handleEdit('tax', entry.id)}
-                        className="text-[var(--color-accent)] hover:text-[var(--color-accent)] p-1"
+                        className="text-(--color-accent) hover:text-(--color-accent) p-1"
                         title={t('common.edit') || 'Edit'}
                       >
                         {Icons.edit}
@@ -1041,7 +1041,7 @@ export default function VehicleExpenses() {
                 </tr>
               ))}
               {taxEntries.length === 0 && (
-                <tr><td colSpan={8} className="py-8 text-center text-[var(--color-text-muted)]">{t('expenses.noEntries') || 'No entries found'}</td></tr>
+                <tr><td colSpan={8} className="py-8 text-center text-(--color-text-muted)">{t('expenses.noEntries') || 'No entries found'}</td></tr>
               )}
             </tbody>
           </table>
@@ -1051,7 +1051,7 @@ export default function VehicleExpenses() {
         return (
           <table className="w-full">
             <thead>
-              <tr className="text-left text-[var(--color-text-secondary)] text-sm border-b border-[var(--color-border)]">
+              <tr className="text-left text-(--color-text-secondary) text-sm border-b border-(--color-border)">
                 <th className="pb-3 px-4">{t('common.date') || 'Date'}</th>
                 <th className="pb-3 px-4">{t('addParking.location') || 'Location'}</th>
                 <th className="pb-3 px-4">{t('addParking.parkingType') || 'Type'}</th>
@@ -1063,7 +1063,7 @@ export default function VehicleExpenses() {
             </thead>
             <tbody>
               {parkingEntries.map(entry => (
-                <tr key={entry.id} className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)]">
+                <tr key={entry.id} className="border-b border-(--color-border) hover:bg-(--color-bg-tertiary)">
                   <td className="py-3 px-4">{formatDate(entry.date)}</td>
                   <td className="py-3 px-4">{entry.location || '-'}</td>
                   <td className="py-3 px-4">
@@ -1072,14 +1072,14 @@ export default function VehicleExpenses() {
                       <div className="mt-1"><RecurringChip entry={entry} t={t} /></div>
                     )}
                   </td>
-                  <td className="py-3 px-4 text-[var(--color-accent)] font-medium">{formatCurrency(entry.amount)}</td>
+                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.amount)}</td>
                   <td className="py-3 px-4">{entry.duration || '-'}</td>
                   <td className="py-3 px-4">{renderAttachmentButton(entry)}</td>
                   <td className="py-3 px-4">
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => handleEdit('parking', entry.id)}
-                        className="text-[var(--color-accent)] hover:text-[var(--color-accent)] p-1"
+                        className="text-(--color-accent) hover:text-(--color-accent) p-1"
                         title={t('common.edit') || 'Edit'}
                       >
                         {Icons.edit}
@@ -1105,7 +1105,7 @@ export default function VehicleExpenses() {
                 </tr>
               ))}
               {parkingEntries.length === 0 && (
-                <tr><td colSpan={7} className="py-8 text-center text-[var(--color-text-muted)]">{t('expenses.noEntries') || 'No entries found'}</td></tr>
+                <tr><td colSpan={7} className="py-8 text-center text-(--color-text-muted)">{t('expenses.noEntries') || 'No entries found'}</td></tr>
               )}
             </tbody>
           </table>
@@ -1115,7 +1115,7 @@ export default function VehicleExpenses() {
         return (
           <table className="w-full">
             <thead>
-              <tr className="text-left text-[var(--color-text-secondary)] text-sm border-b border-[var(--color-border)]">
+              <tr className="text-left text-(--color-text-secondary) text-sm border-b border-(--color-border)">
                 <th className="pb-3 px-4">{t('common.date') || 'Date'}</th>
                 <th className="pb-3 px-4">{t('addRepair.repairType') || 'Repair Type'}</th>
                 <th className="pb-3 px-4">{t('addFuel.odometer') || 'Odometer'}</th>
@@ -1129,13 +1129,13 @@ export default function VehicleExpenses() {
             </thead>
             <tbody>
               {repairEntries.map(entry => (
-                <tr key={entry.id} className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)]">
+                <tr key={entry.id} className="border-b border-(--color-border) hover:bg-(--color-bg-tertiary)">
                   <td className="py-3 px-4">{formatDate(entry.date)}</td>
                   <td className="py-3 px-4">
                     <div title={entry.root_cause ? `${t('addRepair.rootCause') || 'Root cause'}: ${entry.root_cause}` : undefined}>
                       <span>{entry.repair_type || entry.title || '-'}</span>
                       {entry.root_cause && (
-                        <span className="block text-xs text-[var(--color-text-muted)] max-w-xs truncate">
+                        <span className="block text-xs text-(--color-text-muted) max-w-xs truncate">
                           {entry.root_cause}
                         </span>
                       )}
@@ -1144,14 +1144,14 @@ export default function VehicleExpenses() {
                   <td className="py-3 px-4">{entry.odometer?.toLocaleString()} {vehicle?.distance_unit || 'km'}</td>
                   <td className="py-3 px-4">{formatCurrency(entry.parts_cost || 0)}</td>
                   <td className="py-3 px-4">{formatCurrency(entry.labor_cost || 0)}</td>
-                  <td className="py-3 px-4 text-[var(--color-accent)] font-medium">{formatCurrency(entry.amount)}</td>
+                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.amount)}</td>
                   <td className="py-3 px-4">{entry.provider || '-'}</td>
                   <td className="py-3 px-4">{renderAttachmentButton(entry)}</td>
                   <td className="py-3 px-4">
                     <div className="flex items-center gap-2">
                       <button 
                         onClick={() => handleEdit('repair', entry.id)}
-                        className="text-[var(--color-accent)] hover:text-[var(--color-accent)] p-1"
+                        className="text-(--color-accent) hover:text-(--color-accent) p-1"
                         title={t('common.edit') || 'Edit'}
                       >
                         {Icons.edit}
@@ -1168,7 +1168,7 @@ export default function VehicleExpenses() {
                 </tr>
               ))}
               {repairEntries.length === 0 && (
-                <tr><td colSpan={9} className="py-8 text-center text-[var(--color-text-muted)]">{t('expenses.noEntries') || 'No entries found'}</td></tr>
+                <tr><td colSpan={9} className="py-8 text-center text-(--color-text-muted)">{t('expenses.noEntries') || 'No entries found'}</td></tr>
               )}
             </tbody>
           </table>
@@ -1178,7 +1178,7 @@ export default function VehicleExpenses() {
         return (
           <table className="w-full">
             <thead>
-              <tr className="text-left text-[var(--color-text-secondary)] text-sm border-b border-[var(--color-border)]">
+              <tr className="text-left text-(--color-text-secondary) text-sm border-b border-(--color-border)">
                 <th className="pb-3 px-4">{t('addInsurance.provider') || 'Provider'}</th>
                 <th className="pb-3 px-4">{t('addInsurance.policyNumber') || 'Policy #'}</th>
                 <th className="pb-3 px-4">{t('addInsurance.policyType') || 'Type'}</th>
@@ -1198,12 +1198,12 @@ export default function VehicleExpenses() {
                   entry.agent_name || entry.policy_number || entry.coverage_amount != null || entry.deductible != null
                 return (
                 <Fragment key={entry.id}>
-                <tr className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)]">
+                <tr className="border-b border-(--color-border) hover:bg-(--color-bg-tertiary)">
                   <td className="py-3 px-4 font-medium">
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => setExpandedInsurance(isOpen ? null : entry.id)}
-                        className="text-[var(--color-text-muted)] hover:text-[var(--color-accent)] p-0.5 flex-shrink-0 transition-transform"
+                        className="text-(--color-text-muted) hover:text-(--color-accent) p-0.5 shrink-0 transition-transform"
                         style={{ transform: isOpen ? 'rotate(180deg)' : 'none' }}
                         aria-expanded={isOpen}
                         aria-label={t('insurance.contactDetails') || 'Contact details'}
@@ -1221,7 +1221,7 @@ export default function VehicleExpenses() {
                   </td>
                   <td className="py-3 px-4">{entry.policy_number || '-'}</td>
                   <td className="py-3 px-4 capitalize">{entry.policy_type?.replace('_', ' ') || '-'}</td>
-                  <td className="py-3 px-4 text-[var(--color-accent)] font-medium">{formatCurrency(entry.premium)}</td>
+                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.premium)}</td>
                   <td className="py-3 px-4 capitalize">{entry.payment_frequency || '-'}</td>
                   <td className="py-3 px-4">{formatDate(entry.start_date)}</td>
                   <td className="py-3 px-4">{formatDate(entry.end_date)}</td>
@@ -1229,7 +1229,7 @@ export default function VehicleExpenses() {
                     <span className={`px-2 py-0.5 rounded text-xs ${
                       entry.status === 'active' ? 'bg-green-500/20 text-green-400' :
                       entry.status === 'expired' ? 'bg-red-500/20 text-red-400' :
-                      'bg-gray-500/20 text-[var(--color-text-secondary)]'
+                      'bg-gray-500/20 text-(--color-text-secondary)'
                     }`}>
                       {entry.status || 'active'}
                     </span>
@@ -1241,7 +1241,7 @@ export default function VehicleExpenses() {
                     <div className="flex items-center gap-2">
                       <button 
                         onClick={() => handleEdit('insurance', entry.id)}
-                        className="text-[var(--color-accent)] hover:text-[var(--color-accent)] p-1"
+                        className="text-(--color-accent) hover:text-(--color-accent) p-1"
                         title={t('common.edit') || 'Edit'}
                       >
                         {Icons.edit}
@@ -1266,19 +1266,19 @@ export default function VehicleExpenses() {
                   </td>
                 </tr>
                 {isOpen && (
-                  <tr className="border-b border-[var(--color-border)] bg-[var(--color-bg-tertiary)]/40">
+                  <tr className="border-b border-(--color-border) bg-(--color-bg-tertiary)/40">
                     <td colSpan={10} className="px-4 py-4">
                       {hasContact ? (
                         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 text-sm">
                           {/* Policy number + copy */}
                           {entry.policy_number && (
                             <div>
-                              <p className="text-2xs uppercase tracking-wide text-[var(--color-text-muted)] mb-0.5">{t('addInsurance.policyNumber') || 'Policy #'}</p>
+                              <p className="text-2xs uppercase tracking-wide text-(--color-text-muted) mb-0.5">{t('addInsurance.policyNumber') || 'Policy #'}</p>
                               <div className="flex items-center gap-2">
                                 <span className="font-mono break-all">{entry.policy_number}</span>
                                 <button
                                   onClick={() => copyPolicyNumber(entry.policy_number)}
-                                  className="text-[var(--color-text-muted)] hover:text-[var(--color-accent)] flex-shrink-0"
+                                  className="text-(--color-text-muted) hover:text-(--color-accent) shrink-0"
                                   aria-label={t('insurance.copyPolicyNumber') || 'Copy policy number'}
                                   title={t('insurance.copyPolicyNumber') || 'Copy policy number'}
                                 >
@@ -1290,25 +1290,25 @@ export default function VehicleExpenses() {
                           {/* Claims line */}
                           {entry.claims_phone && (
                             <div>
-                              <p className="text-2xs uppercase tracking-wide text-[var(--color-text-muted)] mb-0.5">{t('insurance.claimsPhone') || 'Claims line'}</p>
-                              <a href={`tel:${entry.claims_phone}`} className="inline-flex items-center gap-1.5 text-[var(--color-accent)] hover:underline">
-                                <span className="flex-shrink-0">{Icons.phone}</span>{entry.claims_phone}
+                              <p className="text-2xs uppercase tracking-wide text-(--color-text-muted) mb-0.5">{t('insurance.claimsPhone') || 'Claims line'}</p>
+                              <a href={`tel:${entry.claims_phone}`} className="inline-flex items-center gap-1.5 text-(--color-accent) hover:underline">
+                                <span className="shrink-0">{Icons.phone}</span>{entry.claims_phone}
                               </a>
                             </div>
                           )}
                           {/* Agent */}
                           {(entry.agent_name || entry.agent_phone || entry.agent_email) && (
                             <div>
-                              <p className="text-2xs uppercase tracking-wide text-[var(--color-text-muted)] mb-0.5">{t('insurance.agent') || 'Agent'}</p>
-                              {entry.agent_name && <p className="text-[var(--color-text-secondary)]">{entry.agent_name}</p>}
+                              <p className="text-2xs uppercase tracking-wide text-(--color-text-muted) mb-0.5">{t('insurance.agent') || 'Agent'}</p>
+                              {entry.agent_name && <p className="text-(--color-text-secondary)">{entry.agent_name}</p>}
                               {entry.agent_phone && (
-                                <a href={`tel:${entry.agent_phone}`} className="inline-flex items-center gap-1.5 text-[var(--color-accent)] hover:underline">
-                                  <span className="flex-shrink-0">{Icons.phone}</span>{entry.agent_phone}
+                                <a href={`tel:${entry.agent_phone}`} className="inline-flex items-center gap-1.5 text-(--color-accent) hover:underline">
+                                  <span className="shrink-0">{Icons.phone}</span>{entry.agent_phone}
                                 </a>
                               )}
                               {entry.agent_email && (
-                                <a href={`mailto:${entry.agent_email}`} className="mt-0.5 flex items-center gap-1.5 text-[var(--color-accent)] hover:underline break-all">
-                                  <span className="flex-shrink-0">{Icons.mail}</span>{entry.agent_email}
+                                <a href={`mailto:${entry.agent_email}`} className="mt-0.5 flex items-center gap-1.5 text-(--color-accent) hover:underline break-all">
+                                  <span className="shrink-0">{Icons.mail}</span>{entry.agent_email}
                                 </a>
                               )}
                             </div>
@@ -1316,19 +1316,19 @@ export default function VehicleExpenses() {
                           {/* Coverage / deductible */}
                           {entry.coverage_amount != null && (
                             <div>
-                              <p className="text-2xs uppercase tracking-wide text-[var(--color-text-muted)] mb-0.5">{t('addInsurance.coverageAmount') || 'Coverage'}</p>
+                              <p className="text-2xs uppercase tracking-wide text-(--color-text-muted) mb-0.5">{t('addInsurance.coverageAmount') || 'Coverage'}</p>
                               <span>{formatCurrency(entry.coverage_amount)}</span>
                             </div>
                           )}
                           {entry.deductible != null && (
                             <div>
-                              <p className="text-2xs uppercase tracking-wide text-[var(--color-text-muted)] mb-0.5">{t('addInsurance.deductible') || 'Deductible'}</p>
+                              <p className="text-2xs uppercase tracking-wide text-(--color-text-muted) mb-0.5">{t('addInsurance.deductible') || 'Deductible'}</p>
                               <span>{formatCurrency(entry.deductible)}</span>
                             </div>
                           )}
                         </div>
                       ) : (
-                        <p className="text-xs text-[var(--color-text-muted)]">{t('insurance.noContactDetails') || 'No contact details saved for this policy.'}</p>
+                        <p className="text-xs text-(--color-text-muted)">{t('insurance.noContactDetails') || 'No contact details saved for this policy.'}</p>
                       )}
                     </td>
                   </tr>
@@ -1337,7 +1337,7 @@ export default function VehicleExpenses() {
                 )
               })}
               {insuranceEntries.length === 0 && (
-                <tr><td colSpan={10} className="py-8 text-center text-[var(--color-text-muted)]">{t('expenses.noEntries') || 'No entries found'}</td></tr>
+                <tr><td colSpan={10} className="py-8 text-center text-(--color-text-muted)">{t('expenses.noEntries') || 'No entries found'}</td></tr>
               )}
             </tbody>
           </table>
@@ -1347,7 +1347,7 @@ export default function VehicleExpenses() {
         return (
           <table className="w-full">
             <thead>
-              <tr className="text-left text-[var(--color-text-secondary)] text-sm border-b border-[var(--color-border)]">
+              <tr className="text-left text-(--color-text-secondary) text-sm border-b border-(--color-border)">
                 <th className="pb-3 px-4">{t('common.title') || 'Title'}</th>
                 <th className="pb-3 px-4">{t('addTodo.description') || 'Description'}</th>
                 <th className="pb-3 px-4">{t('addTodo.priority') || 'Priority'}</th>
@@ -1358,7 +1358,7 @@ export default function VehicleExpenses() {
             </thead>
             <tbody>
               {todoEntries.map(entry => (
-                <tr key={entry.id} className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)]">
+                <tr key={entry.id} className="border-b border-(--color-border) hover:bg-(--color-bg-tertiary)">
                   <td className="py-3 px-4">{entry.title}</td>
                   <td className="py-3 px-4 max-w-xs truncate">{entry.description || '-'}</td>
                   <td className="py-3 px-4">
@@ -1373,7 +1373,7 @@ export default function VehicleExpenses() {
                   <td className="py-3 px-4">{formatDate(entry.due_date)}</td>
                   <td className="py-3 px-4">
                     <span className={`px-2 py-0.5 rounded text-xs ${
-                      entry.completed ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-[var(--color-text-secondary)]'
+                      entry.completed ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-(--color-text-secondary)'
                     }`}>
                       {entry.completed ? t('common.completed') || 'Completed' : t('common.pending') || 'Pending'}
                     </span>
@@ -1382,7 +1382,7 @@ export default function VehicleExpenses() {
                     <div className="flex items-center gap-2">
                       <button 
                         onClick={() => handleEdit('todo', entry.id)}
-                        className="text-[var(--color-accent)] hover:text-[var(--color-accent)] p-1"
+                        className="text-(--color-accent) hover:text-(--color-accent) p-1"
                         title={t('common.edit') || 'Edit'}
                       >
                         {Icons.edit}
@@ -1399,7 +1399,7 @@ export default function VehicleExpenses() {
                 </tr>
               ))}
               {todoEntries.length === 0 && (
-                <tr><td colSpan={6} className="py-8 text-center text-[var(--color-text-muted)]">{t('expenses.noEntries') || 'No entries found'}</td></tr>
+                <tr><td colSpan={6} className="py-8 text-center text-(--color-text-muted)">{t('expenses.noEntries') || 'No entries found'}</td></tr>
               )}
             </tbody>
           </table>
@@ -1409,7 +1409,7 @@ export default function VehicleExpenses() {
         return (
           <table className="w-full">
             <thead>
-              <tr className="text-left text-[var(--color-text-secondary)] text-sm border-b border-[var(--color-border)]">
+              <tr className="text-left text-(--color-text-secondary) text-sm border-b border-(--color-border)">
                 <th className="pb-3 px-4">{t('common.title') || 'Title'}</th>
                 <th className="pb-3 px-4">{t('addReminder.reminderType') || 'Type'}</th>
                 <th className="pb-3 px-4">{t('addReminder.dueDate') || 'Due Date'}</th>
@@ -1420,7 +1420,7 @@ export default function VehicleExpenses() {
             </thead>
             <tbody>
               {reminderEntries.map(entry => (
-                <tr key={entry.id} className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)]">
+                <tr key={entry.id} className="border-b border-(--color-border) hover:bg-(--color-bg-tertiary)">
                   <td className="py-3 px-4">{entry.title}</td>
                   <td className="py-3 px-4">{entry.reminder_type || '-'}</td>
                   <td className="py-3 px-4">{formatDate(entry.due_date)}</td>
@@ -1438,7 +1438,7 @@ export default function VehicleExpenses() {
                     <div className="flex items-center gap-2">
                       <button 
                         onClick={() => handleEdit('reminder', entry.id)}
-                        className="text-[var(--color-accent)] hover:text-[var(--color-accent)] p-1"
+                        className="text-(--color-accent) hover:text-(--color-accent) p-1"
                         title={t('common.edit') || 'Edit'}
                       >
                         {Icons.edit}
@@ -1455,7 +1455,7 @@ export default function VehicleExpenses() {
                 </tr>
               ))}
               {reminderEntries.length === 0 && (
-                <tr><td colSpan={6} className="py-8 text-center text-[var(--color-text-muted)]">{t('expenses.noEntries') || 'No entries found'}</td></tr>
+                <tr><td colSpan={6} className="py-8 text-center text-(--color-text-muted)">{t('expenses.noEntries') || 'No entries found'}</td></tr>
               )}
             </tbody>
           </table>
@@ -1468,14 +1468,14 @@ export default function VehicleExpenses() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[var(--color-bg-primary)] pb-20">
+      <div className="min-h-screen bg-(--color-bg-primary) pb-20">
         {/* Header placeholder */}
-        <div className="sticky top-0 z-10 bg-[var(--color-bg-primary)] border-b border-[var(--color-border)] p-4">
+        <div className="sticky top-0 z-10 bg-(--color-bg-primary) border-b border-(--color-border) p-4">
           <div className="flex items-center gap-3">
             <Skeleton className="h-9 w-9 rounded-lg shrink-0" />
             <div className="flex-1 space-y-2">
-              <Skeleton className="h-4 w-40 rounded" />
-              <Skeleton className="h-3 w-24 rounded" />
+              <Skeleton className="h-4 w-40 rounded-sm" />
+              <Skeleton className="h-3 w-24 rounded-sm" />
             </div>
           </div>
         </div>
@@ -1493,10 +1493,10 @@ export default function VehicleExpenses() {
             <div key={i} className="card p-4 flex items-center gap-3">
               <Skeleton className="h-9 w-9 rounded-full shrink-0" />
               <div className="flex-1 space-y-2 min-w-0">
-                <Skeleton className="h-3.5 w-1/2 rounded" />
-                <Skeleton className="h-3 w-1/4 rounded" />
+                <Skeleton className="h-3.5 w-1/2 rounded-sm" />
+                <Skeleton className="h-3 w-1/4 rounded-sm" />
               </div>
-              <Skeleton className="h-4 w-14 rounded shrink-0" />
+              <Skeleton className="h-4 w-14 rounded-sm shrink-0" />
             </div>
           ))}
         </SkeletonScreen>
@@ -1505,19 +1505,19 @@ export default function VehicleExpenses() {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] pb-20">
+    <div className="min-h-screen bg-(--color-bg-primary) text-(--color-text-primary) pb-20">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-[var(--color-bg-primary)] border-b border-[var(--color-border)]">
+      <div className="sticky top-0 z-10 bg-(--color-bg-primary) border-b border-(--color-border)">
         <div className="flex items-center gap-3 p-4">
           <button 
             onClick={() => navigate(`/vehicles/${id}`)}
-            className="p-2 -ml-2 rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors"
+            className="p-2 -ml-2 rounded-lg hover:bg-(--color-bg-tertiary) transition-colors"
           >
             {Icons.arrowBack}
           </button>
           <div>
             <h1 className="text-lg font-semibold">{t('expenses.expensesManager') || 'Expenses Manager'}</h1>
-            <p className="text-xs text-[var(--color-text-secondary)]">
+            <p className="text-xs text-(--color-text-secondary)">
               {vehicle?.make} {vehicle?.model}
             </p>
           </div>
@@ -1528,15 +1528,15 @@ export default function VehicleExpenses() {
       {/* Top Section - Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Donut Chart Card */}
-        <div className="bg-[var(--color-bg-secondary)] rounded-xl p-6 border border-[var(--color-border)]">
+        <div className="bg-(--color-bg-secondary) rounded-xl p-6 border border-(--color-border)">
           {selectedMonth !== null && (
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-medium px-2 py-1 rounded-full bg-[var(--color-accent)]/20 text-[var(--color-accent)]">
+              <span className="text-xs font-medium px-2 py-1 rounded-full bg-(--color-accent)/20 text-(--color-accent)">
                 {MONTH_NAMES[selectedMonth]} {selectedYear}
               </span>
               <button
                 onClick={() => setSelectedMonth(null)}
-                className="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors underline underline-offset-2"
+                className="text-xs text-(--color-text-secondary) hover:text-(--color-text-primary) transition-colors underline underline-offset-2"
               >
                 {t('expenses.fullYear') || 'Full Year'}
               </button>
@@ -1550,13 +1550,13 @@ export default function VehicleExpenses() {
         </div>
 
         {/* Bar Chart Card */}
-        <div className="bg-[var(--color-bg-secondary)] rounded-xl p-6 border border-[var(--color-border)]">
+        <div className="bg-(--color-bg-secondary) rounded-xl p-6 border border-(--color-border)">
           <div className="flex items-center justify-between mb-4">
-            <span className="text-[var(--color-text-secondary)] text-sm">{t('expenses.selectYear') || 'Select Year'}</span>
+            <span className="text-(--color-text-secondary) text-sm">{t('expenses.selectYear') || 'Select Year'}</span>
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded px-3 py-1 text-[var(--color-text-primary)]"
+              className="bg-(--color-bg-tertiary) border border-(--color-border) rounded-sm px-3 py-1 text-(--color-text-primary)"
             >
               {years.map(year => (
                 <option key={year} value={year}>{year}</option>
@@ -1605,13 +1605,13 @@ export default function VehicleExpenses() {
             {outstandingFines.map(fine => (
               <li
                 key={fine.id}
-                className="flex items-center gap-3 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg px-3 py-2"
+                className="flex items-center gap-3 bg-(--color-bg-secondary) border border-(--color-border) rounded-lg px-3 py-2"
               >
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">
                     {fine.fine_reason || fine.location || (t('due.kind.fine') || 'Parking fine')}
                   </p>
-                  <p className="text-xs text-[var(--color-text-muted)]">
+                  <p className="text-xs text-(--color-text-muted)">
                     {formatDate(fine.date)}
                     {fine.fine_status === 'contested' ? ` • ${t('parking.contested') || 'Contested'}` : ''}
                   </p>
@@ -1632,7 +1632,7 @@ export default function VehicleExpenses() {
       )}
 
       {/* Data Table */}
-      <div className="bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border)] overflow-x-auto">
+      <div className="bg-(--color-bg-secondary) rounded-xl border border-(--color-border) overflow-x-auto">
         {renderTable()}
       </div>
       </div>

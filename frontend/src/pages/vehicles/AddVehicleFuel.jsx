@@ -232,7 +232,7 @@ export default function AddVehicleFuel() {
   return (
     <div className="pb-4">
       {/* Header */}
-      <div className="bg-[var(--color-bg-card)] border-b border-[var(--color-border)] px-4 py-3 flex items-center gap-3">
+      <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="btn-icon">
           {Icons.close}
         </button>
@@ -240,7 +240,7 @@ export default function AddVehicleFuel() {
           <h1 className="text-base font-semibold">
             {isEditMode ? (t('common.edit') || 'Edit') + ' ' + (t('expenses.fuel') || 'Fuel') : (t('addFuel.title') || 'Add Fuel')}
           </h1>
-          <p className="text-xs text-[var(--color-text-secondary)]">{vehicle?.name}</p>
+          <p className="text-xs text-(--color-text-secondary)">{vehicle?.name}</p>
         </div>
         <button 
           onClick={handleSubmit(onSubmit)}
@@ -265,7 +265,7 @@ export default function AddVehicleFuel() {
           </div>
           <div className="flex-1">
             <p className="font-medium">{vehicle?.name}</p>
-            <p className="text-xs text-[var(--color-text-secondary)]">
+            <p className="text-xs text-(--color-text-secondary)">
               {vehicle?.make} {vehicle?.model} • {(vehicle?.current_mileage || 0).toLocaleString()} {vehicle?.distance_unit || 'km'}
             </p>
           </div>
@@ -275,7 +275,7 @@ export default function AddVehicleFuel() {
         <div className="card space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addFuel.date') || 'Date'} *
               </label>
               <input
@@ -286,7 +286,7 @@ export default function AddVehicleFuel() {
             </div>
             
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addFuel.odometer') || 'Odometer'} ({distUnit}) *
               </label>
               <input
@@ -307,13 +307,13 @@ export default function AddVehicleFuel() {
         
         {/* Fuel Details */}
         <div className="card space-y-4">
-          <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
+          <h3 className="text-sm font-medium text-(--color-text-secondary)">
             {t('addFuel.fuelDetails') || 'Fuel Details'}
           </h3>
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {gallons ? (t('addFuel.gallons') || 'Gallons') : (t('addFuel.liters') || 'Liters')} *
               </label>
               <input
@@ -332,7 +332,7 @@ export default function AddVehicleFuel() {
             </div>
             
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {gallons ? (t('addFuel.pricePerGallon') || 'Price/Gallon') : (t('addFuel.pricePerLiter') || 'Price/Liter')} ({currency.symbol}) *
               </label>
               <input
@@ -353,18 +353,18 @@ export default function AddVehicleFuel() {
           
           <div className="flex gap-3">
             <div className="flex-1">
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addFuel.totalCost') || 'Total Cost'} ({currency.symbol})
               </label>
               <input
                 type="number" inputMode="decimal"
                 step="0.01"
                 {...register('total_cost')}
-                className="input bg-[var(--color-bg-tertiary)]"
+                className="input bg-(--color-bg-tertiary)"
                 placeholder={t('addFuel.calculatedAuto') || 'Calculated automatically'}
               />
             </div>
-            <CurrencySelect register={register} className="w-28 flex-shrink-0" />
+            <CurrencySelect register={register} className="w-28 shrink-0" />
           </div>
           
           <div className="flex items-center gap-3">
@@ -372,7 +372,7 @@ export default function AddVehicleFuel() {
               type="checkbox"
               id="is_full_tank"
               {...register('is_full_tank')}
-              className="w-5 h-5 rounded border-[var(--color-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+              className="w-5 h-5 rounded-sm border-(--color-border) text-(--color-accent) focus:ring-(--color-accent)"
             />
             <label htmlFor="is_full_tank" className="text-sm">
               {t('addFuel.fullTank') || 'Full tank fill-up'}
@@ -382,13 +382,13 @@ export default function AddVehicleFuel() {
         
         {/* Additional */}
         <div className="card space-y-4">
-          <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
+          <h3 className="text-sm font-medium text-(--color-text-secondary)">
             {t('addFuel.additional') || 'Additional'}
           </h3>
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addFuel.fuelType') || 'Fuel Type'}
               </label>
               <select {...register('fuel_type')} className="input">
@@ -399,7 +399,7 @@ export default function AddVehicleFuel() {
             </div>
             
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addFuel.station') || 'Station'}
               </label>
               <input
@@ -412,7 +412,7 @@ export default function AddVehicleFuel() {
           </div>
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('addFuel.notes') || 'Notes'}
             </label>
             <textarea

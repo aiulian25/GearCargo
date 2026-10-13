@@ -40,7 +40,7 @@ const STATUS_STYLE = {
   good: { bar: 'bg-emerald-500', text: 'text-emerald-600 dark:text-emerald-400' },
   monitor: { bar: 'bg-amber-500', text: 'text-amber-600 dark:text-amber-400' },
   replace: { bar: 'bg-red-500', text: 'text-red-600 dark:text-red-400' },
-  unknown: { bar: 'bg-gray-400', text: 'text-[var(--color-text-muted)]' },
+  unknown: { bar: 'bg-gray-400', text: 'text-(--color-text-muted)' },
 }
 
 export default function VehicleConsumables() {
@@ -100,8 +100,8 @@ export default function VehicleConsumables() {
         <div className="flex items-center gap-3 mb-5">
           <Skeleton className="h-9 w-9 rounded-lg shrink-0" />
           <div className="flex-1 space-y-2">
-            <Skeleton className="h-4 w-32 rounded" />
-            <Skeleton className="h-3 w-20 rounded" />
+            <Skeleton className="h-4 w-32 rounded-sm" />
+            <Skeleton className="h-3 w-20 rounded-sm" />
           </div>
           <Skeleton className="h-9 w-9 rounded-lg shrink-0" />
         </div>
@@ -120,7 +120,7 @@ export default function VehicleConsumables() {
           </button>
           <div className="min-w-0">
             <h1 className="text-lg font-semibold truncate">{t('consumables.title') || 'Consumables'}</h1>
-            {vehicle && <p className="text-2xs text-[var(--color-text-muted)] truncate">{vehicle.name}</p>}
+            {vehicle && <p className="text-2xs text-(--color-text-muted) truncate">{vehicle.name}</p>}
           </div>
         </div>
         <Link
@@ -153,9 +153,9 @@ export default function VehicleConsumables() {
                   <div className="min-w-0">
                     <p className="font-medium text-sm truncate">
                       {typeLabel}
-                      {entry.quantity > 1 && <span className="text-[var(--color-text-muted)]"> ×{entry.quantity}</span>}
+                      {entry.quantity > 1 && <span className="text-(--color-text-muted)"> ×{entry.quantity}</span>}
                     </p>
-                    <p className="text-2xs text-[var(--color-text-muted)] truncate">
+                    <p className="text-2xs text-(--color-text-muted) truncate">
                       {entry.brand ? `${entry.brand} · ` : ''}{formatDate(entry.date)}
                       {entry.install_odometer != null && ` · ${entry.install_odometer.toLocaleString()} ${distanceUnit}`}
                     </p>
@@ -181,7 +181,7 @@ export default function VehicleConsumables() {
                       {pct !== null && ` · ${pct}%`}
                     </span>
                     {wear.remaining_km != null && wear.remaining_km > 0 && (
-                      <span className="text-2xs text-[var(--color-text-muted)]">
+                      <span className="text-2xs text-(--color-text-muted)">
                         {(t('consumables.remainingKm') || '{km} {unit} left')
                           .replace('{km}', wear.remaining_km.toLocaleString())
                           .replace('{unit}', distanceUnit)}
@@ -189,7 +189,7 @@ export default function VehicleConsumables() {
                     )}
                   </div>
                   <div
-                    className="h-2 rounded-full bg-[var(--color-bg-tertiary)] overflow-hidden"
+                    className="h-2 rounded-full bg-(--color-bg-tertiary) overflow-hidden"
                     role="progressbar"
                     aria-valuenow={pct === null ? undefined : Math.round(pct)}
                     aria-valuemin={0}

@@ -120,7 +120,7 @@ export default function Login() {
               type="text"
               inputMode={useBackupCode ? "text" : "numeric"}
               autoComplete="one-time-code"
-              className="w-full px-4 py-3 text-center text-xl tracking-widest border border-gray-200 rounded-full focus:outline-none focus:border-teal-500 transition-colors font-mono text-gray-800 bg-white"
+              className="w-full px-4 py-3 text-center text-xl tracking-widest border border-gray-200 rounded-full focus:outline-hidden focus:border-teal-500 transition-colors font-mono text-gray-800 bg-white"
               placeholder={useBackupCode ? "XXXXXXXX" : "000000"}
               maxLength={useBackupCode ? 8 : 6}
               value={codeValue}
@@ -193,7 +193,7 @@ export default function Login() {
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         {/* Username/Email Field */}
         <div className="flex items-center gap-3">
-          <div className="text-gray-400 flex-shrink-0">
+          <div className="text-gray-400 shrink-0">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
@@ -201,7 +201,7 @@ export default function Login() {
           <div className="flex-1">
             <input
               type="text"
-              className="w-full px-4 py-3 border border-gray-200 rounded-full focus:outline-none focus:border-teal-500 transition-colors text-gray-700 placeholder-gray-400"
+              className="w-full px-4 py-3 border border-gray-200 rounded-full focus:outline-hidden focus:border-teal-500 transition-colors text-gray-700 placeholder-gray-400"
               placeholder={t('auth.username')}
               autoComplete="username"
               {...register('email', { 
@@ -220,7 +220,7 @@ export default function Login() {
         
         {/* Password Field */}
         <div className="flex items-center gap-3">
-          <div className="text-gray-400 flex-shrink-0">
+          <div className="text-gray-400 shrink-0">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
             </svg>
@@ -228,7 +228,7 @@ export default function Login() {
           <div className="flex-1 relative">
             <input
               type={showPassword ? 'text' : 'password'}
-              className="w-full px-4 py-3 pr-12 border border-gray-200 rounded-full focus:outline-none focus:border-teal-500 transition-colors text-gray-700 placeholder-gray-400"
+              className="w-full px-4 py-3 pr-12 border border-gray-200 rounded-full focus:outline-hidden focus:border-teal-500 transition-colors text-gray-700 placeholder-gray-400"
               placeholder={t('auth.password')}
               autoComplete="current-password"
               {...register('password', { required: t('auth.passwordRequired') })}
@@ -274,7 +274,7 @@ export default function Login() {
               type="checkbox"
               checked={rememberPassword}
               onChange={(e) => setRememberPassword(e.target.checked)}
-              className="w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+              className="w-4 h-4 rounded-sm border-gray-300 text-teal-600 focus:ring-teal-500"
             />
             <span className="text-sm text-gray-500">{t('auth.rememberPassword')}</span>
           </label>

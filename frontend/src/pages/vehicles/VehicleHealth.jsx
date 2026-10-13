@@ -106,7 +106,7 @@ const HealthScoreRing = ({ score, size = 120, strokeWidth = 10, label }) => {
     <div className="relative inline-flex items-center justify-center">
       <svg width={size} height={size} className="-rotate-90">
         <circle
-          className="text-[var(--color-bg-tertiary)]"
+          className="text-(--color-bg-tertiary)"
           strokeWidth={strokeWidth}
           stroke="currentColor"
           fill="transparent"
@@ -129,7 +129,7 @@ const HealthScoreRing = ({ score, size = 120, strokeWidth = 10, label }) => {
       </svg>
       <div className="absolute flex flex-col items-center">
         <span className="text-3xl font-bold">{score}</span>
-        {label && <span className="text-xs text-[var(--color-text-secondary)]">{label}</span>}
+        {label && <span className="text-xs text-(--color-text-secondary)">{label}</span>}
       </div>
     </div>
   )
@@ -141,7 +141,7 @@ const ProgressBar = ({ value, max = 100, color = 'bg-blue-500', showLabel = true
   
   return (
     <div className="flex items-center gap-2">
-      <div className={`flex-1 ${height} bg-[var(--color-bg-tertiary)] rounded-full overflow-hidden`}>
+      <div className={`flex-1 ${height} bg-(--color-bg-tertiary) rounded-full overflow-hidden`}>
         <div
           className={`${height} ${color} rounded-full transition-all duration-500`}
           style={{ width: `${percentage}%` }}
@@ -185,10 +185,10 @@ const ExpandableCard = ({ title, icon, iconColor, children, defaultExpanded = fa
   const [expanded, setExpanded] = useState(defaultExpanded)
   
   return (
-    <div className="bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border)] overflow-hidden">
+    <div className="bg-(--color-bg-card) rounded-xl border border-(--color-border) overflow-hidden">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full px-4 py-3 flex items-center justify-between hover:bg-[var(--color-bg-tertiary)] transition-colors"
+        className="w-full px-4 py-3 flex items-center justify-between hover:bg-(--color-bg-tertiary) transition-colors"
       >
         <div className="flex items-center gap-3">
           <div className={`p-2 rounded-lg ${iconColor}`}>
@@ -199,7 +199,7 @@ const ExpandableCard = ({ title, icon, iconColor, children, defaultExpanded = fa
         {expanded ? Icons.chevronUp : Icons.chevronDown}
       </button>
       {expanded && (
-        <div className="px-4 pb-4 border-t border-[var(--color-border)]">
+        <div className="px-4 pb-4 border-t border-(--color-border)">
           {children}
         </div>
       )}
@@ -390,7 +390,7 @@ export default function VehicleHealth() {
           <p className="text-red-500">{error}</p>
           <button
             onClick={() => navigate(`/vehicles/${id}`)}
-            className="mt-3 text-sm text-[var(--color-primary)] hover:underline"
+            className="mt-3 text-sm text-(--color-primary) hover:underline"
           >
             {t('common.goBack') || 'Go Back'}
           </button>
@@ -440,7 +440,7 @@ export default function VehicleHealth() {
   return (
     <div className="pb-20">
       {/* Header */}
-      <div className="bg-[var(--color-bg-card)] border-b border-[var(--color-border)] px-4 py-3 sticky top-0 z-20">
+      <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 sticky top-0 z-20">
         <div className="flex items-center gap-3">
           <button onClick={() => navigate(`/vehicles/${id}`)} className="btn-icon">
             {Icons.arrowBack}
@@ -449,14 +449,14 @@ export default function VehicleHealth() {
             <h1 className="text-lg font-bold truncate">
               {t('vehicleHealth.pageTitle') || 'Vehicle Health'}
             </h1>
-            <p className="text-xs text-[var(--color-text-secondary)]">{health.vehicle_name}</p>
+            <p className="text-xs text-(--color-text-secondary)">{health.vehicle_name}</p>
           </div>
         </div>
       </div>
       
       <div className="p-4 space-y-4">
         {/* Overall Health Score */}
-        <div className="bg-gradient-to-br from-[var(--color-bg-card)] to-[var(--color-bg-tertiary)] rounded-2xl border border-[var(--color-border)] p-6">
+        <div className="bg-linear-to-br from-(--color-bg-card) to-(--color-bg-tertiary) rounded-2xl border border-(--color-border) p-6">
           <div className="flex items-center justify-between">
             <div className="flex-1">
               <h2 className="text-lg font-semibold mb-1">
@@ -467,7 +467,7 @@ export default function VehicleHealth() {
               </p>
               <div className="mt-4 space-y-2">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-[var(--color-text-secondary)]">
+                  <span className="text-(--color-text-secondary)">
                     {t('vehicleHealth.maintenance') || 'Maintenance'}
                   </span>
                   <span className="font-medium">{health.scores?.maintenance || 0}%</span>
@@ -475,7 +475,7 @@ export default function VehicleHealth() {
                 <ProgressBar value={health.scores?.maintenance || 0} color="bg-blue-500" showLabel={false} />
                 
                 <div className="flex items-center justify-between text-sm mt-2">
-                  <span className="text-[var(--color-text-secondary)]">
+                  <span className="text-(--color-text-secondary)">
                     {t('vehicleHealth.components') || 'Components'}
                   </span>
                   <span className="font-medium">{health.scores?.components || 0}%</span>
@@ -483,7 +483,7 @@ export default function VehicleHealth() {
                 <ProgressBar value={health.scores?.components || 0} color="bg-green-500" showLabel={false} />
                 
                 <div className="flex items-center justify-between text-sm mt-2">
-                  <span className="text-[var(--color-text-secondary)]">
+                  <span className="text-(--color-text-secondary)">
                     {t('vehicleHealth.ecoDriving') || 'Eco-Driving'}
                   </span>
                   <span className="font-medium">{health.scores?.eco_driving || 0}%</span>
@@ -502,8 +502,8 @@ export default function VehicleHealth() {
         
         {/* Quick Stats */}
         <div className="grid grid-cols-2 gap-3">
-          <div className="bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border)] p-4">
-            <div className="flex items-center gap-2 text-[var(--color-text-secondary)] mb-1">
+          <div className="bg-(--color-bg-card) rounded-xl border border-(--color-border) p-4">
+            <div className="flex items-center gap-2 text-(--color-text-secondary) mb-1">
               {Icons.leaf}
               <span className="text-xs">{t('vehicleHealth.yearlyCO2') || 'Yearly CO2'}</span>
             </div>
@@ -512,8 +512,8 @@ export default function VehicleHealth() {
             </p>
           </div>
           
-          <div className="bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border)] p-4">
-            <div className="flex items-center gap-2 text-[var(--color-text-secondary)] mb-1">
+          <div className="bg-(--color-bg-card) rounded-xl border border-(--color-border) p-4">
+            <div className="flex items-center gap-2 text-(--color-text-secondary) mb-1">
               {Icons.gauge}
               <span className="text-xs">{t('vehicleHealth.ecoScore') || 'Eco Score'}</span>
             </div>
@@ -522,8 +522,8 @@ export default function VehicleHealth() {
             </p>
           </div>
           
-          <div className="bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border)] p-4">
-            <div className="flex items-center gap-2 text-[var(--color-text-secondary)] mb-1">
+          <div className="bg-(--color-bg-card) rounded-xl border border-(--color-border) p-4">
+            <div className="flex items-center gap-2 text-(--color-text-secondary) mb-1">
               {Icons.fuel}
               <span className="text-xs">{t('vehicleHealth.avgEfficiency') || 'Avg Efficiency'}</span>
             </div>
@@ -532,8 +532,8 @@ export default function VehicleHealth() {
             </p>
           </div>
           
-          <div className="bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border)] p-4">
-            <div className="flex items-center gap-2 text-[var(--color-text-secondary)] mb-1">
+          <div className="bg-(--color-bg-card) rounded-xl border border-(--color-border) p-4">
+            <div className="flex items-center gap-2 text-(--color-text-secondary) mb-1">
               {Icons.wallet}
               <span className="text-xs">{t('vehicleHealth.costPerKm') || 'Cost/km'}</span>
             </div>
@@ -548,12 +548,12 @@ export default function VehicleHealth() {
         
         {/* Recommended Actions */}
         {health.recommended_actions?.length > 0 && (
-          <div className="bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border)] overflow-hidden">
-            <div className="px-4 py-3 border-b border-[var(--color-border)] flex items-center gap-2">
+          <div className="bg-(--color-bg-card) rounded-xl border border-(--color-border) overflow-hidden">
+            <div className="px-4 py-3 border-b border-(--color-border) flex items-center gap-2">
               {Icons.warning}
               <h3 className="font-semibold">{t('vehicleHealth.recommendedActions') || 'Recommended Actions'}</h3>
             </div>
-            <div className="divide-y divide-[var(--color-border)]">
+            <div className="divide-y divide-(--color-border)">
               {health.recommended_actions.slice(0, 5).map((action, idx) => {
                 const translated = translateAction(action)
                 const canMarkDone = action.type === 'maintenance' && action.component
@@ -571,7 +571,7 @@ export default function VehicleHealth() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm">{translated.title}</p>
-                      <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">
+                      <p className="text-xs text-(--color-text-secondary) mt-0.5">
                         {translated.description}
                       </p>
                     </div>
@@ -602,24 +602,24 @@ export default function VehicleHealth() {
           <div className="pt-4 space-y-4">
             {/* CO2 Stats */}
             <div className="grid grid-cols-3 gap-3 text-center">
-              <div className="bg-[var(--color-bg-tertiary)] rounded-lg p-3">
-                <p className="text-xs text-[var(--color-text-secondary)]">
+              <div className="bg-(--color-bg-tertiary) rounded-lg p-3">
+                <p className="text-xs text-(--color-text-secondary)">
                   {t('vehicleHealth.totalCO2') || 'Total CO2'}
                 </p>
                 <p className="text-lg font-bold mt-1">
                   {(health.carbon_footprint?.total_co2_kg / 1000).toFixed(1)}t
                 </p>
               </div>
-              <div className="bg-[var(--color-bg-tertiary)] rounded-lg p-3">
-                <p className="text-xs text-[var(--color-text-secondary)]">
+              <div className="bg-(--color-bg-tertiary) rounded-lg p-3">
+                <p className="text-xs text-(--color-text-secondary)">
                   {t('vehicleHealth.ytdCO2') || 'YTD'}
                 </p>
                 <p className="text-lg font-bold mt-1">
                   {health.carbon_footprint?.ytd_co2_kg?.toLocaleString() || 0} kg
                 </p>
               </div>
-              <div className="bg-[var(--color-bg-tertiary)] rounded-lg p-3">
-                <p className="text-xs text-[var(--color-text-secondary)]">g/km</p>
+              <div className="bg-(--color-bg-tertiary) rounded-lg p-3">
+                <p className="text-xs text-(--color-text-secondary)">g/km</p>
                 <p className="text-lg font-bold mt-1">
                   {health.carbon_footprint?.co2_per_km_grams || '-'}
                 </p>
@@ -635,10 +635,10 @@ export default function VehicleHealth() {
                 <div className="space-y-2">
                   {emissionsData.map(([month, value]) => (
                     <div key={month} className="flex items-center gap-3">
-                      <span className="text-xs text-[var(--color-text-secondary)] w-14">
+                      <span className="text-xs text-(--color-text-secondary) w-14">
                         {month.split('-')[1]}/{month.split('-')[0].slice(2)}
                       </span>
-                      <div className="flex-1 h-5 bg-[var(--color-bg-tertiary)] rounded-full overflow-hidden">
+                      <div className="flex-1 h-5 bg-(--color-bg-tertiary) rounded-full overflow-hidden">
                         <div 
                           className="h-full bg-green-500 rounded-full transition-all duration-500"
                           style={{ width: `${(value / maxEmission) * 100}%` }}
@@ -661,10 +661,10 @@ export default function VehicleHealth() {
                   <p className="font-medium text-emerald-600 dark:text-emerald-400">
                     {t('vehicleHealth.carbonOffset') || 'Carbon Offset Recommendation'}
                   </p>
-                  <p className="text-sm text-[var(--color-text-secondary)] mt-1">
+                  <p className="text-sm text-(--color-text-secondary) mt-1">
                     {t('vehicleHealth.treesNeeded') || 'Plant'} <strong>{Math.ceil(health.carbon_footprint?.trees_to_offset_yearly || 0)}</strong> {t('vehicleHealth.treesToOffset') || 'trees to offset yearly emissions'}
                   </p>
-                  <p className="text-sm text-[var(--color-text-secondary)]">
+                  <p className="text-sm text-(--color-text-secondary)">
                     {t('vehicleHealth.orOffset') || 'Or purchase carbon credits for'} <strong>~${health.carbon_footprint?.carbon_offset_cost_usd?.toFixed(0) || 0}</strong>/year
                   </p>
                 </div>
@@ -697,14 +697,14 @@ export default function VehicleHealth() {
                     </div>
                     <div className="flex-1">
                       <p className="font-medium">{tip.title}</p>
-                      <p className="text-sm text-[var(--color-text-secondary)] mt-1">
+                      <p className="text-sm text-(--color-text-secondary) mt-1">
                         {tip.description}
                       </p>
                       {tip.actions?.length > 0 && (
                         <ul className="mt-2 space-y-1">
                           {tip.actions.map((action, i) => (
                             <li key={i} className="text-sm flex items-center gap-2">
-                              <span className="w-1 h-1 rounded-full bg-[var(--color-text-secondary)]" />
+                              <span className="w-1 h-1 rounded-full bg-(--color-text-secondary)" />
                               {action}
                             </li>
                           ))}
@@ -727,7 +727,7 @@ export default function VehicleHealth() {
         >
           <div className="pt-4 space-y-3">
             {priorityComponents.map((comp) => (
-              <div key={comp.key} className="flex items-center justify-between py-2 border-b border-[var(--color-border)] last:border-0">
+              <div key={comp.key} className="flex items-center justify-between py-2 border-b border-(--color-border) last:border-0">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="font-medium text-sm">
@@ -735,7 +735,7 @@ export default function VehicleHealth() {
                     </p>
                     <StatusBadge status={comp.status} t={t} />
                   </div>
-                  <p className="text-xs text-[var(--color-text-secondary)] mt-1">
+                  <p className="text-xs text-(--color-text-secondary) mt-1">
                     {comp.km_since_last?.toLocaleString() || 0} {comp.distance_unit || 'km'} / {(comp.interval ?? comp.interval_km)?.toLocaleString()} {comp.distance_unit || 'km'} {t('vehicleHealth.interval') || 'interval'}
                   </p>
                 </div>
@@ -755,7 +755,7 @@ export default function VehicleHealth() {
             ))}
             
             {Object.keys(health.components || {}).length > 6 && (
-              <p className="text-xs text-[var(--color-text-secondary)] text-center pt-2">
+              <p className="text-xs text-(--color-text-secondary) text-center pt-2">
                 {t('vehicleHealth.showingTopComponents') || 'Showing top priority components'}
               </p>
             )}
@@ -771,16 +771,16 @@ export default function VehicleHealth() {
         >
           <div className="pt-4 space-y-4">
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-[var(--color-bg-tertiary)] rounded-lg p-3">
-                <p className="text-xs text-[var(--color-text-secondary)]">
+              <div className="bg-(--color-bg-tertiary) rounded-lg p-3">
+                <p className="text-xs text-(--color-text-secondary)">
                   {t('vehicleHealth.totalServices') || 'Total Services'}
                 </p>
                 <p className="text-xl font-bold mt-1">
                   {health.maintenance?.total_services || 0}
                 </p>
               </div>
-              <div className="bg-[var(--color-bg-tertiary)] rounded-lg p-3">
-                <p className="text-xs text-[var(--color-text-secondary)]">
+              <div className="bg-(--color-bg-tertiary) rounded-lg p-3">
+                <p className="text-xs text-(--color-text-secondary)">
                   {t('vehicleHealth.totalRepairs') || 'Total Repairs'}
                 </p>
                 <p className="text-xl font-bold mt-1">
@@ -791,13 +791,13 @@ export default function VehicleHealth() {
             
             {health.maintenance?.last_service_date && (
               <div className="flex items-center justify-between py-2">
-                <span className="text-sm text-[var(--color-text-secondary)]">
+                <span className="text-sm text-(--color-text-secondary)">
                   {t('vehicleHealth.lastService') || 'Last Service'}
                 </span>
                 <span className="text-sm font-medium">
                   {formatDate(health.maintenance.last_service_date)}
                   {health.maintenance.days_since_service > 0 && (
-                    <span className="text-[var(--color-text-secondary)] ml-1">
+                    <span className="text-(--color-text-secondary) ml-1">
                       ({health.maintenance.days_since_service}d ago)
                     </span>
                   )}
@@ -819,7 +819,7 @@ export default function VehicleHealth() {
                       }`}
                     >
                       <p className="text-sm font-medium">{translated.title}</p>
-                      <p className="text-xs text-[var(--color-text-secondary)] mt-1">
+                      <p className="text-xs text-(--color-text-secondary) mt-1">
                         {translated.description}
                       </p>
                     </div>
@@ -838,24 +838,24 @@ export default function VehicleHealth() {
           defaultExpanded={false}
         >
           <div className="pt-4 space-y-3">
-            <div className="flex items-center justify-between py-2 border-b border-[var(--color-border)]">
-              <span className="text-sm text-[var(--color-text-secondary)]">
+            <div className="flex items-center justify-between py-2 border-b border-(--color-border)">
+              <span className="text-sm text-(--color-text-secondary)">
                 {t('vehicleHealth.vehicleAge') || 'Vehicle Age'}
               </span>
               <span className="text-sm font-medium">
                 {health.vehicle_info?.age_years || '-'} {t('common.years') || 'years'}
               </span>
             </div>
-            <div className="flex items-center justify-between py-2 border-b border-[var(--color-border)]">
-              <span className="text-sm text-[var(--color-text-secondary)]">
+            <div className="flex items-center justify-between py-2 border-b border-(--color-border)">
+              <span className="text-sm text-(--color-text-secondary)">
                 {t('vehicleHealth.currentMileage') || 'Current Mileage'}
               </span>
               <span className="text-sm font-medium">
                 {health.vehicle_info?.current_mileage?.toLocaleString() || 0} {health.vehicle_info?.distance_unit || 'km'}
               </span>
             </div>
-            <div className="flex items-center justify-between py-2 border-b border-[var(--color-border)]">
-              <span className="text-sm text-[var(--color-text-secondary)]">
+            <div className="flex items-center justify-between py-2 border-b border-(--color-border)">
+              <span className="text-sm text-(--color-text-secondary)">
                 {t('vehicleHealth.fuelType') || 'Fuel Type'}
               </span>
               <span className="text-sm font-medium capitalize">
@@ -876,7 +876,7 @@ export default function VehicleHealth() {
                 )}
               </div>
               {warranties.length === 0 ? (
-                <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
+                <p className="mt-2 text-sm text-(--color-text-secondary)">
                   {t('warranty.none') || 'No active warranties on record.'}
                 </p>
               ) : (
@@ -887,10 +887,10 @@ export default function VehicleHealth() {
                     return (
                       <li key={`${w.source_type}-${w.id}`} className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="text-sm font-medium text-[var(--color-text-primary)] truncate capitalize">
+                          <p className="text-sm font-medium text-(--color-text-primary) truncate capitalize">
                             {w.label}
                           </p>
-                          <p className="text-xs text-[var(--color-text-muted)]">
+                          <p className="text-xs text-(--color-text-muted)">
                             {w.days_left != null && (
                               <span>{(t('warranty.expiresIn') || 'Expires in {n} days').replace('{n}', w.days_left)}</span>
                             )}
@@ -927,16 +927,16 @@ export default function VehicleHealth() {
         >
           <div className="pt-4 space-y-4">
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-[var(--color-bg-tertiary)] rounded-lg p-3">
-                <p className="text-xs text-[var(--color-text-secondary)]">
+              <div className="bg-(--color-bg-tertiary) rounded-lg p-3">
+                <p className="text-xs text-(--color-text-secondary)">
                   {t('vehicleHealth.totalCosts') || 'Total Costs'}
                 </p>
                 <p className="text-xl font-bold mt-1">
                   {formatCurrency(health.cost_efficiency?.total_costs || 0)}
                 </p>
               </div>
-              <div className="bg-[var(--color-bg-tertiary)] rounded-lg p-3">
-                <p className="text-xs text-[var(--color-text-secondary)]">
+              <div className="bg-(--color-bg-tertiary) rounded-lg p-3">
+                <p className="text-xs text-(--color-text-secondary)">
                   {t('vehicleHealth.totalDistance') || 'Total Distance'}
                 </p>
                 <p className="text-xl font-bold mt-1">
@@ -947,7 +947,7 @@ export default function VehicleHealth() {
             
             {health.cost_efficiency?.cost_per_km && (
               <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-xl p-4 text-center">
-                <p className="text-sm text-[var(--color-text-secondary)]">
+                <p className="text-sm text-(--color-text-secondary)">
                   {t('vehicleHealth.avgCostPerKm') || 'Average Cost Per Kilometer'}
                 </p>
                 <p className="text-3xl font-bold text-cyan-600 dark:text-cyan-400 mt-2">
@@ -962,7 +962,7 @@ export default function VehicleHealth() {
       {/* Mark Done Modal */}
       {completingAction && (
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
           onClick={handleCloseModal}
           role="presentation"
         >
@@ -970,11 +970,11 @@ export default function VehicleHealth() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="mark-done-title"
-            className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border)] w-full max-w-sm shadow-2xl"
+            className="bg-(--color-bg-card) rounded-2xl border border-(--color-border) w-full max-w-sm shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal header */}
-            <div className="px-5 pt-5 pb-4 border-b border-[var(--color-border)]">
+            <div className="px-5 pt-5 pb-4 border-b border-(--color-border)">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-xl bg-green-500/10 text-green-500 shrink-0">
                   {Icons.check}
@@ -983,7 +983,7 @@ export default function VehicleHealth() {
                   <h3 id="mark-done-title" className="font-semibold text-base">
                     {t('vehicleHealth.markDoneTitle') || 'Log Completed Service'}
                   </h3>
-                  <p className="text-xs text-[var(--color-text-secondary)] truncate mt-0.5">
+                  <p className="text-xs text-(--color-text-secondary) truncate mt-0.5">
                     {translateAction(completingAction).title}
                   </p>
                 </div>
@@ -1009,7 +1009,7 @@ export default function VehicleHealth() {
                   disabled={completing}
                   aria-label={t('vehicleHealth.markDoneMileage') || 'Mileage at Service'}
                 />
-                <p className="text-xs text-[var(--color-text-secondary)] mt-1">
+                <p className="text-xs text-(--color-text-secondary) mt-1">
                   {t('vehicleHealth.currentMileage') || 'Current Mileage'}: {health.vehicle_info?.current_mileage?.toLocaleString() || '—'} {health.vehicle_info?.distance_unit || 'km'}
                 </p>
               </div>

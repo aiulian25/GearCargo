@@ -17,12 +17,12 @@ export default function PageLoader({ fullscreen = false }) {
 
   return (
     <div
-      className={`flex items-center justify-center ${heightClass} bg-[var(--color-bg-primary)]`}
+      className={`flex items-center justify-center ${heightClass} bg-(--color-bg-primary)`}
       role="status"
       aria-live="polite"
       aria-label={t('common.loading') || 'Loading...'}
     >
-      <div className="animate-spin rounded-full h-8 w-8 border-2 border-[var(--color-accent)] border-t-transparent" />
+      <div className="animate-spin rounded-full h-8 w-8 border-2 border-(--color-accent) border-t-transparent" />
     </div>
   )
 }

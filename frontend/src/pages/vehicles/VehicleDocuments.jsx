@@ -105,9 +105,9 @@ function CategoryBadge({ category }) {
     manual:   'bg-purple-500/15 text-purple-400',
     invoice:  'bg-rose-500/15 text-rose-400',
   }
-  const cls = colours[category] || 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]'
+  const cls = colours[category] || 'bg-(--color-bg-tertiary) text-(--color-text-muted)'
   return (
-    <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${cls}`}>
+    <span className={`inline-block px-1.5 py-0.5 rounded-sm text-[10px] font-medium ${cls}`}>
       {category || 'file'}
     </span>
   )
@@ -119,7 +119,7 @@ function OcrBadge({ attachment, onClick, t }) {
     return (
       <span
         title={t('vehicleDocuments.ocrPending') || 'OCR pending'}
-        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-500/15 text-gray-400"
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[10px] font-medium bg-gray-500/15 text-gray-400"
       >
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin opacity-70">
           <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
@@ -132,7 +132,7 @@ function OcrBadge({ attachment, onClick, t }) {
     return (
       <span
         title={t('vehicleDocuments.ocrNoText') || 'No text detected'}
-        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-500/10 text-gray-500"
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[10px] font-medium bg-gray-500/10 text-gray-500"
       >
         {t('vehicleDocuments.ocrNoText') || 'No text'}
       </span>
@@ -143,7 +143,7 @@ function OcrBadge({ attachment, onClick, t }) {
       type="button"
       onClick={onClick}
       title={t('vehicleDocuments.ocrOpen') || 'View scanned text'}
-      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition-colors touch-manipulation"
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[10px] font-medium bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition-colors touch-manipulation"
     >
       {Icons.scan}
       {t('vehicleDocuments.ocrScanned') || 'Scanned'}
@@ -463,11 +463,11 @@ export default function VehicleDocuments() {
   return (
     <div className="pb-6">
       {/* Header */}
-      <div className="sticky top-0 z-30 bg-[var(--color-bg-secondary)] border-b border-[var(--color-border)] safe-top">
+      <div className="sticky top-0 z-30 bg-(--color-bg-secondary) border-b border-(--color-border) safe-top">
         <div className="flex items-center gap-3 px-4 h-14">
           <button
             onClick={() => navigate(`/vehicles/${vehicleId}`)}
-            className="btn-icon flex-shrink-0"
+            className="btn-icon shrink-0"
             aria-label={t('common.back') || 'Back'}
           >
             {Icons.back}
@@ -477,18 +477,18 @@ export default function VehicleDocuments() {
               {t('vehicleDocuments.title') || 'Documents & Receipts'}
             </h1>
             {vehicle && (
-              <p className="text-xs text-[var(--color-text-secondary)] truncate">{vehicle.name}</p>
+              <p className="text-xs text-(--color-text-secondary) truncate">{vehicle.name}</p>
             )}
           </div>
           {!loading && (
-            <span className="text-xs text-[var(--color-text-muted)] flex-shrink-0">
+            <span className="text-xs text-(--color-text-muted) shrink-0">
               {total} {t('vehicleDocuments.files') || 'files'}
             </span>
           )}
           <button
             type="button"
             onClick={() => setShowUpload(v => !v)}
-            className={`btn-icon flex-shrink-0 transition-colors ${showUpload ? 'text-[var(--color-accent)]' : ''}`}
+            className={`btn-icon shrink-0 transition-colors ${showUpload ? 'text-(--color-accent)' : ''}`}
             aria-label={t('vehicleDocuments.upload') || 'Upload file'}
             title={t('vehicleDocuments.upload') || 'Upload file'}
           >
@@ -499,7 +499,7 @@ export default function VehicleDocuments() {
         {/* Search box */}
         <div className="px-4 pb-3">
           <div className="relative flex items-center">
-            <span className="absolute left-3 text-[var(--color-text-muted)] pointer-events-none">
+            <span className="absolute left-3 text-(--color-text-muted) pointer-events-none">
               {Icons.search}
             </span>
             <input
@@ -507,7 +507,7 @@ export default function VehicleDocuments() {
               value={query}
               onChange={handleQueryChange}
               placeholder={t('vehicleDocuments.searchPlaceholder') || 'Search scanned text, filenames…'}
-              className="w-full pl-9 pr-9 py-2.5 bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-xl text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] outline-none focus:border-[var(--color-accent)] transition-colors"
+              className="w-full pl-9 pr-9 py-2.5 bg-(--color-bg-tertiary) border border-(--color-border) rounded-xl text-sm text-(--color-text-primary) placeholder-(--color-text-muted) outline-hidden focus:border-(--color-accent) transition-colors"
               maxLength={100}
               autoComplete="off"
               autoCorrect="off"
@@ -516,7 +516,7 @@ export default function VehicleDocuments() {
             {query && (
               <button
                 onClick={clearQuery}
-                className="absolute right-3 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors touch-manipulation"
+                className="absolute right-3 text-(--color-text-muted) hover:text-(--color-text-primary) transition-colors touch-manipulation"
                 aria-label={t('common.clear') || 'Clear'}
               >
                 {Icons.clear}
@@ -524,7 +524,7 @@ export default function VehicleDocuments() {
             )}
           </div>
           {isSearching && !loading && (
-            <p className="text-xs text-[var(--color-text-muted)] mt-1.5 px-1">
+            <p className="text-xs text-(--color-text-muted) mt-1.5 px-1">
               {total === 0
                 ? (t('vehicleDocuments.noResults') || 'No documents match your search')
                 : `${total} ${t('vehicleDocuments.resultsFor') || 'result(s) for'} "${debouncedQ}"`}
@@ -535,9 +535,9 @@ export default function VehicleDocuments() {
 
       {/* Upload panel */}
       {showUpload && (
-        <div className="px-4 pt-3 pb-1 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
+        <div className="px-4 pt-3 pb-1 border-b border-(--color-border) bg-(--color-bg-secondary)">
           <div className="card p-4 space-y-3">
-            <p className="text-sm font-medium text-[var(--color-text-primary)]">
+            <p className="text-sm font-medium text-(--color-text-primary)">
               {t('vehicleDocuments.uploadTitle') || 'Upload File'}
             </p>
 
@@ -552,18 +552,18 @@ export default function VehicleDocuments() {
             {uploadFile ? (
               <div className="flex items-center gap-3">
                 {uploadPreview ? (
-                  <img src={uploadPreview} alt="preview" className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
+                  <img src={uploadPreview} alt="preview" className="w-14 h-14 rounded-lg object-cover shrink-0" />
                 ) : (
-                  <div className="w-14 h-14 rounded-lg bg-[var(--color-bg-tertiary)] flex items-center justify-center flex-shrink-0 text-[var(--color-text-muted)]">
+                  <div className="w-14 h-14 rounded-lg bg-(--color-bg-tertiary) flex items-center justify-center shrink-0 text-(--color-text-muted)">
                     {Icons.file}
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-[var(--color-text-primary)] truncate">{uploadFile.name}</p>
+                  <p className="text-sm text-(--color-text-primary) truncate">{uploadFile.name}</p>
                   <button
                     type="button"
                     onClick={() => { setUploadFile(null); if (uploadPreview) URL.revokeObjectURL(uploadPreview); setUploadPreview(null) }}
-                    className="text-xs text-[var(--color-text-muted)] underline mt-0.5 touch-manipulation"
+                    className="text-xs text-(--color-text-muted) underline mt-0.5 touch-manipulation"
                   >
                     {t('common.change') || 'Change'}
                   </button>
@@ -573,7 +573,7 @@ export default function VehicleDocuments() {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="w-full flex flex-col items-center justify-center gap-2 py-6 rounded-xl border-2 border-dashed border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] transition-colors touch-manipulation"
+                className="w-full flex flex-col items-center justify-center gap-2 py-6 rounded-xl border-2 border-dashed border-(--color-border) text-(--color-text-muted) hover:border-(--color-accent) hover:text-(--color-accent) transition-colors touch-manipulation"
               >
                 {Icons.upload}
                 <span className="text-sm">{t('vehicleDocuments.uploadChoose') || 'Tap to choose a file'}</span>
@@ -582,13 +582,13 @@ export default function VehicleDocuments() {
 
             {/* Category selector */}
             <div>
-              <label className="text-xs text-[var(--color-text-muted)] mb-1 block">
+              <label className="text-xs text-(--color-text-muted) mb-1 block">
                 {t('vehicleDocuments.categoryLabel') || 'Category'}
               </label>
               <select
                 value={uploadCategory}
                 onChange={e => setUploadCategory(e.target.value)}
-                className="w-full px-3 py-2 bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)] transition-colors"
+                className="w-full px-3 py-2 bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg text-sm text-(--color-text-primary) outline-hidden focus:border-(--color-accent) transition-colors"
               >
                 {['receipt', 'invoice', 'insurance', 'registration', 'maintenance', 'warranty', 'photo', 'document', 'other'].map(cat => (
                   <option key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
@@ -637,10 +637,10 @@ export default function VehicleDocuments() {
           <div className="space-y-3">
             {[1, 2, 3, 4].map(i => (
               <div key={i} className="card flex items-center gap-3 animate-pulse">
-                <div className="w-14 h-14 rounded-lg bg-[var(--color-bg-tertiary)] flex-shrink-0" />
+                <div className="w-14 h-14 rounded-lg bg-(--color-bg-tertiary) shrink-0" />
                 <div className="flex-1 space-y-2">
-                  <div className="h-3.5 bg-[var(--color-bg-tertiary)] rounded w-2/3" />
-                  <div className="h-2.5 bg-[var(--color-bg-tertiary)] rounded w-1/3" />
+                  <div className="h-3.5 bg-(--color-bg-tertiary) rounded-sm w-2/3" />
+                  <div className="h-2.5 bg-(--color-bg-tertiary) rounded-sm w-1/3" />
                 </div>
               </div>
             ))}
@@ -656,13 +656,13 @@ export default function VehicleDocuments() {
         {!loading && !error && noResults && (
           <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
             {Icons.emptyBox}
-            <p className="text-sm font-medium text-[var(--color-text-secondary)]">
+            <p className="text-sm font-medium text-(--color-text-secondary)">
               {isSearching
                 ? (t('vehicleDocuments.noResults') || 'No documents match your search')
                 : (t('vehicleDocuments.empty') || 'No documents yet')}
             </p>
             {!isSearching && (
-              <p className="text-xs text-[var(--color-text-muted)] max-w-xs">
+              <p className="text-xs text-(--color-text-muted) max-w-xs">
                 {t('vehicleDocuments.emptyHint') || 'Attach receipts and invoices to fuel, service, and repair entries to see them here.'}
               </p>
             )}
@@ -690,7 +690,7 @@ export default function VehicleDocuments() {
                   <button
                     type="button"
                     onClick={() => openViewer(a, false)}
-                    className="flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden bg-[var(--color-bg-tertiary)] flex items-center justify-center text-[var(--color-text-muted)] touch-manipulation"
+                    className="shrink-0 w-14 h-14 rounded-lg overflow-hidden bg-(--color-bg-tertiary) flex items-center justify-center text-(--color-text-muted) touch-manipulation"
                     aria-label={t('vehicleDocuments.openFile') || 'Open file'}
                   >
                     {thumb ? (
@@ -714,7 +714,7 @@ export default function VehicleDocuments() {
                       onClick={() => openViewer(a, false)}
                       className="text-left w-full group touch-manipulation"
                     >
-                      <p className="text-sm font-medium text-[var(--color-text-primary)] truncate group-hover:text-[var(--color-accent)] transition-colors">
+                      <p className="text-sm font-medium text-(--color-text-primary) truncate group-hover:text-(--color-accent) transition-colors">
                         {filename}
                       </p>
                     </button>
@@ -733,7 +733,7 @@ export default function VehicleDocuments() {
                         const soon = days <= 30
                         return (
                           <span
-                            className={`text-[10px] px-1.5 py-0.5 rounded ${soon ? 'bg-amber-500/15 text-amber-500' : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]'}`}
+                            className={`text-[10px] px-1.5 py-0.5 rounded-sm ${soon ? 'bg-amber-500/15 text-amber-500' : 'bg-(--color-bg-tertiary) text-(--color-text-muted)'}`}
                             title={(t('documents.expiresOn') || 'Expires {date}').replace('{date}', formatDate(a.expires_at))}
                           >
                             {(t('documents.expiresOn') || 'Expires {date}').replace('{date}', formatDate(a.expires_at))}
@@ -741,12 +741,12 @@ export default function VehicleDocuments() {
                         )
                       })()}
                       {a.file_size && (
-                        <span className="text-[10px] text-[var(--color-text-muted)]">
+                        <span className="text-[10px] text-(--color-text-muted)">
                           {fmtSize(a.file_size)}
                         </span>
                       )}
                       {a.created_at && (
-                        <span className="text-[10px] text-[var(--color-text-muted)]">
+                        <span className="text-[10px] text-(--color-text-muted)">
                           {new Date(a.created_at).toLocaleDateString()}
                         </span>
                       )}
@@ -754,7 +754,7 @@ export default function VehicleDocuments() {
 
                     {/* OCR snippet — highlighted match */}
                     {a.ocr_snippet && (
-                      <p className="text-xs text-[var(--color-text-muted)] mt-1.5 leading-relaxed line-clamp-2 font-mono">
+                      <p className="text-xs text-(--color-text-muted) mt-1.5 leading-relaxed line-clamp-2 font-mono">
                         {a.ocr_snippet}
                       </p>
                     )}
@@ -764,7 +764,7 @@ export default function VehicleDocuments() {
                   <button
                     type="button"
                     onClick={() => openEdit(a)}
-                    className="flex-shrink-0 p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-tertiary)] touch-manipulation"
+                    className="shrink-0 p-2 rounded-lg text-(--color-text-muted) hover:text-(--color-text-primary) hover:bg-(--color-bg-tertiary) touch-manipulation"
                     aria-label={t('documents.editDetails') || 'Edit details'}
                     title={t('documents.editDetails') || 'Edit details'}
                   >
@@ -798,7 +798,7 @@ export default function VehicleDocuments() {
           onClick={() => !editSaving && setEditAtt(null)}
         >
           <div
-            className="w-full sm:max-w-md bg-[var(--color-bg-card)] rounded-t-2xl sm:rounded-2xl border border-[var(--color-border)] p-4 space-y-4"
+            className="w-full sm:max-w-md bg-(--color-bg-card) rounded-t-2xl sm:rounded-2xl border border-(--color-border) p-4 space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
@@ -809,7 +809,7 @@ export default function VehicleDocuments() {
             </div>
 
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('documents.category') || 'Category'}
               </label>
               <select
@@ -825,7 +825,7 @@ export default function VehicleDocuments() {
             </div>
 
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('documents.expiryDate') || 'Expiry date'}
               </label>
               <div className="flex items-center gap-2">
@@ -848,7 +848,7 @@ export default function VehicleDocuments() {
             </div>
 
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addFuel.notes') || 'Notes'}
               </label>
               <textarea
@@ -888,19 +888,19 @@ export default function VehicleDocuments() {
         <div
           role="status"
           aria-live="polite"
-          className="fixed bottom-20 left-4 right-4 z-50 flex items-center gap-3 bg-[var(--color-bg-elevated,var(--color-bg-secondary))] border border-purple-500/30 rounded-2xl px-4 py-3 shadow-xl animate-slide-up"
+          className="fixed bottom-20 left-4 right-4 z-50 flex items-center gap-3 bg-(--color-bg-elevated,var(--color-bg-secondary)) border border-purple-500/30 rounded-2xl px-4 py-3 shadow-xl animate-slide-up"
           style={{ animation: 'slideUp 0.25s ease-out' }}
         >
-          <span className="flex-shrink-0 text-purple-400">
+          <span className="shrink-0 text-purple-400">
             {Icons.wand}
           </span>
-          <p className="flex-1 text-sm text-[var(--color-text-primary)]">
+          <p className="flex-1 text-sm text-(--color-text-primary)">
             {t('vehicleDocuments.ocrToast') || 'Receipt scanned — extract data?'}
           </p>
           <button
             type="button"
             onClick={openToastViewer}
-            className="flex-shrink-0 text-xs font-semibold text-purple-400 hover:text-purple-300 transition-colors px-2 py-1 touch-manipulation"
+            className="shrink-0 text-xs font-semibold text-purple-400 hover:text-purple-300 transition-colors px-2 py-1 touch-manipulation"
           >
             {t('vehicleDocuments.ocrToastView') || 'View'}
           </button>
@@ -908,7 +908,7 @@ export default function VehicleDocuments() {
             type="button"
             onClick={dismissToast}
             aria-label={t('common.dismiss') || 'Dismiss'}
-            className="flex-shrink-0 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors touch-manipulation"
+            className="shrink-0 text-(--color-text-muted) hover:text-(--color-text-primary) transition-colors touch-manipulation"
           >
             {Icons.close}
           </button>

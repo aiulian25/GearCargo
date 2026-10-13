@@ -144,18 +144,18 @@ function ChecklistItem({ item, checklistId, onToggle, onRemove, t }) {
         className={`
           flex-1 min-w-0 flex items-center gap-3 p-3 rounded-lg transition-all duration-200
           ${item.completed
-            ? 'bg-green-500/10 text-[var(--color-text-secondary)]'
-            : 'bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)]'
+            ? 'bg-green-500/10 text-(--color-text-secondary)'
+            : 'bg-(--color-bg-secondary) hover:bg-(--color-bg-tertiary) text-(--color-text-primary)'
           }
           ${isLoading ? 'opacity-50 cursor-wait' : 'cursor-pointer'}
           touch-manipulation
         `}
       >
         <div className={`
-          w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 transition-all
+          w-6 h-6 rounded-md flex items-center justify-center shrink-0 transition-all
           ${item.completed
             ? 'bg-green-500 text-white'
-            : 'border-2 border-[var(--color-border)]'
+            : 'border-2 border-(--color-border)'
           }
         `}>
           {item.completed && Icons.check}
@@ -167,7 +167,7 @@ function ChecklistItem({ item, checklistId, onToggle, onRemove, t }) {
       {item.custom && onRemove && (
         <button
           onClick={() => onRemove(checklistId, item.id)}
-          className="p-2 rounded-lg text-[var(--color-text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors flex-shrink-0 touch-manipulation"
+          className="p-2 rounded-lg text-(--color-text-muted) hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0 touch-manipulation"
           aria-label={t('seasonalChecklists.removeItem') || 'Remove item'}
           title={t('seasonalChecklists.removeItem') || 'Remove item'}
         >
@@ -243,13 +243,13 @@ function ChecklistCard({ checklist, onToggleItem, onReset, onDismiss, onAddItem,
               </span>
             )}
           </div>
-          <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+          <p className="text-xs text-(--color-text-muted) mt-0.5">
             {checklist.completed_count}/{checklist.total_count} {t('seasonalChecklists.itemsCompleted')}
           </p>
         </div>
         
         {/* Progress Circle */}
-        <div className="relative w-10 h-10 flex-shrink-0">
+        <div className="relative w-10 h-10 shrink-0">
           <svg className="w-10 h-10 transform -rotate-90">
             <circle
               cx="20"
@@ -276,7 +276,7 @@ function ChecklistCard({ checklist, onToggleItem, onReset, onDismiss, onAddItem,
           </span>
         </div>
         
-        <span className={`text-[var(--color-text-muted)] transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+        <span className={`text-(--color-text-muted) transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
           {Icons.chevronDown}
         </span>
       </button>
@@ -285,8 +285,8 @@ function ChecklistCard({ checklist, onToggleItem, onReset, onDismiss, onAddItem,
       {isExpanded && (
         <div className="px-4 pb-4 space-y-2">
           {description && (
-            <p className="text-xs text-[var(--color-text-secondary)] mb-3 flex items-start gap-2">
-              <span className="text-[var(--color-text-muted)] mt-0.5">{Icons.info}</span>
+            <p className="text-xs text-(--color-text-secondary) mb-3 flex items-start gap-2">
+              <span className="text-(--color-text-muted) mt-0.5">{Icons.info}</span>
               {description}
             </p>
           )}
@@ -296,12 +296,12 @@ function ChecklistCard({ checklist, onToggleItem, onReset, onDismiss, onAddItem,
             <div className="mb-3">
               <button
                 onClick={() => setShowMonths(v => !v)}
-                className="flex items-center gap-2 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors touch-manipulation"
+                className="flex items-center gap-2 text-xs text-(--color-text-muted) hover:text-(--color-text-secondary) transition-colors touch-manipulation"
               >
                 {Icons.gear}
                 {t('seasonalChecklists.inspectionMonths') || 'Inspection months'}
                 {selectedMonths.length > 0 && (
-                  <span className="text-2xs px-1.5 py-0.5 rounded-full bg-[var(--color-accent)]/15 text-[var(--color-accent)]">
+                  <span className="text-2xs px-1.5 py-0.5 rounded-full bg-(--color-accent)/15 text-(--color-accent)">
                     {selectedMonths.length}
                   </span>
                 )}
@@ -319,8 +319,8 @@ function ChecklistCard({ checklist, onToggleItem, onReset, onDismiss, onAddItem,
                         className={`
                           py-1.5 rounded-lg text-2xs font-medium capitalize transition-colors touch-manipulation
                           ${active
-                            ? 'bg-[var(--color-accent)] text-white'
-                            : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] hover:bg-[var(--color-bg-tertiary)]'}
+                            ? 'bg-(--color-accent) text-white'
+                            : 'bg-(--color-bg-secondary) text-(--color-text-muted) hover:bg-(--color-bg-tertiary)'}
                         `}
                       >
                         {(t(`calendar.months.${key}`) || key).slice(0, 3)}
@@ -355,12 +355,12 @@ function ChecklistCard({ checklist, onToggleItem, onReset, onDismiss, onAddItem,
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddItem() } }}
               maxLength={80}
               placeholder={t('seasonalChecklists.addItem') || 'Add item'}
-              className="flex-1 min-w-0 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+              className="flex-1 min-w-0 bg-(--color-bg-secondary) border border-(--color-border) rounded-lg px-3 py-2 text-sm outline-hidden focus:ring-2 focus:ring-(--color-accent)"
             />
             <button
               onClick={handleAddItem}
               disabled={!newItemLabel.trim() || addingItem}
-              className="flex items-center gap-1 px-3 py-2 rounded-lg bg-[var(--color-accent)]/10 text-[var(--color-accent)] text-xs font-medium hover:bg-[var(--color-accent)]/20 disabled:opacity-50 whitespace-nowrap touch-manipulation"
+              className="flex items-center gap-1 px-3 py-2 rounded-lg bg-(--color-accent)/10 text-(--color-accent) text-xs font-medium hover:bg-(--color-accent)/20 disabled:opacity-50 whitespace-nowrap touch-manipulation"
             >
               {Icons.plus}
               {t('seasonalChecklists.addItem') || 'Add item'}
@@ -368,10 +368,10 @@ function ChecklistCard({ checklist, onToggleItem, onReset, onDismiss, onAddItem,
           </div>
 
           {/* Actions */}
-          <div className="flex items-center justify-between pt-3 mt-3 border-t border-[var(--color-border)]">
+          <div className="flex items-center justify-between pt-3 mt-3 border-t border-(--color-border)">
             <button
               onClick={() => setShowActions(!showActions)}
-              className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
+              className="text-xs text-(--color-text-muted) hover:text-(--color-text-secondary) transition-colors"
             >
               {t('seasonalChecklists.moreActions')}
             </button>
@@ -380,14 +380,14 @@ function ChecklistCard({ checklist, onToggleItem, onReset, onDismiss, onAddItem,
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => onReset(checklist.id)}
-                  className="flex items-center gap-1 px-2 py-1 text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-tertiary)] rounded-lg transition-colors"
+                  className="flex items-center gap-1 px-2 py-1 text-xs text-(--color-text-secondary) hover:text-(--color-text-primary) bg-(--color-bg-secondary) hover:bg-(--color-bg-tertiary) rounded-lg transition-colors"
                 >
                   {Icons.refresh}
                   {t('seasonalChecklists.reset')}
                 </button>
                 <button
                   onClick={() => onDismiss(checklist.id, true)}
-                  className="flex items-center gap-1 px-2 py-1 text-xs text-[var(--color-text-secondary)] hover:text-red-400 bg-[var(--color-bg-secondary)] hover:bg-red-500/10 rounded-lg transition-colors"
+                  className="flex items-center gap-1 px-2 py-1 text-xs text-(--color-text-secondary) hover:text-red-400 bg-(--color-bg-secondary) hover:bg-red-500/10 rounded-lg transition-colors"
                 >
                   {Icons.x}
                   {t('seasonalChecklists.hide')}
@@ -558,7 +558,7 @@ export default function SeasonalChecklists({ compact = false, showOnlyInSeason =
         <p className="text-sm text-red-400">{error}</p>
         <button
           onClick={fetchChecklists}
-          className="mt-2 text-sm text-[var(--color-accent)] hover:underline"
+          className="mt-2 text-sm text-(--color-accent) hover:underline"
         >
           {t('common.tryAgain')}
         </button>
@@ -572,13 +572,13 @@ export default function SeasonalChecklists({ compact = false, showOnlyInSeason =
         <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center mx-auto mb-3">
           <span className="text-green-500">{Icons.check}</span>
         </div>
-        <p className="text-sm text-[var(--color-text-secondary)]">
+        <p className="text-sm text-(--color-text-secondary)">
           {t('seasonalChecklists.noChecklists')}
         </p>
         {dismissedCount > 0 && (
           <button
             onClick={() => setShowDismissed(true)}
-            className="mt-2 text-sm text-[var(--color-accent)] hover:underline"
+            className="mt-2 text-sm text-(--color-accent) hover:underline"
           >
             {t('seasonalChecklists.showHidden')} ({dismissedCount})
           </button>
@@ -592,12 +592,12 @@ export default function SeasonalChecklists({ compact = false, showOnlyInSeason =
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-[var(--color-accent)]/10 flex items-center justify-center text-[var(--color-accent)]">
+          <div className="w-8 h-8 rounded-lg bg-(--color-accent)/10 flex items-center justify-center text-(--color-accent)">
             {Icons.clipboard}
           </div>
           <div>
             <h2 className="text-sm font-semibold">{t('seasonalChecklists.title')}</h2>
-            <p className="text-2xs text-[var(--color-text-muted)]">
+            <p className="text-2xs text-(--color-text-muted)">
               {t('seasonalChecklists.subtitle')}
             </p>
           </div>
@@ -606,7 +606,7 @@ export default function SeasonalChecklists({ compact = false, showOnlyInSeason =
         {dismissedCount > 0 && (
           <button
             onClick={() => setShowDismissed(!showDismissed)}
-            className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
+            className="text-xs text-(--color-text-muted) hover:text-(--color-text-secondary) transition-colors"
           >
             {showDismissed ? t('seasonalChecklists.hideHidden') : `${t('seasonalChecklists.showHidden')} (${dismissedCount})`}
           </button>
@@ -634,14 +634,14 @@ export default function SeasonalChecklists({ compact = false, showOnlyInSeason =
       {/* Restore hidden checklists */}
       {showDismissed && dismissedCount > 0 && (
         <div className="text-center pt-2">
-          <p className="text-xs text-[var(--color-text-muted)] mb-2">
+          <p className="text-xs text-(--color-text-muted) mb-2">
             {t('seasonalChecklists.hiddenInfo')}
           </p>
           <button
             onClick={() => {
               checklists.filter(cl => cl.dismissed).forEach(cl => handleDismiss(cl.id, false))
             }}
-            className="text-xs text-[var(--color-accent)] hover:underline"
+            className="text-xs text-(--color-accent) hover:underline"
           >
             {t('seasonalChecklists.restoreAll')}
           </button>

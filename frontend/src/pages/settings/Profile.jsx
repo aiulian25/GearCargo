@@ -127,7 +127,7 @@ function PasswordStrength({ password, useServerValidation = false }) {
   return (
     <div className="mt-2">
       <div className="flex items-center gap-2 mb-1">
-        <div className="flex-1 h-1 bg-[var(--color-bg-tertiary)] rounded-full overflow-hidden">
+        <div className="flex-1 h-1 bg-(--color-bg-tertiary) rounded-full overflow-hidden">
           <div 
             className={`h-full transition-all duration-300 ${getColor()}`}
             style={{ width: `${strength.score}%` }}
@@ -149,10 +149,10 @@ function PasswordStrength({ password, useServerValidation = false }) {
         </span>
       </div>
       {strength.errors.length > 0 && (
-        <ul className="text-2xs text-[var(--color-text-muted)] space-y-0.5">
+        <ul className="text-2xs text-(--color-text-muted) space-y-0.5">
           {strength.errors.slice(0, 3).map((err, i) => (
             <li key={i} className="flex items-center gap-1">
-              <span className="w-1 h-1 rounded-full bg-[var(--color-text-muted)]" />
+              <span className="w-1 h-1 rounded-full bg-(--color-text-muted)" />
               {err}
             </li>
           ))}
@@ -199,14 +199,14 @@ function SecurityVerificationModal({ isOpen, onClose, onVerify, requires2FA, isV
   
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-      <div className="bg-[var(--color-bg-card)] rounded-2xl p-6 w-full max-w-sm border border-[var(--color-border)]">
+      <div className="bg-(--color-bg-card) rounded-2xl p-6 w-full max-w-sm border border-(--color-border)">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center">
             <span className="material-icons-outlined text-amber-500">lock</span>
           </div>
           <div>
             <h3 className="text-base font-semibold">{t('profile.verifyIdentity') || 'Verify Your Identity'}</h3>
-            <p className="text-xs text-[var(--color-text-secondary)]">
+            <p className="text-xs text-(--color-text-secondary)">
               {t('profile.verifyIdentityDesc') || 'Enter your password to confirm changes'}
             </p>
           </div>
@@ -220,7 +220,7 @@ function SecurityVerificationModal({ isOpen, onClose, onVerify, requires2FA, isV
           )}
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('profile.currentPassword') || 'Current Password'}
             </label>
             <input
@@ -235,7 +235,7 @@ function SecurityVerificationModal({ isOpen, onClose, onVerify, requires2FA, isV
           
           {requires2FA && (
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('profile.twoFactorCode') || '2FA Code'}
               </label>
               <input
@@ -253,14 +253,14 @@ function SecurityVerificationModal({ isOpen, onClose, onVerify, requires2FA, isV
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-3 rounded-xl bg-[var(--color-bg-tertiary)] font-medium text-sm"
+              className="flex-1 py-3 rounded-xl bg-(--color-bg-tertiary) font-medium text-sm"
             >
               {t('common.cancel') || 'Cancel'}
             </button>
             <button
               type="submit"
               disabled={isVerifying}
-              className="flex-1 py-3 rounded-xl bg-[var(--color-accent)] text-white font-medium text-sm disabled:opacity-50"
+              className="flex-1 py-3 rounded-xl bg-(--color-accent) text-white font-medium text-sm disabled:opacity-50"
             >
               {isVerifying ? (t('common.verifying') || 'Verifying...') : (t('common.confirm') || 'Confirm')}
             </button>
@@ -604,7 +604,7 @@ export default function Profile() {
   return (
     <div className="pb-4">
       {/* Header */}
-      <div className="bg-[var(--color-bg-card)] border-b border-[var(--color-border)] px-4 py-3 flex items-center gap-3">
+      <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="btn-icon">
           <span className="material-icons-outlined icon-md">arrow_back</span>
         </button>
@@ -617,7 +617,7 @@ export default function Profile() {
           onClick={() => setShowAvatarModal(true)}
           className="relative group"
         >
-          <div className="w-20 h-20 rounded-full bg-[var(--color-accent)] flex items-center justify-center overflow-hidden">
+          <div className="w-20 h-20 rounded-full bg-(--color-accent) flex items-center justify-center overflow-hidden">
             {user?.avatar ? (
               <img 
                 src={user.avatar} 
@@ -635,25 +635,25 @@ export default function Profile() {
             <span className="material-icons-outlined text-white text-xl">photo_camera</span>
           </div>
           {/* Edit badge */}
-          <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-[var(--color-accent)] flex items-center justify-center border-2 border-[var(--color-bg)]">
+          <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-(--color-accent) flex items-center justify-center border-2 border-(--color-bg)">
             <span className="material-icons-outlined text-white text-sm">edit</span>
           </div>
         </button>
         <h2 className="text-base font-semibold mt-3">{user?.name}</h2>
-        <p className="text-xs text-[var(--color-text-secondary)]">{user?.email}</p>
+        <p className="text-xs text-(--color-text-secondary)">{user?.email}</p>
       </div>
       
       {/* Tabs */}
       <div className="px-4 mb-4">
-        <div className="flex bg-[var(--color-bg-tertiary)] rounded-lg p-1">
+        <div className="flex bg-(--color-bg-tertiary) rounded-lg p-1">
           {['profile', 'password', 'security'].map(tab => (
             <button
               key={tab}
               onClick={() => { setActiveTab(tab); setError(''); setSuccess(''); }}
               className={`flex-1 py-2 rounded-md text-xs font-medium transition-colors ${
                 activeTab === tab 
-                  ? 'bg-[var(--color-bg-card)] text-[var(--color-accent)] shadow-sm' 
-                  : 'text-[var(--color-text-secondary)]'
+                  ? 'bg-(--color-bg-card) text-(--color-accent) shadow-xs' 
+                  : 'text-(--color-text-secondary)'
               }`}
             >
               {tabLabels[tab]}
@@ -679,12 +679,12 @@ export default function Profile() {
         {activeTab === 'profile' && (
           <form onSubmit={profileForm.handleSubmit(handleProfileUpdate)} className="space-y-4">
             <div className="card space-y-4">
-              <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
+              <h3 className="text-sm font-medium text-(--color-text-secondary)">
                 {t('profile.accountInfo') || 'Account Information'}
               </h3>
               
               <div>
-                <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                <label className="block text-xs text-(--color-text-muted) mb-1">
                   {t('profile.displayName') || 'Display Name'}
                 </label>
                 <input
@@ -696,7 +696,7 @@ export default function Profile() {
               </div>
               
               <div>
-                <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                <label className="block text-xs text-(--color-text-muted) mb-1">
                   {t('common.username') || 'Username'}
                 </label>
                 <input
@@ -708,7 +708,7 @@ export default function Profile() {
               </div>
               
               <div>
-                <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                <label className="block text-xs text-(--color-text-muted) mb-1">
                   {t('common.email') || 'Email'}
                 </label>
                 <input
@@ -717,7 +717,7 @@ export default function Profile() {
                   className="input"
                   placeholder="email@example.com"
                 />
-                <p className="text-2xs text-[var(--color-text-muted)] mt-1">
+                <p className="text-2xs text-(--color-text-muted) mt-1">
                   {t('profile.emailChangeNote') || 'Used for login and notifications'}
                 </p>
                 
@@ -741,7 +741,7 @@ export default function Profile() {
                       type="button"
                       onClick={handleResendVerification}
                       disabled={isResendingVerification}
-                      className="mt-2 text-xs text-[var(--color-accent)] hover:underline disabled:opacity-50"
+                      className="mt-2 text-xs text-(--color-accent) hover:underline disabled:opacity-50"
                     >
                       {isResendingVerification 
                         ? (t('common.sending') || 'Sending...') 
@@ -761,13 +761,13 @@ export default function Profile() {
             </div>
             
             <div className="card space-y-4">
-              <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
+              <h3 className="text-sm font-medium text-(--color-text-secondary)">
                 {t('profile.preferences') || 'Preferences'}
               </h3>
               
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                  <label className="block text-xs text-(--color-text-muted) mb-1">
                     {t('profile.language') || 'Language'}
                   </label>
                   <select {...profileForm.register('language')} className="input">
@@ -780,7 +780,7 @@ export default function Profile() {
                 </div>
                 
                 <div>
-                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                  <label className="block text-xs text-(--color-text-muted) mb-1">
                     {t('profile.currency') || 'Currency'}
                   </label>
                   <select {...profileForm.register('currency')} className="input">
@@ -794,7 +794,7 @@ export default function Profile() {
               
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                  <label className="block text-xs text-(--color-text-muted) mb-1">
                     {t('profile.distance') || 'Distance'}
                   </label>
                   <select {...profileForm.register('distance_unit')} className="input">
@@ -804,7 +804,7 @@ export default function Profile() {
                 </div>
                 
                 <div>
-                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                  <label className="block text-xs text-(--color-text-muted) mb-1">
                     {t('profile.volume') || 'Volume'}
                   </label>
                   <select {...profileForm.register('volume_unit')} className="input">
@@ -817,20 +817,20 @@ export default function Profile() {
             
             {/* Location Settings */}
             <div className="card space-y-4">
-              <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
+              <h3 className="text-sm font-medium text-(--color-text-secondary)">
                 {t('profile.locationSettings') || 'Location Settings'}
               </h3>
               
-              <p className="text-xs text-[var(--color-text-muted)]">
+              <p className="text-xs text-(--color-text-muted)">
                 {t('profile.locationDescription') || 'Set your location for accurate fuel prices on the dashboard.'}
               </p>
               
               <div className="flex items-center justify-between">
                 <div>
-                  <label className="text-sm font-medium text-[var(--color-text-primary)]">
+                  <label className="text-sm font-medium text-(--color-text-primary)">
                     {t('profile.autoDetectLocation') || 'Auto-detect Location'}
                   </label>
-                  <p className="text-xs text-[var(--color-text-muted)]">
+                  <p className="text-xs text-(--color-text-muted)">
                     {t('profile.autoDetectDescription') || 'Use your device GPS for precise location'}
                   </p>
                 </div>
@@ -840,14 +840,14 @@ export default function Profile() {
                     {...profileForm.register('location_auto_detect')}
                     className="sr-only peer" 
                   />
-                  <div className="w-11 h-6 bg-[var(--color-bg-tertiary)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--color-accent)]"></div>
+                  <div className="w-11 h-6 bg-(--color-bg-tertiary) peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-(--color-accent)"></div>
                 </label>
               </div>
               
               {!profileForm.watch('location_auto_detect') && (
-                <div className="space-y-3 pt-2 border-t border-[var(--color-border)]">
+                <div className="space-y-3 pt-2 border-t border-(--color-border)">
                   <div>
-                    <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                    <label className="block text-xs text-(--color-text-muted) mb-1">
                       {t('profile.locationName') || 'Location Name'}
                     </label>
                     <input
@@ -860,7 +860,7 @@ export default function Profile() {
                   
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                      <label className="block text-xs text-(--color-text-muted) mb-1">
                         {t('profile.latitude') || 'Latitude'}
                       </label>
                       <input
@@ -872,7 +872,7 @@ export default function Profile() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                      <label className="block text-xs text-(--color-text-muted) mb-1">
                         {t('profile.longitude') || 'Longitude'}
                       </label>
                       <input
@@ -885,7 +885,7 @@ export default function Profile() {
                     </div>
                   </div>
                   
-                  <p className="text-xs text-[var(--color-text-muted)]">
+                  <p className="text-xs text-(--color-text-muted)">
                     {t('profile.locationTip') || 'Tip: You can find coordinates by right-clicking on Google Maps.'}
                   </p>
                 </div>
@@ -906,12 +906,12 @@ export default function Profile() {
         {activeTab === 'password' && (
           <form onSubmit={passwordForm.handleSubmit(handlePasswordChange)} className="space-y-4">
             <div className="card space-y-4">
-              <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">
+              <h3 className="text-sm font-medium text-(--color-text-secondary)">
                 {t('profile.changePassword') || 'Change Password'}
               </h3>
               
               <div>
-                <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                <label className="block text-xs text-(--color-text-muted) mb-1">
                   {t('profile.currentPassword') || 'Current Password'}
                 </label>
                 <div className="relative">
@@ -924,7 +924,7 @@ export default function Profile() {
                   <button
                     type="button"
                     onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-(--color-text-muted) hover:text-(--color-text-secondary)"
                   >
                     <span className="material-icons-outlined text-lg">
                       {showCurrentPassword ? 'visibility_off' : 'visibility'}
@@ -934,7 +934,7 @@ export default function Profile() {
               </div>
               
               <div>
-                <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                <label className="block text-xs text-(--color-text-muted) mb-1">
                   {t('profile.newPassword') || 'New Password'}
                 </label>
                 <div className="relative">
@@ -950,7 +950,7 @@ export default function Profile() {
                   <button
                     type="button"
                     onClick={() => setShowNewPassword(!showNewPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-(--color-text-muted) hover:text-(--color-text-secondary)"
                   >
                     <span className="material-icons-outlined text-lg">
                       {showNewPassword ? 'visibility_off' : 'visibility'}
@@ -961,7 +961,7 @@ export default function Profile() {
               </div>
               
               <div>
-                <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                <label className="block text-xs text-(--color-text-muted) mb-1">
                   {t('profile.confirmNewPassword') || 'Confirm New Password'}
                 </label>
                 <div className="relative">
@@ -974,7 +974,7 @@ export default function Profile() {
                   <button
                     type="button"
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-(--color-text-muted) hover:text-(--color-text-secondary)"
                   >
                     <span className="material-icons-outlined text-lg">
                       {showConfirmPassword ? 'visibility_off' : 'visibility'}
@@ -985,7 +985,7 @@ export default function Profile() {
               
               {user?.two_factor_enabled && (
                 <div>
-                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+                  <label className="block text-xs text-(--color-text-muted) mb-1">
                     {t('profile.twoFactorCode') || '2FA Code'}
                   </label>
                   <input
@@ -995,7 +995,7 @@ export default function Profile() {
                     placeholder="000000"
                     maxLength={6}
                   />
-                  <p className="text-2xs text-[var(--color-text-muted)] mt-1">
+                  <p className="text-2xs text-(--color-text-muted) mt-1">
                     {t('profile.enterAuthCode') || 'Enter code from your authenticator app'}
                   </p>
                 </div>
@@ -1004,10 +1004,10 @@ export default function Profile() {
             
             {/* Password requirements */}
             <div className="card">
-              <h4 className="text-xs font-medium text-[var(--color-text-secondary)] mb-2">
+              <h4 className="text-xs font-medium text-(--color-text-secondary) mb-2">
                 {t('profile.passwordRequirements') || 'Password Requirements'}
               </h4>
-              <ul className="text-2xs text-[var(--color-text-muted)] space-y-1">
+              <ul className="text-2xs text-(--color-text-muted) space-y-1">
                 <li className="flex items-center gap-2">
                   <span className="material-icons-outlined text-xs">check_circle</span>
                   {t('profile.reqMinLength') || 'At least 12 characters'}
@@ -1044,7 +1044,7 @@ export default function Profile() {
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h3 className="text-sm font-medium">{t('auth.twoFactorAuth') || 'Two-Factor Authentication'}</h3>
-                  <p className="text-2xs text-[var(--color-text-muted)]">
+                  <p className="text-2xs text-(--color-text-muted)">
                     {t('profile.addExtraSecurity') || 'Add an extra layer of security'}
                   </p>
                 </div>
@@ -1055,12 +1055,12 @@ export default function Profile() {
               
               {/* Show backup codes remaining when 2FA is enabled */}
               {user?.two_factor_enabled && twoFAStatus && (
-                <div className={`mb-4 p-3 rounded-lg ${twoFAStatus.backup_codes_count <= 2 ? 'bg-amber-500/10 border border-amber-500/30' : 'bg-[var(--color-bg-tertiary)]'}`}>
+                <div className={`mb-4 p-3 rounded-lg ${twoFAStatus.backup_codes_count <= 2 ? 'bg-amber-500/10 border border-amber-500/30' : 'bg-(--color-bg-tertiary)'}`}>
                   <div className="flex items-center gap-2">
-                    <span className={`material-icons-outlined icon-sm ${twoFAStatus.backup_codes_count <= 2 ? 'text-amber-500' : 'text-[var(--color-text-muted)]'}`}>
+                    <span className={`material-icons-outlined icon-sm ${twoFAStatus.backup_codes_count <= 2 ? 'text-amber-500' : 'text-(--color-text-muted)'}`}>
                       vpn_key
                     </span>
-                    <span className={`text-xs ${twoFAStatus.backup_codes_count <= 2 ? 'text-amber-500 font-medium' : 'text-[var(--color-text-muted)]'}`}>
+                    <span className={`text-xs ${twoFAStatus.backup_codes_count <= 2 ? 'text-amber-500 font-medium' : 'text-(--color-text-muted)'}`}>
                       {twoFAStatus.backup_codes_count} {t('profile.backupCodesRemaining') || 'backup codes remaining'}
                     </span>
                   </div>
@@ -1084,13 +1084,13 @@ export default function Profile() {
               <h3 className="text-sm font-medium mb-3">{t('profile.activeSessions') || 'Active Sessions'}</h3>
               
               <div className="space-y-3">
-                <div className="flex items-center gap-3 p-2 bg-[var(--color-bg-tertiary)] rounded-lg">
+                <div className="flex items-center gap-3 p-2 bg-(--color-bg-tertiary) rounded-lg">
                   <span className="material-icons-outlined icon-sm text-green-500">
                     smartphone
                   </span>
                   <div className="flex-1">
                     <p className="text-xs font-medium">{t('profile.currentDevice') || 'Current Device'}</p>
-                    <p className="text-2xs text-[var(--color-text-muted)]">
+                    <p className="text-2xs text-(--color-text-muted)">
                       {t('common.active') || 'Active now'}
                     </p>
                   </div>
@@ -1108,7 +1108,7 @@ export default function Profile() {
               <button className="btn w-full border-red-500 text-red-500 hover:bg-red-500/10 text-sm">
                 {t('profile.deleteAccount') || 'Delete Account'}
               </button>
-              <p className="text-2xs text-[var(--color-text-muted)] mt-2 text-center">
+              <p className="text-2xs text-(--color-text-muted) mt-2 text-center">
                 {t('profile.cannotBeUndone') || 'This action cannot be undone'}
               </p>
             </div>
@@ -1142,9 +1142,9 @@ export default function Profile() {
       {/* Avatar Modal */}
       {showAvatarModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-[var(--color-bg-card)] rounded-2xl w-full max-w-sm max-h-[80vh] overflow-hidden flex flex-col">
+          <div className="bg-(--color-bg-card) rounded-2xl w-full max-w-sm max-h-[80vh] overflow-hidden flex flex-col">
             {/* Modal Header */}
-            <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
+            <div className="flex items-center justify-between p-4 border-b border-(--color-border)">
               <h3 className="text-base font-semibold">{t('profile.changeAvatar') || 'Change Avatar'}</h3>
               <button 
                 onClick={() => setShowAvatarModal(false)}
@@ -1159,7 +1159,7 @@ export default function Profile() {
             <div className="flex-1 overflow-y-auto p-4">
               {/* Current Avatar */}
               <div className="flex flex-col items-center mb-6">
-                <div className="w-24 h-24 rounded-full bg-[var(--color-accent)] flex items-center justify-center overflow-hidden mb-3">
+                <div className="w-24 h-24 rounded-full bg-(--color-accent) flex items-center justify-center overflow-hidden mb-3">
                   {user?.avatar ? (
                     <img 
                       src={user.avatar} 
@@ -1172,7 +1172,7 @@ export default function Profile() {
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-[var(--color-text-muted)]">
+                <p className="text-xs text-(--color-text-muted)">
                   {t('profile.currentAvatar') || 'Current Avatar'}
                 </p>
               </div>
@@ -1209,7 +1209,7 @@ export default function Profile() {
               {/* Previous Avatars */}
               {avatarHistory.length > 0 && (
                 <div>
-                  <h4 className="text-xs font-medium text-[var(--color-text-muted)] mb-3">
+                  <h4 className="text-xs font-medium text-(--color-text-muted) mb-3">
                     {t('profile.previousAvatars') || 'Previous Avatars'}
                   </h4>
                   <div className="grid grid-cols-4 gap-3">
@@ -1218,7 +1218,7 @@ export default function Profile() {
                         <button
                           onClick={() => handleSelectAvatar(avatarUrl)}
                           disabled={isUploadingAvatar}
-                          className="w-full aspect-square rounded-lg overflow-hidden border-2 border-transparent hover:border-[var(--color-accent)] transition-colors"
+                          className="w-full aspect-square rounded-lg overflow-hidden border-2 border-transparent hover:border-(--color-accent) transition-colors"
                         >
                           <img 
                             src={avatarUrl} 
@@ -1243,7 +1243,7 @@ export default function Profile() {
               )}
               
               {/* Help text */}
-              <p className="text-2xs text-[var(--color-text-muted)] mt-4 text-center">
+              <p className="text-2xs text-(--color-text-muted) mt-4 text-center">
                 {t('profile.avatarHint') || 'JPG, PNG, GIF or WebP. Max 2MB.'}
               </p>
             </div>

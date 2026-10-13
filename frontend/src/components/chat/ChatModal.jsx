@@ -51,7 +51,7 @@ export default function ChatModal({ open, onClose, vehicles = [] }) {
         id="chat-vehicle"
         value={selectedId ?? ''}
         onChange={(e) => setSelectedId(e.target.value === 'fleet' ? 'fleet' : Number(e.target.value))}
-        className="text-2xs bg-transparent text-[var(--color-text-muted)] border-none p-0 pr-4 -ml-0.5 focus:ring-0 focus:outline-none cursor-pointer max-w-[12rem] truncate"
+        className="text-2xs bg-transparent text-(--color-text-muted) border-none p-0 pr-4 -ml-0.5 focus:ring-0 focus:outline-hidden cursor-pointer max-w-48 truncate"
       >
         <option value="fleet">🚗 {allVehiclesLabel}</option>
         {vehicles.map((v) => (
@@ -62,24 +62,24 @@ export default function ChatModal({ open, onClose, vehicles = [] }) {
   ) : null
 
   return (
-    <div className="fixed inset-0 z-[130] flex items-end sm:items-center justify-center sm:p-4">
+    <div className="fixed inset-0 z-130 flex items-end sm:items-center justify-center sm:p-4">
       <div className="absolute inset-0 bg-black/55 backdrop-blur-[1px]" aria-hidden="true" onClick={onClose} />
       <div
         role="dialog"
         aria-modal="true"
         aria-label={t('chat.title') || 'Vehicle Assistant'}
-        className="relative w-full sm:max-w-lg h-[85vh] sm:h-[600px] sm:max-h-[85vh] bg-[var(--color-bg-primary)] rounded-t-2xl sm:rounded-2xl border border-[var(--color-border)] shadow-2xl overflow-hidden flex flex-col"
+        className="relative w-full sm:max-w-lg h-[85vh] sm:h-[600px] sm:max-h-[85vh] bg-(--color-bg-primary) rounded-t-2xl sm:rounded-2xl border border-(--color-border) shadow-2xl overflow-hidden flex flex-col"
       >
         {vehicles.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center text-center px-6 py-10 gap-4">
             <span className="text-4xl" aria-hidden="true">🤖</span>
-            <p className="text-sm text-[var(--color-text-secondary)]">
+            <p className="text-sm text-(--color-text-secondary)">
               {t('chat.noVehicles') || 'Add a vehicle to start chatting with the assistant.'}
             </p>
             <Link to="/vehicles/add" onClick={onClose} className="btn btn-primary">
               {t('dashboard.addVehicle') || 'Add Vehicle'}
             </Link>
-            <button type="button" onClick={onClose} className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]">
+            <button type="button" onClick={onClose} className="text-sm text-(--color-text-muted) hover:text-(--color-text-primary)">
               {t('common.close') || 'Close'}
             </button>
           </div>

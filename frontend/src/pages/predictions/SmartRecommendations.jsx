@@ -453,7 +453,7 @@ export default function SmartRecommendations() {
         </div>
         <div className="min-w-0">
           <h1 className="text-lg font-semibold">{t('smartRecommendations.title') || 'Smart Recommendations'}</h1>
-          <p className="text-xs text-[var(--color-text-secondary)]">
+          <p className="text-xs text-(--color-text-secondary)">
             {t('smartRecommendations.subtitle') || 'AI-powered insights for your vehicles'}
           </p>
         </div>
@@ -466,7 +466,7 @@ export default function SmartRecommendations() {
 
       {/* Vehicle Recommendations Section */}
       <div className="mb-4">
-        <h2 className="text-sm font-semibold text-[var(--color-text-secondary)]">
+        <h2 className="text-sm font-semibold text-(--color-text-secondary)">
           {t('smartRecommendations.vehicleAlerts') || 'Vehicle Alerts'}
         </h2>
       </div>
@@ -480,7 +480,7 @@ export default function SmartRecommendations() {
           <h3 className="text-sm font-medium mb-1">
             {t('smartRecommendations.allGood') || 'All Good!'}
           </h3>
-          <p className="text-xs text-[var(--color-text-secondary)]">
+          <p className="text-xs text-(--color-text-secondary)">
             {t('smartRecommendations.noRecommendations') || 'No urgent recommendations for your vehicles'}
           </p>
         </div>
@@ -490,7 +490,7 @@ export default function SmartRecommendations() {
             const canMarkDone = rec.type === 'service_due'
             const cardContent = (
               <>
-                <div className={`w-10 h-10 rounded-xl ${rec.bgColor} flex items-center justify-center flex-shrink-0 ${rec.color}`}>
+                <div className={`w-10 h-10 rounded-xl ${rec.bgColor} flex items-center justify-center shrink-0 ${rec.color}`}>
                   {rec.icon}
                 </div>
                 
@@ -499,12 +499,12 @@ export default function SmartRecommendations() {
                     <p className="text-sm font-medium truncate">{rec.title}</p>
                     {getPriorityBadge(rec.priority)}
                   </div>
-                  <p className="text-xs text-[var(--color-text-secondary)] flex items-center gap-1">
-                    <span className="text-[var(--color-text-muted)]">{Icons.car}</span>
+                  <p className="text-xs text-(--color-text-secondary) flex items-center gap-1">
+                    <span className="text-(--color-text-muted)">{Icons.car}</span>
                     {rec.vehicleName}
                   </p>
                   {rec.daysUntil !== undefined && (
-                    <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                    <p className="text-xs text-(--color-text-muted) mt-1">
                       {rec.daysUntil <= 0 
                         ? t('smartRecommendations.overdue') || 'Overdue'
                         : `${rec.daysUntil} ${t('common.days') || 'days'} ${t('smartRecommendations.remaining') || 'remaining'}`
@@ -543,7 +543,7 @@ export default function SmartRecommendations() {
                 className="card flex items-start gap-3 touch-manipulation"
               >
                 {cardContent}
-                <span className="material-icons-outlined icon-sm text-[var(--color-text-muted)] flex-shrink-0">
+                <span className="material-icons-outlined icon-sm text-(--color-text-muted) shrink-0">
                   chevron_right
                 </span>
               </Link>
@@ -559,7 +559,7 @@ export default function SmartRecommendations() {
             <p className="text-lg font-semibold text-red-500">
               {recommendations.filter(r => r.priority === 'high').length}
             </p>
-            <p className="text-2xs text-[var(--color-text-muted)]">
+            <p className="text-2xs text-(--color-text-muted)">
               {t('smartRecommendations.urgent') || 'Urgent'}
             </p>
           </div>
@@ -567,7 +567,7 @@ export default function SmartRecommendations() {
             <p className="text-lg font-semibold text-amber-500">
               {recommendations.filter(r => r.priority === 'medium').length}
             </p>
-            <p className="text-2xs text-[var(--color-text-muted)]">
+            <p className="text-2xs text-(--color-text-muted)">
               {t('smartRecommendations.soon') || 'Soon'}
             </p>
           </div>
@@ -575,7 +575,7 @@ export default function SmartRecommendations() {
             <p className="text-lg font-semibold text-green-500">
               {recommendations.filter(r => r.priority === 'low').length}
             </p>
-            <p className="text-2xs text-[var(--color-text-muted)]">
+            <p className="text-2xs text-(--color-text-muted)">
               {t('smartRecommendations.info') || 'Info'}
             </p>
           </div>
@@ -592,7 +592,7 @@ export default function SmartRecommendations() {
               <h2 className="text-sm font-semibold">
                 {t('smartRecommendations.aiInsightsTitle') || 'AI Insights'}
               </h2>
-              <span className="text-2xs px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 font-medium">
+              <span className="text-2xs px-1.5 py-0.5 rounded-sm bg-purple-500/10 text-purple-400 font-medium">
                 Ollama
               </span>
             </div>
@@ -626,7 +626,7 @@ export default function SmartRecommendations() {
                 return (
                   <div key={vehicle.id} className="card space-y-2 py-3">
                     <div className="flex items-center gap-3">
-                      <span className="text-[var(--color-text-muted)] shrink-0">{Icons.car}</span>
+                      <span className="text-(--color-text-muted) shrink-0">{Icons.car}</span>
                       <span className="flex-1 text-sm font-medium truncate">{vehicle.name || `${vehicle.year} ${vehicle.make} ${vehicle.model}`}</span>
                       {errMsg && !isStale && (
                         <span className="text-xs text-red-400 truncate max-w-[140px]" title={errMsg}>
@@ -675,7 +675,7 @@ export default function SmartRecommendations() {
 
                     {/* Hard error (no stale data available) */}
                     {errMsg && !isStale && countdown > 0 && (
-                      <p className="text-xs text-[var(--color-text-muted)] px-1">
+                      <p className="text-xs text-(--color-text-muted) px-1">
                         {(t('aiPredictions.retryIn') || 'Retry in {s}s').replace('{s}', countdown)}
                       </p>
                     )}
@@ -691,7 +691,7 @@ export default function SmartRecommendations() {
               <div className="w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center mx-auto mb-3 text-purple-400">
                 {Icons.brain}
               </div>
-              <p className="text-sm text-[var(--color-text-secondary)]">
+              <p className="text-sm text-(--color-text-secondary)">
                 {t('smartRecommendations.noAiPredictions') || 'No AI predictions yet. Tap Analyze to generate insights.'}
               </p>
             </div>
@@ -711,7 +711,7 @@ export default function SmartRecommendations() {
                 return (
                   <div key={pred.id} className="card flex items-start gap-3">
                     {/* Type icon */}
-                    <div className={`w-10 h-10 rounded-xl ${uc.bg} flex items-center justify-center flex-shrink-0 ${uc.text}`}>
+                    <div className={`w-10 h-10 rounded-xl ${uc.bg} flex items-center justify-center shrink-0 ${uc.text}`}>
                       {pred.alert_type === 'fuel' ? Icons.fuel
                         : pred.alert_type === 'repair' ? Icons.wrench
                         : pred.alert_type === 'service' ? Icons.wrench
@@ -730,14 +730,14 @@ export default function SmartRecommendations() {
                       </div>
 
                       {/* Vehicle label */}
-                      <p className="text-xs text-[var(--color-text-muted)] flex items-center gap-1 mb-1">
+                      <p className="text-xs text-(--color-text-muted) flex items-center gap-1 mb-1">
                         <span className="shrink-0">{Icons.car}</span>
                         {vehicleName}
                       </p>
 
                       {/* Description */}
                       {getAiDescription(pred) && (
-                        <p className="text-xs text-[var(--color-text-secondary)] leading-relaxed mb-1">
+                        <p className="text-xs text-(--color-text-secondary) leading-relaxed mb-1">
                           {getAiDescription(pred)}
                         </p>
                       )}
@@ -745,12 +745,12 @@ export default function SmartRecommendations() {
                       {/* Footer row: cost estimate + confidence + mileage estimate + AI badge */}
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
                         {pred.estimated_cost != null && (
-                          <span className="text-xs text-[var(--color-text-muted)]">
+                          <span className="text-xs text-(--color-text-muted)">
                             {t('smartRecommendations.estimatedCost') || 'Est. cost'}: {pred.estimated_cost}
                           </span>
                         )}
                         {pred.confidence_score != null && (
-                          <span className="text-xs text-[var(--color-text-muted)]">
+                          <span className="text-xs text-(--color-text-muted)">
                             {t('smartRecommendations.confidence') || 'Confidence'}: {Math.round(pred.confidence_score * 100)}%
                           </span>
                         )}
@@ -768,12 +768,12 @@ export default function SmartRecommendations() {
                             </span>
                           )
                         })()}
-                        <span className="text-2xs px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400">
+                        <span className="text-2xs px-1.5 py-0.5 rounded-sm bg-purple-500/10 text-purple-400">
                           {Icons.sparkle} AI
                         </span>
                         {/* Stale badge shown when Ollama was offline for this vehicle */}
                         {aiStaleMeta[pred.vehicle_id]?.offline && (
-                          <span className="text-2xs px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                          <span className="text-2xs px-1.5 py-0.5 rounded-sm bg-amber-500/10 text-amber-500 border border-amber-500/20">
                             {t('aiPredictions.staleBadge') || 'Offline cache'}
                           </span>
                         )}
@@ -781,7 +781,7 @@ export default function SmartRecommendations() {
 
                       {/* Recommended action */}
                       {pred.recommended_action && (
-                        <p className="mt-2 text-xs font-medium text-[var(--color-text-secondary)] border-l-2 border-purple-500/40 pl-2">
+                        <p className="mt-2 text-xs font-medium text-(--color-text-secondary) border-l-2 border-purple-500/40 pl-2">
                           {pred.recommended_action}
                         </p>
                       )}
@@ -790,7 +790,7 @@ export default function SmartRecommendations() {
                     {/* Dismiss button */}
                     <button
                       onClick={() => handleDismissAi(pred.id)}
-                      className="shrink-0 p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors touch-manipulation"
+                      className="shrink-0 p-1.5 rounded-lg text-(--color-text-muted) hover:text-red-400 hover:bg-red-500/10 transition-colors touch-manipulation"
                       aria-label={t('common.dismiss') || 'Dismiss'}
                     >
                       {Icons.dismiss}
@@ -805,8 +805,8 @@ export default function SmartRecommendations() {
 
       {/* AI disabled notice */}
       {aiEnabled === false && (
-        <div className="mt-8 card border border-dashed border-[var(--color-border)] py-6 text-center">
-          <p className="text-sm text-[var(--color-text-muted)]">
+        <div className="mt-8 card border border-dashed border-(--color-border) py-6 text-center">
+          <p className="text-sm text-(--color-text-muted)">
             {t('aiPredictions.disabled') || 'AI predictions are not enabled on this server.'}
           </p>
         </div>
@@ -815,7 +815,7 @@ export default function SmartRecommendations() {
       {/* Mark Done Modal */}
       {completingRec && (
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
           onClick={handleCloseRecModal}
           role="presentation"
         >
@@ -823,11 +823,11 @@ export default function SmartRecommendations() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="rec-mark-done-title"
-            className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border)] w-full max-w-sm shadow-2xl"
+            className="bg-(--color-bg-card) rounded-2xl border border-(--color-border) w-full max-w-sm shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal header */}
-            <div className="px-5 pt-5 pb-4 border-b border-[var(--color-border)]">
+            <div className="px-5 pt-5 pb-4 border-b border-(--color-border)">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-xl bg-green-500/10 text-green-500 shrink-0">
                   {Icons.check}
@@ -836,7 +836,7 @@ export default function SmartRecommendations() {
                   <h3 id="rec-mark-done-title" className="font-semibold text-base">
                     {t('vehicleHealth.markDoneTitle') || 'Log Completed Service'}
                   </h3>
-                  <p className="text-xs text-[var(--color-text-secondary)] truncate mt-0.5">
+                  <p className="text-xs text-(--color-text-secondary) truncate mt-0.5">
                     {completingRec.title} — {completingRec.vehicleName}
                   </p>
                 </div>

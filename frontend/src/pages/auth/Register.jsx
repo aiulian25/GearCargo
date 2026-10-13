@@ -72,7 +72,7 @@ function PasswordStrength({ password }) {
   return (
     <div className="mt-2">
       <div className="flex items-center gap-2 mb-1">
-        <div className="flex-1 h-1 bg-[var(--color-bg-tertiary)] rounded-full overflow-hidden">
+        <div className="flex-1 h-1 bg-(--color-bg-tertiary) rounded-full overflow-hidden">
           <div 
             className={`h-full transition-all duration-300 ${getColor()}`}
             style={{ width: `${strength.score}%` }}
@@ -86,10 +86,10 @@ function PasswordStrength({ password }) {
         </span>
       </div>
       {strength.errors.length > 0 && (
-        <ul className="text-xs text-[var(--color-text-muted)] space-y-0.5">
+        <ul className="text-xs text-(--color-text-muted) space-y-0.5">
           {strength.errors.slice(0, 3).map((err, i) => (
             <li key={i} className="flex items-center gap-1">
-              <span className="w-1 h-1 rounded-full bg-[var(--color-text-muted)]" />
+              <span className="w-1 h-1 rounded-full bg-(--color-text-muted)" />
               {err}
             </li>
           ))}
@@ -135,7 +135,7 @@ export default function Register() {
       <h1 className="text-xl font-bold text-center mb-2">
         {t('auth.createAccount') || 'Create Account'}
       </h1>
-      <p className="text-sm text-[var(--color-text-secondary)] text-center mb-6">
+      <p className="text-sm text-(--color-text-secondary) text-center mb-6">
         {t('auth.startTracking') || 'Start managing your vehicles today'}
       </p>
       
@@ -223,9 +223,9 @@ export default function Register() {
         </button>
       </form>
       
-      <p className="text-sm text-center mt-6 text-[var(--color-text-secondary)]">
+      <p className="text-sm text-center mt-6 text-(--color-text-secondary)">
         {t('auth.hasAccount') || 'Already have an account?'}{' '}
-        <Link to="/login" className="text-[var(--color-accent)] font-medium">
+        <Link to="/login" className="text-(--color-accent) font-medium">
           {t('auth.login') || 'Sign In'}
         </Link>
       </p>

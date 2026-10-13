@@ -96,7 +96,7 @@ export default function Reminders() {
     
     return { 
       text: formatDistanceToNow(date, { addSuffix: true }),
-      className: 'text-[var(--color-text-muted)]'
+      className: 'text-(--color-text-muted)'
     }
   }
   
@@ -133,35 +133,35 @@ export default function Reminders() {
       {/* Stats Cards */}
       {stats && (
         <div className="grid grid-cols-4 gap-2 mb-4">
-          <div className="bg-[var(--color-bg-tertiary)] rounded-lg p-3 text-center">
-            <div className="text-lg font-bold text-[var(--color-accent)]">{stats.total || 0}</div>
-            <div className="text-2xs text-[var(--color-text-muted)]">{t('reminders.statsTotal') || 'Total'}</div>
+          <div className="bg-(--color-bg-tertiary) rounded-lg p-3 text-center">
+            <div className="text-lg font-bold text-(--color-accent)">{stats.total || 0}</div>
+            <div className="text-2xs text-(--color-text-muted)">{t('reminders.statsTotal') || 'Total'}</div>
           </div>
-          <div className="bg-[var(--color-bg-tertiary)] rounded-lg p-3 text-center">
+          <div className="bg-(--color-bg-tertiary) rounded-lg p-3 text-center">
             <div className="text-lg font-bold text-blue-500">{stats.pending || 0}</div>
-            <div className="text-2xs text-[var(--color-text-muted)]">{t('reminders.statsPending') || 'Pending'}</div>
+            <div className="text-2xs text-(--color-text-muted)">{t('reminders.statsPending') || 'Pending'}</div>
           </div>
-          <div className="bg-[var(--color-bg-tertiary)] rounded-lg p-3 text-center">
-            <div className={`text-lg font-bold ${stats.overdue > 0 ? 'text-red-500' : 'text-[var(--color-text-secondary)]'}`}>{stats.overdue || 0}</div>
-            <div className="text-2xs text-[var(--color-text-muted)]">{t('reminders.statsOverdue') || 'Overdue'}</div>
+          <div className="bg-(--color-bg-tertiary) rounded-lg p-3 text-center">
+            <div className={`text-lg font-bold ${stats.overdue > 0 ? 'text-red-500' : 'text-(--color-text-secondary)'}`}>{stats.overdue || 0}</div>
+            <div className="text-2xs text-(--color-text-muted)">{t('reminders.statsOverdue') || 'Overdue'}</div>
           </div>
-          <div className="bg-[var(--color-bg-tertiary)] rounded-lg p-3 text-center">
+          <div className="bg-(--color-bg-tertiary) rounded-lg p-3 text-center">
             <div className="text-lg font-bold text-green-500">{stats.completed || 0}</div>
-            <div className="text-2xs text-[var(--color-text-muted)]">{t('reminders.statsCompleted') || 'Done'}</div>
+            <div className="text-2xs text-(--color-text-muted)">{t('reminders.statsCompleted') || 'Done'}</div>
           </div>
         </div>
       )}
       
       {/* Filters */}
-      <div className="flex bg-[var(--color-bg-tertiary)] rounded-lg p-1 mb-4">
+      <div className="flex bg-(--color-bg-tertiary) rounded-lg p-1 mb-4">
         {filters.map(f => (
           <button
             key={f.id}
             onClick={() => setFilter(f.id)}
             className={`flex-1 py-2 rounded-md text-xs font-medium transition-colors ${
               filter === f.id 
-                ? 'bg-[var(--color-bg-card)] text-[var(--color-accent)] shadow-sm' 
-                : 'text-[var(--color-text-secondary)]'
+                ? 'bg-(--color-bg-card) text-(--color-accent) shadow-xs' 
+                : 'text-(--color-text-secondary)'
             }`}
           >
             {f.label}
@@ -202,15 +202,15 @@ export default function Reminders() {
                 className="card flex items-start gap-3 touch-manipulation"
               >
                 {/* Icon */}
-                <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
                   isPast(parseISO(reminder.due_date)) && !isToday(parseISO(reminder.due_date))
                     ? 'bg-red-500/10' 
-                    : 'bg-[var(--color-accent)]/10'
+                    : 'bg-(--color-accent)/10'
                 }`}>
                   <span className={`material-icons-outlined icon-sm ${
                     isPast(parseISO(reminder.due_date)) && !isToday(parseISO(reminder.due_date))
                       ? 'text-red-500' 
-                      : 'text-[var(--color-accent)]'
+                      : 'text-(--color-accent)'
                   }`}>
                     {getTypeIcon(reminder.type)}
                   </span>
@@ -219,7 +219,7 @@ export default function Reminders() {
                 {/* Content */}
                 <div className="flex-1 min-w-0">
                   <h3 className="text-sm font-medium truncate">{reminder.title}</h3>
-                  <p className="text-2xs text-[var(--color-text-secondary)] truncate">
+                  <p className="text-2xs text-(--color-text-secondary) truncate">
                     {reminder.vehicle_name || t('reminders.noVehicle') || 'No vehicle'}
                     {reminder.due_mileage && ` • ${reminder.due_mileage.toLocaleString()} ${reminder.vehicle_distance_unit || 'km'}`}
                   </p>
@@ -227,7 +227,7 @@ export default function Reminders() {
                     {dueDate.text}
                   </p>
                   {reminder.source_service_id && (
-                    <p className="text-2xs mt-0.5 text-[var(--color-text-muted)] truncate">
+                    <p className="text-2xs mt-0.5 text-(--color-text-muted) truncate">
                       {t('reminders.autoFromService') || 'Auto-created from a scheduled service'}
                     </p>
                   )}
@@ -235,7 +235,7 @@ export default function Reminders() {
                 
                 {/* Actions */}
                 {filter !== 'completed' && (
-                  <div className="flex items-center gap-1 flex-shrink-0" onClick={(e) => e.preventDefault()}>
+                  <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.preventDefault()}>
                     <button
                       type="button"
                       onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleSnooze(reminder.id, 7, e); }}

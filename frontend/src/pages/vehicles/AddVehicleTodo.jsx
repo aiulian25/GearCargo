@@ -160,7 +160,7 @@ export default function AddVehicleTodo() {
   return (
     <div className="pb-4">
       {/* Header */}
-      <div className="bg-[var(--color-bg-card)] border-b border-[var(--color-border)] px-4 py-3 flex items-center gap-3">
+      <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="btn-icon">
           {Icons.close}
         </button>
@@ -168,7 +168,7 @@ export default function AddVehicleTodo() {
           <h1 className="text-base font-semibold">
             {isEditMode ? (t('common.edit') || 'Edit') + ' ' + (t('expenses.todos') || 'Todo') : (t('addTodo.title') || 'Add Todo')}
           </h1>
-          <p className="text-xs text-[var(--color-text-secondary)]">{vehicle?.name}</p>
+          <p className="text-xs text-(--color-text-secondary)">{vehicle?.name}</p>
         </div>
         <button 
           onClick={handleSubmit(onSubmit)}
@@ -193,7 +193,7 @@ export default function AddVehicleTodo() {
           </div>
           <div className="flex-1">
             <p className="font-medium">{vehicle?.name}</p>
-            <p className="text-xs text-[var(--color-text-secondary)]">
+            <p className="text-xs text-(--color-text-secondary)">
               {vehicle?.make} {vehicle?.model} • {vehicle?.license_plate}
             </p>
           </div>
@@ -202,7 +202,7 @@ export default function AddVehicleTodo() {
         {/* Todo Details */}
         <div className="card space-y-4">
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('addTodo.taskTitle') || 'Task Title'} *
             </label>
             <input
@@ -217,7 +217,7 @@ export default function AddVehicleTodo() {
           </div>
           
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('addTodo.description') || 'Description'}
             </label>
             <textarea
@@ -233,7 +233,7 @@ export default function AddVehicleTodo() {
         <div className="card space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addTodo.priority') || 'Priority'}
               </label>
               <select {...register('priority')} className="input">
@@ -244,7 +244,7 @@ export default function AddVehicleTodo() {
             </div>
             
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+              <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addTodo.dueDate') || 'Due Date'}
               </label>
               <input
@@ -258,7 +258,7 @@ export default function AddVehicleTodo() {
           {/* F15: Repeats — a recurring todo respawns its next occurrence on
               completion. Needs a due date to advance from. */}
           <div>
-            <label className="block text-xs text-[var(--color-text-muted)] mb-1">
+            <label className="block text-xs text-(--color-text-muted) mb-1">
               {t('todo.repeats') || 'Repeats'}
             </label>
             <select {...register('repeat')} className="input">

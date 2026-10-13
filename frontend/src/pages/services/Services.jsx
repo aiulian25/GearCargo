@@ -107,7 +107,7 @@ export default function Services() {
               to={`/services/${entry.id}`}
               className="card flex items-center gap-3 touch-manipulation"
             >
-              <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+              <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
                 <span className="material-icons-outlined icon-sm text-blue-500">
                   {getServiceIcon(entry.service_type)}
                 </span>
@@ -119,22 +119,22 @@ export default function Services() {
                     ? entry.service_types.map(st => entry[`${st}_label`] || st.replace(/_/g, ' ')).join(', ')
                     : entry.service_type_label || entry.service_type || entry.description}
                 </p>
-                <p className="text-2xs text-[var(--color-text-muted)]">
+                <p className="text-2xs text-(--color-text-muted)">
                   {formatDate(entry.date)} • {entry.mileage?.toLocaleString() || '-'} {vehicles.find(v => v.id === entry.vehicle_id)?.distance_unit || 'km'}
                   {vehicles.length > 1 && entry.vehicle_name && ` • ${entry.vehicle_name}`}
                 </p>
               </div>
               
-              <div className="text-right flex-shrink-0">
+              <div className="text-right shrink-0">
                 <p className="text-sm font-semibold">{entry.total_cost}</p>
                 {entry.shop_name && (
-                  <p className="text-2xs text-[var(--color-text-muted)] truncate max-w-[80px]">
+                  <p className="text-2xs text-(--color-text-muted) truncate max-w-[80px]">
                     {entry.shop_name}
                   </p>
                 )}
               </div>
               
-              <span className="material-icons-outlined icon-sm text-[var(--color-text-muted)]">
+              <span className="material-icons-outlined icon-sm text-(--color-text-muted)">
                 chevron_right
               </span>
             </Link>

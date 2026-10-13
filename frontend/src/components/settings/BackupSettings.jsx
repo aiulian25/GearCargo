@@ -811,7 +811,7 @@ export default function BackupSettings() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className="w-6 h-6 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
+        <div className="w-6 h-6 border-2 border-(--color-accent) border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
@@ -820,10 +820,10 @@ export default function BackupSettings() {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center gap-3 mb-4">
-        <span className="text-[var(--color-accent)]">{Icons.cloud}</span>
+        <span className="text-(--color-accent)">{Icons.cloud}</span>
         <div>
           <h3 className="text-sm font-medium">{t('backup.title') || 'Auto Backup'}</h3>
-          <p className="text-2xs text-[var(--color-text-muted)]">
+          <p className="text-2xs text-(--color-text-muted)">
             {t('backup.description') || 'Schedule automatic backups with attachments'}
           </p>
         </div>
@@ -839,7 +839,7 @@ export default function BackupSettings() {
             </span>
           </div>
           {status.last_backup_details && (
-            <p className="text-2xs text-[var(--color-text-muted)] mt-1 ml-6">
+            <p className="text-2xs text-(--color-text-muted) mt-1 ml-6">
               {status.last_backup_details.vehicles_count || 0} {t('backup.vehicles') || 'vehicles'}, 
               {' '}{status.last_backup_details.entries_count || 0} {t('backup.entries') || 'entries'}, 
               {' '}{status.last_backup_details.attachments_count || 0} {t('backup.attachments') || 'attachments'}
@@ -854,9 +854,9 @@ export default function BackupSettings() {
         <button
           onClick={downloadBackup}
           disabled={backing}
-          className="flex flex-col items-center gap-2 p-4 bg-[var(--color-bg-tertiary)] rounded-xl hover:bg-[var(--color-bg-tertiary)]/80 transition-colors"
+          className="flex flex-col items-center gap-2 p-4 bg-(--color-bg-tertiary) rounded-xl hover:bg-(--color-bg-tertiary)/80 transition-colors"
         >
-          <span className="text-[var(--color-accent)]">
+          <span className="text-(--color-accent)">
             {backing ? (
               <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
             ) : Icons.download}
@@ -867,9 +867,9 @@ export default function BackupSettings() {
         <button
           onClick={handleImportClick}
           disabled={importing}
-          className="flex flex-col items-center gap-2 p-4 bg-[var(--color-bg-tertiary)] rounded-xl hover:bg-[var(--color-bg-tertiary)]/80 transition-colors"
+          className="flex flex-col items-center gap-2 p-4 bg-(--color-bg-tertiary) rounded-xl hover:bg-(--color-bg-tertiary)/80 transition-colors"
         >
-          <span className="text-[var(--color-accent)]">
+          <span className="text-(--color-accent)">
             {importing ? (
               <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
             ) : Icons.refresh}
@@ -880,9 +880,9 @@ export default function BackupSettings() {
         <button
           onClick={handleUploadClick}
           disabled={uploading}
-          className="flex flex-col items-center gap-2 p-4 bg-[var(--color-bg-tertiary)] rounded-xl hover:bg-[var(--color-bg-tertiary)]/80 transition-colors"
+          className="flex flex-col items-center gap-2 p-4 bg-(--color-bg-tertiary) rounded-xl hover:bg-(--color-bg-tertiary)/80 transition-colors"
         >
-          <span className="text-[var(--color-accent)]">
+          <span className="text-(--color-accent)">
             {uploading ? (
               <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
             ) : Icons.upload}
@@ -907,16 +907,16 @@ export default function BackupSettings() {
       </div>
       
       {/* Import from LubeLogger */}
-      <div className="bg-[var(--color-bg-tertiary)] rounded-xl p-4">
+      <div className="bg-(--color-bg-tertiary) rounded-xl p-4">
         <div className="flex items-center gap-3 mb-3">
-          <span className="text-[var(--color-text-muted)]">
+          <span className="text-(--color-text-muted)">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
             </svg>
           </span>
           <div>
             <span className="text-sm font-medium">{t('backup.lubelogImport') || 'Import from LubeLogger'}</span>
-            <p className="text-2xs text-[var(--color-text-muted)]">
+            <p className="text-2xs text-(--color-text-muted)">
               {t('backup.lubelogImportDesc') || 'Import vehicles, fuel logs, services, and more from a LubeLogger backup'}
             </p>
           </div>
@@ -924,7 +924,7 @@ export default function BackupSettings() {
 
         {/* Distance Unit Selector */}
         <div className="mb-3">
-          <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-2">
+          <label className="block text-xs font-medium text-(--color-text-secondary) mb-2">
             {t('backup.distanceUnit') || 'Distance Unit'}
           </label>
           <div className="grid grid-cols-2 gap-2">
@@ -935,15 +935,15 @@ export default function BackupSettings() {
                 onClick={() => setLubelogDistanceUnit(unit)}
                 className={`py-2 px-3 rounded-lg text-sm font-medium transition-all ${
                   lubelogDistanceUnit === unit
-                    ? 'bg-[var(--color-accent)] text-white'
-                    : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]/80'
+                    ? 'bg-(--color-accent) text-white'
+                    : 'bg-(--color-bg-secondary) text-(--color-text-secondary) hover:bg-(--color-bg-secondary)/80'
                 }`}
               >
                 {unit === 'miles' ? (t('backup.miles') || 'Miles') : (t('backup.km') || 'Kilometres')}
               </button>
             ))}
           </div>
-          <p className="text-2xs text-[var(--color-text-muted)] mt-1">
+          <p className="text-2xs text-(--color-text-muted) mt-1">
             {t('backup.distanceUnitHint') || 'Odometer readings will be converted if needed'}
           </p>
         </div>
@@ -951,7 +951,7 @@ export default function BackupSettings() {
         <button
           onClick={handleLubelogImportClick}
           disabled={importingLubelog}
-          className="w-full py-2.5 px-4 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]/80 transition-colors flex items-center justify-center gap-2"
+          className="w-full py-2.5 px-4 rounded-lg bg-(--color-bg-secondary) text-(--color-text-secondary) hover:bg-(--color-bg-secondary)/80 transition-colors flex items-center justify-center gap-2"
         >
           {importingLubelog ? (
             <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -970,16 +970,16 @@ export default function BackupSettings() {
       </div>
 
       {/* F01 — CSV Export / Import */}
-      <div className="bg-[var(--color-bg-tertiary)] rounded-xl p-4">
+      <div className="bg-(--color-bg-tertiary) rounded-xl p-4">
         <div className="flex items-center gap-3 mb-3">
-          <span className="text-[var(--color-text-muted)]">
+          <span className="text-(--color-text-muted)">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v.75m0 0V6m0 .75h3" />
             </svg>
           </span>
           <div>
             <span className="text-sm font-medium">{t('backup.csvTitle') || 'Export / Import CSV'}</span>
-            <p className="text-2xs text-[var(--color-text-muted)]">
+            <p className="text-2xs text-(--color-text-muted)">
               {t('backup.csvDesc') || 'Download or upload your history as a spreadsheet (CSV)'}
             </p>
           </div>
@@ -987,7 +987,7 @@ export default function BackupSettings() {
 
         {/* Entry-type selector */}
         <div className="mb-3">
-          <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-2">
+          <label className="block text-xs font-medium text-(--color-text-secondary) mb-2">
             {t('backup.csvType') || 'Data type'}
           </label>
           <div className="grid grid-cols-3 gap-2">
@@ -998,8 +998,8 @@ export default function BackupSettings() {
                 onClick={() => setCsvType(type)}
                 className={`py-2 px-2 rounded-lg text-xs font-medium transition-all ${
                   csvType === type
-                    ? 'bg-[var(--color-accent)] text-white'
-                    : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]/80'
+                    ? 'bg-(--color-accent) text-white'
+                    : 'bg-(--color-bg-secondary) text-(--color-text-secondary) hover:bg-(--color-bg-secondary)/80'
                 }`}
               >
                 {t(`backup.csvType_${type}`) || type.charAt(0).toUpperCase() + type.slice(1)}
@@ -1012,7 +1012,7 @@ export default function BackupSettings() {
           <button
             onClick={handleCsvExport}
             disabled={csvExporting}
-            className="py-2.5 px-4 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]/80 transition-colors flex items-center justify-center gap-2"
+            className="py-2.5 px-4 rounded-lg bg-(--color-bg-secondary) text-(--color-text-secondary) hover:bg-(--color-bg-secondary)/80 transition-colors flex items-center justify-center gap-2"
           >
             {csvExporting
               ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -1022,7 +1022,7 @@ export default function BackupSettings() {
           <button
             onClick={handleCsvImportClick}
             disabled={csvImporting}
-            className="py-2.5 px-4 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]/80 transition-colors flex items-center justify-center gap-2"
+            className="py-2.5 px-4 rounded-lg bg-(--color-bg-secondary) text-(--color-text-secondary) hover:bg-(--color-bg-secondary)/80 transition-colors flex items-center justify-center gap-2"
           >
             {csvImporting
               ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -1030,7 +1030,7 @@ export default function BackupSettings() {
             <span>{csvImporting ? (t('backup.importing') || 'Importing...') : (t('backup.csvImport') || 'Import CSV')}</span>
           </button>
         </div>
-        <p className="text-2xs text-[var(--color-text-muted)] mt-2">
+        <p className="text-2xs text-(--color-text-muted) mt-2">
           {t('backup.csvImportHint') || 'Import accepts files exported here. Duplicate rows (same vehicle, date and amount) are skipped.'}
         </p>
         <input
@@ -1043,13 +1043,13 @@ export default function BackupSettings() {
       </div>
 
       {/* Auto Backup Toggle */}
-      <div className="bg-[var(--color-bg-tertiary)] rounded-xl p-4">
+      <div className="bg-(--color-bg-tertiary) rounded-xl p-4">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <span className="text-[var(--color-text-muted)]">{Icons.clock}</span>
+            <span className="text-(--color-text-muted)">{Icons.clock}</span>
             <div>
               <span className="text-sm font-medium">{t('backup.autoBackup') || 'Automatic Backup'}</span>
-              <p className="text-2xs text-[var(--color-text-muted)]">
+              <p className="text-2xs text-(--color-text-muted)">
                 {t('backup.autoBackupDesc') || 'Schedule regular backups'}
               </p>
             </div>
@@ -1061,15 +1061,15 @@ export default function BackupSettings() {
               onChange={(e) => handleScheduleChange('enabled', e.target.checked)}
               className="sr-only peer"
             />
-            <div className="w-10 h-6 bg-[var(--color-bg-secondary)] peer-focus:ring-2 peer-focus:ring-[var(--color-accent)] rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--color-accent)]" />
+            <div className="w-10 h-6 bg-(--color-bg-secondary) peer-focus:ring-2 peer-focus:ring-(--color-accent) rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-(--color-accent)" />
           </label>
         </div>
         
         {schedule.enabled && (
-          <div className="space-y-4 pt-4 border-t border-[var(--color-border)]">
+          <div className="space-y-4 pt-4 border-t border-(--color-border)">
             {/* Frequency */}
             <div>
-              <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-2">
+              <label className="block text-xs font-medium text-(--color-text-secondary) mb-2">
                 {t('backup.frequency') || 'Frequency'}
               </label>
               <div className="grid grid-cols-3 gap-2">
@@ -1079,8 +1079,8 @@ export default function BackupSettings() {
                     onClick={() => handleScheduleChange('frequency', freq)}
                     className={`py-2 px-3 rounded-lg text-sm font-medium transition-all ${
                       schedule.frequency === freq
-                        ? 'bg-[var(--color-accent)] text-white'
-                        : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]/80'
+                        ? 'bg-(--color-accent) text-white'
+                        : 'bg-(--color-bg-secondary) text-(--color-text-secondary) hover:bg-(--color-bg-secondary)/80'
                     }`}
                   >
                     {t(`backup.${freq}`) || freq.charAt(0).toUpperCase() + freq.slice(1)}
@@ -1092,13 +1092,13 @@ export default function BackupSettings() {
             {/* Day Selection */}
             {schedule.frequency === 'weekly' && (
               <div>
-                <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-2">
+                <label className="block text-xs font-medium text-(--color-text-secondary) mb-2">
                   {t('backup.dayOfWeek') || 'Day of Week'}
                 </label>
                 <select
                   value={schedule.day_of_week}
                   onChange={(e) => handleScheduleChange('day_of_week', parseInt(e.target.value))}
-                  className="w-full p-3 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-border)]"
+                  className="w-full p-3 rounded-lg bg-(--color-bg-secondary) text-(--color-text-primary) border border-(--color-border)"
                 >
                   {dayNames.map((day, index) => (
                     <option key={index} value={index}>{day}</option>
@@ -1109,13 +1109,13 @@ export default function BackupSettings() {
             
             {(schedule.frequency === 'monthly' || schedule.frequency === 'quarterly') && (
               <div>
-                <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-2">
+                <label className="block text-xs font-medium text-(--color-text-secondary) mb-2">
                   {t('backup.dayOfMonth') || 'Day of Month'}
                 </label>
                 <select
                   value={schedule.day_of_month}
                   onChange={(e) => handleScheduleChange('day_of_month', parseInt(e.target.value))}
-                  className="w-full p-3 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-border)]"
+                  className="w-full p-3 rounded-lg bg-(--color-bg-secondary) text-(--color-text-primary) border border-(--color-border)"
                 >
                   {Array.from({ length: 28 }, (_, i) => i + 1).map((day) => (
                     <option key={day} value={day}>{day}</option>
@@ -1128,7 +1128,7 @@ export default function BackupSettings() {
             <div className="flex items-center justify-between py-2">
               <div>
                 <span className="text-sm">{t('backup.includeAttachments') || 'Include Attachments'}</span>
-                <p className="text-2xs text-[var(--color-text-muted)]">
+                <p className="text-2xs text-(--color-text-muted)">
                   {t('backup.includeAttachmentsDesc') || 'Backup uploaded files and receipts'}
                 </p>
               </div>
@@ -1139,7 +1139,7 @@ export default function BackupSettings() {
                   onChange={(e) => handleScheduleChange('include_attachments', e.target.checked)}
                   className="sr-only peer"
                 />
-                <div className="w-10 h-6 bg-[var(--color-bg-secondary)] peer-focus:ring-2 peer-focus:ring-[var(--color-accent)] rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--color-accent)]" />
+                <div className="w-10 h-6 bg-(--color-bg-secondary) peer-focus:ring-2 peer-focus:ring-(--color-accent) rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-(--color-accent)" />
               </label>
             </div>
           </div>
@@ -1147,27 +1147,27 @@ export default function BackupSettings() {
       </div>
       
       {/* External Backup */}
-      <div className="bg-[var(--color-bg-tertiary)] rounded-xl">
+      <div className="bg-(--color-bg-tertiary) rounded-xl">
         <button
           onClick={() => setShowExternalSettings(!showExternalSettings)}
           className="flex items-center justify-between w-full p-4"
         >
           <div className="flex items-center gap-3">
-            <span className="text-[var(--color-text-muted)]">{Icons.server}</span>
+            <span className="text-(--color-text-muted)">{Icons.server}</span>
             <div className="text-left">
               <span className="text-sm font-medium">{t('backup.externalBackup') || 'External Backup'}</span>
-              <p className="text-2xs text-[var(--color-text-muted)]">
+              <p className="text-2xs text-(--color-text-muted)">
                 {t('backup.externalBackupDesc') || 'Backup to your own server'}
               </p>
             </div>
           </div>
-          <span className="text-[var(--color-text-muted)]">
+          <span className="text-(--color-text-muted)">
             {showExternalSettings ? Icons.chevronUp : Icons.chevronDown}
           </span>
         </button>
         
         {showExternalSettings && (
-          <div className="px-4 pb-4 space-y-4 border-t border-[var(--color-border)]">
+          <div className="px-4 pb-4 space-y-4 border-t border-(--color-border)">
             <div className="flex items-center justify-between pt-4">
               <span className="text-sm">{t('backup.enableExternal') || 'Enable External Backup'}</span>
               <label className="relative inline-flex items-center cursor-pointer">
@@ -1185,20 +1185,20 @@ export default function BackupSettings() {
                   }}
                   className="sr-only peer"
                 />
-                <div className="w-10 h-6 bg-[var(--color-bg-secondary)] peer-focus:ring-2 peer-focus:ring-[var(--color-accent)] rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--color-accent)]" />
+                <div className="w-10 h-6 bg-(--color-bg-secondary) peer-focus:ring-2 peer-focus:ring-(--color-accent) rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-(--color-accent)" />
               </label>
             </div>
             
             {schedule.external_enabled && (
               <>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-[var(--color-text-secondary)]">
+                  <span className="text-xs text-(--color-text-secondary)">
                     {t('backup.destinationCount') || 'Configured destinations'}: {schedule.external_destinations?.length || 0}
                   </span>
                   <button
                     type="button"
                     onClick={addExternalDestination}
-                    className="px-3 py-1.5 rounded-lg bg-[var(--color-accent)]/10 text-[var(--color-accent)] text-xs font-medium hover:bg-[var(--color-accent)]/20 transition-colors"
+                    className="px-3 py-1.5 rounded-lg bg-(--color-accent)/10 text-(--color-accent) text-xs font-medium hover:bg-(--color-accent)/20 transition-colors"
                   >
                     + {t('backup.addDestination') || 'Add Destination'}
                   </button>
@@ -1206,16 +1206,16 @@ export default function BackupSettings() {
 
                 <div className="space-y-3">
                   {(schedule.external_destinations || []).map((destination, index) => (
-                    <div key={destination.id || index} className="rounded-lg border border-[var(--color-border)] p-3 bg-[var(--color-bg-secondary)]/60 space-y-3">
+                    <div key={destination.id || index} className="rounded-lg border border-(--color-border) p-3 bg-(--color-bg-secondary)/60 space-y-3">
                       <div className="flex items-center flex-wrap gap-2">
                         <input
                           type="text"
                           value={destination.name || ''}
                           onChange={(e) => updateExternalDestination(index, 'name', e.target.value)}
                           placeholder={`${t('backup.destinationLabel') || 'Destination'} ${index + 1}`}
-                          className="flex-1 min-w-0 p-2 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-border)]"
+                          className="flex-1 min-w-0 p-2 rounded-lg bg-(--color-bg-secondary) text-(--color-text-primary) border border-(--color-border)"
                         />
-                        <label className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)] flex-shrink-0">
+                        <label className="flex items-center gap-2 text-xs text-(--color-text-secondary) shrink-0">
                           <input
                             type="checkbox"
                             checked={destination.enabled !== false}
@@ -1227,7 +1227,7 @@ export default function BackupSettings() {
                           type="button"
                           onClick={() => removeExternalDestination(index)}
                           disabled={(schedule.external_destinations || []).length <= 1}
-                          className="px-2 py-1 text-xs rounded-lg text-red-500 hover:bg-red-500/10 disabled:opacity-40 flex-shrink-0"
+                          className="px-2 py-1 text-xs rounded-lg text-red-500 hover:bg-red-500/10 disabled:opacity-40 shrink-0"
                         >
                           {t('backup.removeDestination') || 'Remove'}
                         </button>
@@ -1238,7 +1238,7 @@ export default function BackupSettings() {
                           type="button"
                           onClick={() => moveExternalDestination(index, -1)}
                           disabled={index === 0}
-                          className="px-2 py-1 text-xs rounded-lg text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] disabled:opacity-40"
+                          className="px-2 py-1 text-xs rounded-lg text-(--color-text-secondary) hover:bg-(--color-bg-tertiary) disabled:opacity-40"
                         >
                           {t('backup.moveDestinationUp') || 'Move Up'}
                         </button>
@@ -1246,7 +1246,7 @@ export default function BackupSettings() {
                           type="button"
                           onClick={() => moveExternalDestination(index, 1)}
                           disabled={index === (schedule.external_destinations || []).length - 1}
-                          className="px-2 py-1 text-xs rounded-lg text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] disabled:opacity-40"
+                          className="px-2 py-1 text-xs rounded-lg text-(--color-text-secondary) hover:bg-(--color-bg-tertiary) disabled:opacity-40"
                         >
                           {t('backup.moveDestinationDown') || 'Move Down'}
                         </button>
@@ -1257,7 +1257,7 @@ export default function BackupSettings() {
                         value={destination.external_url || ''}
                         onChange={(e) => updateExternalDestination(index, 'external_url', e.target.value)}
                         placeholder="https://your-server.com/remote.php/dav/files/user"
-                        className="w-full p-3 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-border)] placeholder-[var(--color-text-muted)]"
+                        className="w-full p-3 rounded-lg bg-(--color-bg-secondary) text-(--color-text-primary) border border-(--color-border) placeholder-(--color-text-muted)"
                       />
 
                       <div className="relative">
@@ -1267,12 +1267,12 @@ export default function BackupSettings() {
                           value={destination.external_api_key || ''}
                           onChange={(e) => updateExternalDestination(index, 'external_api_key', e.target.value)}
                           placeholder={destination.has_external_api_key && !destination.external_api_key ? '••••••••••• (saved)' : 'username:app-password'}
-                          className="w-full p-3 pr-10 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-border)] placeholder-[var(--color-text-muted)]"
+                          className="w-full p-3 pr-10 rounded-lg bg-(--color-bg-secondary) text-(--color-text-primary) border border-(--color-border) placeholder-(--color-text-muted)"
                         />
                         <button
                           type="button"
                           onClick={() => toggleDestinationApiKeyVisibility(destination.id || `destination_${index}`)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-(--color-text-muted) hover:text-(--color-text-primary)"
                           title={isDestinationApiKeyVisible(destination.id || `destination_${index}`)
                             ? (t('backup.hideCredentials') || 'Hide credentials')
                             : (t('backup.showCredentials') || 'Show credentials')}
@@ -1288,19 +1288,19 @@ export default function BackupSettings() {
                         value={destination.external_path || '/GearCargo'}
                         onChange={(e) => updateExternalDestination(index, 'external_path', e.target.value)}
                         placeholder="/GearCargo"
-                        className="w-full p-3 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-border)] placeholder-[var(--color-text-muted)]"
+                        className="w-full p-3 rounded-lg bg-(--color-bg-secondary) text-(--color-text-primary) border border-(--color-border) placeholder-(--color-text-muted)"
                       />
                     </div>
                   ))}
                 </div>
 
-                <p className="text-2xs text-[var(--color-text-muted)] mt-1">
+                <p className="text-2xs text-(--color-text-muted) mt-1">
                   {t('backup.apiKeyHint') || 'For Nextcloud: username:app-password'}
                 </p>
 
                 {(schedule.external_destinations || []).length > 0 && (
                   <div>
-                    <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-2">
+                    <label className="block text-xs font-medium text-(--color-text-secondary) mb-2">
                       {t('backup.activeDestination') || 'Active Destination for Test/Browse'}
                     </label>
                     <select
@@ -1310,7 +1310,7 @@ export default function BackupSettings() {
                         setExternalFolders(null)
                         setExternalFiles(null)
                       }}
-                      className="w-full p-3 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-border)]"
+                      className="w-full p-3 rounded-lg bg-(--color-bg-secondary) text-(--color-text-primary) border border-(--color-border)"
                     >
                       {(schedule.external_destinations || []).map((destination, index) => (
                         <option key={destination.id || index} value={index}>
@@ -1330,7 +1330,7 @@ export default function BackupSettings() {
                     browseExternalFolders(parent)
                   }}
                   disabled={browsingFolders || (!activeDestination?.external_api_key && !activeDestination?.has_external_api_key)}
-                  className="w-full py-2 px-4 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]/80 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="w-full py-2 px-4 rounded-lg bg-(--color-bg-secondary) text-(--color-text-secondary) hover:bg-(--color-bg-secondary)/80 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {browsingFolders ? (
                     <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -1342,9 +1342,9 @@ export default function BackupSettings() {
 
                 {/* Folder browser */}
                 {externalFolders !== null && (
-                  <div className="bg-[var(--color-bg-secondary)] rounded-lg p-3 space-y-2">
+                  <div className="bg-(--color-bg-secondary) rounded-lg p-3 space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-[var(--color-text-secondary)]">
+                      <span className="text-xs font-medium text-(--color-text-secondary)">
                         {browsePath === '/' ? 'Root' : browsePath}
                       </span>
                       <div className="flex gap-2">
@@ -1354,14 +1354,14 @@ export default function BackupSettings() {
                               const parent = browsePath.split('/').slice(0, -1).join('/') || '/'
                               browseExternalFolders(parent)
                             }}
-                            className="text-xs text-[var(--color-accent)] hover:underline"
+                            className="text-xs text-(--color-accent) hover:underline"
                           >
                             ↑ {t('backup.parentFolder') || 'Up'}
                           </button>
                         )}
                         <button
                           onClick={() => setExternalFolders(null)}
-                          className="text-xs text-[var(--color-text-muted)] hover:underline"
+                          className="text-xs text-(--color-text-muted) hover:underline"
                         >
                           {t('common.close') || 'Close'}
                         </button>
@@ -1374,32 +1374,32 @@ export default function BackupSettings() {
                           updateExternalDestination(selectedExternalDestinationIndex, 'external_path', browsePath)
                           setExternalFolders(null)
                         }}
-                        className="w-full py-2 px-3 rounded-lg bg-[var(--color-accent)]/10 text-[var(--color-accent)] text-xs font-medium hover:bg-[var(--color-accent)]/20 transition-colors border border-[var(--color-accent)]/30"
+                        className="w-full py-2 px-3 rounded-lg bg-(--color-accent)/10 text-(--color-accent) text-xs font-medium hover:bg-(--color-accent)/20 transition-colors border border-(--color-accent)/30"
                       >
                         ✓ {t('backup.useThisFolder') || 'Use This Folder'}
                       </button>
                     )}
                     {externalFolders.length === 0 ? (
-                      <p className="text-2xs text-[var(--color-text-muted)] italic">
+                      <p className="text-2xs text-(--color-text-muted) italic">
                         {t('backup.noFolders') || 'No subfolders found'}
                       </p>
                     ) : (
                       <div className="space-y-1 max-h-48 overflow-y-auto">
                         {externalFolders.map((folder) => (
-                          <div key={folder} className="flex items-center justify-between gap-2 p-2 rounded hover:bg-[var(--color-bg-tertiary)] transition-colors">
+                          <div key={folder} className="flex items-center justify-between gap-2 p-2 rounded-sm hover:bg-(--color-bg-tertiary) transition-colors">
                             <button
                               onClick={() => {
                                 const newPath = browsePath === '/' ? `/${folder}` : `${browsePath}/${folder}`
                                 browseExternalFolders(newPath)
                               }}
-                              className="flex items-center gap-2 text-sm text-[var(--color-text-primary)] flex-1 min-w-0 text-left"
+                              className="flex items-center gap-2 text-sm text-(--color-text-primary) flex-1 min-w-0 text-left"
                             >
                               <span className="shrink-0">{Icons.folder}</span>
                               <span className="truncate">{folder}</span>
                             </button>
                             <button
                               onClick={() => selectExternalFolder(folder)}
-                              className="text-xs text-[var(--color-accent)] hover:underline px-2 shrink-0"
+                              className="text-xs text-(--color-accent) hover:underline px-2 shrink-0"
                             >
                               {t('backup.selectFolder') || 'Select'}
                             </button>
@@ -1413,7 +1413,7 @@ export default function BackupSettings() {
                 <button
                   onClick={testExternalConnection}
                   disabled={testingConnection || !activeDestination?.external_url}
-                  className="w-full py-2 px-4 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]/80 transition-colors flex items-center justify-center gap-2"
+                  className="w-full py-2 px-4 rounded-lg bg-(--color-bg-secondary) text-(--color-text-secondary) hover:bg-(--color-bg-secondary)/80 transition-colors flex items-center justify-center gap-2"
                 >
                   {testingConnection ? (
                     <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -1424,20 +1424,20 @@ export default function BackupSettings() {
                 </button>
 
                 {/* Restore from External */}
-                <div className="border-t border-[var(--color-border)] pt-4">
+                <div className="border-t border-(--color-border) pt-4">
                   <div className="flex items-center justify-between mb-3">
                     <div>
-                      <span className="text-xs font-medium text-[var(--color-text-secondary)]">
+                      <span className="text-xs font-medium text-(--color-text-secondary)">
                         {t('backup.restoreFromExternal') || 'Restore from External'}
                       </span>
-                      <p className="text-2xs text-[var(--color-text-muted)]">
+                      <p className="text-2xs text-(--color-text-muted)">
                         {t('backup.restoreFromExternalDesc') || 'Download and restore a backup from your external server'}
                       </p>
                     </div>
                     <button
                       onClick={browseExternalFiles}
                       disabled={browsingFiles || (!activeDestination?.external_api_key && !activeDestination?.has_external_api_key)}
-                      className="px-3 py-2 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]/80 transition-colors disabled:opacity-50 flex items-center gap-2"
+                      className="px-3 py-2 rounded-lg bg-(--color-bg-secondary) text-(--color-text-secondary) hover:bg-(--color-bg-secondary)/80 transition-colors disabled:opacity-50 flex items-center gap-2"
                     >
                       {browsingFiles ? (
                         <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -1449,36 +1449,36 @@ export default function BackupSettings() {
                   </div>
 
                   {externalFiles !== null && (
-                    <div className="bg-[var(--color-bg-secondary)] rounded-lg p-3 space-y-2">
+                    <div className="bg-(--color-bg-secondary) rounded-lg p-3 space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-[var(--color-text-secondary)]">
+                        <span className="text-xs font-medium text-(--color-text-secondary)">
                           {activeDestination?.external_path || '/GearCargo'} — {externalFiles.length} {t('backup.filesFound') || 'backup files'}
                         </span>
                         <button
                           onClick={() => setExternalFiles(null)}
-                          className="text-xs text-[var(--color-text-muted)] hover:underline"
+                          className="text-xs text-(--color-text-muted) hover:underline"
                         >
                           {t('common.close') || 'Close'}
                         </button>
                       </div>
                       {externalFiles.length === 0 ? (
-                        <p className="text-2xs text-[var(--color-text-muted)] italic">
+                        <p className="text-2xs text-(--color-text-muted) italic">
                           {t('backup.noFilesFound') || 'No .zip backup files found in this folder'}
                         </p>
                       ) : (
                         <div className="space-y-1 max-h-60 overflow-y-auto">
                           {externalFiles.map((file) => (
-                            <div key={file.name} className="flex items-center justify-between p-2 rounded hover:bg-[var(--color-bg-tertiary)] transition-colors">
+                            <div key={file.name} className="flex items-center justify-between p-2 rounded-sm hover:bg-(--color-bg-tertiary) transition-colors">
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm text-[var(--color-text-primary)] truncate">{file.name}</p>
-                                <p className="text-2xs text-[var(--color-text-muted)]">
+                                <p className="text-sm text-(--color-text-primary) truncate">{file.name}</p>
+                                <p className="text-2xs text-(--color-text-muted)">
                                   {file.size_human}{file.last_modified ? ` • ${formatDate(file.last_modified)}` : ''}
                                 </p>
                               </div>
                               <button
                                 onClick={() => restoreFromExternal(file.name)}
                                 disabled={restoringExternal}
-                                className="ml-2 px-3 py-1.5 text-xs text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
+                                className="ml-2 px-3 py-1.5 text-xs text-(--color-accent) hover:bg-(--color-accent)/10 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
                               >
                                 {restoringExternal ? (
                                   <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -1501,21 +1501,21 @@ export default function BackupSettings() {
       </div>
       
       {/* Advanced Settings */}
-      <div className="bg-[var(--color-bg-tertiary)] rounded-xl">
+      <div className="bg-(--color-bg-tertiary) rounded-xl">
         <button
           onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
           className="flex items-center justify-between w-full p-4"
         >
           <span className="text-sm font-medium">{t('backup.advancedSettings') || 'Advanced Settings'}</span>
-          <span className="text-[var(--color-text-muted)]">
+          <span className="text-(--color-text-muted)">
             {showAdvancedSettings ? Icons.chevronUp : Icons.chevronDown}
           </span>
         </button>
         
         {showAdvancedSettings && (
-          <div className="px-4 pb-4 space-y-4 border-t border-[var(--color-border)]">
+          <div className="px-4 pb-4 space-y-4 border-t border-(--color-border)">
             <div className="pt-4">
-              <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-2">
+              <label className="block text-xs font-medium text-(--color-text-secondary) mb-2">
                 {t('backup.retentionDays') || 'Keep backups for (days)'}
               </label>
               <input
@@ -1524,12 +1524,12 @@ export default function BackupSettings() {
                 onChange={(e) => handleScheduleChange('retention_days', parseInt(e.target.value))}
                 min={7}
                 max={365}
-                className="w-full p-3 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-border)]"
+                className="w-full p-3 rounded-lg bg-(--color-bg-secondary) text-(--color-text-primary) border border-(--color-border)"
               />
             </div>
             
             <div>
-              <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-2">
+              <label className="block text-xs font-medium text-(--color-text-secondary) mb-2">
                 {t('backup.maxBackups') || 'Maximum backups to keep'}
               </label>
               <input
@@ -1538,7 +1538,7 @@ export default function BackupSettings() {
                 onChange={(e) => handleScheduleChange('max_backups', parseInt(e.target.value))}
                 min={1}
                 max={50}
-                className="w-full p-3 rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-border)]"
+                className="w-full p-3 rounded-lg bg-(--color-bg-secondary) text-(--color-text-primary) border border-(--color-border)"
               />
             </div>
             
@@ -1551,7 +1551,7 @@ export default function BackupSettings() {
                   onChange={(e) => handleScheduleChange('notify_on_success', e.target.checked)}
                   className="sr-only peer"
                 />
-                <div className="w-10 h-6 bg-[var(--color-bg-secondary)] peer-focus:ring-2 peer-focus:ring-[var(--color-accent)] rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--color-accent)]" />
+                <div className="w-10 h-6 bg-(--color-bg-secondary) peer-focus:ring-2 peer-focus:ring-(--color-accent) rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-(--color-accent)" />
               </label>
             </div>
             
@@ -1564,7 +1564,7 @@ export default function BackupSettings() {
                   onChange={(e) => handleScheduleChange('notify_on_failure', e.target.checked)}
                   className="sr-only peer"
                 />
-                <div className="w-10 h-6 bg-[var(--color-bg-secondary)] peer-focus:ring-2 peer-focus:ring-[var(--color-accent)] rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--color-accent)]" />
+                <div className="w-10 h-6 bg-(--color-bg-secondary) peer-focus:ring-2 peer-focus:ring-(--color-accent) rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-(--color-accent)" />
               </label>
             </div>
           </div>
@@ -1573,38 +1573,38 @@ export default function BackupSettings() {
       
       {/* Stored Backups */}
       {status?.available_backups?.length > 0 && (
-        <div className="bg-[var(--color-bg-tertiary)] rounded-xl">
+        <div className="bg-(--color-bg-tertiary) rounded-xl">
           <button
             onClick={() => setShowBackupList(!showBackupList)}
             className="flex items-center justify-between w-full p-4"
           >
             <div className="flex items-center gap-3">
-              <span className="text-[var(--color-text-muted)]">{Icons.folder}</span>
+              <span className="text-(--color-text-muted)">{Icons.folder}</span>
               <div className="text-left">
                 <span className="text-sm font-medium">{t('backup.storedBackups') || 'Stored Backups'}</span>
-                <p className="text-2xs text-[var(--color-text-muted)]">
+                <p className="text-2xs text-(--color-text-muted)">
                   {status.total_backup_count} {t('backup.backupsAvailable') || 'backups available'}
                 </p>
               </div>
             </div>
-            <span className="text-[var(--color-text-muted)]">
+            <span className="text-(--color-text-muted)">
               {showBackupList ? Icons.chevronUp : Icons.chevronDown}
             </span>
           </button>
           
           {showBackupList && (
-            <div className="px-4 pb-4 border-t border-[var(--color-border)]">
+            <div className="px-4 pb-4 border-t border-(--color-border)">
               <div className="space-y-2 pt-4">
                 {status.available_backups.map((backup) => (
                   <div
                     key={backup.filename}
-                    className="flex items-center justify-between p-3 bg-[var(--color-bg-secondary)] rounded-lg"
+                    className="flex items-center justify-between p-3 bg-(--color-bg-secondary) rounded-lg"
                   >
                     <div>
                       <p className="text-sm font-medium">
                         {backup.label || formatDateTime(backup.created_at)}
                       </p>
-                      <p className="text-2xs text-[var(--color-text-muted)]">
+                      <p className="text-2xs text-(--color-text-muted)">
                         {backup.size_human}
                       </p>
                     </div>
@@ -1624,7 +1624,7 @@ export default function BackupSettings() {
                             toast.error(t('backup.downloadFailed') || 'Failed to download backup')
                           }
                         }}
-                        className="p-2 text-[var(--color-text-secondary)] hover:bg-[var(--color-accent)]/10 rounded-lg transition-colors"
+                        className="p-2 text-(--color-text-secondary) hover:bg-(--color-accent)/10 rounded-lg transition-colors"
                         title={t('backup.download') || 'Download'}
                       >
                         {Icons.download}
@@ -1643,7 +1643,7 @@ export default function BackupSettings() {
                             }
                           }}
                           disabled={sendingExternal}
-                          className="p-2 text-[var(--color-text-secondary)] hover:bg-[var(--color-accent)]/10 rounded-lg transition-colors disabled:opacity-50"
+                          className="p-2 text-(--color-text-secondary) hover:bg-(--color-accent)/10 rounded-lg transition-colors disabled:opacity-50"
                           title={t('backup.sendToExternal') || 'Send to external server'}
                         >
                           {sendingExternal ? (
@@ -1656,7 +1656,7 @@ export default function BackupSettings() {
                       <button
                         onClick={() => restoreBackup(backup.filename)}
                         disabled={importing}
-                        className="p-2 text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10 rounded-lg transition-colors"
+                        className="p-2 text-(--color-accent) hover:bg-(--color-accent)/10 rounded-lg transition-colors"
                         title={t('backup.restore') || 'Restore'}
                       >
                         {Icons.refresh}
@@ -1681,7 +1681,7 @@ export default function BackupSettings() {
       <button
         onClick={saveSchedule}
         disabled={saving}
-        className="w-full py-3 px-4 bg-[var(--color-accent)] text-white rounded-xl font-medium hover:bg-[var(--color-accent)]/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+        className="w-full py-3 px-4 bg-(--color-accent) text-white rounded-xl font-medium hover:bg-(--color-accent)/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
       >
         {saving ? (
           <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -1694,7 +1694,7 @@ export default function BackupSettings() {
       <button
         onClick={runBackupNow}
         disabled={backing}
-        className="w-full py-3 px-4 bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] rounded-xl font-medium hover:bg-[var(--color-bg-tertiary)]/80 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+        className="w-full py-3 px-4 bg-(--color-bg-tertiary) text-(--color-text-primary) rounded-xl font-medium hover:bg-(--color-bg-tertiary)/80 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
       >
         {backing ? (
           <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -1721,7 +1721,7 @@ export default function BackupSettings() {
             }
           }}
           disabled={sendingExternal}
-          className="w-full py-3 px-4 bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] rounded-xl font-medium hover:bg-[var(--color-bg-tertiary)]/80 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+          className="w-full py-3 px-4 bg-(--color-bg-tertiary) text-(--color-text-primary) rounded-xl font-medium hover:bg-(--color-bg-tertiary)/80 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
         >
           {sendingExternal ? (
             <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />

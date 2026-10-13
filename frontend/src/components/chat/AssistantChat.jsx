@@ -32,7 +32,7 @@ function AssistantAvatar({ decorative = true, name = ASSISTANT_NAME }) {
       aria-hidden={decorative ? 'true' : undefined}
       width={28}
       height={28}
-      className="w-7 h-7 rounded-lg shrink-0 object-cover bg-[var(--color-bg-secondary)]"
+      className="w-7 h-7 rounded-lg shrink-0 object-cover bg-(--color-bg-secondary)"
     />
   )
 }
@@ -205,7 +205,7 @@ export default function AssistantChat({ vehicleId, fleet = false, fleetLabel = '
   return (
     <div className={isModal ? 'flex flex-col h-full' : 'flex flex-col min-h-[calc(100vh-3.5rem)] max-w-2xl mx-auto'}>
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-[var(--color-bg-primary)] border-b border-[var(--color-border)] px-4 py-3 flex items-center gap-3">
+      <div className="sticky top-0 z-10 bg-(--color-bg-primary) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
         {!isModal && (
           <button onClick={onBack} className="btn-icon shrink-0" aria-label={t('common.back') || 'Back'}>
             {Icons.back}
@@ -215,7 +215,7 @@ export default function AssistantChat({ vehicleId, fleet = false, fleetLabel = '
         <div className="min-w-0 flex-1">
           <h1 className="text-base font-semibold truncate">{assistantName}</h1>
           {selectorSlot || (
-            <p className="text-2xs text-[var(--color-text-muted)] truncate">
+            <p className="text-2xs text-(--color-text-muted) truncate">
               {vehicle ? vehicle.name : (t('chat.title') || 'Vehicle Assistant')}
             </p>
           )}
@@ -238,14 +238,14 @@ export default function AssistantChat({ vehicleId, fleet = false, fleetLabel = '
             <div key={i} className={`flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
               {showAvatar && <AssistantAvatar decorative={false} name={assistantName} />}
               <div
-                className={`max-w-[85%] px-3.5 py-2.5 rounded-2xl text-sm whitespace-pre-wrap break-words leading-relaxed ${
+                className={`max-w-[85%] px-3.5 py-2.5 rounded-2xl text-sm whitespace-pre-wrap wrap-break-word leading-relaxed ${
                   isUser
-                    ? 'bg-[var(--color-accent)] text-white rounded-br-md'
+                    ? 'bg-(--color-accent) text-white rounded-br-md'
                     : m.role === 'error'
                       ? 'bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 rounded-bl-md'
                       : m.refused
-                        ? 'bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] italic rounded-bl-md'
-                        : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] rounded-bl-md'
+                        ? 'bg-(--color-bg-secondary) text-(--color-text-muted) italic rounded-bl-md'
+                        : 'bg-(--color-bg-secondary) text-(--color-text-primary) rounded-bl-md'
                 }`}
               >
                 {text}
@@ -263,7 +263,7 @@ export default function AssistantChat({ vehicleId, fleet = false, fleetLabel = '
                 key={i}
                 onClick={() => send(s)}
                 disabled={loading || !online}
-                className="text-sm px-3 py-2 rounded-xl bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-tertiary)] text-left disabled:opacity-50"
+                className="text-sm px-3 py-2 rounded-xl bg-(--color-bg-secondary) hover:bg-(--color-bg-tertiary) text-left disabled:opacity-50"
               >
                 {s}
               </button>
@@ -274,11 +274,11 @@ export default function AssistantChat({ vehicleId, fleet = false, fleetLabel = '
         {loading && (
           <div className="flex items-end gap-2 justify-start" aria-live="polite">
             <AssistantAvatar />
-            <div className="bg-[var(--color-bg-secondary)] px-4 py-3 rounded-2xl rounded-bl-md" aria-label={t('chat.thinking') || 'Thinking…'}>
+            <div className="bg-(--color-bg-secondary) px-4 py-3 rounded-2xl rounded-bl-md" aria-label={t('chat.thinking') || 'Thinking…'}>
               <span className="flex gap-1">
-                <span className="w-2 h-2 rounded-full bg-[var(--color-text-muted)] animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-2 h-2 rounded-full bg-[var(--color-text-muted)] animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-2 h-2 rounded-full bg-[var(--color-text-muted)] animate-bounce" style={{ animationDelay: '300ms' }} />
+                <span className="w-2 h-2 rounded-full bg-(--color-text-muted) animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-2 h-2 rounded-full bg-(--color-text-muted) animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-2 h-2 rounded-full bg-(--color-text-muted) animate-bounce" style={{ animationDelay: '300ms' }} />
               </span>
             </div>
           </div>
@@ -286,9 +286,9 @@ export default function AssistantChat({ vehicleId, fleet = false, fleetLabel = '
       </div>
 
       {/* Input */}
-      <div className="sticky bottom-0 bg-[var(--color-bg-primary)] border-t border-[var(--color-border)] px-4 py-3">
+      <div className="sticky bottom-0 bg-(--color-bg-primary) border-t border-(--color-border) px-4 py-3">
         {!online && (
-          <p className="text-2xs text-[var(--color-text-muted)] text-center mb-2">{t('chat.offline') || 'You are offline — the assistant needs a connection.'}</p>
+          <p className="text-2xs text-(--color-text-muted) text-center mb-2">{t('chat.offline') || 'You are offline — the assistant needs a connection.'}</p>
         )}
         <form onSubmit={(e) => { e.preventDefault(); send() }} className="flex items-end gap-2">
           <label htmlFor="chat-input" className="sr-only">{t('chat.inputLabel') || 'Ask a question'}</label>
@@ -308,13 +308,13 @@ export default function AssistantChat({ vehicleId, fleet = false, fleetLabel = '
           <button
             type="submit"
             disabled={loading || !online || !input.trim()}
-            className="btn-primary shrink-0 !px-3"
+            className="btn-primary shrink-0 px-3!"
             aria-label={t('chat.send') || 'Send'}
           >
             {Icons.send}
           </button>
         </form>
-        <p className="text-2xs text-[var(--color-text-muted)] text-center mt-2 leading-relaxed">
+        <p className="text-2xs text-(--color-text-muted) text-center mt-2 leading-relaxed">
           {t('chat.disclaimer') || 'AI answers are based on your data and may be inaccurate.'}
         </p>
       </div>

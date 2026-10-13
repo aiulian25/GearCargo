@@ -541,7 +541,7 @@ export default function VehicleDetail() {
       )}
       
       {/* Header */}
-      <div className="bg-[var(--color-bg-card)] border-b border-[var(--color-border)] px-4 py-3 sticky top-0 z-20">
+      <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 sticky top-0 z-20">
         <div className="flex items-center gap-3">
           <button onClick={() => navigate(isArchived ? '/settings' : '/')} className="btn-icon">
             {Icons.arrowBack}
@@ -549,7 +549,7 @@ export default function VehicleDetail() {
           
           <div className="flex-1 min-w-0">
             <h1 className="text-lg font-bold truncate">{vehicle.name}</h1>
-            <p className="text-xs text-[var(--color-text-secondary)]">
+            <p className="text-xs text-(--color-text-secondary)">
               {vehicle.make} {vehicle.model} {vehicle.year} • {vehicle.license_plate}
             </p>
           </div>
@@ -564,25 +564,25 @@ export default function VehicleDetail() {
               {showMenu && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
-                  <div className="absolute right-0 top-full mt-1 w-48 bg-[var(--color-bg-card)] border border-[var(--color-border)] rounded-xl shadow-xl z-50 overflow-hidden">
+                  <div className="absolute right-0 top-full mt-1 w-48 bg-(--color-bg-card) border border-(--color-border) rounded-xl shadow-xl z-50 overflow-hidden">
                     <Link 
                       to={`/vehicles/${id}/edit`}
-                      className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-[var(--color-bg-tertiary)]"
+                      className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-(--color-bg-tertiary)"
                       onClick={() => setShowMenu(false)}
                     >
-                      <span className="text-[var(--color-text-secondary)]">{Icons.edit}</span>
+                      <span className="text-(--color-text-secondary)">{Icons.edit}</span>
                       {t('vehicleDetail.editVehicle') || 'Edit Vehicle'}
                     </Link>
                     <button 
                       onClick={() => { handleArchive(); setShowMenu(false); }}
-                      className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-[var(--color-bg-tertiary)] w-full text-left"
+                      className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-(--color-bg-tertiary) w-full text-left"
                     >
-                      <span className="text-[var(--color-text-secondary)]">{Icons.archive}</span>
+                      <span className="text-(--color-text-secondary)">{Icons.archive}</span>
                       {t('vehicleDetail.archive') || 'Archive'}
                     </button>
                     <button 
                       onClick={() => { handleDelete(); setShowMenu(false); }}
-                      className="flex items-center gap-3 px-4 py-3 text-sm text-red-500 hover:bg-[var(--color-bg-tertiary)] w-full text-left"
+                      className="flex items-center gap-3 px-4 py-3 text-sm text-red-500 hover:bg-(--color-bg-tertiary) w-full text-left"
                     >
                       {Icons.delete}
                       {t('vehicleDetail.delete') || 'Delete'}
@@ -600,8 +600,8 @@ export default function VehicleDetail() {
         {/* Desktop: side-by-side | Mobile: stacked */}
         <div className="flex flex-col lg:flex-row lg:gap-4 gap-4">
           {/* Vehicle Photo Section */}
-          <div className="card overflow-hidden lg:w-[380px] xl:w-[440px] lg:flex-shrink-0 lg:self-start lg:sticky lg:top-[60px]">
-            <div className="relative h-48 lg:h-auto lg:aspect-[4/5] bg-gradient-to-br from-[var(--color-bg-tertiary)] to-[var(--color-bg-secondary)]">
+          <div className="card overflow-hidden lg:w-[380px] xl:w-[440px] lg:shrink-0 lg:self-start lg:sticky lg:top-[60px]">
+            <div className="relative h-48 lg:h-auto lg:aspect-4/5 bg-linear-to-br from-(--color-bg-tertiary) to-(--color-bg-secondary)">
               {vehicle.photo_url ? (
                 <img 
                   src={vehicle.photo_url} 
@@ -609,7 +609,7 @@ export default function VehicleDetail() {
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-[var(--color-text-muted)]">
+                <div className="w-full h-full flex items-center justify-center text-(--color-text-muted)">
                   {Icons.car}
                 </div>
               )}
@@ -617,7 +617,7 @@ export default function VehicleDetail() {
               <button
                 onClick={handleOpenMileageModal}
                 disabled={isArchived}
-                className="absolute bottom-3 right-3 bg-black/70 backdrop-blur-sm text-white px-3 py-1.5 rounded-lg hover:bg-black/80 transition-colors group disabled:cursor-not-allowed"
+                className="absolute bottom-3 right-3 bg-black/70 backdrop-blur-xs text-white px-3 py-1.5 rounded-lg hover:bg-black/80 transition-colors group disabled:cursor-not-allowed"
                 title={t('vehicles.updateMileage') || 'Update mileage'}
               >
                 <div className="flex items-center gap-2">
@@ -644,18 +644,18 @@ export default function VehicleDetail() {
               {statsCards.map(stat => {
                 const cardContent = (
                   <>
-                    <div className={`w-10 h-10 rounded-lg ${stat.bgColor} flex items-center justify-center ${stat.color} flex-shrink-0`}>
+                    <div className={`w-10 h-10 rounded-lg ${stat.bgColor} flex items-center justify-center ${stat.color} shrink-0`}>
                       {stat.icon}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs text-[var(--color-text-muted)] truncate">{stat.label}</p>
+                      <p className="text-xs text-(--color-text-muted) truncate">{stat.label}</p>
                       <p className="text-sm font-bold truncate">{stat.value}</p>
                       {stat.subValue && (
-                        <p className="text-xs text-[var(--color-text-secondary)] truncate">{stat.subValue}</p>
+                        <p className="text-xs text-(--color-text-secondary) truncate">{stat.subValue}</p>
                       )}
                     </div>
                     {stat.to && (
-                      <svg className={`w-3.5 h-3.5 flex-shrink-0 ${stat.color} opacity-40`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <svg className={`w-3.5 h-3.5 shrink-0 ${stat.color} opacity-40`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M9 18l6-6-6-6"/>
                       </svg>
                     )}
@@ -665,7 +665,7 @@ export default function VehicleDetail() {
                   <Link
                     key={stat.id}
                     to={stat.to}
-                    className="card flex items-center gap-3 p-3 hover:bg-[var(--color-bg-tertiary)] active:scale-[0.98] transition-all cursor-pointer"
+                    className="card flex items-center gap-3 p-3 hover:bg-(--color-bg-tertiary) active:scale-[0.98] transition-all cursor-pointer"
                   >
                     {cardContent}
                   </Link>
@@ -687,14 +687,14 @@ export default function VehicleDetail() {
               {dimensionItems.map(d => (
                 <div
                   key={d.id}
-                  className={`rounded-lg p-3 ${d.highlight ? 'bg-[var(--color-accent)]/10' : 'bg-[var(--color-bg-tertiary)]'}`}
+                  className={`rounded-lg p-3 ${d.highlight ? 'bg-(--color-accent)/10' : 'bg-(--color-bg-tertiary)'}`}
                 >
-                  <p className="text-xs text-[var(--color-text-muted)] truncate">{d.label}</p>
+                  <p className="text-xs text-(--color-text-muted) truncate">{d.label}</p>
                   <p className="text-sm font-bold tabular-nums whitespace-nowrap">
-                    {Number(d.value).toLocaleString()} <span className="font-medium text-[var(--color-text-secondary)]">{d.unit}</span>
+                    {Number(d.value).toLocaleString()} <span className="font-medium text-(--color-text-secondary)">{d.unit}</span>
                   </p>
                   {d.highlight && (
-                    <p className="text-2xs text-[var(--color-text-muted)] truncate">
+                    <p className="text-2xs text-(--color-text-muted) truncate">
                       {t('vehicles.clearanceHint') || 'Car-park clearance'}
                     </p>
                   )}
@@ -709,16 +709,16 @@ export default function VehicleDetail() {
           <div className="card">
             <h3 className="text-base font-semibold mb-3">{t('tank.title') || 'Tank'}</h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <div className="rounded-lg p-3 bg-[var(--color-bg-tertiary)]">
-                <p className="text-xs text-[var(--color-text-muted)]">{t('tank.capacity') || 'Tank capacity'}</p>
+              <div className="rounded-lg p-3 bg-(--color-bg-tertiary)">
+                <p className="text-xs text-(--color-text-muted)">{t('tank.capacity') || 'Tank capacity'}</p>
                 <p className="text-sm font-bold tabular-nums whitespace-nowrap">
-                  {Number(vehicle.tank_capacity).toLocaleString()} <span className="font-medium text-[var(--color-text-secondary)]">L</span>
+                  {Number(vehicle.tank_capacity).toLocaleString()} <span className="font-medium text-(--color-text-secondary)">L</span>
                 </p>
               </div>
 
               {fullTankCost != null && (
-                <div className="rounded-lg p-3 bg-[var(--color-bg-tertiary)]">
-                  <p className="text-xs text-[var(--color-text-muted)]">{t('tank.fullTankCost') || 'Full tank at national average'}</p>
+                <div className="rounded-lg p-3 bg-(--color-bg-tertiary)">
+                  <p className="text-xs text-(--color-text-muted)">{t('tank.fullTankCost') || 'Full tank at national average'}</p>
                   <p className="text-sm font-bold tabular-nums whitespace-nowrap">
                     {tankPrices?.currency || ''}{fullTankCost.toFixed(2)}
                   </p>
@@ -726,10 +726,10 @@ export default function VehicleDetail() {
               )}
 
               {tankRange != null && (
-                <div className="rounded-lg p-3 bg-[var(--color-bg-tertiary)]">
-                  <p className="text-xs text-[var(--color-text-muted)]">{t('tank.estimatedRange') || 'Estimated range per tank'}</p>
+                <div className="rounded-lg p-3 bg-(--color-bg-tertiary)">
+                  <p className="text-xs text-(--color-text-muted)">{t('tank.estimatedRange') || 'Estimated range per tank'}</p>
                   <p className="text-sm font-bold tabular-nums whitespace-nowrap">
-                    {Math.round(tankRange).toLocaleString()} <span className="font-medium text-[var(--color-text-secondary)]">{vehicle.distance_unit || 'km'}</span>
+                    {Math.round(tankRange).toLocaleString()} <span className="font-medium text-(--color-text-secondary)">{vehicle.distance_unit || 'km'}</span>
                   </p>
                 </div>
               )}
@@ -749,18 +749,18 @@ export default function VehicleDetail() {
               <Link
                 key={btn.id}
                 to={btn.to}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[var(--color-bg-tertiary)] hover:bg-[var(--color-bg-secondary)] rounded-lg transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-(--color-bg-tertiary) hover:bg-(--color-bg-secondary) rounded-lg transition-colors"
               >
-                <span className="text-[var(--color-text-secondary)]">{btn.icon}</span>
+                <span className="text-(--color-text-secondary)">{btn.icon}</span>
                 {btn.label}
               </Link>
             ))}
             <button
               onClick={handleFindManual}
               disabled={manualLoading}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[var(--color-bg-tertiary)] hover:bg-[var(--color-bg-secondary)] rounded-lg transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-(--color-bg-tertiary) hover:bg-(--color-bg-secondary) rounded-lg transition-colors"
             >
-              <span className="text-[var(--color-text-secondary)]">{Icons.bookOpen}</span>
+              <span className="text-(--color-text-secondary)">{Icons.bookOpen}</span>
               {manualLoading
                 ? (t('vehicleManual.loading') || 'Looking for manual...')
                 : (t('vehicleDetail.vehicleManual') || 'Owner\'s Manual')}
@@ -788,17 +788,17 @@ export default function VehicleDetail() {
             <div className="overflow-x-auto -mx-4 px-4">
               <table className="w-full min-w-[400px]">
                 <thead>
-                  <tr className="border-b border-[var(--color-border)]">
-                    <th className="text-left text-xs font-medium text-[var(--color-text-muted)] pb-2 pr-4">
+                  <tr className="border-b border-(--color-border)">
+                    <th className="text-left text-xs font-medium text-(--color-text-muted) pb-2 pr-4">
                       {t('vehicleDetail.date') || 'Date'}
                     </th>
-                    <th className="text-left text-xs font-medium text-[var(--color-text-muted)] pb-2 pr-4">
+                    <th className="text-left text-xs font-medium text-(--color-text-muted) pb-2 pr-4">
                       {t('vehicleDetail.type') || 'Type'}
                     </th>
-                    <th className="text-left text-xs font-medium text-[var(--color-text-muted)] pb-2 pr-4">
+                    <th className="text-left text-xs font-medium text-(--color-text-muted) pb-2 pr-4">
                       {t('vehicleDetail.description') || 'Description'}
                     </th>
-                    <th className="text-right text-xs font-medium text-[var(--color-text-muted)] pb-2">
+                    <th className="text-right text-xs font-medium text-(--color-text-muted) pb-2">
                       {t('vehicleDetail.cost') || 'Cost'}
                     </th>
                   </tr>
@@ -807,8 +807,8 @@ export default function VehicleDetail() {
                   {timeline.slice(0, 10).map((entry, i) => {
                     const typeStyle = getEntryTypeStyle(entry.type)
                     return (
-                      <tr key={i} className="border-b border-[var(--color-border)] last:border-0">
-                        <td className="py-3 pr-4 text-xs text-[var(--color-text-secondary)]">
+                      <tr key={i} className="border-b border-(--color-border) last:border-0">
+                        <td className="py-3 pr-4 text-xs text-(--color-text-secondary)">
                           {formatDate(entry.date)}
                         </td>
                         <td className="py-3 pr-4">
@@ -830,7 +830,7 @@ export default function VehicleDetail() {
             </div>
           ) : (
             <div className="text-center py-8">
-              <p className="text-sm text-[var(--color-text-secondary)]">
+              <p className="text-sm text-(--color-text-secondary)">
                 {t('vehicleDetail.noActivity') || 'No recent activity'}
               </p>
             </div>
@@ -842,24 +842,24 @@ export default function VehicleDetail() {
       {showManualModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div 
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/60 backdrop-blur-xs"
             onClick={() => setShowManualModal(false)}
           />
-          <div className="relative bg-[var(--color-bg-secondary)] rounded-2xl shadow-xl w-full max-w-sm p-6 animate-scale-in">
+          <div className="relative bg-(--color-bg-secondary) rounded-2xl shadow-xl w-full max-w-sm p-6 animate-scale-in">
             <h3 className="text-lg font-semibold mb-1 flex items-center gap-2">
-              <span className="text-[var(--color-accent)]">{Icons.bookOpen}</span>
+              <span className="text-(--color-accent)">{Icons.bookOpen}</span>
               {t('vehicleManual.title') || "Owner's Manual"}
             </h3>
             {vehicle && (
-              <p className="text-xs text-[var(--color-text-muted)] mb-4">
+              <p className="text-xs text-(--color-text-muted) mb-4">
                 {vehicle.make} {vehicle.model} {vehicle.year}
               </p>
             )}
 
             {manualLoading && (
               <div className="flex items-center justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-2 border-[var(--color-accent)] border-t-transparent" />
-                <span className="ml-3 text-sm text-[var(--color-text-secondary)]">
+                <div className="animate-spin rounded-full h-8 w-8 border-2 border-(--color-accent) border-t-transparent" />
+                <span className="ml-3 text-sm text-(--color-text-secondary)">
                   {t('vehicleManual.loading') || 'Looking for manual...'}
                 </span>
               </div>
@@ -889,7 +889,7 @@ export default function VehicleDetail() {
                     <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
                   </svg>
                 </a>
-                <p className="text-[10px] text-[var(--color-text-muted)] text-center">
+                <p className="text-[10px] text-(--color-text-muted) text-center">
                   {t('vehicleManual.openInNewTab') || 'Opens in a new tab'}
                 </p>
               </div>
@@ -897,10 +897,10 @@ export default function VehicleDetail() {
 
             {!manualLoading && manualResult && !manualResult.manual_url && (
               <div className="space-y-3">
-                <p className="text-sm text-[var(--color-text-secondary)]">
+                <p className="text-sm text-(--color-text-secondary)">
                   {t('vehicleManual.notFound') || 'Manual not found for this vehicle.'}
                 </p>
-                <p className="text-xs text-[var(--color-text-muted)]">
+                <p className="text-xs text-(--color-text-muted)">
                   {t('vehicleManual.notFoundHint') || "Try the manufacturer's website"}
                 </p>
                 {manualResult.fallback_search && (
@@ -933,12 +933,12 @@ export default function VehicleDetail() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           {/* Backdrop */}
           <div 
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/60 backdrop-blur-xs"
             onClick={() => setShowMileageModal(false)}
           />
           
           {/* Modal */}
-          <div className="relative bg-[var(--color-bg-secondary)] rounded-2xl shadow-xl w-full max-w-sm p-6 animate-scale-in">
+          <div className="relative bg-(--color-bg-secondary) rounded-2xl shadow-xl w-full max-w-sm p-6 animate-scale-in">
             <h3 className="text-lg font-semibold mb-4">
               {t('vehicles.updateMileage') || 'Update Mileage'}
             </h3>
@@ -963,7 +963,7 @@ export default function VehicleDetail() {
                 {mileageError && (
                   <p className="text-red-500 text-xs mt-1">{mileageError}</p>
                 )}
-                <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                <p className="text-xs text-(--color-text-muted) mt-1">
                   {t('vehicles.previousMileage') || 'Previous'}: {(vehicle?.current_mileage || 0).toLocaleString()} {vehicle?.distance_unit || 'km'}
                 </p>
               </div>

@@ -78,7 +78,7 @@ export function ConfirmProvider({ children }) {
     <ConfirmContext.Provider value={confirm}>
       {children}
       {options && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-120 flex items-center justify-center p-4">
           <div
             className="absolute inset-0 bg-black/50 backdrop-blur-[1px]"
             aria-hidden="true"
@@ -89,13 +89,13 @@ export function ConfirmProvider({ children }) {
             aria-modal="true"
             aria-labelledby="confirm-dialog-title"
             aria-describedby="confirm-dialog-message"
-            className="relative w-full max-w-sm rounded-2xl bg-[var(--color-bg-card)] border border-[var(--color-border)] shadow-xl p-5"
+            className="relative w-full max-w-sm rounded-2xl bg-(--color-bg-card) border border-(--color-border) shadow-xl p-5"
           >
-            <h2 id="confirm-dialog-title" className="text-base font-semibold mb-2 break-words">
+            <h2 id="confirm-dialog-title" className="text-base font-semibold mb-2 wrap-break-word">
               {o.title || t('confirm.defaultTitle') || 'Are you sure?'}
             </h2>
             {o.message && (
-              <p id="confirm-dialog-message" className="text-sm text-[var(--color-text-secondary)] mb-5 leading-relaxed break-words">
+              <p id="confirm-dialog-message" className="text-sm text-(--color-text-secondary) mb-5 leading-relaxed wrap-break-word">
                 {o.message}
               </p>
             )}
@@ -104,7 +104,7 @@ export function ConfirmProvider({ children }) {
                 ref={cancelBtnRef}
                 type="button"
                 onClick={() => settle(false)}
-                className="px-4 py-2 rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] text-sm font-medium hover:opacity-90"
+                className="px-4 py-2 rounded-lg bg-(--color-bg-tertiary) text-(--color-text-secondary) text-sm font-medium hover:opacity-90"
               >
                 {o.cancelLabel || t('common.cancel') || 'Cancel'}
               </button>
@@ -113,7 +113,7 @@ export function ConfirmProvider({ children }) {
                 type="button"
                 onClick={() => settle(true)}
                 className={`px-4 py-2 rounded-lg text-sm font-medium text-white ${
-                  isDestructive ? 'bg-red-500 hover:bg-red-600' : 'bg-[var(--color-accent)] hover:opacity-90'
+                  isDestructive ? 'bg-red-500 hover:bg-red-600' : 'bg-(--color-accent) hover:opacity-90'
                 }`}
               >
                 {o.confirmLabel || t('common.confirm') || 'Confirm'}
