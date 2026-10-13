@@ -130,3 +130,31 @@ def test_the_audit_trail_and_the_blocking_machinery_agree(app, client, audit_rec
     assert logins[-1]['ip'] == TRUSTED_HOP
     if activity is not None:      # the login path may or may not log an activity row
         assert activity.ip_address == logins[-1]['ip']
+
+
+def test_a_sign_in_survives_geoip2_being_unavailable(app, client, monkeypatch):
+    """geoip2 is a declared dependency, but the lookup is best-effort.
+
+    The import used to sit inside the same try whose handler names
+    `geoip2.errors.AddressNotFoundError`. With the package absent, evaluating
+    that handler raised UnboundLocalError, which replaced the ImportError and
+    escaped both excepts — so a sign-in attempt from a PUBLIC address failed
+    outright rather than simply recording no location.
+    """
+    import builtins
+
+    real_import = builtins.__import__
+
+    def _no_geoip2(name, *args, **kwargs):
+        if name == 'geoip2' or name.startswith('geoip2.'):
+            raise ModuleNotFoundError("No module named 'geoip2'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, '__import__', _no_geoip2)
+    _make_victim(app)
+
+    response = _failed_login(client)
+
+    # A wrong password is a 401; anything else means the geo lookup took the
+    # request down with it.
+    assert response.status_code == 401, response.get_data(as_text=True)

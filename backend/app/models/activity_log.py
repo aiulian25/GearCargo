@@ -264,9 +264,19 @@ class ActivityLog(db.Model):
         ):
             return None
 
+        # Imported in its own block: when geoip2 is absent the ImportError used
+        # to be raised INSIDE the try below, and Python then evaluated
+        # `except geoip2.errors.AddressNotFoundError` against a name that was
+        # never bound. The resulting UnboundLocalError replaced the original
+        # error and escaped both handlers, so a sign-in from a public address
+        # failed outright instead of simply skipping the lookup.
         try:
             from flask import current_app
             import geoip2.errors
+        except ImportError:
+            return None     # geoip2 unavailable — no geolocation, no failure
+
+        try:
             reader = getattr(current_app._get_current_object(), 'geoip_reader', None)
             if reader is None:
                 return None  # GeoIP DB not configured
