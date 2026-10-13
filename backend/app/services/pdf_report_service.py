@@ -431,11 +431,13 @@ def generate_pdf_report(user, vehicles, period, year=None, month=None, language=
     elements = []
     
     # ===== HEADER SECTION =====
-    # Try multiple logo paths
+    # The app mark. Resolved against the app's STATIC folder: root_path is the
+    # `app` package (backend/app, /app/app in the container) and static sits
+    # beside it, so the old root_path-based lookup never matched and every
+    # report silently rendered without a logo.
     logo_paths = [
-        os.path.join(current_app.root_path, 'static', 'icons', 'logo.png'),
-        os.path.join(current_app.root_path, 'static', 'icons', 'logo-192.png'),
-        os.path.join(current_app.root_path, 'static', 'icons', 'icon-192x192.png'),
+        os.path.join(current_app.static_folder, 'icons', 'logo.png'),
+        os.path.join(current_app.static_folder, 'icons', 'logo-192.png'),
     ]
     
     logo_found = False

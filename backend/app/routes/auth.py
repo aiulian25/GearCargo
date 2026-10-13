@@ -3,6 +3,7 @@ GearCargo - Authentication Routes
 """
 
 import io
+import os
 import re
 import json
 import base64
@@ -2493,6 +2494,52 @@ def check_password_public():
     })
 
 
+# The app mark sits in the middle of the 2FA QR. Kept well under what
+# ERROR_CORRECT_H can recover (30% of the symbol): at 18% of the width the mark
+# covers ~3% of the area, and the quiet ring around it keeps the finder pattern
+# search from running into artwork.
+QR_LOGO_RATIO = 0.18
+QR_LOGO_PAD_RATIO = 0.22
+# Relative to the app's own static folder, which is the built frontend in the
+# container and backend/static in a dev checkout — the mark is present in both.
+QR_LOGO_PATH = os.path.join('icons', 'logo-192.png')
+
+
+def _overlay_app_mark(qr_image):
+    """Composite the app mark onto the centre of a rendered QR code.
+
+    Returns the image untouched if the mark cannot be read, so a missing or
+    unreadable asset can never stop a user enabling 2FA.
+    """
+    from PIL import Image, ImageDraw
+
+    mark_path = os.path.join(current_app.static_folder, QR_LOGO_PATH)
+    try:
+        mark = Image.open(mark_path).convert('RGBA')
+    except Exception as exc:
+        current_app.logger.warning(f'2FA QR mark unavailable ({mark_path}): {exc}')
+        return qr_image
+
+    width = qr_image.size[0]
+    pad_side = int(width * QR_LOGO_PAD_RATIO)
+    mark_side = int(width * QR_LOGO_RATIO)
+
+    # A quiet pad behind the mark: without it the dark artwork merges into the
+    # surrounding modules and scanners lose the local contrast.
+    pad = Image.new('RGBA', (pad_side, pad_side), (0, 0, 0, 0))
+    ImageDraw.Draw(pad).rounded_rectangle(
+        (0, 0, pad_side - 1, pad_side - 1),
+        radius=int(pad_side * 0.18),
+        fill=(255, 255, 255, 255),
+    )
+    mark = mark.resize((mark_side, mark_side), Image.LANCZOS)
+    pad.alpha_composite(mark, ((pad_side - mark_side) // 2, (pad_side - mark_side) // 2))
+
+    composed = qr_image.convert('RGBA')
+    composed.alpha_composite(pad, ((width - pad_side) // 2, (qr_image.size[1] - pad_side) // 2))
+    return composed.convert('RGB')
+
+
 @auth_bp.route('/2fa/setup', methods=['POST'])
 @token_required
 def setup_2fa(current_user):
@@ -2542,11 +2589,20 @@ def setup_2fa(current_user):
         issuer_name=app_name
     )
 
-    # Render QR code as a PNG data URI.
-    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    # Render QR code as a PNG data URI, with the app mark in the middle so the
+    # code is recognisably GearCargo's in the authenticator's camera view.
+    # ERROR_CORRECT_H recovers 30% of the symbol, which is what pays for the
+    # area the mark covers (QR_LOGO_RATIO is a fraction of that budget).
+    qr = qrcode.QRCode(
+        version=1,
+        box_size=10,
+        border=5,
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+    )
     qr.add_data(uri)
     qr.make(fit=True)
-    img = qr.make_image(fill_color='black', back_color='white')
+    img = qr.make_image(fill_color='black', back_color='white').convert('RGB')
+    img = _overlay_app_mark(img)
     buffer = io.BytesIO()
     img.save(buffer, format='PNG')
     qr_base64 = base64.b64encode(buffer.getvalue()).decode()

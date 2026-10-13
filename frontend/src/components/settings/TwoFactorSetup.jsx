@@ -9,6 +9,15 @@ import api from '../../services/api'
 import { useTranslation } from '../../contexts/LanguageContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { formatDate, formatDateTime } from '../../utils/dateFormat'
+import { APP_LOGO_SRC, APP_NAME } from '../../config/brand'
+
+// Backup-codes PDF header geometry, in millimetres (jsPDF's default unit).
+const HEADER_HEIGHT_MM = 35
+const HEADER_MARGIN_MM = 14
+const HEADER_MARK_TOP_MM = 8
+const HEADER_MARK_SIZE_MM = 18
+const HEADER_MARK_GAP_MM = 6
+const HEADER_TEXT_LEFT_MM = 20
 
 // Icons
 const Icons = {
@@ -222,24 +231,43 @@ export default function TwoFactorSetup({ isOpen, onClose, onSuccess, isEnabled =
     navigator.clipboard.writeText(backupCodes.join('\n'))
   }
   
-  const downloadBackupCodesPDF = () => {
+  // The app mark for the PDF header. Resolves to null when the asset cannot be
+  // loaded: these are recovery codes, so the download must never depend on it.
+  const loadAppMark = () => new Promise((resolve) => {
+    const image = new Image()
+    image.onload = () => resolve(image)
+    image.onerror = () => resolve(null)
+    image.src = APP_LOGO_SRC
+  })
+
+  const downloadBackupCodesPDF = async () => {
+    const appMark = await loadAppMark()
+
     // Create PDF document
     const doc = new jsPDF()
     const pageWidth = doc.internal.pageSize.getWidth()
     
     // Header background
     doc.setFillColor(26, 26, 46) // Dark blue header
-    doc.rect(0, 0, pageWidth, 35, 'F')
-    
+    doc.rect(0, 0, pageWidth, HEADER_HEIGHT_MM, 'F')
+
+    if (appMark) {
+      doc.addImage(appMark, 'PNG', HEADER_MARGIN_MM, HEADER_MARK_TOP_MM,
+                   HEADER_MARK_SIZE_MM, HEADER_MARK_SIZE_MM)
+    }
+    const textLeft = appMark
+      ? HEADER_MARGIN_MM + HEADER_MARK_SIZE_MM + HEADER_MARK_GAP_MM
+      : HEADER_TEXT_LEFT_MM
+
     // Logo/Title
     doc.setTextColor(255, 255, 255)
     doc.setFontSize(24)
     doc.setFont('helvetica', 'bold')
-    doc.text('GearCargo', 20, 18)
+    doc.text(APP_NAME, textLeft, 18)
     
     doc.setFontSize(11)
     doc.setFont('helvetica', 'normal')
-    doc.text(t('twoFactor.backupCodesTitle') || 'Two-Factor Authentication Backup Codes', 20, 28)
+    doc.text(t('twoFactor.backupCodesTitle') || 'Two-Factor Authentication Backup Codes', textLeft, 28)
     
     // User info section
     doc.setTextColor(51, 51, 51)

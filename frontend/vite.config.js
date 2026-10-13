@@ -57,7 +57,7 @@ export default defineConfig({
             src: '/icons/logo-192.png',
             sizes: '192x192',
             type: 'image/png',
-            purpose: 'any maskable'
+            purpose: 'any'
           },
           {
             src: '/icons/logo-384.png',
@@ -69,7 +69,24 @@ export default defineConfig({
             src: '/icons/logo-512.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'any maskable'
+            purpose: 'any'
+          },
+          // Maskable icons are a separate, FULL-BLEED artwork: the platform
+          // crops a maskable icon to its own shape (circle, squircle, rounded
+          // square) and keeps only the inner 80%. The round icons above have
+          // transparent corners, so reusing them here would clip the badge and
+          // leave platform background showing through.
+          {
+            src: '/icons/logo-maskable-192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'maskable'
+          },
+          {
+            src: '/icons/logo-maskable-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable'
           }
         ],
         categories: ['utilities', 'productivity'],
@@ -78,8 +95,7 @@ export default defineConfig({
             name: 'Add Fuel',
             short_name: 'Fuel',
             description: 'Add a new fuel entry',
-            url: '/fuel/add',
-            icons: [{ src: '/icons/fuel-96.png', sizes: '96x96' }]
+            url: '/fuel/add'
           },
           {
             name: 'Add Expense',
@@ -91,8 +107,7 @@ export default defineConfig({
             name: 'My Vehicles',
             short_name: 'Vehicles',
             description: 'View your vehicles',
-            url: '/vehicles',
-            icons: [{ src: '/icons/vehicle-96.png', sizes: '96x96' }]
+            url: '/vehicles'
           }
         ],
         // Web Share Target — lets the OS share sheet send a receipt image
