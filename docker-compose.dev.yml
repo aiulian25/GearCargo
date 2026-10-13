@@ -133,7 +133,7 @@ services:
       - ./volumes/uploads:/app/uploads
       - ./volumes/logs:/app/volumes/logs
       - ./volumes/geoip:/app/volumes/geoip:ro
-    restart: always
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s
