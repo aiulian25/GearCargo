@@ -1,86 +1,41 @@
 {
-  "version": "1.7.0",
+  "version": "1.7.1",
   "date": "2026-10-13",
   "notes": {
     "en": [
       {
-        "type": "new",
-        "title": "A new look for GearCargo",
-        "desc": "The app wears its new logo everywhere it shows up: the browser tab, the icon on your home screen, the splash screen while it starts, push notifications, e-mails and your exported reports."
+        "type": "fix",
+        "title": "A renewed styling foundation",
+        "desc": "The styling engine the whole interface is built on moved up to its next major version. Nothing changes on screen — every page looks and behaves exactly as before."
       },
       {
         "type": "fix",
-        "title": "The installed app icon is no longer cropped",
-        "desc": "Android trims an app icon to its own shape — a circle on some phones, a rounded square on others. The icon is now supplied in a form built for that, so nothing gets cut off whichever phone you install it on."
-      },
-      {
-        "type": "new",
-        "title": "Your two-factor QR code is branded",
-        "desc": "The code you scan when setting up two-factor authentication now carries the GearCargo mark in the middle, so it is recognisable in your authenticator's camera view. It scans exactly as before."
-      },
-      {
-        "type": "fix",
-        "title": "Reports show the logo again",
-        "desc": "Exported PDF reports were meant to print the logo at the top and never did — it was being looked for in the wrong place. The header is complete again."
-      },
-      {
-        "type": "fix",
-        "title": "Sharper icon, faster install",
-        "desc": "The browser tab icon is now supplied at the small sizes browsers actually use instead of being shrunk from one large image, and the app installs with about 2 MB less to download."
+        "title": "The logo can no longer go missing",
+        "desc": "The mark printed on exported PDF reports and shown inside your two-factor QR code now travels with the server itself, so it is always found."
       }
     ],
     "ro": [
       {
-        "type": "new",
-        "title": "Un aspect nou pentru GearCargo",
-        "desc": "Aplicația poartă noul logo peste tot unde apare: fila din browser, pictograma de pe ecranul principal, ecranul de pornire, notificările push, emailurile și rapoartele exportate."
+        "type": "fix",
+        "title": "O fundație de stil reînnoită",
+        "desc": "Motorul de stil pe care este construită întreaga interfață a trecut la următoarea versiune majoră. Pe ecran nu se schimbă nimic — fiecare pagină arată și funcționează exact ca înainte."
       },
       {
         "type": "fix",
-        "title": "Pictograma aplicației instalate nu mai este tăiată",
-        "desc": "Android decupează pictograma după forma proprie — un cerc pe unele telefoane, un pătrat rotunjit pe altele. Pictograma este acum furnizată într-o formă făcută pentru asta, așa că nu se mai taie nimic, indiferent de telefon."
-      },
-      {
-        "type": "new",
-        "title": "Codul QR pentru autentificarea în doi pași poartă sigla",
-        "desc": "Codul pe care îl scanezi la configurarea autentificării în doi pași are acum sigla GearCargo în mijloc, ca să fie ușor de recunoscut în camera aplicației de autentificare. Se scanează exact ca înainte."
-      },
-      {
-        "type": "fix",
-        "title": "Rapoartele afișează din nou sigla",
-        "desc": "Rapoartele PDF exportate trebuiau să afișeze sigla în antet și nu o făceau niciodată — era căutată în locul greșit. Antetul este din nou complet."
-      },
-      {
-        "type": "fix",
-        "title": "Pictogramă mai clară, instalare mai rapidă",
-        "desc": "Pictograma din fila browserului este acum furnizată chiar la dimensiunile mici folosite de browsere, în loc să fie micșorată dintr-o imagine mare, iar aplicația se instalează cu circa 2 MB mai puțin de descărcat."
+        "title": "Sigla nu mai poate lipsi",
+        "desc": "Sigla tipărită pe rapoartele PDF exportate și afișată în codul QR pentru autentificarea în doi pași călătorește acum împreună cu serverul, așa că este găsită întotdeauna."
       }
     ],
     "es": [
       {
-        "type": "new",
-        "title": "Una nueva imagen para GearCargo",
-        "desc": "La aplicación luce su nuevo logotipo en todas partes: la pestaña del navegador, el icono de la pantalla de inicio, la pantalla de arranque, las notificaciones push, los correos y los informes exportados."
+        "type": "fix",
+        "title": "Una base de estilos renovada",
+        "desc": "El motor de estilos sobre el que se construye toda la interfaz ha pasado a su siguiente versión principal. En pantalla no cambia nada — cada página se ve y funciona exactamente igual que antes."
       },
       {
         "type": "fix",
-        "title": "El icono de la app instalada ya no se recorta",
-        "desc": "Android recorta el icono según su propia forma — un círculo en unos móviles, un cuadrado redondeado en otros. Ahora el icono se entrega en un formato pensado para eso, así que no se corta nada en ningún móvil."
-      },
-      {
-        "type": "new",
-        "title": "Tu código QR de doble factor lleva la marca",
-        "desc": "El código que escaneas al configurar la verificación en dos pasos lleva ahora la marca de GearCargo en el centro, para reconocerlo en la cámara de tu aplicación de autenticación. Se escanea igual que antes."
-      },
-      {
-        "type": "fix",
-        "title": "Los informes vuelven a mostrar el logotipo",
-        "desc": "Los informes PDF exportados debían imprimir el logotipo en la cabecera y nunca lo hacían — se buscaba en el lugar equivocado. La cabecera vuelve a estar completa."
-      },
-      {
-        "type": "fix",
-        "title": "Icono más nítido, instalación más rápida",
-        "desc": "El icono de la pestaña del navegador se entrega ya en los tamaños pequeños que los navegadores usan realmente, en vez de reducirse desde una imagen grande, y la app se instala con unos 2 MB menos de descarga."
+        "title": "El logotipo ya no puede faltar",
+        "desc": "La marca impresa en los informes PDF exportados y mostrada dentro de tu código QR de doble factor viaja ahora con el propio servidor, así que siempre se encuentra."
       }
     ]
   }
