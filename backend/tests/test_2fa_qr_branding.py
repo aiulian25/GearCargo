@@ -95,18 +95,34 @@ def test_the_secret_behind_the_branded_qr_still_enrols(app, client, user, auth_h
 
 
 def test_an_unreadable_mark_never_blocks_enrolment(app, monkeypatch):
-    """A missing or corrupt asset must degrade to a plain QR, not a 500."""
+    """A mark that cannot be found anywhere must degrade to a plain QR, not a 500.
+
+    The resolver looks in the deployed static folder AND in the copy packaged
+    with the backend, so emptying one is not enough — patch the resolver itself,
+    which is the contract the caller depends on.
+    """
     import qrcode
-    from app.routes.auth import _overlay_app_mark
+    import app.routes.auth as auth_module
+
+    monkeypatch.setattr(auth_module, 'app_mark_path', lambda filename: None)
 
     with app.app_context():
-        monkeypatch.setattr(app, 'static_folder', '/nonexistent/path')
         plain = qrcode.make('otpauth://totp/x').convert('RGB')
 
-        result = _overlay_app_mark(plain)
+        result = auth_module._overlay_app_mark(plain)
 
         assert result.size == plain.size
         assert list(result.getdata()) == list(plain.getdata()), 'should be untouched'
+
+
+def test_the_mark_is_found_without_a_built_frontend(app, monkeypatch):
+    """CI and a fresh clone have no backend/static — the packaged copy covers it."""
+    from app.utils.branding import app_mark_path
+
+    with app.app_context():
+        monkeypatch.setattr(app, 'static_folder', '/nonexistent/path')
+
+        assert app_mark_path('logo-192.png'), 'no packaged fallback for the mark'
 
 
 def test_the_mark_is_centred_and_no_bigger_than_the_pad(app):

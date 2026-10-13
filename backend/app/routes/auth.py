@@ -22,6 +22,7 @@ import jwt
 
 from app import db, redis_client
 from app.models import User, ActivityLog, BlockedIP, BlockedDevice
+from app.utils.branding import app_mark_path
 from app.utils.security_audit import security_audit
 from app.utils.entryparse import (
     INVALID_NUMBER_KEY,
@@ -2500,9 +2501,7 @@ def check_password_public():
 # search from running into artwork.
 QR_LOGO_RATIO = 0.18
 QR_LOGO_PAD_RATIO = 0.22
-# Relative to the app's own static folder, which is the built frontend in the
-# container and backend/static in a dev checkout — the mark is present in both.
-QR_LOGO_PATH = os.path.join('icons', 'logo-192.png')
+QR_LOGO_FILENAME = 'logo-192.png'
 
 
 def _overlay_app_mark(qr_image):
@@ -2513,11 +2512,15 @@ def _overlay_app_mark(qr_image):
     """
     from PIL import Image, ImageDraw
 
-    mark_path = os.path.join(current_app.static_folder, QR_LOGO_PATH)
+    mark_path = app_mark_path(QR_LOGO_FILENAME)
+    if not mark_path:
+        current_app.logger.warning('2FA QR mark not found — rendering a plain code')
+        return qr_image
+
     try:
         mark = Image.open(mark_path).convert('RGBA')
     except Exception as exc:
-        current_app.logger.warning(f'2FA QR mark unavailable ({mark_path}): {exc}')
+        current_app.logger.warning(f'2FA QR mark unreadable ({mark_path}): {exc}')
         return qr_image
 
     width = qr_image.size[0]
