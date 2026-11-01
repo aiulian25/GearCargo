@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { vehicleApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
-import { formatDateShort, formatMonthYear } from '../../utils/dateFormat'
+import { useDateFormat } from '../../hooks/useDateFormat'
 import EmptyState from '../../components/ui/EmptyState'
 
 // SVG Icons
@@ -146,6 +146,7 @@ const entryTypes = {
 }
 
 export default function VehicleTimeline() {
+  const { formatDateShort, formatMonthYear } = useDateFormat()
   const { id } = useParams()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()

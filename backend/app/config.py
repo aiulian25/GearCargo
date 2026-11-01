@@ -23,7 +23,17 @@ def _read_docker_secret(name: str) -> str:
 
 class Config:
     """Base configuration."""
+    PROCESS_ROLE = os.environ.get('GEARCARGO_PROCESS_ROLE', 'web')
+    SCHEDULER_ENABLED = os.environ.get('SCHEDULER_ENABLED', 'true').lower() == 'true'
+    SYSTEM_BACKUP_ENABLED = os.environ.get('BACKUP_ENABLED', 'true').lower() == 'true'
+    SYSTEM_BACKUP_KEEP_LAST = int(os.environ.get('BACKUP_KEEP_LAST', '7'))
     
+    # Finite restore budgets; byte values use binary units. Invalid overrides
+    # fail closed when restoring. See docs/RESTORE_RECOVERY.md.
+    from app.services.system_restore_budget import DEFAULTS as _RESTORE_DEFAULTS
+    for _key, _default in _RESTORE_DEFAULTS.items():
+        locals()['SYSTEM_RESTORE_' + _key] = os.environ.get('SYSTEM_RESTORE_' + _key, _default)
+
     # App info
     APP_NAME = os.environ.get('APP_NAME', 'GearCargo')
     APP_URL = os.environ.get('APP_URL', 'http://localhost:5000')
@@ -83,7 +93,7 @@ class Config:
     # but being explicit avoids subtle breakage if CWD changes or TMPDIR is unset.
     SESSION_FILE_DIR = '/tmp/flask_session'
     SESSION_COOKIE_HTTPONLY = os.environ.get('SESSION_COOKIE_HTTPONLY', 'true').lower() == 'true'
-    SESSION_COOKIE_SAMESITE = os.environ.get('SESSION_COOKIE_SAMESITE', 'Strict')  # S26: Strict removes residual CSRF risk; no legitimate cross-site form submissions in a private PWA
+    SESSION_COOKIE_SAMESITE = os.environ.get('SESSION_COOKIE_SAMESITE', 'Strict')  # Defense in depth; same-site sibling origins still require CSRF proof
     SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
     
     # CORS - Security
@@ -93,6 +103,9 @@ class Config:
     CORS_EXPOSE_HEADERS = ['Content-Type', 'X-CSRF-Token']
     CORS_MAX_AGE = 600
     
+    # Exact public browser origins; empty means APP_URL. Independent of CORS.
+    CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in os.environ.get('CSRF_TRUSTED_ORIGINS', '').split(',') if origin.strip()]
+
     # CSRF Protection
     WTF_CSRF_ENABLED = os.environ.get('WTF_CSRF_ENABLED', 'true').lower() == 'true'
     WTF_CSRF_SECRET_KEY = os.environ.get('WTF_CSRF_SECRET_KEY', 'csrf-secret-change-in-production')
@@ -237,17 +250,22 @@ class Config:
     LOG_REDACT_PII = os.environ.get('LOG_REDACT_PII', 'true').lower() == 'true'
 
     # Background task queue (S12).
-    # 'thread' (default) preserves the historical in-process daemon-thread
-    # behaviour — no extra process required. Set 'rq' to offload heavy work
-    # (e.g. OCR) to a separate `python rq_worker.py` process on the same Redis.
+    # Generic thread work uses a bounded local pool. Explicit RQ unavailability
+    # fails without fallback. OCR always uses the dedicated durable DB queue.
     TASK_QUEUE_BACKEND = os.environ.get('TASK_QUEUE_BACKEND', 'thread')
     TASK_QUEUE_NAME = os.environ.get('TASK_QUEUE_NAME', 'gearcargo')
     TASK_QUEUE_DEFAULT_TIMEOUT = int(os.environ.get('TASK_QUEUE_TIMEOUT', 600))
+    OCR_WORKER_ENABLED = os.environ.get('OCR_WORKER_ENABLED', 'true').lower() == 'true'
+    OCR_MAX_PENDING = min(100, max(1, int(os.environ.get('OCR_MAX_PENDING', '100'))))
+    OCR_MAX_CONCURRENCY = min(2, max(1, int(os.environ.get('OCR_MAX_CONCURRENCY', '2'))))
 
     # File uploads
     MAX_CONTENT_LENGTH = int(os.environ.get('MAX_UPLOAD_SIZE_MB', 200)) * 1024 * 1024
     UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', '/app/volumes/attachments')
     BACKUP_FOLDER = os.environ.get('BACKUP_FOLDER', '/app/volumes/backups')
+    BACKUP_PASSPHRASE_FILE = os.environ.get('BACKUP_PASSPHRASE_FILE', '')
+    # Default is resolved against BACKUP_FOLDER at runtime (including test overrides).
+    RESTORE_STATE_FOLDER = os.environ.get('RESTORE_STATE_FOLDER')
     # NOTE: attachment upload validation is enforced by app/routes/attachments.py
     # (ALLOWED_EXTENSIONS + magic-byte checks there are the single source of truth).
     # This mirror is kept in sync to avoid the previous divergence (F9). bmp/tiff

@@ -1,34 +1,43 @@
-import { useEffect } from 'react'
+import { useCallback, useContext, useLayoutEffect, useRef } from 'react'
+import { UnsavedChangesContext } from '../contexts/UnsavedChangesContext'
 
-/**
- * Warn before leaving the page (tab close / reload / PWA dismiss / back gesture
- * to a different origin) while a form has unsaved changes.
- *
- * Usage: pass react-hook-form's `formState.isDirty`:
- *   const { formState: { isDirty } } = useForm(...)
- *   useUnsavedChanges(isDirty)
- *
- * Notes:
- * - Modern browsers display their OWN generic confirmation text for the
- *   `beforeunload` event and ignore custom strings, so this needs no
- *   translatable copy.
- * - In-app (client-side) navigation blocking would require migrating the app to
- *   a react-router data router (createBrowserRouter + useBlocker); that is a
- *   larger change tracked as a follow-up. This guard already covers the most
- *   common data-loss cases on mobile/PWA: accidental refresh, tab/app close, and
- *   OS back-to-previous-app.
+/** Register all unsaved state, including files/custom controls outside RHF.
+ * Call the returned markSaved() only after the server or durable offline store
+ * acknowledges the complete save, immediately before the existing navigation.
+ * No draft is persisted: staying preserves the mounted form and selected files.
  */
 export function useUnsavedChanges(when) {
-  useEffect(() => {
-    if (!when) return undefined
-    const handler = (e) => {
-      e.preventDefault()
-      e.returnValue = '' // Chrome requires returnValue to be set to trigger the prompt
-      return ''
+  const context = useContext(UnsavedChangesContext)
+  const active = useRef(false)
+  const dirty = useRef(false)
+  const saved = useRef(false)
+  dirty.current = Boolean(when)
+  const shouldBlock = useCallback(() => dirty.current && !saved.current, [])
+
+  useLayoutEffect(() => {
+    active.current = true
+    const unregister = context?.register(shouldBlock)
+    const beforeUnload = event => {
+      if (!shouldBlock()) return
+      event.preventDefault()
+      event.returnValue = ''
     }
-    window.addEventListener('beforeunload', handler)
-    return () => window.removeEventListener('beforeunload', handler)
-  }, [when])
+    window.addEventListener('beforeunload', beforeUnload)
+    return () => {
+      active.current = false
+      unregister?.()
+      window.removeEventListener('beforeunload', beforeUnload)
+    }
+  }, [context, shouldBlock])
+
+  return useCallback(() => {
+    // Synchronous ref update avoids prompting when navigate follows in the
+    // same tick, before React has rendered a reset formState.isDirty value.
+    if (!active.current) return false
+    saved.current = true
+    context?.saved()
+    return true
+  }, [context])
 }
 
 export default useUnsavedChanges

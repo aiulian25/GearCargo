@@ -1,3 +1,6 @@
+import { receiptUploadKey } from '../../utils/receiptProtocol'
+import { getBoundIdentity } from '../../utils/offlineIdentity'
+import { ocrFailed, ocrLabel } from '../../utils/ocrStatus'
 /**
  * ScanReceiptBanner
  *
@@ -84,6 +87,7 @@ export default function ScanReceiptBanner({ receiptFile, vehicleId, onPrefill, o
   // idle → uploading → scanning → ready | no_text | scanning_slow
   // ready → extracting → extracted | ready (on error)
   const [phase, setPhase] = useState('idle')
+  const [scanStatus, setScanStatus] = useState(null)
 
   const [attachmentId, setAttachmentId] = useState(null)
   const [parsedData, setParsedData] = useState(null)
@@ -126,21 +130,27 @@ export default function ScanReceiptBanner({ receiptFile, vehicleId, onPrefill, o
 
     setPhase('uploading')
 
-    attachmentApi.upload(receiptFile, { vehicleId })
+    let active = true
+    attachmentApi.upload(receiptFile, { vehicleId, operationKey: receiptUploadKey(receiptFile), identity: getBoundIdentity() })
       .then(res => {
+        if (!active || prevFileRef.current !== receiptFile) return
         const id = res.data?.attachment?.id
         if (!id) { setPhase('error'); return }
         setAttachmentId(id)
         if (onUploadComplete) onUploadComplete(id)
+        setScanStatus(res.data.attachment)
+        if (ocrFailed(res.data.attachment)) { setPhase('scan_failed'); return }
         setPhase('scanning')
         _pollOcr(id)
       })
-      .catch(() => setPhase('error'))
+      .catch(() => { if (active) setPhase('error') })
+    return () => { active = false }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [receiptFile])
 
   function _resetState() {
     setPhase('idle')
+    setScanStatus(null)
     setAttachmentId(null)
     setParsedData(null)
     setParseError('')
@@ -158,7 +168,10 @@ export default function ScanReceiptBanner({ receiptFile, vehicleId, onPrefill, o
       try {
         const res = await attachmentApi.getOcr(id)
         const d = res.data
-        if (d.ocr_processed) {
+        setScanStatus(d)
+        if (ocrFailed(d)) {
+          setPhase('scan_failed')
+        } else if (d.ocr_processed) {
           setPhase(d.has_text ? 'ready' : 'no_text')
         } else {
           _pollOcr(id)
@@ -203,7 +216,7 @@ export default function ScanReceiptBanner({ receiptFile, vehicleId, onPrefill, o
   if (phase === 'idle' || phase === 'no_text') return null
 
   // ─── Banner colour ───────────────────────────────────────────────────────
-  const isError = phase === 'error'
+  const isError = phase === 'error' || phase === 'scan_failed'
   const isSuccess = prefilled
   const borderCls = isError
     ? 'border-red-500/30 bg-red-500/5'
@@ -229,7 +242,8 @@ export default function ScanReceiptBanner({ receiptFile, vehicleId, onPrefill, o
         {/* Status text */}
         <span className="flex-1 text-sm text-(--color-text-primary)">
           {phase === 'uploading' && (t('receipt.scanBannerUploading') || 'Uploading receipt…')}
-          {phase === 'scanning' && (t('receipt.scanBannerScanning') || 'Scanning receipt…')}
+          {phase === 'scanning' && ocrLabel(scanStatus, t)}
+          {phase === 'scan_failed' && `${t('ocrQueue.saved')} ${ocrLabel(scanStatus, t)} ${t('ocrQueue.retryDocuments')}`}
           {phase === 'scanning_slow' && (t('receipt.scanBannerSlow') || 'Still scanning — check back shortly')}
           {phase === 'ready' && !isSuccess && (t('receipt.scanBanner') || 'Receipt scanned — extract data to pre-fill form')}
           {phase === 'extracting' && (t('receipt.scanBannerExtracting') || 'Extracting data…')}

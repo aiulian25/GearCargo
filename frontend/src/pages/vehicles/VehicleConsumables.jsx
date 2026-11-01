@@ -1,9 +1,11 @@
+import { privateNavigationState } from '../../utils/privateNavigation'
+import { mutationOptions } from '../../utils/mutationProtocol'
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { vehicleApi, consumableApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
-import { formatDate } from '../../utils/dateFormat'
+import { useDateFormat } from '../../hooks/useDateFormat'
 import { Skeleton, SkeletonList } from '../../components/ui/Skeleton'
 import EmptyState from '../../components/ui/EmptyState'
 
@@ -44,6 +46,7 @@ const STATUS_STYLE = {
 }
 
 export default function VehicleConsumables() {
+  const { formatDate } = useDateFormat()
   const { id } = useParams()
   const navigate = useNavigate()
   const { t } = useTranslation()
@@ -78,7 +81,7 @@ export default function VehicleConsumables() {
     const label = t(`consumableTypes.${entry.consumable_type}`) || entry.consumable_type
     if (!window.confirm((t('consumables.deleteConfirm') || 'Delete this {item} entry?').replace('{item}', label))) return
     try {
-      await consumableApi.delete(entry.id)
+      await consumableApi.delete(entry.id, mutationOptions(entry))
       setEntries((prev) => prev.filter((e) => e.id !== entry.id))
       toast.success(t('consumables.deleted') || 'Consumable deleted')
     } catch (err) {
@@ -130,6 +133,11 @@ export default function VehicleConsumables() {
           {Icons.plus}<span className="hidden sm:inline">{t('consumables.add') || 'Add'}</span>
         </Link>
       </div>
+
+      <Link to={`/vehicles/${id}/tires`} className="card p-4 mb-4 block">
+        <span className="font-semibold">{t('tires.title')}</span>
+        <p className="text-sm text-(--color-text-muted)">{t('tires.intro')}</p>
+      </Link>
 
       {entries.length === 0 ? (
         <EmptyState
@@ -205,14 +213,14 @@ export default function VehicleConsumables() {
                 {(wear.status === 'monitor' || wear.status === 'replace') && (
                   <button
                     onClick={() => navigate(`/vehicles/${id}/consumable/add`, {
-                      state: { prefill: {
+                      state: privateNavigationState({ prefill: {
                         consumable_type: entry.consumable_type,
                         brand: entry.brand,
                         quantity: entry.quantity,
                         expected_lifespan_km: entry.expected_lifespan_km,
                         expected_lifespan_months: entry.expected_lifespan_months,
                         warranty_months: entry.warranty_months,
-                      } },
+                      } }),
                     })}
                     className="mt-3 w-full btn btn-secondary btn-sm"
                   >

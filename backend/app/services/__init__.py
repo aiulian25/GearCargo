@@ -2,6 +2,8 @@
 GearCargo - Background Task Scheduler Service
 """
 
+from app.services.restore_transaction import guarded_app_context
+from app.services.vehicle_archive import active_vehicle_condition
 import hashlib
 from datetime import datetime, date, timedelta, timezone
 from app.utils.timeutils import utc_naive_now, utc_today
@@ -11,335 +13,27 @@ scheduler = APScheduler()
 
 
 def init_scheduler(app):
-    """Initialize the background task scheduler."""
+    """Start polling durable cursors only in the designated scheduler process."""
+    if app.config.get('PROCESS_ROLE') != 'scheduler':
+        raise RuntimeError('Scheduler must run in the scheduler process role')
+    from app.services.scheduler_registry import job_definitions
+    from app.services.scheduler_ownership import seed_jobs, run_due_job
+    definitions = job_definitions(app)
+    seed_jobs(app, definitions)
+    app.config.setdefault('SCHEDULER_EXECUTORS', {'default': {'type': 'threadpool', 'max_workers': 4}})
     scheduler.init_app(app)
-    
-    # Add scheduled jobs.
-    # replace_existing=True prevents ConflictingIdError if init_scheduler is
-    # somehow called twice (e.g. during testing or app-factory edge cases).
-    # coalesce=True collapses multiple missed executions into a single run so
-    # a delayed start never floods the system with catch-up iterations.
-    # misfire_grace_time=300 gives jobs 5 minutes to fire before they are
-    # considered missed (handles slow startup / GC pauses).
-    _job_defaults = dict(replace_existing=True, coalesce=True, misfire_grace_time=300)
-
-    scheduler.add_job(
-        id='check_reminders',
-        func=check_due_reminders,
-        trigger='interval',
-        hours=1,
-        args=[app],
-        **_job_defaults
-    )
-
-    scheduler.add_job(
-        id='check_predictions',
-        func=generate_auto_predictions,
-        trigger='cron',
-        hour=3,  # Run at 3 AM
-        args=[app],
-        **_job_defaults
-    )
-
-    scheduler.add_job(
-        id='cleanup_old_data',
-        func=cleanup_old_data,
-        trigger='cron',
-        hour=4,  # Run at 4 AM
-        args=[app],
-        **_job_defaults
-    )
-
-    scheduler.add_job(
-        id='send_scheduled_backups',
-        func=process_scheduled_backups,
-        trigger='cron',
-        hour='*',  # Every hour
-        args=[app],
-        **_job_defaults
-    )
-
-    # Email notification jobs
-    scheduler.add_job(
-        id='send_daily_alerts',
-        func=send_daily_email_alerts,
-        trigger='cron',
-        hour=8,  # Run at 8 AM
-        args=[app],
-        **_job_defaults
-    )
-
-    scheduler.add_job(
-        id='send_weekly_reports',
-        func=send_weekly_reports,
-        trigger='cron',
-        day_of_week='mon',  # Every Monday
-        hour=9,
-        args=[app],
-        **_job_defaults
-    )
-
-    scheduler.add_job(
-        id='send_monthly_reports',
-        func=send_monthly_reports,
-        trigger='cron',
-        day=1,  # First of month
-        hour=9,
-        args=[app],
-        **_job_defaults
-    )
-
-    # Fuel price auto-refresh — every Monday at 10 AM UTC
-    # (after UK Gov & EU Oil Bulletin publish their weekly updates)
-    scheduler.add_job(
-        id='refresh_fuel_prices',
-        func=refresh_fuel_prices,
-        trigger='cron',
-        day_of_week='mon',
-        hour=10,
-        args=[app],
-        **_job_defaults
-    )
-
-    # Recurring tax entry generation — daily at 6 AM
-    scheduler.add_job(
-        id='process_recurring_taxes',
-        func=process_recurring_tax_entries,
-        trigger='cron',
-        hour=6,
-        args=[app],
-        **_job_defaults
-    )
-
-    # Recurring parking entry generation (permits/subscriptions) — daily at 6 AM
-    scheduler.add_job(
-        id='process_recurring_parking',
-        func=process_recurring_parking_entries,
-        trigger='cron',
-        hour=6,
-        args=[app],
-        **_job_defaults
-    )
-
-    # Consumable "due for replacement" push — daily at 7 AM (F3)
-    scheduler.add_job(
-        id='check_consumables_due',
-        func=check_consumables_due,
-        trigger='cron',
-        hour=7,
-        args=[app],
-        **_job_defaults
-    )
-
-    # Warranty "expiring within 30 days" push — daily at 7 AM (F2)
-    scheduler.add_job(
-        id='check_warranty_expiry',
-        func=check_warranty_expiry,
-        trigger='cron',
-        hour=7,
-        args=[app],
-        **_job_defaults
-    )
-
-    # Document "expiring within 14 days" push — daily at 7 AM (F42)
-    scheduler.add_job(
-        id='check_document_expiry',
-        func=check_document_expiry,
-        trigger='cron',
-        hour=7,
-        args=[app],
-        **_job_defaults
-    )
-
-    # Materialize due "next service" pointers into reminders — daily at 6 AM (F5)
-    scheduler.add_job(
-        id='process_due_services',
-        func=process_due_services,
-        trigger='cron',
-        hour=6,
-        args=[app],
-        **_job_defaults
-    )
-
-    # Roll expired auto_renew insurance policies into their next term — 6 AM (F6)
-    scheduler.add_job(
-        id='process_auto_renew_insurance',
-        func=process_auto_renew_insurance,
-        trigger='cron',
-        hour=6,
-        args=[app],
-        **_job_defaults
-    )
-
+    for name in definitions:
+        scheduler.add_job(id=name, func=run_due_job, trigger='interval', seconds=15,
+            args=[app, name], replace_existing=True, coalesce=True,
+            misfire_grace_time=60, max_instances=1)
     scheduler.start()
-    app.logger.info('Scheduler initialized')
-
-    # Recurring tax + parking self-heal on startup (so a deployment with
-    # recurring entries missing next_due_date is fixed without waiting for the
-    # 6 AM cron). These previously ran INLINE here — i.e. synchronously during
-    # create_app() — which, under preload_app=True, made the master perform
-    # request-path DB work and hold connections at fork(), widening the window
-    # for cross-process connection sharing (STARTUP_SLOWNESS_INVESTIGATION.md
-    # §4.1/§4.2). Run them as deferred one-off jobs instead (same pattern as the
-    # fuel refresh below): they fire shortly after startup in the scheduler
-    # thread — after the workers have forked — so no DB work happens in preload.
-    _startup_selfheal_at = datetime.now(timezone.utc) + timedelta(seconds=30)
-    scheduler.add_job(
-        id='process_recurring_taxes_startup',
-        func=process_recurring_tax_entries,
-        trigger='date',
-        run_date=_startup_selfheal_at,
-        args=[app],
-        replace_existing=True,
-    )
-    scheduler.add_job(
-        id='process_recurring_parking_startup',
-        func=process_recurring_parking_entries,
-        trigger='date',
-        run_date=_startup_selfheal_at,
-        args=[app],
-        replace_existing=True,
-    )
-    scheduler.add_job(
-        id='process_due_services_startup',
-        func=process_due_services,
-        trigger='date',
-        run_date=_startup_selfheal_at,
-        args=[app],
-        replace_existing=True,
-    )
-    scheduler.add_job(
-        id='process_auto_renew_insurance_startup',
-        func=process_auto_renew_insurance,
-        trigger='date',
-        run_date=_startup_selfheal_at,
-        args=[app],
-        replace_existing=True,
-    )
-    # Collapse exact-duplicate reminders left behind by the pre-fix LubeLog
-    # importer (which lacked dedup) — see dedupe_duplicate_reminders.
-    scheduler.add_job(
-        id='dedupe_reminders_startup',
-        func=dedupe_duplicate_reminders,
-        trigger='date',
-        run_date=_startup_selfheal_at,
-        args=[app],
-        replace_existing=True,
-    )
-
-    # Trigger a fuel price refresh 60 seconds after startup so Redis is
-    # populated for all supported countries on the first boot (and after
-    # any deployment that clears Redis).  This runs once in the background
-    # and does not block startup.
-    scheduler.add_job(
-        id='refresh_fuel_prices_startup',
-        func=refresh_fuel_prices,
-        trigger='date',
-        run_date=datetime.now(timezone.utc) + timedelta(seconds=60),
-        args=[app],
-        replace_existing=True,
-    )
+    app.logger.info('Dedicated scheduler started with durable job ownership')
 
 
 def check_due_reminders(app):
-    """Check for due reminders and send notifications."""
-    with app.app_context():
-        from app.models import Reminder, User
-        from app import db
-        
-        today = utc_today()
-        
-        # Get reminders due today or overdue (not completed, not dismissed).
-        # F52 — skip snoozed reminders until snoozed_until passes (same rule as
-        # the Coming up feed + email digest).
-        due_reminders = Reminder.query.filter(
-            Reminder.completed == False,
-            Reminder.dismissed == False,
-            db.or_(Reminder.snoozed_until.is_(None),
-                   Reminder.snoozed_until <= datetime.now(timezone.utc)),
-            Reminder.due_date.isnot(None),
-            Reminder.due_date <= today
-        ).all()
-        
-        for reminder in due_reminders:
-            # Check notification settings
-            user = db.session.get(User, reminder.user_id)
-            
-            if user and user.notifications_enabled:
-                # Determine notification intent separately for push vs email.
-                # Push uses a per-reminder tag so the device deduplicates; we
-                # allow it for up to 30 days overdue so the badge stays fresh.
-                # Email is far more intrusive: cap at 7 days overdue so users
-                # are not spammed indefinitely about long-past due dates.
-                should_notify = False   # gates push + last_notified_at update
-                should_email = False    # gates email only
-
-                never_notified = reminder.last_notified_at is None
-                not_yet_today = never_notified or reminder.last_notified_at.date() < today
-
-                if reminder.due_date == today:
-                    should_notify = True
-                    should_email = True
-                elif reminder.due_date < today and not_yet_today:
-                    days_overdue = (today - reminder.due_date).days
-                    # Push: notify for up to 30 days, or once if never notified
-                    if never_notified or days_overdue <= 30:
-                        should_notify = True
-                    # Email: only for up to 7 days overdue, or once if never notified
-                    # (handles imported reminders that were never notified)
-                    if never_notified or days_overdue <= 7:
-                        should_email = True
-
-                if should_notify and reminder.notify_push:
-                    # Send push notification
-                    from app.routes.push import send_push_to_user
-
-                    title = f"Reminder: {reminder.title}"
-                    body = reminder.description or "This reminder is due"
-
-                    if reminder.vehicle:
-                        body = f"{body} - {reminder.vehicle.name}"
-
-                    send_push_to_user(
-                        user.id,
-                        title,
-                        body,
-                        data={
-                            'type': 'reminder',
-                            'reminder_id': reminder.id,
-                            'vehicle_id': reminder.vehicle_id,
-                            'url': f'/reminders/{reminder.id}'
-                        },
-                        tag=f'reminder-{reminder.id}'
-                    )
-
-                if should_email and getattr(reminder, 'notify_email', True) and user.notifications_enabled:
-                    # Send email notification for this individual reminder
-                    try:
-                        if app.config.get('MAIL_ENABLED'):
-                            from app.services.email_service import EmailService
-                            days_left = (reminder.due_date - today).days
-                            is_overdue = days_left < 0
-                            severity = 'urgent' if is_overdue or days_left <= 7 else 'warning'
-                            alert = {
-                                'title': reminder.title,
-                                'subtitle': f"{'OVERDUE - was due' if is_overdue else 'Due on'} {reminder.due_date.strftime('%B %d, %Y')}",
-                                'details': reminder.description,
-                                'vehicle': reminder.vehicle.name if reminder.vehicle else None,
-                                'severity': severity,
-                                'due_date': reminder.due_date.strftime('%b %d, %Y'),
-                            }
-                            EmailService.send_alert_notification(user, [alert], 'reminder')
-                    except Exception as email_exc:
-                        app.logger.warning(f'Reminder email notification failed for reminder {reminder.id}: {email_exc}')
-
-                if should_notify or should_email:
-                    reminder.last_notified_at = datetime.now(timezone.utc)
-        
-        db.session.commit()
-        app.logger.info(f'Checked {len(due_reminders)} due reminders')
-
-    # Piggyback mileage-threshold checks onto the hourly reminder tick
+    """Dispatch eligible reminder occurrences with per-channel retry/dedup."""
+    from app.services.reminder_delivery import dispatch_reminders
+    dispatch_reminders(app, 'date')
     _check_mileage_predictions(app)
     _check_mileage_reminders(app)
 
@@ -350,7 +44,7 @@ def _check_mileage_predictions(app):
     Uses source_data['mileage_notified'] as a sentinel so we never push twice.
     No DB migration required — source_data is an existing JSON column.
     """
-    with app.app_context():
+    with guarded_app_context(app):
         from app.models import Vehicle, PredictionAlert
         from app import db
 
@@ -368,7 +62,7 @@ def _check_mileage_predictions(app):
                 continue  # already pushed once
 
             vehicle = db.session.get(Vehicle, alert.vehicle_id)
-            if not vehicle:
+            if not vehicle or vehicle.archived:
                 continue
 
             current = vehicle.current_mileage or 0
@@ -404,69 +98,9 @@ def _check_mileage_predictions(app):
 
 
 def _check_mileage_reminders(app):
-    """Push once when a vehicle's odometer crosses a reminder's due_mileage (F7).
-
-    Mirrors _check_mileage_predictions but for user-set Reminder.due_mileage. Uses
-    a dedicated mileage_notified sentinel so it fires exactly once and never
-    interferes with the date-based last_notified_at path. Recurring reminders get
-    a fresh (False) sentinel on their next occurrence, so they fire again next cycle.
-    """
-    with app.app_context():
-        from app.models import Vehicle, Reminder
-        from app import db
-
-        reminders = Reminder.query.filter(
-            Reminder.completed == False,   # noqa: E712
-            Reminder.dismissed == False,   # noqa: E712
-            Reminder.due_mileage.isnot(None),
-            db.or_(Reminder.mileage_notified.is_(None),
-                   Reminder.mileage_notified == False),  # noqa: E712
-        ).all()
-
-        notified = 0
-        for reminder in reminders:
-            if not reminder.vehicle_id:
-                continue
-            vehicle = db.session.get(Vehicle, reminder.vehicle_id)
-            if not vehicle or vehicle.current_mileage is None:
-                continue
-            if vehicle.current_mileage < reminder.due_mileage:
-                continue  # threshold not reached yet
-
-            if reminder.notify_push:
-                try:
-                    from app.routes.push import send_push_to_user
-                    unit = vehicle.distance_unit or 'km'
-                    title = f"Reminder: {reminder.title}"
-                    body = reminder.description or "Odometer threshold reached"
-                    body = f"{body} — {reminder.due_mileage:,} {unit}"
-                    if vehicle.name:
-                        body = f"{body} ({vehicle.name})"
-                    send_push_to_user(
-                        reminder.user_id,
-                        title,
-                        body,
-                        data={
-                            'type': 'reminder_mileage',
-                            'reminder_id': reminder.id,
-                            'vehicle_id': vehicle.id,
-                            'url': f'/reminders/{reminder.id}',
-                        },
-                        tag=f'reminder-mileage-{reminder.id}',
-                    )
-                except Exception as push_exc:
-                    app.logger.warning(
-                        f'Mileage reminder push failed for reminder {reminder.id}: {push_exc}'
-                    )
-
-            # Mark evaluated regardless of push outcome/preference so the crossing
-            # is only ever processed once (prevents re-spam / re-checking hourly).
-            reminder.mileage_notified = True
-            notified += 1
-
-        if notified:
-            db.session.commit()
-            app.logger.info(f'Processed {notified} mileage-reminder crossings')
+    """Mileage uses the same occurrence, preferences and delivery state as dates."""
+    from app.services.reminder_delivery import dispatch_reminders
+    dispatch_reminders(app, 'mileage')
 
 
 def check_consumables_due(app):
@@ -477,7 +111,7 @@ def check_consumables_due(app):
     conservative MAX of mileage- and time-based progress (see wear_estimate), so
     this also fires for time-expired parts, not just odometer-driven ones.
     """
-    with app.app_context():
+    with guarded_app_context(app):
         from app.models import Vehicle, ConsumableEntry
         from app import db
         from sqlalchemy import func
@@ -560,7 +194,7 @@ def check_warranty_expiry(app):
     Uses the per-model warranty_notified boolean so we never push twice for the
     same item. Mirrors check_due_reminders / check_consumables_due.
     """
-    with app.app_context():
+    with guarded_app_context(app):
         from app.models import Vehicle, ServiceEntry, RepairEntry, ConsumableEntry
         from app.services.warranty import compute_item
         from app import db
@@ -630,7 +264,7 @@ def check_document_expiry(app):
     re-armed in the attachments PUT whenever expires_at changes, so a renewed
     document can notify again.
     """
-    with app.app_context():
+    with guarded_app_context(app):
         from app.models import Attachment, Vehicle
         from app import db
 
@@ -700,7 +334,7 @@ def process_auto_renew_insurance(app):
     "renewed — confirm premium" notification. Idempotent: skips if a successor
     already exists (renewed_from_id) so re-runs never duplicate.
     """
-    with app.app_context():
+    with guarded_app_context(app):
         from datetime import timedelta as _td
         from app.models import Vehicle, InsurancePolicy
         from app import db
@@ -708,6 +342,7 @@ def process_auto_renew_insurance(app):
         today = utc_today()
 
         expired = InsurancePolicy.query.filter(
+            active_vehicle_condition(InsurancePolicy),
             InsurancePolicy.auto_renew == True,   # noqa: E712
             InsurancePolicy.status == 'active',
             InsurancePolicy.end_date < today,
@@ -725,6 +360,9 @@ def process_auto_renew_insurance(app):
 
         renewed = 0
         for old in expired:
+            from app.services.scheduled_effects import generation_recorded, enqueue_effect
+            if generation_recorded(old.user_id, f'insurance:{old.id}'):
+                continue
             if old.id in already:
                 # A successor exists but the old policy is still 'active' — settle
                 # its status so it isn't reconsidered every run.
@@ -774,6 +412,7 @@ def process_auto_renew_insurance(app):
             )
             db.session.add(successor)
             db.session.flush()            # get successor.id for the push link
+            enqueue_effect('generation', old.user_id, f'insurance:{successor.id}', {})
             old.status = 'expired'
             already.add(old.id)
             renewed += 1
@@ -814,7 +453,7 @@ def process_due_services(app):
     handled by the existing check_due_reminders pipeline, since the created
     reminder is due today/past — no separate push here (avoids double-notify).
     """
-    with app.app_context():
+    with guarded_app_context(app):
         from sqlalchemy import func
         from app.models import Vehicle, ServiceEntry, Reminder
         from app import db
@@ -853,6 +492,7 @@ def process_due_services(app):
         # service has since been superseded (stops stale nagging on existing
         # installs; dismissed reminders are excluded from feed + notifications).
         stale_reminders = Reminder.query.filter(
+            active_vehicle_condition(Reminder),
             Reminder.source_service_id.isnot(None),
             Reminder.completed == False,   # noqa: E712
             Reminder.dismissed == False,   # noqa: E712
@@ -940,11 +580,12 @@ def dedupe_duplicate_reminders(app):
     Reminders "dismissed" filter and can be restored there). Idempotent; runs
     as a startup self-heal.
     """
-    with app.app_context():
+    with guarded_app_context(app):
         from app.models import Reminder
         from app import db
 
         rows = Reminder.query.filter(
+            active_vehicle_condition(Reminder),
             Reminder.completed == False,   # noqa: E712
             Reminder.dismissed == False,   # noqa: E712
         ).order_by(Reminder.id.asc()).all()
@@ -967,7 +608,7 @@ def dedupe_duplicate_reminders(app):
 
 def generate_auto_predictions(app):
     """Generate AI predictions for vehicles (if Ollama enabled)."""
-    with app.app_context():
+    with guarded_app_context(app):
         if not app.config.get('OLLAMA_ENABLED'):
             return
         
@@ -1247,7 +888,7 @@ Provide 1-3 maintenance predictions as JSON:
 
 def cleanup_old_data(app):
     """Clean up old data (logs, expired sessions, etc.)."""
-    with app.app_context():
+    with guarded_app_context(app):
         from app.models import NotificationLog, Backup, UserSession
         from app import db
 
@@ -1285,9 +926,10 @@ def cleanup_old_data(app):
 
 def process_scheduled_backups(app):
     """Process scheduled backups with weekly, monthly, and quarterly frequencies."""
-    with app.app_context():
+    with guarded_app_context(app):
         from app.models import BackupSchedule, Backup, User
         from app.routes.backup import create_backup_zip, save_backup_to_disk
+        from app.services import backup_encryption as backup_crypto
         from app import db
         import os
         
@@ -1331,6 +973,7 @@ def process_scheduled_backups(app):
                 # the PREVIOUS iteration's objects (later iterations) inside except.
                 backup = None
                 user = None
+                zip_buffer = None
                 try:
                     user = db.session.get(User, schedule.user_id)
                     if not user:
@@ -1349,8 +992,11 @@ def process_scheduled_backups(app):
                     
                     include_attachments = getattr(schedule, 'include_attachments', True)
                     
+                    passphrase = backup_crypto.schedule_passphrase(schedule)
                     # Use shared backup function (includes dedup, vehicle photos, todos)
                     zip_buffer, export_data = create_backup_zip(user, include_attachments)
+                    zip_buffer = backup_crypto.protect_stream(zip_buffer, passphrase)
+                    backup.encrypted = passphrase is not None
                     
                     # Save to disk
                     filename, filepath, file_size = save_backup_to_disk(user, zip_buffer, include_attachments)
@@ -1365,7 +1011,8 @@ def process_scheduled_backups(app):
                         len(v.get('service_entries', [])) +
                         len(v.get('repair_entries', [])) +
                         len(v.get('tax_entries', [])) +
-                        len(v.get('parking_entries', []))
+                        len(v.get('parking_entries', [])) +
+                        len(v.get('consumable_entries', []))
                         for v in export_data['vehicles']
                     )
                     backup.reminders_count = len(export_data['reminders'])
@@ -1373,23 +1020,23 @@ def process_scheduled_backups(app):
                     backup.status = 'completed'
                     backup.completed_at = datetime.now(timezone.utc)
                     
-                    # Send to all configured external destinations.
-                    try:
-                        from app.routes.backup import send_to_all_external_destinations
-                        zip_buffer.seek(0)
-                        _, external_errors = send_to_all_external_destinations(
-                            zip_buffer.read(),
-                            schedule,
-                            filename=filename,
-                        )
-                        if external_errors:
-                            joined_errors = '; '.join(external_errors)
-                            backup.error_message = f"External upload failed: {joined_errors}"
-                            app.logger.warning(f'Scheduled external backup failed for user {user.id}: {joined_errors}')
-                    except Exception as ext_error:
-                        backup.error_message = f"External upload failed: {str(ext_error)}"
-                        app.logger.warning(f'Scheduled external backup exception for user {user.id}: {ext_error}')
-                    
+                    # Record external delivery with the archive and schedule. A
+                    # retry uses the same persisted file instead of producing a
+                    # second archive or losing the upload after a process crash.
+                    from app.services.scheduled_effects import enqueue_effect
+                    queued = enqueue_effect('backup', user.id, schedule.id,
+                        {'backup_id': backup.id, 'schedule_id': schedule.id})
+                    if not queued:
+                        try:
+                            from app.routes.backup import send_to_all_external_destinations
+                            zip_buffer.seek(0)
+                            _, external_errors = send_to_all_external_destinations(zip_buffer.read(), schedule, filename=filename)
+                            if external_errors:
+                                joined_errors = '; '.join(external_errors)
+                                backup.error_message = f"External upload failed: {joined_errors}"
+                        except Exception as ext_error:
+                            backup.error_message = f"External upload failed: {str(ext_error)}"
+
                     # Update schedule
                     schedule.last_run_at = now
                     schedule.last_status = 'completed'
@@ -1422,6 +1069,9 @@ def process_scheduled_backups(app):
                         send_backup_notification(user, None, 'failure', app, str(e))
                     
                     app.logger.error(f'Scheduled backup failed for user {schedule.user_id}: {e}')
+                finally:
+                    if zip_buffer is not None:
+                        zip_buffer.close()
         
         db.session.commit()
 
@@ -1448,7 +1098,7 @@ def cleanup_user_backups(user_id, max_backups, retention_days, user_folder, db):
     # Collect all backup zips in the user folder regardless of prefix
     files = []
     for f in os.listdir(user_folder):
-        if f.endswith('.zip'):
+        if f.lower().endswith(('.zip', '.gcb')):
             filepath = os.path.join(user_folder, f)
             try:
                 mtime = os.path.getmtime(filepath)
@@ -1531,7 +1181,7 @@ def format_size(size):
 
 def send_daily_email_alerts(app):
     """Send daily email alerts for insurance, tax, service due dates."""
-    with app.app_context():
+    with guarded_app_context(app):
         if not app.config.get('MAIL_ENABLED'):
             app.logger.info('Email not enabled, skipping daily alerts')
             return
@@ -1587,12 +1237,14 @@ def send_daily_email_alerts(app):
             except Exception as e:
                 app.logger.error(f'Failed to send daily alerts to user {user.id}: {e}')
 
-        app.logger.info(f'Daily alerts: sent to {sent_count} users')
+        from app import db
+        db.session.commit()
+        app.logger.info(f'Daily alerts: accepted for {sent_count} users')
 
 
 def send_weekly_reports(app):
     """Send weekly summary reports to users who opted in."""
-    with app.app_context():
+    with guarded_app_context(app):
         if not app.config.get('MAIL_ENABLED'):
             return
         
@@ -1632,7 +1284,7 @@ def send_weekly_reports(app):
 
 def send_monthly_reports(app):
     """Send monthly summary reports to users who opted in."""
-    with app.app_context():
+    with guarded_app_context(app):
         if not app.config.get('MAIL_ENABLED'):
             return
         
@@ -1690,7 +1342,7 @@ def refresh_fuel_prices(app):
     
     Called weekly by scheduler (Monday 10 AM) and can be triggered manually.
     """
-    with app.app_context():
+    with guarded_app_context(app):
         from app.services.fuel_price_service import refresh_all_prices
         try:
             updated, failed = refresh_all_prices(app)
@@ -1706,7 +1358,7 @@ def process_recurring_tax_entries(app):
     creates a new entry for that payment date and advances next_due_date.
     Handles backfill (e.g. missed months) by iterating until next_due_date > today.
     """
-    with app.app_context():
+    with guarded_app_context(app):
         from app import db
         from app.models import TaxEntry
 
@@ -1718,6 +1370,7 @@ def process_recurring_tax_entries(app):
 
         # Heal entries that are recurring but have next_due_date=NULL (set after creation)
         null_due = TaxEntry.query.filter(
+            active_vehicle_condition(TaxEntry),
             TaxEntry.recurring == True,
             TaxEntry.next_due_date.is_(None),
         ).all()
@@ -1732,6 +1385,7 @@ def process_recurring_tax_entries(app):
 
         # Find all recurring entries that are overdue for their next occurrence
         due_entries = TaxEntry.query.filter(
+            active_vehicle_condition(TaxEntry),
             TaxEntry.recurring == True,
             TaxEntry.next_due_date.isnot(None),
             TaxEntry.next_due_date <= today,
@@ -1826,7 +1480,7 @@ def _consolidate_recurring_templates(app, Model, type_attr):
     """
     from app import db
 
-    rows = Model.query.filter(Model.recurring == True).all()  # noqa: E712
+    rows = Model.query.filter(active_vehicle_condition(Model), Model.recurring == True).all()  # noqa: E712
     groups = {}
     for r in rows:
         groups.setdefault((r.vehicle_id, getattr(r, type_attr)), []).append(r)
@@ -1898,7 +1552,7 @@ def process_recurring_parking_entries(app):
     rows that are recurring but have a NULL next_due_date. Supports
     daily/weekly/monthly/quarterly/semi_annual/annual.
     """
-    with app.app_context():
+    with guarded_app_context(app):
         from app import db
         from app.models import ParkingEntry
 
@@ -1912,6 +1566,7 @@ def process_recurring_parking_entries(app):
         # without a permit_expires date). Seed it to the first occurrence after
         # the entry date; the main loop then backfills and advances to the future.
         null_due = ParkingEntry.query.filter(
+            active_vehicle_condition(ParkingEntry),
             ParkingEntry.recurring == True,  # noqa: E712 (SQLAlchemy boolean filter)
             ParkingEntry.next_due_date.is_(None),
         ).all()
@@ -1923,6 +1578,7 @@ def process_recurring_parking_entries(app):
             db.session.commit()
 
         due_entries = ParkingEntry.query.filter(
+            active_vehicle_condition(ParkingEntry),
             ParkingEntry.recurring == True,  # noqa: E712
             ParkingEntry.next_due_date.isnot(None),
             ParkingEntry.next_due_date <= today,

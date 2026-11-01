@@ -250,7 +250,7 @@ def get_user_calendar_sources(user, include_secrets: bool = False) -> List[Dict[
             if not isinstance(source, dict):
                 continue
             normalized = {
-                'id': str(source.get('id') or uuid.uuid4()),
+                'id': str(source.get('id') or 'legacy_' + uuid.uuid5(uuid.NAMESPACE_URL, '|'.join(str(source.get(key) or '') for key in ('provider', 'url', 'username', 'calendar_id'))).hex),
                 'name': str(source.get('name') or source.get('provider') or 'caldav').strip()[:120],
                 'provider': str(source.get('provider') or 'caldav').strip().lower(),
                 'url': str(source.get('url') or '').strip(),
@@ -422,7 +422,7 @@ class CalendarService:
                 url=url,
                 username=self.source.get('username'),
                 password=password,
-                timeout=30,
+                timeout=10,
             )
             
             # Try to get the principal (validates credentials)
@@ -441,6 +441,9 @@ class CalendarService:
                         self.calendar = cal
                         break
             
+            if requested_calendar_id and not self.calendar:
+                return False, "Selected calendar is unavailable"
+
             if not self.calendar and calendars:
                 # Use first available calendar
                 self.calendar = calendars[0]
@@ -450,10 +453,7 @@ class CalendarService:
                 try:
                     self.calendar = principal.make_calendar(name="GearCargo")
                 except Exception as e:
-                    logger.warning(
-                        f"Could not create default 'GearCargo' calendar on server "
-                        f"(url={self.source.get('url', '?')!r}): {e}"
-                    )
+                    logger.warning("Could not create the default calendar")
                     return False, "No calendars found and couldn't create one"
             
             self._connected = True
@@ -465,8 +465,8 @@ class CalendarService:
         except caldav.lib.error.NotFoundError:
             return False, "Calendar URL not found. Check the URL."
         except Exception as e:
-            logger.error(f"Calendar connection error: {e}")
-            return False, f"Connection failed: {str(e)}"
+            logger.warning("Calendar connection failed")
+            return False, "Calendar provider unavailable"
     
     def get_calendars(self) -> List[Dict[str, str]]:
         """Get list of available calendars."""
@@ -486,7 +486,7 @@ class CalendarService:
                 for cal in calendars
             ]
         except Exception as e:
-            logger.error(f"Failed to get calendars: {e}")
+            logger.warning("Calendar listing failed")
             return []
     
     def create_event(
@@ -541,15 +541,24 @@ class CalendarService:
             
             cal.add_component(event)
             
-            # Save to CalDAV server
-            self.calendar.save_event(cal.to_ical().decode('utf-8'))
-            
-            logger.info(f"Calendar event created: {title}")
+            # Reconcile the existing stable UID before choosing a resource URL.
+            # Update in place: never delete the old event before a successful PUT.
+            existing = self.calendar.search(uid=uid) if uid else []
+            rendered = cal.to_ical().decode('utf-8')
+            if existing:
+                existing[0].data = rendered
+                existing[0].save()
+                for duplicate in existing[1:]:
+                    duplicate.delete()
+            else:
+                self.calendar.save_event(rendered)
+
+            logger.info("Calendar event synchronized")
             return True, event['uid']
             
         except Exception as e:
-            logger.error(f"Failed to create calendar event: {e}")
-            return False, str(e)
+            logger.warning("Calendar event create failed")
+            return False, "Calendar provider unavailable"
     
     def update_event(self, uid: str, **kwargs) -> Tuple[bool, str]:
         """Update an existing calendar event."""
@@ -559,17 +568,10 @@ class CalendarService:
                 return False, msg
         
         try:
-            # Find and delete existing event
-            events = self.calendar.search(uid=uid)
-            if events:
-                events[0].delete()
-            
-            # Create updated event with same UID
             return self.create_event(uid=uid, **kwargs)
-            
         except Exception as e:
-            logger.error(f"Failed to update calendar event: {e}")
-            return False, str(e)
+            logger.warning("Calendar event update failed")
+            return False, "Calendar provider unavailable"
     
     def delete_event(self, uid: str) -> Tuple[bool, str]:
         """Delete a calendar event."""
@@ -581,14 +583,15 @@ class CalendarService:
         try:
             events = self.calendar.search(uid=uid)
             if events:
-                events[0].delete()
-                logger.info(f"Calendar event deleted: {uid}")
+                for event in events:
+                    event.delete()
+                logger.info("Calendar event deleted")
                 return True, "Event deleted"
             return True, "Event not found (may already be deleted)"
             
         except Exception as e:
-            logger.error(f"Failed to delete calendar event: {e}")
-            return False, str(e)
+            logger.warning("Calendar event delete failed")
+            return False, "Calendar provider unavailable"
 
 
 # ============================================================
@@ -608,72 +611,16 @@ def sync_entry_to_calendar(user, entry_type: str, entry: Any, action: str = 'cre
     Returns:
         Tuple of (success, message)
     """
-    if not user.calendar_enabled:
-        return True, "Calendar sync disabled"
-
-    sources = [source for source in get_user_calendar_sources(user, include_secrets=True) if source.get('enabled')]
-    if not sources:
-        return True, "Calendar not configured"
-    
-    try:
-        # Get vehicle name for context. R4-08: Vehicle.full_name is the model's
-        # own display name ("2019 VW Golf", falling back to the name the user
-        # gave the car). Reusing it fixes the crash on the phantom `nickname`
-        # AND the "Ford None" the inline f-string produced whenever make or
-        # model was unset.
-        vehicle_name = ""
-        if getattr(entry, 'vehicle', None):
-            vehicle_name = entry.vehicle.full_name or "Vehicle"
-        
-        # Generate UID for tracking
-        uid = f"gearcargo-{entry_type}-{entry.id}@gearcargo.local"
-        
-        # Build event details based on entry type
-        event_data = get_event_data_for_entry(entry_type, entry, vehicle_name)
-        
-        if not event_data:
-            return False, f"Unknown entry type: {entry_type}"
-        
-        failures = []
-        success_count = 0
-
-        for source in sources:
-            calendar_service = CalendarService(user, source)
-            if action == 'delete':
-                success, result = calendar_service.delete_event(uid)
-            else:
-                success, result = calendar_service.create_event(
-                    uid=uid,
-                    title=event_data['title'],
-                    start=event_data['start'],
-                    end=event_data.get('end'),
-                    description=event_data.get('description'),
-                    location=event_data.get('location'),
-                    all_day=event_data.get('all_day', True),
-                    reminder_minutes=event_data.get('reminder_minutes', 1440)
-                )
-
-            if success:
-                success_count += 1
-            else:
-                source_name = source.get('name') or source.get('provider') or source.get('id')
-                failures.append(f"{source_name}: {result}")
-
-        if success_count == 0 and failures:
-            return False, '; '.join(failures)
-        if failures:
-            return True, f"Synced to {success_count}/{len(sources)} sources. Failures: {'; '.join(failures)}"
-
-        return True, f"Synced to {success_count} source(s)"
-        
-    except Exception as e:
-        logger.error(f"Calendar sync error: {e}")
-        return False, str(e)
+    from app.services.calendar_outbox import enqueue
+    if entry_type not in ('fuel', 'service', 'repair', 'insurance', 'tax', 'parking', 'reminder', 'appointment'):
+        return False, 'Unsupported entry type'
+    enqueue(user, entry_type, entry, action)
+    return True, 'Calendar change queued'
 
 
 def sync_entry_to_calendar_safe(user, entry_type: str, entry: Any,
                                 action: str = 'create') -> None:
-    """Fire-and-forget calendar sync for an entry write path.
+    """Compatibility wrapper that queues calendar work without remote I/O.
 
     Calendar sync is a side effect of saving an entry and must never turn a
     successful save into a failed request — a CalDAV server being down is not
@@ -689,12 +636,18 @@ def sync_entry_to_calendar_safe(user, entry_type: str, entry: Any,
     try:
         sync_entry_to_calendar(user, entry_type, entry, action)
     except Exception as exc:
-        current_app.logger.warning(f'Calendar sync failed for {entry_type}: {exc}')
+        current_app.logger.warning('Calendar enqueue failed for %s', entry_type)
 
 
 def get_event_data_for_entry(entry_type: str, entry: Any, vehicle_name: str) -> Optional[Dict]:
     """Generate event data based on entry type."""
     
+    if entry_type == 'appointment':
+        return {'title': f'{entry.title} — {entry.status} (owner-reported)',
+            'start': entry.start_at.replace(tzinfo=timezone.utc), 'end': entry.end_at.replace(tzinfo=timezone.utc),
+            'description': f'{vehicle_name}\n{entry.shop_name or ""}\n/vehicles/{entry.vehicle_id}/appointments',
+            'all_day': False, 'reminder_minutes': entry.prepare_minutes if entry.status == 'confirmed' and not entry.dropoff_at else 0}
+
     if entry_type == 'service':
         # Service entry
         title = f"🔧 Service Due: {vehicle_name}"
@@ -888,98 +841,11 @@ def get_event_data_for_entry(entry_type: str, entry: Any, vehicle_name: str) -> 
 
 
 def sync_all_entries_for_user(user) -> Dict[str, Any]:
-    """Sync all vehicle entries to calendar for a user."""
-    from app.models import ServiceEntry, Reminder, InsurancePolicy, TaxEntry, Vehicle, FuelEntry, RepairEntry, ParkingEntry
-    
-    results = {
-        'synced': 0,
-        'failed': 0,
-        'errors': []
-    }
-    
-    if not user.calendar_enabled:
-        return results
-
-    configured_sources = [source for source in get_user_calendar_sources(user, include_secrets=True) if source.get('enabled')]
-    if not configured_sources:
-        return results
-    
-    # Get all user's vehicles
-    vehicles = Vehicle.query.filter_by(user_id=user.id).all()
-    
-    for vehicle in vehicles:
-        # Sync services
-        services = ServiceEntry.query.filter_by(vehicle_id=vehicle.id).all()
-        for service in services:
-            success, msg = sync_entry_to_calendar(user, 'service', service)
-            if success:
-                results['synced'] += 1
-            else:
-                results['failed'] += 1
-                results['errors'].append(f"Service {service.id}: {msg}")
-        
-        # Sync reminders
-        reminders = Reminder.query.filter_by(vehicle_id=vehicle.id).all()
-        for reminder in reminders:
-            success, msg = sync_entry_to_calendar(user, 'reminder', reminder)
-            if success:
-                results['synced'] += 1
-            else:
-                results['failed'] += 1
-                results['errors'].append(f"Reminder {reminder.id}: {msg}")
-        
-        # Sync insurance
-        policies = InsurancePolicy.query.filter_by(vehicle_id=vehicle.id).all()
-        for policy in policies:
-            success, msg = sync_entry_to_calendar(user, 'insurance', policy)
-            if success:
-                results['synced'] += 1
-            else:
-                results['failed'] += 1
-                results['errors'].append(f"Insurance {policy.id}: {msg}")
-        
-        # Sync taxes
-        taxes = TaxEntry.query.filter_by(vehicle_id=vehicle.id).all()
-        for tax in taxes:
-            success, msg = sync_entry_to_calendar(user, 'tax', tax)
-            if success:
-                results['synced'] += 1
-            else:
-                results['failed'] += 1
-                results['errors'].append(f"Tax {tax.id}: {msg}")
-
-        # Sync fuel entries
-        fuel_entries = FuelEntry.query.filter_by(vehicle_id=vehicle.id).all()
-        for fuel in fuel_entries:
-            success, msg = sync_entry_to_calendar(user, 'fuel', fuel)
-            if success:
-                results['synced'] += 1
-            else:
-                results['failed'] += 1
-                results['errors'].append(f"Fuel {fuel.id}: {msg}")
-
-        # Sync repair entries
-        repairs = RepairEntry.query.filter_by(vehicle_id=vehicle.id).all()
-        for repair in repairs:
-            success, msg = sync_entry_to_calendar(user, 'repair', repair)
-            if success:
-                results['synced'] += 1
-            else:
-                results['failed'] += 1
-                results['errors'].append(f"Repair {repair.id}: {msg}")
-
-        # Sync parking entries
-        parking_entries = ParkingEntry.query.filter_by(vehicle_id=vehicle.id).all()
-        for parking in parking_entries:
-            success, msg = sync_entry_to_calendar(user, 'parking', parking)
-            if success:
-                results['synced'] += 1
-            else:
-                results['failed'] += 1
-                results['errors'].append(f"Parking {parking.id}: {msg}")
-    
-    logger.info(f"Calendar sync complete for user {user.id}: {results['synced']} synced, {results['failed']} failed")
-    return results
+    """Persist a reconciliation request; never contact providers in a request."""
+    from app.services.calendar_outbox import enqueue_all, retry_pending
+    queued = enqueue_all(user)
+    queued += retry_pending(user)
+    return {'queued': queued, 'synced': 0, 'failed': 0, 'errors': []}
 
 
 # ============================================================

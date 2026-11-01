@@ -2,9 +2,11 @@
 GearCargo - Insurance Routes
 """
 
+from app.services.vehicle_archive import active_vehicle_condition
+from app.services.mutations import mutation_endpoint, commit_mutation
+
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, current_app
-from sqlalchemy import func, case, and_
 
 from app import db
 from app.models import Vehicle, InsurancePolicy
@@ -49,6 +51,7 @@ def get_policies(current_user):
 
 @insurance_bp.route('', methods=['POST'])
 @token_required
+@mutation_endpoint(InsurancePolicy)
 def create_policy(current_user):
     """Create a new insurance policy."""
     data = request.get_json()
@@ -105,7 +108,7 @@ def create_policy(current_user):
     )
     
     db.session.add(policy)
-    db.session.commit()
+    commit_mutation()
     
     # Auto-sync to calendar if enabled
     if current_user.calendar_enabled:
@@ -138,6 +141,7 @@ def get_policy(current_user, policy_id):
 
 @insurance_bp.route('/<int:policy_id>', methods=['PUT'])
 @token_required
+@mutation_endpoint(InsurancePolicy, 'policy_id')
 def update_policy(current_user, policy_id):
     """Update an insurance policy."""
     policy = InsurancePolicy.query.filter_by(
@@ -189,7 +193,7 @@ def update_policy(current_user, policy_id):
     if policy.renewed_from_id is not None:
         policy.renewed_from_id = None
 
-    db.session.commit()
+    commit_mutation()
     
     return jsonify({
         'message': 'Policy updated',
@@ -199,6 +203,7 @@ def update_policy(current_user, policy_id):
 
 @insurance_bp.route('/<int:policy_id>/cancel', methods=['POST'])
 @token_required
+@mutation_endpoint(InsurancePolicy, 'policy_id')
 def cancel_policy(current_user, policy_id):
     """Cancel an insurance policy, stopping future recurring costs."""
     policy = InsurancePolicy.query.filter_by(
@@ -215,7 +220,7 @@ def cancel_policy(current_user, policy_id):
     policy.status = 'cancelled'
     policy.end_date = utc_today()
     policy.auto_renew = False
-    db.session.commit()
+    commit_mutation()
 
     return jsonify({
         'message': 'Insurance policy cancelled',
@@ -225,6 +230,7 @@ def cancel_policy(current_user, policy_id):
 
 @insurance_bp.route('/<int:policy_id>', methods=['DELETE'])
 @token_required
+@mutation_endpoint(InsurancePolicy, 'policy_id')
 def delete_policy(current_user, policy_id):
     """Delete an insurance policy."""
     policy = InsurancePolicy.query.filter_by(
@@ -236,14 +242,13 @@ def delete_policy(current_user, policy_id):
         return jsonify({'error': 'Policy not found'}), 404
     
     # Unlink any tax entries that reference this policy
-    try:
-        from app.models import TaxEntry
-        TaxEntry.query.filter_by(insurance_policy_id=policy_id).update({'insurance_policy_id': None})
-    except Exception:
-        pass
+    from app.models import TaxEntry
+    for entry in TaxEntry.query.filter_by(insurance_policy_id=policy_id).all():
+        # ORM writes also advance the joined Entry revision.
+        entry.insurance_policy_id = None
     
     db.session.delete(policy)
-    db.session.commit()
+    commit_mutation()
     
     return jsonify({'message': 'Policy deleted'})
 
@@ -272,6 +277,7 @@ def get_expiring_policies(current_user):
     cutoff = utc_today() + timedelta(days=days)
     
     policies = InsurancePolicy.query.filter(
+        active_vehicle_condition(InsurancePolicy),
         InsurancePolicy.user_id == current_user.id,
         InsurancePolicy.status == 'active',
         InsurancePolicy.end_date <= cutoff,
@@ -286,84 +292,45 @@ def get_expiring_policies(current_user):
 @insurance_bp.route('/stats', methods=['GET'])
 @token_required
 def get_insurance_stats(current_user):
-    """Get insurance statistics."""
-    # M9: DB aggregation instead of loading every policy into memory. The
-    # date-based properties are translated into SQL predicates:
-    #   is_active         → start_date <= today <= end_date AND status == 'active'
-    #   is_expiring_soon  → 0 < (end_date - today).days <= 30
-    #                       → end_date > today AND end_date <= today + 30d
-    # (today / today+30 computed in Python → portable, no DB date math).
+    """Counts plus separately labelled annualized and scheduled-period estimates."""
+    from flask import current_app
+    from app.services.currency import get_rates_cached
+    from app.services.expense_ledger import load_expenses, aggregate, annualized_total, convert
     today = utc_today()
-    uid = current_user.id
-    active_cond = and_(
-        InsurancePolicy.start_date <= today,
-        InsurancePolicy.end_date >= today,
-        InsurancePolicy.status == 'active',
-    )
-    expiring_cond = and_(
-        active_cond,
-        InsurancePolicy.end_date > today,
-        InsurancePolicy.end_date <= today + timedelta(days=30),
-    )
-    active_1 = func.coalesce(func.sum(case((active_cond, 1), else_=0)), 0)
-    active_premium = func.coalesce(
-        func.sum(case((active_cond, func.coalesce(InsurancePolicy.premium, 0)), else_=0)), 0
-    )
-
-    total_policies, active_policies, total_premium, expiring_soon = (
-        db.session.query(
-            func.count(InsurancePolicy.id),
-            active_1,
-            active_premium,
-            func.coalesce(func.sum(case((expiring_cond, 1), else_=0)), 0),
-        )
-        .filter(InsurancePolicy.user_id == uid)
-        .one()
-    )
-
-    # By type — count ALL policies per type; active count + premium only for the
-    # active ones. NULL/'' policy_type → 'other'.
-    by_type = {}
-    for ptype_raw, cnt, active_cnt, prem in (
-        db.session.query(
-            InsurancePolicy.policy_type,
-            func.count(InsurancePolicy.id),
-            active_1,
-            active_premium,
-        )
-        .filter(InsurancePolicy.user_id == uid)
-        .group_by(InsurancePolicy.policy_type)
-        .all()
-    ):
-        ptype = ptype_raw or 'other'
-        if ptype not in by_type:
-            by_type[ptype] = {'count': 0, 'active': 0, 'premium': 0}
-        by_type[ptype]['count'] += int(cnt)
-        by_type[ptype]['active'] += int(active_cnt)
-        by_type[ptype]['premium'] += float(prem or 0)
-
-    # By provider — provider is NOT NULL, so it is used raw as the key.
-    by_provider = {}
-    for provider, cnt, active_cnt in (
-        db.session.query(
-            InsurancePolicy.provider,
-            func.count(InsurancePolicy.id),
-            active_1,
-        )
-        .filter(InsurancePolicy.user_id == uid)
-        .group_by(InsurancePolicy.provider)
-        .all()
-    ):
-        if provider not in by_provider:
-            by_provider[provider] = {'count': 0, 'active': 0}
-        by_provider[provider]['count'] += int(cnt)
-        by_provider[provider]['active'] += int(active_cnt)
-
+    currency = (current_user.currency or 'GBP').upper()
+    rates = get_rates_cached(current_app._get_current_object())
+    policies = InsurancePolicy.query.filter_by(user_id=current_user.id).all()
+    active = [p for p in policies if p.status == 'active' and p.start_date <= today <= p.end_date]
+    annual = annualized_total(policies, currency, rates, today)
+    rows = [r for r in load_expenses(list({p.vehicle_id for p in policies}),
+            today.replace(month=1, day=1), today)
+            if r.category == 'insurance' and r.source.user_id == current_user.id]
+    ytd = aggregate(rows, currency, rates, today.replace(month=1, day=1), today)
+    by_type, by_provider = {}, {}
+    for p in policies:
+        kind = by_type.setdefault(p.policy_type or 'other', {'count': 0, 'active': 0, 'premium': 0.0})
+        provider = by_provider.setdefault(p.provider, {'count': 0, 'active': 0})
+        kind['count'] += 1
+        provider['count'] += 1
+        if p in active:
+            kind['active'] += 1
+            provider['active'] += 1
+            value = convert(p.annualized_premium, p.currency, currency, rates)
+            if value is not None:
+                kind['premium'] = round(kind['premium'] + float(value), 2)
     return jsonify({
-        'total_policies': int(total_policies),
-        'active_policies': int(active_policies),
-        'total_active_premium': float(total_premium or 0),
-        'expiring_soon': int(expiring_soon),
-        'by_type': by_type,
-        'by_provider': by_provider,
+        'total_policies': len(policies), 'active_policies': len(active),
+        'total_active_premium': annual['insurance_estimate'],
+        'active_annualized_premium': annual['insurance_estimate'],
+        'premium_basis': 'annualized_active_coverage',
+        'scope': 'all_owned_vehicles_including_archived',
+        'ytd_scheduled_estimate': ytd['insurance_estimate'],
+        'period_basis': 'scheduled_insurance_estimate',
+        'period_start': ytd['start_date'], 'period_end': ytd['end_date'],
+        'display_currency': currency, 'currency': currency,
+        'converted': annual['converted'], 'fx_applied': annual['fx_applied'],
+        'unconverted': annual['unconverted'], 'ytd_converted': ytd['converted'],
+        'ytd_unconverted': ytd['unconverted'],
+        'expiring_soon': sum(0 < (p.end_date - today).days <= 30 for p in active),
+        'by_type': by_type, 'by_provider': by_provider,
     })

@@ -3,10 +3,18 @@ GearCargo - Blocked IP and Device Models
 For security - tracking and blocking malicious IPs and devices
 """
 
-from datetime import datetime, timezone
-from app.utils.timeutils import utc_naive_now
+from datetime import datetime, timedelta, timezone
+from app.utils.timeutils import utc_naive_now, isoformat_utc
 from app import db
 from app.models.user import _as_utc  # C1 follow-up: naive→aware UTC coercion
+
+# An automatic block answers a burst of failures, not a standing decision about
+# an address, so it lifts itself. A manual block has no expiry and is unaffected.
+AUTO_BLOCK_DURATION = timedelta(hours=1)
+
+
+def _auto_block_expiry():
+    return datetime.now(timezone.utc) + AUTO_BLOCK_DURATION
 
 
 class BlockedIP(db.Model):
@@ -62,10 +70,10 @@ class BlockedIP(db.Model):
             'reason': self.reason,
             'block_type': self.block_type,
             'failed_attempts': self.failed_attempts,
-            'last_failed_attempt': self.last_failed_attempt.isoformat() if self.last_failed_attempt else None,
+            'last_failed_attempt': isoformat_utc(self.last_failed_attempt) if self.last_failed_attempt else None,
             'blocked_by': self.blocked_by.email if self.blocked_by else None,
             'is_active': self.is_active,
-            'unblocked_at': self.unblocked_at.isoformat() if self.unblocked_at else None,
+            'unblocked_at': isoformat_utc(self.unblocked_at) if self.unblocked_at else None,
             'unblocked_by': self.unblocked_by.email if self.unblocked_by else None,
             'unblock_reason': self.unblock_reason,
             'country': self.country,
@@ -74,8 +82,8 @@ class BlockedIP(db.Model):
             'isp': self.isp,
             'target_user_id': self.target_user_id,
             'target_email': self.target_email,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'expires_at': self.expires_at.isoformat() if self.expires_at else None,
+            'created_at': isoformat_utc(self.created_at) if self.created_at else None,
+            'expires_at': isoformat_utc(self.expires_at) if self.expires_at else None,
         }
     
     @classmethod
@@ -85,7 +93,11 @@ class BlockedIP(db.Model):
         if blocked:
             # Check if block has expired
             if blocked.expires_at and _as_utc(blocked.expires_at) < datetime.now(timezone.utc):
+                # The counter goes with the block: leaving it at the threshold
+                # would re-block on the very next failure.
                 blocked.is_active = False
+                blocked.failed_attempts = 0
+                blocked.last_failed_attempt = None
                 db.session.commit()
                 return False, None
             return True, blocked
@@ -118,6 +130,7 @@ class BlockedIP(db.Model):
                 existing.is_active = True
                 existing.reason = f'Auto-blocked: {existing.failed_attempts} failed login attempts'
                 existing.block_type = 'auto'
+                existing.expires_at = _auto_block_expiry()
                 existing.unblocked_at = None
                 existing.unblocked_by_id = None
                 existing.unblock_reason = None
@@ -222,17 +235,17 @@ class BlockedDevice(db.Model):
             'reason': self.reason,
             'block_type': self.block_type,
             'failed_attempts': self.failed_attempts,
-            'last_failed_attempt': self.last_failed_attempt.isoformat() if self.last_failed_attempt else None,
+            'last_failed_attempt': isoformat_utc(self.last_failed_attempt) if self.last_failed_attempt else None,
             'associated_ips': self.associated_ips,
             'blocked_by': self.blocked_by.email if self.blocked_by else None,
             'is_active': self.is_active,
-            'unblocked_at': self.unblocked_at.isoformat() if self.unblocked_at else None,
+            'unblocked_at': isoformat_utc(self.unblocked_at) if self.unblocked_at else None,
             'unblocked_by': self.unblocked_by.email if self.unblocked_by else None,
             'unblock_reason': self.unblock_reason,
             'target_user_id': self.target_user_id,
             'target_email': self.target_email,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'expires_at': self.expires_at.isoformat() if self.expires_at else None,
+            'created_at': isoformat_utc(self.created_at) if self.created_at else None,
+            'expires_at': isoformat_utc(self.expires_at) if self.expires_at else None,
         }
     
     @staticmethod
@@ -251,7 +264,11 @@ class BlockedDevice(db.Model):
         blocked = cls.query.filter_by(device_fingerprint=fingerprint, is_active=True).first()
         if blocked:
             if blocked.expires_at and _as_utc(blocked.expires_at) < datetime.now(timezone.utc):
+                # The counter goes with the block: leaving it at the threshold
+                # would re-block on the very next failure.
                 blocked.is_active = False
+                blocked.failed_attempts = 0
+                blocked.last_failed_attempt = None
                 db.session.commit()
                 return False, None
             return True, blocked
@@ -298,6 +315,7 @@ class BlockedDevice(db.Model):
                 existing.is_active = True
                 existing.reason = f'Auto-blocked: {existing.failed_attempts} failed login attempts'
                 existing.block_type = 'auto'
+                existing.expires_at = _auto_block_expiry()
                 existing.unblocked_at = None
                 existing.unblocked_by_id = None
                 existing.unblock_reason = None

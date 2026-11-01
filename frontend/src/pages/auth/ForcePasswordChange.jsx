@@ -1,5 +1,6 @@
+import { reminderAuthPath } from '../../utils/reminderRoutes'
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from '../../contexts/LanguageContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { authApi } from '../../services/api'
@@ -35,6 +36,7 @@ export default function ForcePasswordChange() {
   const { t } = useTranslation()
   const { user, refreshUser, logout } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -42,6 +44,7 @@ export default function ForcePasswordChange() {
   const [showCurrentPassword, setShowCurrentPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [totpCode, setTotpCode] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [passwordStrength, setPasswordStrength] = useState(null)
@@ -89,7 +92,8 @@ export default function ForcePasswordChange() {
       await authApi.changePassword({
         current_password: currentPassword,
         new_password: newPassword,
-        confirm_password: confirmPassword
+        confirm_password: confirmPassword,
+        ...(user?.two_factor_enabled ? { totp_code: totpCode } : {})
       })
       
       toast.success(t('profile.passwordChanged') || 'Password changed successfully')
@@ -98,7 +102,7 @@ export default function ForcePasswordChange() {
       await refreshUser()
       
       // Redirect to security questions setup (user can skip if they want)
-      navigate('/setup-security-questions')
+      navigate(reminderAuthPath('/setup-security-questions', searchParams.get('reminder')))
     } catch (err) {
       const errorData = err.response?.data
       setError(errorData?.error || t('profile.failedToChangePassword') || 'Failed to change password')
@@ -109,7 +113,7 @@ export default function ForcePasswordChange() {
   
   const handleLogout = async () => {
     await logout()
-    navigate('/login')
+    navigate(reminderAuthPath('/login', searchParams.get('reminder')))
   }
   
   const getStrengthColor = (strength) => {
@@ -260,13 +264,32 @@ export default function ForcePasswordChange() {
                 </p>
               )}
             </div>
+
+            {user?.two_factor_enabled && (
+              <div>
+                <label htmlFor="force-change-totp" className="block text-sm font-medium text-(--color-text-secondary) mb-1.5">
+                  {t('auth.twoFactorCode') || '2FA Code'}
+                </label>
+                <input
+                  id="force-change-totp"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  className="w-full px-3 py-2.5 rounded-lg border border-(--color-border) bg-(--color-bg-secondary) text-(--color-text-primary) tracking-widest focus:outline-hidden focus:ring-2 focus:ring-(--color-accent)"
+                  placeholder="000000"
+                  required
+                />
+              </div>
+            )}
           </div>
           
           {/* Submit Button */}
           <div className="space-y-3">
             <button
               type="submit"
-              disabled={isSubmitting || !currentPassword || !newPassword || !confirmPassword || newPassword !== confirmPassword}
+              disabled={isSubmitting || !currentPassword || !newPassword || !confirmPassword || newPassword !== confirmPassword || (user?.two_factor_enabled && totpCode.length < 6)}
               className="w-full flex justify-center items-center gap-2 py-2.5 px-4 border border-transparent rounded-lg shadow-xs text-sm font-medium text-white bg-(--color-accent) hover:bg-(--color-accent-hover) focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-(--color-accent) disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {isSubmitting ? (

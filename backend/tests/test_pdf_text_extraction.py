@@ -19,12 +19,17 @@ from app.routes.attachments import _extract_pdf_text  # noqa: E402
 
 @pytest.fixture
 def queued_tasks(monkeypatch):
-    """Capture enqueued background tasks so tests can run them deterministically
-    AFTER the request completes (mirrors the async thread backend)."""
-    import app.services.task_queue as tq
+    """Observe durable admission without substituting recognition or persistence."""
+    from app.services import ocr_queue
+    original = ocr_queue.enqueue_attachment
     tasks = []
-    monkeypatch.setattr(tq, 'enqueue_task',
-                        lambda fn, *a, **k: tasks.append((fn, a)))
+    def enqueue(attachment, **kwargs):
+        previous = attachment.ocr_state
+        result = original(attachment, **kwargs)
+        if result == 'queued' and previous not in ocr_queue.ACTIVE:
+            tasks.append(attachment.id)
+        return result
+    monkeypatch.setattr(ocr_queue, 'enqueue_attachment', enqueue)
     return tasks
 
 
@@ -56,9 +61,14 @@ def _upload(client, auth_headers, user_id, data_bytes, filename):
 
 
 def _run_queued(app, tasks):
-    with app.app_context():
-        for fn, args in tasks:
-            fn(*args)
+    from app.services.ocr_queue import run_one
+    previous = app.config['PROCESS_ROLE']
+    app.config['PROCESS_ROLE'] = 'worker'
+    try:
+        for _ in tasks:
+            assert run_one(app, 1)
+    finally:
+        app.config['PROCESS_ROLE'] = previous
     tasks.clear()
 
 
@@ -152,8 +162,7 @@ def test_retry_routes_pdf_to_pdf_task(app, client, user, auth_headers, queued_ta
                         headers=auth_headers(user.id))
     assert retry.status_code == 202
     assert len(queued_tasks) == 1
-    fn, _args = queued_tasks[0]
-    assert fn.__name__ == 'run_pdf_text_task'          # not the image OCR task
+    assert db.session.get(Attachment, queued_tasks[0]).is_pdf
     _run_queued(app, queued_tasks)
 
     body = client.get(f'/api/attachments/{att_id}/ocr',

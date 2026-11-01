@@ -5,58 +5,74 @@ const log = import.meta.env.DEV ? console.log.bind(console) : () => {}
 
 import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL, matchPrecache } from 'workbox-precaching'
 import { registerRoute, NavigationRoute, setCatchHandler } from 'workbox-routing'
-import { CacheFirst, NetworkFirst, StaleWhileRevalidate, NetworkOnly } from 'workbox-strategies'
+import { CacheFirst, StaleWhileRevalidate } from 'workbox-strategies'
 import { ExpirationPlugin } from 'workbox-expiration'
 import { CacheableResponsePlugin } from 'workbox-cacheable-response'
-import { BackgroundSyncPlugin } from 'workbox-background-sync'
 import { REMINDER_REFRESH_TAG } from './utils/syncTags'
-import { replayQueuedRequest } from './swSync'
-import { findClientToFocus, parsePushData } from './swNotifications'
+import { createPrivateCache, isPrivatePath, publicApiRead, noStore } from './swPrivateCache'
+import { migratePrivateStorage, purgePrivateStorage, unlockPrivateSession, restorePrivateClient } from './utils/privateStorage'
+import { suspendQueueIdentity } from './db/mutationQueue'
+import { receiptStore } from './db/receiptDrafts'
+import { createReceiptQueue } from './swReceiptQueue'
+import { identityHeaders, sameIdentity } from './utils/offlinePolicy'
+import { createAccountQueue, fetchOfflineIdentity } from './swAccountQueue'
+import { QUEUE_NAME, isOfflineWrite } from './utils/offlinePolicy'
+import { mutationDb, getQueueState, bindQueueIdentity, quarantineEntry, quarantineLegacyQueue, durableQueue, resumeEntry, withQueueLock } from './db/mutationQueue'
+import { findClientToFocus, parsePushData, notificationTarget } from './swNotifications'
+import { createCsrfTransport } from './utils/csrf'
 
 // ============================================================
 // BACKGROUND SYNC CONFIGURATION
 // ============================================================
 
-// Create a background sync plugin for API mutations (POST, PUT, DELETE)
-const bgSyncPlugin = new BackgroundSyncPlugin('gearcargo-sync-queue', {
-  maxRetentionTime: 24 * 60, // Retry for up to 24 hours (in minutes)
-  onSync: async ({ queue }) => {
-    // Post a message to every controlled client (page).
-    const notifyClients = async (message) => {
-      const clients = await self.clients.matchAll()
-      for (const client of clients) {
-        client.postMessage(message)
-      }
-    }
-
-    let entry
-    while ((entry = await queue.shiftRequest())) {
-      try {
-        // Per-entry replay decision lives in replayQueuedRequest (unit-tested).
-        // 'success' / 'rejected' (4xx, already dropped + client notified) both
-        // continue to the next entry; a transient 5xx/429 THROWS below.
-        const result = await replayQueuedRequest(entry, {
-          fetchFn: (request) => fetch(request),
-          notifyClients,
-        })
-        if (result.status === 'success') {
-          log('Background sync successful:', entry.request.url)
-        }
-      } catch (error) {
-        console.error('Background sync failed, re-queuing:', error)
-        // Put the entry back in the queue and re-throw to signal failure (ONE
-        // unshift — replayQueuedRequest deliberately does not unshift itself).
-        await queue.unshiftRequest(entry)
-        throw error
-      }
-    }
-
-    // Notify app that all syncs are complete
-    await notifyClients({
-      type: 'SYNC_COMPLETE',
-      message: 'All offline changes have been synced',
-    })
+const notifyClients = async message => {
+  for (const client of await self.clients.matchAll()) client.postMessage(message)
+}
+// Lazy migration: an installing worker must not move the active worker's data.
+let migration
+const queueReady = () => (migration ||= quarantineLegacyQueue(self.location.origin).then(migratePrivateStorage).catch(error => { migration = null; throw error }))
+const syncTag = `workbox-background-sync:${QUEUE_NAME}`
+const timedFetch = (request, options = {}) => fetch(request, { ...options, signal: AbortSignal.timeout(3000) })
+const csrfFetch = createCsrfTransport(timedFetch, self.location.origin).fetch
+async function expirePrivateSession(revision) {
+  const state = await suspendQueueIdentity(null, revision)
+  if (!state) return
+  await purgePrivateStorage(state.revision)
+  await notifyClients({ type: 'OFFLINE_IDENTITY_SUSPENDED', revision: state.revision })
+}
+const privateCache = createPrivateCache({ storage: caches, getState: getQueueState,
+  clientRevision: async id => (await mutationDb.state.get(`private-client:${id}`))?.revision,
+  expire: expirePrivateSession,
+})
+const verifiedIdentity = async () => {
+  const state = await getQueueState(), identity = await fetchOfflineIdentity(timedFetch)
+  if (state.identity && !sameIdentity(state.identity, identity)) await expirePrivateSession(state.revision)
+  return identity
+}
+const mutationQueue = durableQueue(self.location.origin)
+const receipts = createReceiptQueue({ store: receiptStore, getState: getQueueState, getIdentity: verifiedIdentity, fetchFn: csrfFetch, origin: self.location.origin })
+const accountQueue = createAccountQueue({
+  queue: mutationQueue, origin: self.location.origin,
+  getIdentity: verifiedIdentity, fetchFn: csrfFetch, notifyClients,
+  store: {
+    receiptCount: receiptStore.count, receiptVersion: receiptStore.version, replayReceipts: receipts.replay, receiptReview: receipts.review,
+    withLock: withQueueLock, getState: getQueueState, bind: bindQueueIdentity, quarantine: quarantineEntry, resume: resumeEntry,
+    count: ownerKey => mutationDb.quarantine.where('ownerKey').equals(ownerKey).count(),
+    list: ownerKey => mutationDb.quarantine.where('ownerKey').equals(ownerKey).toArray(),
+    remove: ids => mutationDb.quarantine.bulkDelete(ids),
+    lastCommit: async ownerKey => (await mutationDb.state.get(`committed:${ownerKey}`))?.at || null,
   },
+})
+const scheduleSync = async () => {
+  try { await self.registration.sync?.register(syncTag) } catch { /* foreground replay remains available */ }
+}
+self.addEventListener('sync', event => {
+  if (event.tag !== syncTag) return
+  event.waitUntil((async () => {
+    await queueReady()
+    const result = await accountQueue.replay()
+    if (result.count || result.receiptCount) throw new Error('Some drafts are waiting for another attempt.')
+  })())
 })
 
 // ============================================================
@@ -80,7 +96,7 @@ registerRoute(navigationRoute)
 
 // Take control of clients immediately after activation
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim())
+  event.waitUntil(queueReady().then(() => self.clients.claim()))
 })
 
 // Cache Google Fonts stylesheets
@@ -125,83 +141,24 @@ registerRoute(
   })
 )
 
-// SEC-06: Authenticated media (attachment/receipt + vehicle-photo images served
-// under /api/ or /media/) is per-user PERSONAL data. Keep it in a DEDICATED
-// `media-cache` — registered BEFORE the generic images route so it wins — with a
-// shorter lifetime, and purge it on login/logout (see clearApiCache /
-// CLEAR_API_CACHE) so receipts/photos never linger for the next user on a
-// shared device. Generic/app images (icons, map tiles) stay in `images` below.
+// Private reads (including signed /uploads URLs) never enter public caches.
+// Auth bootstrap stays network-only; its expiry cleanup is acknowledged by api.js.
 registerRoute(
-  ({ url, request }) =>
-    request.destination === 'image' &&
-    url.origin === self.location.origin &&
-    (url.pathname.startsWith('/api/') || url.pathname.startsWith('/media/')),
-  new CacheFirst({
-    cacheName: 'media-cache',
-    plugins: [
-      new CacheableResponsePlugin({
-        statuses: [0, 200],
-      }),
-      new ExpirationPlugin({
-        maxEntries: 60,
-        maxAgeSeconds: 60 * 60 * 24, // 24 hours — purged on identity change
-      }),
-    ],
-  })
+  ({ url }) => url.origin === self.location.origin && publicApiRead(url),
+  async ({ request }) => noStore(await fetch(new Request(request, { cache: 'no-store' }))),
 )
-
-// Cache generic / third-party images (app icons, map tiles, etc.).
-// These are NOT per-user, so they are long-lived and not purged on logout.
 registerRoute(
-  ({ request }) => request.destination === 'image',
-  new CacheFirst({
-    cacheName: 'images',
-    plugins: [
-      new CacheableResponsePlugin({
-        statuses: [0, 200],
-      }),
-      new ExpirationPlugin({
-        maxEntries: 100,
-        maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
-      }),
-    ],
-  })
+  ({ url }) => url.origin === self.location.origin && isPrivatePath(url) && !url.pathname.startsWith('/api/auth/'),
+  async context => { await queueReady(); return privateCache.handle(context) },
 )
-
-// Endpoints whose GET responses must NEVER be cached on disk:
-// - identity/session (stale identity is dangerous; the app caches the user in
-//   Dexie instead), admin data, CSRF tokens, backup downloads (large/sensitive
-//   blobs), and push subscription info. These pass through to the network and
-//   simply fail when offline, which is correct for auth/admin surfaces.
-const API_CACHE_DENYLIST = ['/api/auth/', '/api/admin/', '/api/csrf-token', '/api/backup/', '/api/push/']
-
-function isCacheableApiGet(url, request) {
-  if (request.method !== 'GET' || !url.pathname.startsWith('/api/')) return false
-  return !API_CACHE_DENYLIST.some((prefix) => url.pathname.startsWith(prefix))
-}
-
-// Cache data-read API GETs with NetworkFirst (network wins; falls back to the
-// last-good cached copy when offline). The `api-cache` is purged on login AND
-// logout (see clearApiCache / CLEAR_API_CACHE) so one user's data is never
-// served to another account or after sign-out on a shared device.
-// SEC-06: maxAge kept deliberately short (12h) to bound how long authenticated
-// personal data can sit at rest on a shared profile, while still covering
-// realistic same-day offline use (offline reads only fall back to this cache).
+// Only public images use the long-lived generic cache. Legacy `images` is
+// purged once on upgrade because it could contain signed vehicle uploads.
 registerRoute(
-  ({ url, request }) => isCacheableApiGet(url, request),
-  new NetworkFirst({
-    cacheName: 'api-cache',
-    plugins: [
-      new CacheableResponsePlugin({
-        statuses: [0, 200],
-      }),
-      new ExpirationPlugin({
-        maxEntries: 100,
-        maxAgeSeconds: 60 * 60 * 12, // 12 hours (SEC-06)
-      }),
-    ],
-    networkTimeoutSeconds: 10,
-  })
+  ({ url, request }) => request.destination === 'image' && !(url.origin === self.location.origin && isPrivatePath(url)),
+  new CacheFirst({ cacheName: 'public-images-v1', plugins: [
+    new CacheableResponsePlugin({ statuses: [0, 200] }),
+    new ExpirationPlugin({ maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 30 }),
+  ] }),
 )
 
 // ============================================================
@@ -209,52 +166,24 @@ registerRoute(
 // Queue failed requests when offline and retry when back online
 // ============================================================
 
-// §14.7 — the AI chat (per-vehicle /vehicles/<id>/chat AND the F10 fleet-wide
-// /vehicles/chat) is request/response and must NEVER be queued or replayed
-// offline: a replayed question would run remote inference later with no UI to
-// show the answer (wasted + confusing). Match it FIRST as plain NetworkOnly
-// (no background sync) so it fails fast offline instead of being queued.
-registerRoute(
-  ({ url, request }) => request.method === 'POST' && /^\/api\/vehicles\/(\d+\/)?chat$/.test(url.pathname),
-  new NetworkOnly(),
-  'POST'
-)
-
-// Handle POST requests with background sync
-registerRoute(
-  ({ url, request }) => url.pathname.startsWith('/api/') && request.method === 'POST',
-  new NetworkOnly({
-    plugins: [bgSyncPlugin],
-  }),
-  'POST'
-)
-
-// Handle PUT requests with background sync
-registerRoute(
-  ({ url, request }) => url.pathname.startsWith('/api/') && request.method === 'PUT',
-  new NetworkOnly({
-    plugins: [bgSyncPlugin],
-  }),
-  'PUT'
-)
-
-// Handle PATCH requests with background sync
-registerRoute(
-  ({ url, request }) => url.pathname.startsWith('/api/') && request.method === 'PATCH',
-  new NetworkOnly({
-    plugins: [bgSyncPlugin],
-  }),
-  'PATCH'
-)
-
-// Handle DELETE requests with background sync
-registerRoute(
-  ({ url, request }) => url.pathname.startsWith('/api/') && request.method === 'DELETE',
-  new NetworkOnly({
-    plugins: [bgSyncPlugin],
-  }),
-  'DELETE'
-)
+// A failed request is queued only when the route AND its captured identity
+// qualify. Every other operation follows normal online error handling.
+for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+  registerRoute(
+    ({ url, request }) => isOfflineWrite(url, request.method, self.location.origin),
+    async ({ request, event }) => {
+      try { return await fetch(request.clone()) } catch (error) {
+        await queueReady()
+        if (!(await accountQueue.enqueue(request))) throw error
+        event.waitUntil(scheduleSync())
+        // An affirmative durable-storage acknowledgment, never an assumed save
+        // inferred from navigator.onLine or a generic network failure.
+        return Response.json({ code: 'OFFLINE_QUEUED' }, { status: 202, headers: { 'Cache-Control': 'no-store', 'X-GearCargo-Queued': '1' } })
+      }
+    },
+    method,
+  )
+}
 
 // Cache static assets
 registerRoute(
@@ -269,35 +198,16 @@ registerRoute(
 // ============================================================
 // WEB SHARE TARGET — receive a shared receipt image
 // ============================================================
-// The manifest share_target posts the shared file here (multipart/form-data).
-// We stash it in a dedicated cache under a fixed key and 303-redirect into the
-// SPA; the /share-target React route then reads it, uploads it to the chosen
-// vehicle and runs OCR. The file stays on-device and the page deletes it right
-// after reading (privacy — no shared receipt lingers in storage).
-const SHARE_TARGET_CACHE = 'share-target-cache'
-const SHARED_FILE_KEY = '/__shared_receipt'
-
+// An anonymous share is discarded. A signed-in share belongs to the current
+// identity/revision and is read once through an acknowledged worker message.
 registerRoute(
   ({ url, request }) => url.pathname === '/share-target' && request.method === 'POST',
-  async ({ request }) => {
-    try {
-      const formData = await request.formData()
-      const file = formData.get('receipt')
-      if (file && typeof file !== 'string' && file.size > 0) {
-        const cache = await caches.open(SHARE_TARGET_CACHE)
-        const headers = new Headers({
-          'content-type': file.type || 'application/octet-stream',
-          'x-shared-filename': encodeURIComponent(file.name || 'receipt.jpg'),
-        })
-        await cache.put(SHARED_FILE_KEY, new Response(file, { headers }))
-      }
-    } catch (error) {
-      log('Share target handling failed:', error)
-    }
-    // Redirect to a GET navigation so the SPA fallback serves the app shell.
-    return Response.redirect('/share-target', 303)
+  async ({ request, event }) => {
+    await queueReady()
+    const saved = await privateCache.share(request, event.clientId)
+    return Response.redirect(new URL(saved ? '/share-target' : '/login?share=sign-in-required', self.location.origin), 303)
   },
-  'POST'
+  'POST',
 )
 
 // ============================================================
@@ -322,60 +232,58 @@ setCatchHandler(async ({ request }) => {
 // MESSAGE HANDLING
 // ============================================================
 
-// Listen for messages from the main thread
-self.addEventListener('message', async (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting()
-  }
-
-  // Purge per-user cached data (called on login/logout so authenticated data —
-  // API responses AND attachment/receipt/vehicle-photo media — is never served
-  // across accounts or after sign-out on a shared device). SEC-06.
-  if (event.data && event.data.type === 'CLEAR_API_CACHE') {
-    event.waitUntil(Promise.all([
-      caches.delete('api-cache'),
-      caches.delete('media-cache'),
-    ]))
-  }
-
-  // Handle request to get pending sync count
-  if (event.data && event.data.type === 'GET_PENDING_SYNC_COUNT') {
+// Every identity change is acknowledged only after pending writes have been
+// quarantined. No message can provide credentials or relabel an existing entry.
+self.addEventListener('message', event => {
+  const type = event.data?.type
+  if (type === 'SKIP_WAITING') { self.skipWaiting(); return }
+  const supported = ['CLEAR_API_CACHE', 'PURGE_PRIVATE_STORAGE', 'GET_PENDING_SYNC_COUNT', 'FORCE_SYNC',
+    'SUSPEND_OFFLINE_QUEUE', 'BIND_OFFLINE_IDENTITY', 'REVIEW_OFFLINE_QUEUE', 'SAVE_RECEIPT_EXPENSE', 'REVIEW_RECEIPTS', 'RESTORE_PRIVATE_CLIENT', 'TAKE_SHARED_RECEIPT']
+  if (!supported.includes(type)) return
+  event.waitUntil((async () => {
     try {
-      const db = await openSyncDatabase()
-      const tx = db.transaction('requests', 'readonly')
-      const store = tx.objectStore('requests')
-      const count = await new Promise((resolve, reject) => {
-        const request = store.count()
-        request.onsuccess = () => resolve(request.result)
-        request.onerror = () => reject(request.error)
-      })
-      
-      event.ports[0].postMessage({ count })
+      await queueReady()
+      let result
+      if (type === 'SAVE_RECEIPT_EXPENSE') {
+        const state = await getQueueState()
+        if (!sameIdentity(state.identity, event.data.identity)) throw new Error('Sign-in changed. Reload before saving.')
+        const parent = event.data.parent
+        const request = new Request(new URL(parent.path, self.location.origin), { method: parent.method,
+          body: JSON.stringify(parent.payload), headers: { 'Content-Type': 'application/json', ...parent.headers, ...identityHeaders(state.identity) } })
+        if (!(await accountQueue.enqueue(request, event.data.receipt))) throw new Error('This expense and receipt could not be saved on this device.')
+        await scheduleSync()
+        result = { success: true }
+      } else if (type === 'REVIEW_RECEIPTS') {
+        result = await accountQueue.receiptReview(event.data.identity, event.data.action)
+      } else if (type === 'CLEAR_API_CACHE') {
+        const state = await getQueueState()
+        await expirePrivateSession(state.revision)
+        result = { success: true }
+      } else if (type === 'SUSPEND_OFFLINE_QUEUE' || type === 'PURGE_PRIVATE_STORAGE') {
+        await purgePrivateStorage(event.data.revision)
+        result = await accountQueue.suspend(event.data.revision)
+      } else if (type === 'BIND_OFFLINE_IDENTITY') {
+        result = await accountQueue.bind(event.data.identity, event.data.revision)
+        await unlockPrivateSession(event.data.identity, result.state.revision, event.source?.id)
+      } else if (type === 'RESTORE_PRIVATE_CLIENT') {
+        await restorePrivateClient(event.data.identity, event.source?.id)
+        result = { success: true }
+      } else if (type === 'TAKE_SHARED_RECEIPT') {
+        result = { receipt: await privateCache.takeShare(event.source?.id) }
+      } else if (type === 'GET_PENDING_SYNC_COUNT') {
+        result = await accountQueue.status(event.data.identity)
+      } else if (type === 'REVIEW_OFFLINE_QUEUE') {
+        result = await accountQueue.review(event.data.identity, event.data.action)
+      } else {
+        result = await accountQueue.replay(event.data.identity)
+        if (result.count || result.receiptCount) await scheduleSync()
+      }
+      event.ports[0]?.postMessage(result)
     } catch (error) {
-      event.ports[0].postMessage({ count: 0, error: error.message })
-    }
-  }
-  
-  // Force sync attempt
-  if (event.data && event.data.type === 'FORCE_SYNC') {
-    try {
-      await self.registration.sync.register('workbox-background-sync:gearcargo-sync-queue')
-      event.ports[0]?.postMessage({ success: true })
-    } catch (error) {
-      console.error('Manual sync registration failed:', error)
       event.ports[0]?.postMessage({ success: false, error: error.message })
     }
-  }
+  })())
 })
-
-// Helper to open the Workbox background sync IndexedDB
-function openSyncDatabase() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open('workbox-background-sync', 3)
-    request.onerror = () => reject(request.error)
-    request.onsuccess = () => resolve(request.result)
-  })
-}
 
 // ============================================================
 // PUSH NOTIFICATIONS
@@ -395,7 +303,7 @@ self.addEventListener('push', (event) => {
     badge: '/icons/logo-72.png',
     vibrate: [100, 50, 100],
     data: {
-      url: data.url || '/',
+      url: notificationTarget(data, self.location.origin),
     },
     actions: data.actions || [],
     tag: data.tag || 'gearcargo-notification',
@@ -411,7 +319,7 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
   
-  const urlToOpen = event.notification.data?.url || '/'
+  const urlToOpen = notificationTarget(event.notification, self.location.origin)
   
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true })
@@ -467,7 +375,7 @@ async function resubscribeToPush() {
     let deviceType = 'desktop'
     if (/Mobile|Android|iPhone|iPad/.test(ua)) deviceType = /iPad/.test(ua) ? 'tablet' : 'mobile'
 
-    await fetch('/api/push/subscribe', {
+    await csrfFetch('/api/push/subscribe', {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -502,26 +410,14 @@ self.addEventListener('sync', (event) => {
 // PERIODIC BACKGROUND SYNC — keep reminders fresh while closed
 // ============================================================
 
-// Read-only: warm the reminders endpoint so the api-cache holds a fresh copy
-// for the next (possibly offline) open. No writes, no conflict surface. The
-// httpOnly auth cookie is sent automatically; if the session has expired the
-// fetch simply fails and we leave the previous cache untouched.
+// Periodic reads use the same scope, expiry and late-response guards as pages.
 async function refreshRemindersCache() {
   try {
-    const url = '/api/reminders'
-    const response = await fetch(url, { credentials: 'include' })
-    if (response && response.ok) {
-      const cache = await caches.open('api-cache')
-      await cache.put(url, response.clone())
-      const clients = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' })
-      for (const client of clients) {
-        client.postMessage({ type: 'REMINDERS_REFRESHED' })
-      }
-    }
-  } catch (error) {
-    // Offline or session expired — best-effort, keep the existing cache.
-    log('Periodic reminder refresh skipped:', error)
-  }
+    await queueReady()
+    if (!(await verifiedIdentity())) return
+    const response = await privateCache.handle({ request: new Request(new URL('/api/reminders', self.location.origin), { credentials: 'include' }), background: true })
+    if (response.ok) await notifyClients({ type: 'REMINDERS_REFRESHED' })
+  } catch (error) { log('Periodic reminder refresh skipped:', error) }
 }
 
 self.addEventListener('periodicsync', (event) => {

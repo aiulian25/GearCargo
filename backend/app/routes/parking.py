@@ -2,6 +2,9 @@
 GearCargo - Parking Entry Routes
 """
 
+from app.services.vehicle_archive import active_vehicle_condition
+from app.services.mutations import mutation_endpoint, commit_mutation
+
 from datetime import datetime, time as time_class, timezone
 from flask import Blueprint, request, jsonify, current_app
 from sqlalchemy import func
@@ -68,6 +71,7 @@ def get_parking_entries(current_user):
 
 @parking_bp.route('', methods=['POST'])
 @token_required
+@mutation_endpoint(ParkingEntry)
 def create_parking_entry(current_user):
     """Create a new parking entry."""
     data = request.get_json()
@@ -154,7 +158,7 @@ def create_parking_entry(current_user):
     )
     
     db.session.add(entry)
-    db.session.commit()
+    commit_mutation()
 
     sync_entry_to_calendar_safe(current_user, 'parking', entry, 'create')
 
@@ -181,6 +185,7 @@ def get_parking_entry(current_user, entry_id):
 
 @parking_bp.route('/<int:entry_id>', methods=['PUT'])
 @token_required
+@mutation_endpoint(ParkingEntry, 'entry_id')
 def update_parking_entry(current_user, entry_id):
     """Update a parking entry."""
     entry = ParkingEntry.query.join(Vehicle).filter(
@@ -278,7 +283,7 @@ def update_parking_entry(current_user, entry_id):
             else:
                 setattr(entry, column, None)
 
-    db.session.commit()
+    commit_mutation()
 
     sync_entry_to_calendar_safe(current_user, 'parking', entry, 'update')
 
@@ -290,6 +295,7 @@ def update_parking_entry(current_user, entry_id):
 
 @parking_bp.route('/<int:entry_id>/cancel', methods=['POST'])
 @token_required
+@mutation_endpoint(ParkingEntry, 'entry_id')
 def cancel_parking_entry(current_user, entry_id):
     """Cancel a recurring parking entry (permit/subscription), stopping future
     auto-generated payments (F34 — mirrors POST /taxes/<id>/cancel)."""
@@ -306,7 +312,7 @@ def cancel_parking_entry(current_user, entry_id):
 
     entry.recurring = False
     entry.next_due_date = None
-    db.session.commit()
+    commit_mutation()
 
     sync_entry_to_calendar_safe(current_user, 'parking', entry, 'update')
 
@@ -318,6 +324,7 @@ def cancel_parking_entry(current_user, entry_id):
 
 @parking_bp.route('/<int:entry_id>', methods=['DELETE'])
 @token_required
+@mutation_endpoint(ParkingEntry, 'entry_id')
 def delete_parking_entry(current_user, entry_id):
     """Delete a parking entry."""
     entry = ParkingEntry.query.join(Vehicle).filter(
@@ -332,7 +339,7 @@ def delete_parking_entry(current_user, entry_id):
     sync_entry_to_calendar_safe(current_user, 'parking', entry, 'delete')
 
     db.session.delete(entry)
-    db.session.commit()
+    commit_mutation()
 
     return jsonify({'message': 'Parking entry deleted'})
 
@@ -408,6 +415,7 @@ def get_active_permits(current_user):
     # A permit is either typed as one ('permit'/'subscription' from imports,
     # 'monthly' from the app's own form) or carries a permit expiry date.
     entries = ParkingEntry.query.join(Vehicle).filter(
+        active_vehicle_condition(ParkingEntry),
         Vehicle.user_id == current_user.id,
         db.or_(
             ParkingEntry.parking_type.in_(('permit', 'subscription', 'monthly')),

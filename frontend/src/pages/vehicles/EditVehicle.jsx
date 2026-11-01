@@ -1,3 +1,6 @@
+import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
+import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
+import { useMutationIntent } from '../../hooks/useMutationIntent'
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
@@ -18,6 +21,7 @@ const defaultIntervalFor = (km, unit) =>
     : km
 
 export default function EditVehicle() {
+  const mutation = useMutationIntent()
   const { id } = useParams()
   const navigate = useNavigate()
   const { t } = useLanguage()
@@ -30,10 +34,12 @@ export default function EditVehicle() {
   const [showDimensions, setShowDimensions] = useState(false)
   const [showIntervals, setShowIntervals] = useState(false)
   const [distanceUnit, setDistanceUnit] = useState('km')
+  const initialDistanceUnit = useRef('km')
+  const [distanceUnitLocked, setDistanceUnitLocked] = useState(false)
   const fileInputRef = useRef(null)
   const cameraInputRef = useRef(null)
   
-  const { register, handleSubmit, formState: { errors }, reset } = useForm()
+  const { register, handleSubmit, formState: { errors, isDirty }, reset } = useForm()
   
   // Load existing vehicle data
   useEffect(() => {
@@ -41,6 +47,7 @@ export default function EditVehicle() {
       try {
         const response = await vehicleApi.getById(id)
         const vehicle = response.data
+        mutation.capture(vehicle)
         
         // Reset form with existing values
         reset({
@@ -61,15 +68,16 @@ export default function EditVehicle() {
           drivetrain: vehicle.drivetrain || '',
           purchase_date: vehicle.purchase_date ? vehicle.purchase_date.split('T')[0] : '',
           purchase_price: vehicle.purchase_price ?? '',
+          purchase_currency: vehicle.purchase_currency || '',
           // F31 — maintenance-interval overrides (empty = use default).
           ...Object.fromEntries(MAINTENANCE_COMPONENTS.map(([key]) =>
             [`mi_${key}`, vehicle.maintenance_intervals?.[key] ?? ''])),
         })
         
+        setDistanceUnitLocked(Boolean(vehicle.distance_unit_locked))
         // Set distance unit from vehicle data
-        if (vehicle.distance_unit) {
-          setDistanceUnit(vehicle.distance_unit)
-        }
+        initialDistanceUnit.current = vehicle.distance_unit === 'mi' ? 'miles' : (vehicle.distance_unit ?? null)
+        setDistanceUnit(initialDistanceUnit.current)
         
         // Set existing photo if available
         if (vehicle.photo_url) {
@@ -94,7 +102,7 @@ export default function EditVehicle() {
     }
     
     fetchVehicle()
-  }, [id, reset, t])
+  }, [id, reset, t, mutation])
   
   const handlePhotoSelect = (e) => {
     const file = e.target.files[0]
@@ -117,12 +125,14 @@ export default function EditVehicle() {
     if (cameraInputRef.current) cameraInputRef.current.value = ''
   }
   
+  const markSaved = useUnsavedChanges(isDirty || photoChanged || distanceUnit !== initialDistanceUnit.current)
+
   const onSubmit = async (data) => {
     setIsSubmitting(true)
     setError('')
     
     try {
-      await vehicleApi.update(id, {
+      const response = await vehicleApi.update(id, {
         ...data,
         year: parseInt(data.year),
         current_mileage: data.current_mileage ? parseInt(data.current_mileage) : 0,
@@ -134,6 +144,7 @@ export default function EditVehicle() {
         vehicle_weight_kg: data.vehicle_weight_kg ? parseInt(data.vehicle_weight_kg) : null,
         drivetrain: data.drivetrain || null,
         purchase_date: data.purchase_date || null,
+        purchase_currency: data.purchase_currency || null,
         purchase_price: data.purchase_price !== '' && data.purchase_price != null
           ? parseFloat(data.purchase_price) : null,
         distance_unit: distanceUnit,
@@ -146,29 +157,35 @@ export default function EditVehicle() {
           }
           return Object.keys(overrides).length ? overrides : null
         })(),
-      })
+      }, mutation.options())
       
+      // Keep the acknowledged revision for edits/retries after a photo failure.
+      if (response.data?.vehicle?.revision) mutation.capture(response.data.vehicle)
+
       // Handle photo changes
       if (photoChanged) {
         if (photoFile) {
           // Upload new photo
-          try {
-            await vehicleApi.uploadPhoto(id, photoFile)
-          } catch (photoErr) {
-            console.error('Photo upload failed:', photoErr)
-          }
+          await vehicleApi.uploadPhoto(id, photoFile)
         } else {
           // Delete photo if removed
-          try {
-            await vehicleApi.deletePhoto(id)
-          } catch (photoErr) {
-            console.error('Photo delete failed:', photoErr)
-          }
+          await vehicleApi.deletePhoto(id)
         }
       }
       
+      if (!markSaved()) return
       navigate(`/vehicles/${id}`)
     } catch (err) {
+      if (isOfflineWriteError(err)) {
+        announceOfflineSaved(t)
+        if (photoChanged) {
+          setError(t('unsavedChanges.fileNotSaved'))
+          return
+        }
+        if (!markSaved()) return
+        navigate(`/vehicles/${id}`)
+        return
+      }
       // Prefer the server's message_key so the reason is shown in the user's
       // language (e.g. a duplicate VIN); fall back to its English text.
       const data = err.response?.data
@@ -191,8 +208,9 @@ export default function EditVehicle() {
     return (
       <div className="pb-4">
         <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
-          <button onClick={() => navigate(-1)} className="btn-icon">
-            <span className="material-icons-outlined icon-md">close</span>
+          <button type="button" onClick={() => navigate(-1)} aria-label={t('common.close')}
+            className="btn-icon min-w-11 min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text-primary)">
+            <span aria-hidden="true" className="material-icons-outlined icon-md">close</span>
           </button>
           <h1 className="text-base font-semibold flex-1">{t('vehicles.edit')}</h1>
         </div>
@@ -217,17 +235,19 @@ export default function EditVehicle() {
     <div className="pb-4">
       {/* Header */}
       <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
-        <button onClick={() => navigate(-1)} className="btn-icon">
-          <span className="material-icons-outlined icon-md">close</span>
+        <button type="button" onClick={() => navigate(-1)} aria-label={t('common.close')}
+          className="btn-icon min-w-11 min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text-primary)">
+          <span aria-hidden="true" className="material-icons-outlined icon-md">close</span>
         </button>
         <h1 className="text-base font-semibold flex-1">{t('vehicles.edit')}</h1>
         <button 
           onClick={handleSubmit(onSubmit)}
+          aria-label={t('common.save')}
           disabled={isSubmitting}
           className="btn btn-primary btn-sm"
         >
           {isSubmitting ? (
-            <span className="material-icons-outlined icon-sm animate-spin">sync</span>
+            <span aria-hidden="true" className="material-icons-outlined icon-sm animate-spin">sync</span>
           ) : (
             t('common.save')
           )}
@@ -270,14 +290,15 @@ export default function EditVehicle() {
               <button
                 type="button"
                 onClick={handleRemovePhoto}
-                className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center"
+                aria-label={t('vehicles.removePhoto')}
+                className="absolute -top-2 -right-2 w-11 h-11 rounded-full bg-red-700 text-white flex items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text-primary)"
               >
-                <span className="material-icons-outlined text-sm">close</span>
+                <span aria-hidden="true" className="material-icons-outlined text-sm">close</span>
               </button>
             </div>
           ) : (
             <div className="w-24 h-24 rounded-2xl bg-(--color-bg-tertiary) flex items-center justify-center mb-3">
-              <span className="material-icons-outlined icon-xl text-(--color-text-muted)">
+              <span aria-hidden="true" className="material-icons-outlined icon-xl text-(--color-text-muted)">
                 directions_car
               </span>
             </div>
@@ -290,7 +311,7 @@ export default function EditVehicle() {
               className="btn btn-ghost btn-sm flex items-center gap-1"
               onClick={() => cameraInputRef.current?.click()}
             >
-              <span className="material-icons-outlined icon-sm">photo_camera</span>
+              <span aria-hidden="true" className="material-icons-outlined icon-sm">photo_camera</span>
               {t('vehicles.camera')}
             </button>
             <button 
@@ -298,7 +319,7 @@ export default function EditVehicle() {
               className="btn btn-ghost btn-sm flex items-center gap-1"
               onClick={() => fileInputRef.current?.click()}
             >
-              <span className="material-icons-outlined icon-sm">photo_library</span>
+              <span aria-hidden="true" className="material-icons-outlined icon-sm">photo_library</span>
               {t('vehicles.gallery')}
             </button>
           </div>
@@ -411,6 +432,8 @@ export default function EditVehicle() {
                   key={unit}
                   type="button"
                   onClick={() => setDistanceUnit(unit)}
+                  disabled={distanceUnitLocked}
+                  aria-disabled={distanceUnitLocked}
                   className={`flex-1 py-2 text-sm font-medium transition-colors ${
                     distanceUnit === unit
                       ? 'bg-(--color-accent) text-white'
@@ -421,12 +444,13 @@ export default function EditVehicle() {
                 </button>
               ))}
             </div>
+            {distanceUnitLocked && <p className="text-xs text-(--color-text-muted) mt-2">{t('vehicles.distanceUnitLocked')}</p>}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-(--color-text-muted) mb-1">
-                {t('vehicles.currentMileage')} ({distanceUnit === 'miles' ? (t('vehicles.miles') || 'miles') : 'km'})
+                {t('vehicles.currentMileage')} ({distanceUnit ? (distanceUnit === 'miles' ? (t('vehicles.miles') || 'miles') : 'km') : t('units.unknown')})
               </label>
               <input
                 type="number" inputMode="decimal"
@@ -512,6 +536,12 @@ export default function EditVehicle() {
                 placeholder="0.00"
               />
             </div>
+            <div>
+              <label className="block text-xs text-(--color-text-muted) mb-1">{t('financial.purchaseCurrency')}</label>
+              <input {...register('purchase_currency')} maxLength={3} className="input" list="purchase-currencies" placeholder="GBP / EUR / USD" />
+              <datalist id="purchase-currencies">{['GBP', 'EUR', 'RON', 'USD'].map(code => <option key={code} value={code} />)}</datalist>
+              <p className="text-xs mt-1">{t('financial.reviewPurchase')}</p>
+            </div>
           </div>
         </div>
         
@@ -525,7 +555,7 @@ export default function EditVehicle() {
             <h3 className="text-sm font-medium text-(--color-text-secondary)">
               {t('vehicles.dimensionsOptional')}
             </h3>
-            <span className={`material-icons-outlined icon-sm text-(--color-text-muted) transition-transform ${showDimensions ? 'rotate-180' : ''}`}>
+            <span aria-hidden="true" className={`material-icons-outlined icon-sm text-(--color-text-muted) transition-transform ${showDimensions ? 'rotate-180' : ''}`}>
               expand_more
             </span>
           </button>
@@ -599,7 +629,7 @@ export default function EditVehicle() {
             <h3 className="text-sm font-medium text-(--color-text-secondary)">
               {t('maintenance.intervalsTitle') || 'Maintenance intervals'}
             </h3>
-            <span className={`material-icons-outlined icon-sm text-(--color-text-muted) transition-transform ${showIntervals ? 'rotate-180' : ''}`}>
+            <span aria-hidden="true" className={`material-icons-outlined icon-sm text-(--color-text-muted) transition-transform ${showIntervals ? 'rotate-180' : ''}`}>
               expand_more
             </span>
           </button>
@@ -607,7 +637,7 @@ export default function EditVehicle() {
           {showIntervals && (
             <div className="space-y-4 mt-4 pt-4 border-t border-(--color-border)">
               <p className="text-xs text-(--color-text-muted)">
-                {(t('maintenance.intervalsHint') || 'Leave empty to use the default')} ({distanceUnit})
+                {(t('maintenance.intervalsHint') || 'Leave empty to use the default')} ({distanceUnit || t('units.unknown')})
               </p>
 
               <div className="grid grid-cols-2 gap-3">
@@ -620,7 +650,7 @@ export default function EditVehicle() {
                       type="number" inputMode="numeric" min="1"
                       {...register(`mi_${key}`)}
                       className="input"
-                      placeholder={String(defaultIntervalFor(km, distanceUnit))}
+                      placeholder={distanceUnit ? String(defaultIntervalFor(km, distanceUnit)) : ''}
                     />
                   </div>
                 ))}

@@ -8,4 +8,4 @@ cd /app
 
 echo "[gunicorn] Starting application server on 0.0.0.0:5000"
 exec s6-setuidgid gearcargo env PATH="$PATH" \
-    gunicorn --config gunicorn.conf.py "app:create_app()"
+    gunicorn --config gunicorn.conf.py "app:create_app(process_role='web')"

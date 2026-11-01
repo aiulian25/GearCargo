@@ -809,7 +809,9 @@ export default function Profile() {
                   </label>
                   <select {...profileForm.register('volume_unit')} className="input">
                     <option value="liters">{t('common.liters') || 'Liters'}</option>
-                    <option value="gallons">{t('common.gallons') || 'Gallons'}</option>
+                    <option value="gallons_us">{t('units.gallonsUs')}</option>
+                    <option value="gallons_uk">{t('units.gallonsUk')}</option>
+                    {user?.volume_unit === 'gallons' && <option value="gallons">{t('units.gallonsLegacy')}</option>}
                   </select>
                 </div>
               </div>

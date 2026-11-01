@@ -193,7 +193,7 @@ def test_moving_permit_expiry_reschedules_the_series(app, client, user, auth_hea
     assert entry.next_due_date == new_expiry + relativedelta(months=1)
 
 
-def test_string_false_is_not_truthy(app, client, user, auth_headers):
+def test_non_boolean_recurrence_is_rejected_without_changing_schedule(app, client, user, auth_headers):
     with app.app_context():
         vehicle = _vehicle(user.id)
         entry = _permit(user.id, vehicle.id, recurring=True,
@@ -201,12 +201,14 @@ def test_string_false_is_not_truthy(app, client, user, auth_headers):
                         next_due_date=TODAY + relativedelta(months=1))
         entry_id = entry.id
 
-    client.put(f'{PARKING_URL}/{entry_id}', json={'recurring': ''},
-               headers=auth_headers(user.id))
+    response = client.put(f'{PARKING_URL}/{entry_id}', json={'recurring': ''},
+                          headers=auth_headers(user.id))
+    assert response.status_code == 400
+    assert response.json['field'] == 'recurring'
 
     entry = _reload(app, entry_id)
-    assert entry.recurring is False
-    assert entry.next_due_date is None
+    assert entry.recurring is True
+    assert entry.next_due_date == TODAY + relativedelta(months=1)
 
 
 # --- invariants ------------------------------------------------------------------

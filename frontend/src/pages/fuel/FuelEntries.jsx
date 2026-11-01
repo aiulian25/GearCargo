@@ -3,11 +3,12 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { fuelApi, vehicleApi } from '../../services/api'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTranslation } from '../../contexts/LanguageContext'
-import { formatDate } from '../../utils/dateFormat'
+import { useDateFormat } from '../../hooks/useDateFormat'
 import { formatFuelEconomy, getFuelEconomyUnit, resolveFuelSystem, litersToDisplayVolume, volumeUnitLabel } from '../../utils/fuelEconomy'
 import EmptyState from '../../components/ui/EmptyState'
 
 export default function FuelEntries() {
+  const { formatDate } = useDateFormat()
   const { t } = useTranslation()
   const [searchParams] = useSearchParams()
   const vehicleId = searchParams.get('vehicle')
@@ -33,7 +34,7 @@ export default function FuelEntries() {
   const avgFuelEconomy = stats?.avg_consumption ?? stats?.avg_efficiency ?? null
 
   // F16: MPG gallon system (US vs Imperial) follows the user's region.
-  const fuelSystem = resolveFuelSystem({ country: user?.country_preference, currency: user?.currency })
+  const fuelSystem = resolveFuelSystem({ country: user?.country_preference, currency: user?.currency, volumeUnit: user?.volume_unit })
   const mpgLabel = t(fuelSystem === 'us' ? 'units.mpgUs' : 'units.mpgUk') || 'MPG'
   const economyOpts = { system: fuelSystem, mpgLabel }
   const economyUnitLabel = (unit) =>

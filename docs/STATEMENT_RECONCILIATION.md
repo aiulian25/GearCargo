@@ -1,0 +1,31 @@
+# Statement reconciliation
+
+Open **Settings → Import → Reconcile statement** to compare selected CSV transactions with expenses already recorded in GearCargo. Statement records and allocations are metadata: they never enter expense, budget, tax, calendar or report totals.
+
+## Select locally, then upload
+
+Choose a UTF-8 CSV (at most 2 MiB, 10,000 nonempty records and 100 columns). Choose comma, semicolon or tab, dot/comma decimals, ISO / day-first / month-first dates, and the source's sign convention. Map date, amount, original currency and optionally vendor. Select 1–2,000 rows and inspect the local normalized preview before **Upload selected transactions**. Bank debit-negative exports require reversing the signs: stored expenses are positive, refunds negative. Amounts have at most two decimal places; thousands separators, currency symbols, zero amounts and ambiguous dates are rejected. Currency is required and validated against the app's currency-code inventory. There is no FX conversion.
+
+Only the selected dates, signed amounts, currency codes and optional vendors reach the server, with a statement name, logical row numbers and SHA-256 fingerprint of the local file. Raw CSV bytes, unselected rows, unmapped columns, account identifiers and original filenames are not uploaded or saved. Do not select account details as the optional vendor or statement name. Previewing locally does not make a statement API request.
+
+The same byte-identical file and same normalized selection return the existing owner-scoped batch. Changed mapping or selection for that file is rejected: review the saved statement, or delete it and import the corrected selection. Fingerprints identify exact files and logical rows; reordered, edited or overlapping files have different identities and require manual review. Identical-looking rows within one file remain separate. Deleting a statement deliberately removes its source identity, so a later import starts fresh.
+
+## Review and confirm
+
+Suggestions use the same original currency and sign, a seven-day date window, and deterministic ordering by exact available amount, vendor equality, date distance and expense ID within each page. Search expense titles to find older records. Candidate pages contain at most 50 expenses. Review receipts with the existing attachment viewer. Scheduled insurance premiums are estimates and are not candidates; optional payment-matching proposal 8 is not implemented.
+
+Enter signed allocations explicitly (dot decimals in allocation inputs). A row may allocate to multiple expenses, and several rows or statements may allocate to one expense. The server locks expenses, verifies displayed revisions and prevents allocations exceeding either a statement row or the expense's available amount. Saving a row replaces its previous allocation list. Enter all allocations to retain, including those on other candidate pages. Blank allocations and a blank exclusion reason clear that row. A row can instead be explicitly excluded with a reason and no allocations. Partial matches stay unmatched. Totals show statement, allocated, excluded and remaining amounts separately by original currency; a net zero balance does not resolve individual rows.
+
+**Open expense draft** transfers selected date, amount, currency and vendor into an existing expense form using an owner-bound, in-memory handoff. Opening it creates nothing. Check required expense details, save through the existing form, then return and explicitly match the expense. Draft handoffs are lost on a full reload and are never embedded in browser history. Refund drafts retain negative amounts. Expense forms remain subject to their existing required fields (for example, fuel volume).
+
+Final statement writes require an online connection, operation ID and displayed batch revision. Entry revisions are checked on allocation confirmation. Statement writes never join the offline queue, and statement reads are excluded from service-worker storage. An ambiguous network response can be retried with the same operation ID; different content requires a new operation. Reload after a conflict and review again. If a linked expense is edited or deleted, its allocation is marked stale and a previously reconciled batch becomes **Needs review**. The signature includes its stored edit timestamp, so reverting an expense cannot revive an old allocation. Fuel matching uses the ledger's `total_price` fallback to `amount`.
+
+Resolve every row before **Mark reconciled**, then export the summary CSV. Text cells are protected against spreadsheet formula execution. The summary includes each allocation and its validity, exclusions and remaining balances; it contains selected financial information and should be handled like the source statement.
+
+## Retention and recovery
+
+Selected source data and allocations remain until the owner deletes the statement or account. **Delete statement data** removes the batch, selected transactions, allocations and their active portable import identities/history payloads. It never deletes an expense or receipt. Mutation receipts contain only operation hashes and minimal IDs/status, not selected transaction contents. Server logs use the existing redacted request policy. Previously downloaded summaries and saved backup archives are independent copies: delete those separately when no longer needed.
+
+Hard vehicle deletion removes allocations to that vehicle's expenses and leaves statement rows unmatched; account deletion removes all statement data. Portable backup format **4.7** includes all three collections, validates their graph and allocation balances, remaps IDs and preserves stale evidence for review. Older formats remain readable without statement collections. Repeated imports with known backup provenance retain existing records. A collision with the same statement file from a different backup namespace is blocked for review instead of silently merging it; delete the existing statement first if replacement is intended. Restoring an older archive can restore data previously deleted from the live account.
+
+The migration `feature_reconciliation` follows `feature_appointments`. Apply it through the normal deployment migration process; this task does not change a running installation. All automated checks use disposable databases and synthetic statements.

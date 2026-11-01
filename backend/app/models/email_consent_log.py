@@ -1,16 +1,17 @@
 """
 GearCargo - Email Consent Log Model
-Immutable, append-only ledger for GDPR compliance.
-Records every consent grant, revocation, verification, and change.
+Application-written history of notification-email consent actions.
+These ordinary database rows are not tamper-proof and are deleted with the
+account; recording consent does not by itself establish legal compliance.
 """
 
 from datetime import datetime
-from app.utils.timeutils import utc_naive_now
+from app.utils.timeutils import utc_naive_now, isoformat_utc
 from app import db
 
 
 class EmailConsentLog(db.Model):
-    """Immutable consent ledger — insert only, never update or delete."""
+    """Consent history; normal routes append rows, account deletion removes them."""
 
     __tablename__ = 'email_consent_logs'
 
@@ -30,7 +31,7 @@ class EmailConsentLog(db.Model):
     ip_address = db.Column(db.String(45))
     user_agent = db.Column(db.String(500))
 
-    # Timestamp — set once, never changed
+    # Creation timestamp; no database immutability constraint is applied
     created_at = db.Column(db.DateTime, nullable=False, default=utc_naive_now, index=True)
 
     # Relationship
@@ -45,13 +46,13 @@ class EmailConsentLog(db.Model):
             'action': self.action,
             'consent_text_version': self.consent_text_version,
             'ip_address': self.ip_address,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'created_at': isoformat_utc(self.created_at) if self.created_at else None,
         }
 
     @classmethod
     def record(cls, user_id, action, email_hash, ip_address=None, user_agent=None,
                consent_text_version='1.0'):
-        """Create an immutable consent record."""
+        """Append a consent-action record to the current transaction."""
         entry = cls(
             user_id=user_id,
             action=action,

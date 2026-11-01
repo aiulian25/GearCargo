@@ -6,22 +6,24 @@ root logger that third-party / module loggers propagate to). It deliberately
 does NOT touch the dedicated `security_audit` logger, which keeps full PII for
 forensic purposes and never propagates (see app/utils/security_audit.py).
 
-Two concerns:
-  1. No PII (full emails, IPs, tokens) in the general logs beyond what's needed —
-     handled by RedactionFilter, applied defensively to every emitted record so
-     a single call site cannot leak PII regardless of how it formats its message.
-  2. JSON logs for ingestion — set LOG_FORMAT=json.
+Capability URLs and sensitive headers are always redacted, including formatted
+exceptions. Optional pattern-based PII masking also covers emails/IPs and common
+token shapes; callers must still avoid logging arbitrary bare credentials.
+Set LOG_FORMAT=json for JSON logs suitable for ingestion.
 
 Config knobs (all read from Flask config / env):
   LOG_LEVEL      default INFO
   LOG_FORMAT     'text' (default) | 'json'
-  LOG_REDACT_PII default true (set false to keep full logs in development)
+  LOG_REDACT_PII default true (false disables PII masking, never URL redaction)
 """
 
 import json
 import logging
 import re
+import uuid
 from datetime import datetime, timezone
+
+from log_sanitization import CapabilitySafeFormatter, redact_capabilities
 
 
 # ── PII patterns ──────────────────────────────────────────────────────────────
@@ -52,6 +54,7 @@ def redact(text: str) -> str:
     """Redact emails, tokens and IPs from a free-text log message."""
     if not text:
         return text
+    text = redact_capabilities(text)
     text = _EMAIL_RE.sub(lambda m: f'{m.group(1)}***@{m.group(2)}', text)
     text = _JWT_RE.sub('[redacted-token]', text)
     text = _HEX_TOKEN_RE.sub('[redacted-token]', text)
@@ -89,8 +92,10 @@ class JsonLogFormatter(logging.Formatter):
             'module': record.module,
             'message': record.getMessage(),
         }
-        if record.exc_info:
-            payload['exception'] = redact(self.formatException(record.exc_info))
+        if record.exc_text or record.exc_info:
+            payload['exception'] = record.exc_text or redact(self.formatException(record.exc_info))
+        if record.stack_info:
+            payload['stack'] = record.stack_info
         return json.dumps(payload, default=str)
 
 
@@ -109,7 +114,9 @@ def configure_logging(app):
     use_json = str(app.config.get('LOG_FORMAT', 'text')).lower() == 'json'
     redact_pii = bool(app.config.get('LOG_REDACT_PII', True))
 
-    formatter = JsonLogFormatter() if use_json else logging.Formatter(_TEXT_FORMAT)
+    base_formatter = JsonLogFormatter() if use_json else logging.Formatter(_TEXT_FORMAT)
+    # Capability redaction is mandatory even when development PII masking is off.
+    formatter = CapabilitySafeFormatter(base_formatter, redact if redact_pii else redact_capabilities)
     redaction = RedactionFilter() if redact_pii else None
 
     def _apply(logger):
@@ -126,6 +133,25 @@ def configure_logging(app):
     _apply(app.logger)
     # …and the root logger that module-level loggers propagate to.
     _apply(logging.getLogger())
+
+    if not app.extensions.get('capability_safe_logging'):
+        from flask import request
+
+        @app.before_request
+        def _request_log_identity():
+            # Ignore supplied X-Request-ID: it can itself contain a capability.
+            request.environ['gearcargo.request_id'] = uuid.uuid4().hex
+            request.environ['gearcargo.log_route'] = (
+                request.url_rule.rule if request.url_rule else '/[unmatched]')
+
+        @app.after_request
+        def _request_log_response(response):
+            request_id = request.environ.get('gearcargo.request_id')
+            if request_id:
+                response.headers['X-Request-ID'] = request_id
+            return response
+
+        app.extensions['capability_safe_logging'] = True
 
     app.logger.debug(
         'Logging configured: level=%s format=%s redact_pii=%s',

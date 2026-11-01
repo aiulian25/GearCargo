@@ -1,7 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter } from 'react-router-dom'
-import App from './App.jsx'
+import { createBrowserRouter, RouterProvider } from 'react-router-dom'
+import { AccountApp } from './App.jsx'
 import './index.css'
 import { AuthProvider } from './contexts/AuthContext'
 import { ThemeProvider } from './contexts/ThemeContext'
@@ -29,22 +29,24 @@ window.addEventListener('vite:preloadError', (event) => {
   window.location.reload()
 })
 
+// A single data-router root retains the existing lazy Routes tree and URLs,
+// while enabling the router's supported blocker for links and browser history.
+const router = createBrowserRouter([{ path: '*', element: (
+  <ThemeProvider>
+    <LanguageProvider>
+      <ConfirmProvider>
+        <AuthProvider>
+          <UpdateProvider>
+            <UserPreferencesSync>
+              <AccountApp />
+            </UserPreferencesSync>
+          </UpdateProvider>
+        </AuthProvider>
+      </ConfirmProvider>
+    </LanguageProvider>
+  </ThemeProvider>
+) }])
+
 ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <BrowserRouter>
-      <ThemeProvider>
-        <LanguageProvider>
-          <ConfirmProvider>
-            <AuthProvider>
-              <UpdateProvider>
-                <UserPreferencesSync>
-                  <App />
-                </UserPreferencesSync>
-              </UpdateProvider>
-            </AuthProvider>
-          </ConfirmProvider>
-        </LanguageProvider>
-      </ThemeProvider>
-    </BrowserRouter>
-  </React.StrictMode>,
+  <React.StrictMode><RouterProvider router={router} /></React.StrictMode>,
 )

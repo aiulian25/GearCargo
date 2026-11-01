@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { vehicleApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { useAuth } from '../../contexts/AuthContext'
-import { formatDate } from '../../utils/dateFormat'
+import { useDateFormat } from '../../hooks/useDateFormat'
 import { formatFuelEconomy, resolveFuelSystem } from '../../utils/fuelEconomy'
 
 // SVG Icons
@@ -209,6 +209,7 @@ const ExpandableCard = ({ title, icon, iconColor, children, defaultExpanded = fa
 
 
 export default function VehicleHealth() {
+  const { formatDate } = useDateFormat()
   const { id } = useParams()
   const navigate = useNavigate()
   const { t } = useTranslation()
@@ -403,7 +404,7 @@ export default function VehicleHealth() {
 
   const fuelEconomyUnit = health.vehicle_info?.distance_unit || user?.distance_unit || 'km'
   // F16: correct MPG gallon system for the user's region.
-  const fuelSystem = resolveFuelSystem({ country: user?.country_preference, currency: user?.currency })
+  const fuelSystem = resolveFuelSystem({ country: user?.country_preference, currency: user?.currency, volumeUnit: user?.volume_unit })
   const mpgLabel = t(fuelSystem === 'us' ? 'units.mpgUs' : 'units.mpgUk') || 'MPG'
 
   const getHealthStatusColor = () => {
@@ -940,7 +941,7 @@ export default function VehicleHealth() {
                   {t('vehicleHealth.totalDistance') || 'Total Distance'}
                 </p>
                 <p className="text-xl font-bold mt-1">
-                  {health.cost_efficiency?.total_distance_km?.toLocaleString() || 0} {health.vehicle_info?.distance_unit || 'km'}
+                  {health.cost_efficiency?.total_distance_km?.toLocaleString() || 0} km
                 </p>
               </div>
             </div>

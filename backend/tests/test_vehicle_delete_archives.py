@@ -44,12 +44,12 @@ def test_soft_delete_archives_and_hides_vehicle(app, client, user, auth_headers)
         assert v is not None and v.archived is True and v.archived_at is not None
 
 
-def test_soft_delete_cancels_insurance_and_recurring_taxes(app, client, user, auth_headers):
+def test_soft_delete_preserves_insurance_and_recurring_taxes(app, client, user, auth_headers):
     vid = _create_vehicle(client, user, auth_headers, 'Astra')
     with app.app_context():
         db.session.add(InsurancePolicy(
             user_id=user.id, vehicle_id=vid, provider='Acme', status='active',
-            premium=420, start_date=TODAY - timedelta(days=30),
+            premium=420, auto_renew=True, start_date=TODAY - timedelta(days=30),
             end_date=TODAY + timedelta(days=335)))
         db.session.add(TaxEntry(
             user_id=user.id, vehicle_id=vid, amount=15, date=TODAY,
@@ -62,9 +62,10 @@ def test_soft_delete_cancels_insurance_and_recurring_taxes(app, client, user, au
 
     with app.app_context():
         policy = InsurancePolicy.query.filter_by(vehicle_id=vid).first()
-        assert policy.status == 'cancelled' and policy.auto_renew is False
+        assert policy.status == 'active' and policy.auto_renew is True
+        assert policy.end_date == TODAY + timedelta(days=335)
         tax = TaxEntry.query.filter_by(vehicle_id=vid).first()
-        assert tax.recurring is False and tax.next_due_date is None
+        assert tax.recurring is True and tax.next_due_date == TODAY + timedelta(days=20)
 
 
 def test_hard_delete_removes_entirely(app, client, user, auth_headers):

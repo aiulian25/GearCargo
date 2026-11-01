@@ -60,7 +60,8 @@ def _seed_entries_with_attachments(app, count=ENTRIES_PER_PAGE):
             db.session.add(entry)
             db.session.flush()
             db.session.add(Attachment(
-                user_id=user.id, entry_id=entry.id, filename=f'receipt{index}.jpg',
+                user_id=user.id, vehicle_id=vehicle.id, entry_id=entry.id,
+                filename=f'receipt{index}.jpg',
                 filepath=f'/tmp/receipt{index}.jpg', file_type='image/jpeg',
                 file_size=1024, ocr_processed=True, ocr_text='TOTAL 50.00',
             ))
@@ -153,7 +154,8 @@ def test_sibling_list_endpoints_do_not_grow_with_the_page(
             db.session.add(entry)
             db.session.flush()
             db.session.add(Attachment(
-                user_id=user_id, entry_id=entry.id, filename=f'doc{index}.pdf',
+                user_id=user_id, vehicle_id=vehicle_id, entry_id=entry.id,
+                filename=f'doc{index}.pdf',
                 filepath=f'/tmp/doc{index}.pdf', file_type='application/pdf',
                 file_size=2048))
         db.session.commit()

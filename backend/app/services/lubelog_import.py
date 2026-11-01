@@ -10,11 +10,10 @@ parser that extracts vehicles, fuel records, service records, tax records, and r
 
 import struct
 import json
+import hashlib
 import zipfile
 import os
-import uuid
-import shutil
-from datetime import datetime, timezone, date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from app.utils.timeutils import utc_today
 
@@ -225,22 +224,20 @@ def _parse_date(value):
         return value.date()
     if isinstance(value, date):
         return value
-    if isinstance(value, str):
-        try:
-            return datetime.fromisoformat(value.replace('Z', '+00:00')).date()
-        except (ValueError, TypeError):
-            pass
-    return datetime.now(timezone.utc).date()
+    if value is None or value == '':
+        return datetime.now(timezone.utc).date()
+    from app.utils.entryparse import parse_iso_date
+    return parse_iso_date(value)
 
 
-def _safe_float(value, default=0.0):
-    """Safely convert a value to float."""
-    if value is None:
-        return default
+def _safe_float(value, default=0, field=None):
+    """Absent vendor values keep their default; malformed values are never zeroed."""
+    from app.utils.entryparse import parse_amount, InvalidFieldError
     try:
-        return float(value)
-    except (ValueError, TypeError):
-        return default
+        return parse_amount(default if value is None else value)
+    except InvalidFieldError as exc:
+        exc.field = field
+        raise
 
 
 def parse_lubelog_backup(zip_data):
@@ -301,11 +298,9 @@ def parse_lubelog_backup(zip_data):
         }
 
 
-KM_TO_MILES = 0.621371
-MILES_TO_KM = 1.60934
 
 
-def map_to_gearcargo(classified, config=None, distance_unit=None):
+def map_to_gearcargo(classified, config=None, distance_unit=None, source_volume_unit=None, source_distance_unit=None):
     """Convert classified LubeLogger data to GearCargo-compatible import format.
 
     Args:
@@ -314,27 +309,51 @@ def map_to_gearcargo(classified, config=None, distance_unit=None):
         distance_unit: Target distance unit ('km' or 'miles'). If provided,
             overrides the LubeLogger config. Odometer values will be converted
             if the source and target units differ.
+        source_volume_unit: liters, us_gallons or imperial_gallons; required for MPG.
+        source_distance_unit: km or miles; overrides config, required if missing.
 
     Returns a dict matching the GearCargo backup JSON structure that can be
     processed by the existing import_backup_data() function.
     """
-    source_uses_miles = config.get('UseMPG', False) if config else False
-    target_unit = distance_unit or ('miles' if source_uses_miles else 'km')
-
-    # Determine if we need to convert odometer values
-    source_unit = 'miles' if source_uses_miles else 'km'
-    need_conversion = source_unit != target_unit
-    if need_conversion:
-        if target_unit == 'miles':
-            odo_factor = KM_TO_MILES
+    from app.utils.units import distance_unit as normalize_distance, convert_odometer, volume_to_liters
+    from app.utils.entryparse import InvalidFieldError
+    declared_mpg = (config or {}).get('UseMPG')
+    if declared_mpg is not None and not isinstance(declared_mpg, bool):
+        raise InvalidFieldError('validation.invalidValue', 'Invalid source unit setting', 'UseMPG')
+    source_unit = source_distance_unit or ('miles' if declared_mpg else 'km')
+    target_unit = distance_unit or source_unit
+    if normalize_distance(source_unit) is None or normalize_distance(target_unit) is None:
+        raise InvalidFieldError('validation.invalidValue', 'Choose source and target distance units', 'distance_unit')
+    # A metric declaration identifies litres. MPG never identifies US versus
+    # imperial gallons; missing source configuration is likewise ambiguous.
+    if classified.get('gas_records') and source_volume_unit is None:
+        if declared_mpg is False:
+            source_volume_unit = 'liters'
         else:
-            odo_factor = MILES_TO_KM
-    else:
-        odo_factor = 1.0
+            raise InvalidFieldError('backup.sourceVolumeRequired',
+                                    'Choose the fuel volume unit used in the source backup', 'source_volume_unit')
+    source_volume_unit = source_volume_unit or 'liters'
+    volume_to_liters(0, source_volume_unit)  # validate even an empty backup
+    if (declared_mpg is None and source_distance_unit is None
+            and any(record.get('Mileage') is not None for kind in ('gas_records', 'service_records', 'collision_records', 'reminder_records')
+                    for record in classified.get(kind, []))):
+        raise InvalidFieldError('backup.sourceDistanceRequired',
+                                'Choose the odometer unit used in the source backup', 'source_distance_unit')
+
+    def source_note(notes, mileage, volume=None):
+        parts = []
+        if source_unit != target_unit:
+            parts.append(f'Source odometer: {mileage} {source_unit}')
+        if volume is not None and source_volume_unit != 'liters':
+            label = {'us_gallons': 'US gal', 'imperial_gallons': 'imperial gal'}[source_volume_unit]
+            parts.append(f'Source fuel volume: {volume} {label}')
+        return '\n\n'.join(filter(None, [notes, '; '.join(parts)])) or None
 
     gearcargo_data = {
         'version': '2.0',
         'source': 'lubelog',
+        'unit_conversion': {'source_distance_unit': source_unit, 'target_distance_unit': target_unit,
+                            'source_volume_unit': source_volume_unit, 'stored_volume_unit': 'liters'},
         'exported_at': datetime.now(timezone.utc).isoformat(),
         'vehicles': [],
         'reminders': [],
@@ -358,6 +377,7 @@ def map_to_gearcargo(classified, config=None, distance_unit=None):
 
         vehicle_data = {
             'lubelog_id': ll_id,
+            '_source_id': v.get('_id'),
             'name': f"{v.get('Year', '')} {v.get('Make', '')} {v.get('Model', '')}".strip() or 'Imported Vehicle',
             'make': v.get('Make'),
             'model': v.get('Model'),
@@ -380,6 +400,7 @@ def map_to_gearcargo(classified, config=None, distance_unit=None):
         vehicle_map[1] = {
             'lubelog_id': 1,
             'name': 'Imported Vehicle',
+            'distance_unit': target_unit,
             'fuel_entries': [],
             'service_entries': [],
             'repair_entries': [],
@@ -405,19 +426,23 @@ def map_to_gearcargo(classified, config=None, distance_unit=None):
             skipped_unmatched_records += 1
             continue
 
-        raw_mileage = rec.get('Mileage', 0)
-        mileage = round(raw_mileage * odo_factor) if raw_mileage else 0
+        from app.services.domain_validation import validate_field
+        from app.models import FuelEntry
+        raw_mileage = validate_field(FuelEntry, 'odometer', rec.get('Mileage'))
+        mileage = convert_odometer(raw_mileage, source_unit, target_unit)
         if mileage and mileage > max_mileage.get(vid, 0):
             max_mileage[vid] = mileage
 
         # LubeLogger "Gallons" is actually liters when using metric
-        liters = _safe_float(rec.get('Gallons'))
-        total_cost = _safe_float(rec.get('Cost'))
+        raw_volume = _safe_float(rec.get('Gallons'), field='Gallons')
+        liters = validate_field(FuelEntry, 'liters', volume_to_liters(raw_volume, source_volume_unit))
+        total_cost = validate_field(FuelEntry, 'amount', _safe_float(rec.get('Cost'), field='Cost'))
         price_per_liter = round(total_cost / liters, 3) if liters > 0 else 0
 
         entry_date = _parse_date(rec.get('Date'))
 
         fuel_entry = {
+            '_source_id': rec.get('_id'),
             'date': entry_date.isoformat(),
             'odometer': mileage,
             'amount': total_cost,
@@ -425,7 +450,7 @@ def map_to_gearcargo(classified, config=None, distance_unit=None):
             'liters': liters,
             'price_per_liter': price_per_liter,
             'full_tank': rec.get('IsFillToFull', True),
-            'notes': rec.get('Notes'),
+            'notes': source_note(rec.get('Notes'), raw_mileage, raw_volume),
             '_lubelog_files': rec.get('Files', []),
         }
         vehicle['fuel_entries'].append(fuel_entry)
@@ -442,7 +467,7 @@ def map_to_gearcargo(classified, config=None, distance_unit=None):
             continue
 
         description = (rec.get('Description') or '').strip()
-        cost = _safe_float(rec.get('Cost'))
+        cost = _safe_float(rec.get('Cost'), field='Cost')
         entry_date = _parse_date(rec.get('Date'))
         is_recurring = rec.get('IsRecurring', False)
 
@@ -472,6 +497,7 @@ def map_to_gearcargo(classified, config=None, distance_unit=None):
                 tax_type = 'emissions'
 
             tax_entry = {
+                '_source_id': rec.get('_id'),
                 'date': entry_date.isoformat(),
                 'amount': cost,
                 'tax_type': tax_type,
@@ -525,25 +551,28 @@ def map_to_gearcargo(classified, config=None, distance_unit=None):
             skipped_unmatched_records += 1
             continue
 
-        raw_mileage = rec.get('Mileage', 0)
-        mileage = round(raw_mileage * odo_factor) if raw_mileage else 0
+        from app.services.domain_validation import validate_field
+        from app.models import FuelEntry
+        raw_mileage = validate_field(FuelEntry, 'odometer', rec.get('Mileage'))
+        mileage = convert_odometer(raw_mileage, source_unit, target_unit)
         if mileage and mileage > max_mileage.get(vid, 0):
             max_mileage[vid] = mileage
 
         description = rec.get('Description', '')
-        cost = _safe_float(rec.get('Cost'))
+        cost = _safe_float(rec.get('Cost'), field='Cost')
         entry_date = _parse_date(rec.get('Date'))
 
         # Guess service type from description
         service_type = _guess_service_type(description)
 
         service_entry = {
+            '_source_id': rec.get('_id'),
             'date': entry_date.isoformat(),
             'odometer': mileage,
             'amount': cost,
             'service_type': service_type,
             'description': description,
-            'notes': rec.get('Notes'),
+            'notes': source_note(rec.get('Notes'), raw_mileage),
             '_lubelog_files': rec.get('Files', []),
         }
         vehicle['service_entries'].append(service_entry)
@@ -556,22 +585,25 @@ def map_to_gearcargo(classified, config=None, distance_unit=None):
             skipped_unmatched_records += 1
             continue
 
-        raw_mileage = rec.get('Mileage', 0)
-        mileage = round(raw_mileage * odo_factor) if raw_mileage else 0
+        from app.services.domain_validation import validate_field
+        from app.models import FuelEntry
+        raw_mileage = validate_field(FuelEntry, 'odometer', rec.get('Mileage'))
+        mileage = convert_odometer(raw_mileage, source_unit, target_unit)
         if mileage and mileage > max_mileage.get(vid, 0):
             max_mileage[vid] = mileage
 
         description = rec.get('Description', '')
-        cost = _safe_float(rec.get('Cost'))
+        cost = _safe_float(rec.get('Cost'), field='Cost')
         entry_date = _parse_date(rec.get('Date'))
 
         repair_entry = {
+            '_source_id': rec.get('_id'),
             'date': entry_date.isoformat(),
             'odometer': mileage,
             'amount': cost,
             'repair_type': 'collision',
             'description': description,
-            'notes': rec.get('Notes'),
+            'notes': source_note(rec.get('Notes'), raw_mileage),
             '_lubelog_files': rec.get('Files', []),
         }
         vehicle['repair_entries'].append(repair_entry)
@@ -583,9 +615,14 @@ def map_to_gearcargo(classified, config=None, distance_unit=None):
         description = rec.get('Description', 'Reminder')
         is_recurring = rec.get('IsRecurring', False)
 
+        from app.services.domain_validation import validate_field
+        from app.models import Reminder
+        raw_due_mileage = validate_field(Reminder, 'due_mileage', rec.get('Mileage'))
         reminder = {
+            '_source_id': rec.get('_id'),
             'title': description,
-            'description': f'Imported from LubeLogger. Mileage: {rec.get("Mileage", "N/A")}',
+            'due_mileage': convert_odometer(raw_due_mileage, source_unit, target_unit),
+            'description': f'Imported from LubeLogger. Source mileage: {raw_due_mileage} {source_unit}',
             'reminder_type': _guess_reminder_type(description),
             'due_date': due_date.isoformat(),
             'priority': 'medium',
@@ -602,6 +639,23 @@ def map_to_gearcargo(classified, config=None, distance_unit=None):
         if ll_id in max_mileage:
             vehicle_data['current_mileage'] = max_mileage[ll_id]
 
+    # Preflight every mapped record before rows or attachment files are written.
+    from app.services.domain_validation import validate_field
+    from app.services.backup_schema import MODELS, ENTRY_COLLECTIONS
+    def normalize(kind, record):
+        model = MODELS[kind]
+        for field in list(record):
+            if field in model.__mapper__.columns:
+                parsed = validate_field(model, field, record[field])
+                record[field] = parsed.isoformat() if isinstance(parsed, (date, datetime)) else parsed
+    for vehicle in gearcargo_data['vehicles']:
+        normalize('vehicles', vehicle)
+        for kind in ENTRY_COLLECTIONS:
+            for record in vehicle.get(kind, []):
+                normalize(kind, record)
+    for kind in ('reminders', 'insurance_policies'):
+        for record in gearcargo_data[kind]:
+            normalize(kind, record)
     return gearcargo_data
 
 
@@ -661,48 +715,31 @@ def _guess_reminder_type(description):
 #  Import Execution
 # ──────────────────────────────────────────
 
-def import_lubelog_to_gearcargo(user, zip_data, merge_mode='merge', distance_unit=None):
-    """Full import pipeline: parse LubeLogger ZIP → create GearCargo records.
-
-    Args:
-        user: Current authenticated user (SQLAlchemy model)
-        zip_data: BytesIO containing the LubeLogger backup ZIP
-        merge_mode: 'merge' (add alongside existing) or 'replace'
-        distance_unit: Target distance unit ('km' or 'miles'). If None,
-            auto-detected from LubeLogger config.
-
-    Returns:
-        dict with import counts and status info
-    """
+def import_lubelog_to_gearcargo(user, zip_data, merge_mode='merge', distance_unit=None,
+                                source_volume_unit=None, source_distance_unit=None,
+                                source_label=None, preview=False, conflict_policy='reject', preview_token=None):
+    """Adapt external IDs/files, then use the shared identity and restore transaction."""
+    from copy import deepcopy
     from app import db
-    from app.models import (Vehicle, FuelEntry, ServiceEntry, RepairEntry,
-                           TaxEntry, Reminder, InsurancePolicy, Attachment)
-    from flask import current_app
+    from app.models import Vehicle
+    from app.services import restore_transaction as restore_tx
+    from app.services.backup_schema import prepare_backup, ENTRY_COLLECTIONS
+    from app.services.import_identity import digest, namespace_for, ImportPlan
+    from app.routes.backup import _check_zip_budget, _perform_personal_restore
+    from app.utils.units import distance_unit as normalize_distance
+    from app.utils.entryparse import InvalidFieldError
 
-    # Step 1: Parse the backup
     zip_data.seek(0)
-    with zipfile.ZipFile(zip_data, 'r') as zf:
-        # M6: reject a decompression bomb before any member is read into memory.
-        # Lazy import avoids a load-time dependency on the backup route module
-        # (the ValueError is surfaced as a 400 by import_lubelog).
-        from app.routes.backup import _check_zip_budget
+    with restore_tx.activity_guard(exclusive=True), zipfile.ZipFile(zip_data, 'r') as zf:
         _check_zip_budget(zf)
         names = zf.namelist()
-
-        # Find LiteDB file
-        db_file = None
-        for name in names:
-            if name.endswith('.db'):
-                db_file = name
-                break
+        if len(names) != len(set(names)):
+            raise ValueError('Duplicate archive member names.')
+        db_file = next((name for name in names if name.endswith('.db')), None)
         if not db_file:
             return {'error': 'No database file found in backup ZIP'}
-
         raw_data = zf.read(db_file)
-        docs = scan_bson_documents(raw_data)
-        classified = classify_documents(docs)
-
-        # Read config
+        classified = classify_documents(scan_bson_documents(raw_data))
         config = {}
         for name in names:
             if 'userConfig.json' in name:
@@ -711,372 +748,123 @@ def import_lubelog_to_gearcargo(user, zip_data, merge_mode='merge', distance_uni
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     pass
                 break
-
-        # Step 2: Map to GearCargo format
-        gearcargo_data = map_to_gearcargo(classified, config, distance_unit=distance_unit)
-
-        # Step 3: Import into database
-        imported = {
-            'vehicles': 0,
-            'fuel_entries': 0,
-            'service_entries': 0,
-            'repair_entries': 0,
-            'tax_entries': 0,
-            'reminders': 0,
-            'insurance_policies': 0,
-            'attachments': 0,
-            'skipped_duplicates': 0,
-            # R4-14: policies whose own vehicle isn't in this backup are skipped
-            # (never attached to an arbitrary vehicle) and counted here, matching
-            # import_backup_data's A2 fix.
-            'skipped_unmatched_policies': 0,
-            'skipped_unmatched_records': 0,
-        }
-
-        vehicle_id_map = {}  # lubelog_id → gearcargo vehicle.id
-
-        # Import vehicles
-        for v_data in gearcargo_data['vehicles']:
-            ll_id = v_data.get('lubelog_id', 0)
-
-            # Check for existing vehicle
-            existing = None
-            if v_data.get('license_plate'):
-                existing = Vehicle.query.filter_by(
-                    user_id=user.id,
-                    license_plate=v_data['license_plate']
-                ).first()
-
-            if existing and merge_mode == 'merge':
-                vehicle = existing
+        unit_options = {}
+        if source_volume_unit is not None:
+            unit_options['source_volume_unit'] = source_volume_unit
+        if source_distance_unit is not None:
+            unit_options['source_distance_unit'] = source_distance_unit
+        mapped = map_to_gearcargo(classified, config, distance_unit=distance_unit, **unit_options)
+        # Keep GC-015's existing diagnostic before any provenance or file write.
+        for vehicle in mapped['vehicles']:
+            existing = Vehicle.query.filter_by(user_id=user.id, license_plate=vehicle['license_plate']).first() if vehicle.get('license_plate') else None
+            if existing and normalize_distance(existing.distance_unit) != normalize_distance(vehicle.get('distance_unit', 'km')):
+                raise InvalidFieldError('backup.distanceUnitMismatch',
+                                        'Imported distance unit must match the existing vehicle', 'distance_unit')
+        file_hash = digest([(name, hashlib.sha256(zf.read(name)).hexdigest()) for name in sorted(names) if not name.endswith('/')])
+        namespace = namespace_for('lubelog', source_label, file_hash)
+        data = {'version': '2.0', 'vehicles': [], 'reminders': [], 'insurance_policies': [], 'attachments': []}
+        source_keys, vehicles, file_refs, media, photos = {}, {}, {}, {}, {}
+        next_id = 0
+        def identify(kind, record, source_id=None, owner=None):
+            nonlocal next_id
+            next_id += 1
+            record['id'] = next_id
+            if source_id is None:
+                key = ('lubelog:file:' + file_hash, str(next_id))
             else:
-                vehicle = Vehicle(
-                    user_id=user.id,
-                    name=v_data.get('name', 'Imported Vehicle'),
-                    make=v_data.get('make'),
-                    model=v_data.get('model'),
-                    year=v_data.get('year'),
-                    license_plate=v_data.get('license_plate'),
-                    fuel_type=v_data.get('fuel_type', 'petrol'),
-                    distance_unit=v_data.get('distance_unit', 'km'),
-                    current_mileage=v_data.get('current_mileage', 0),
-                )
-                db.session.add(vehicle)
-                db.session.flush()
-                imported['vehicles'] += 1
-
-            vehicle_id_map[ll_id] = vehicle.id
-
-            # Update mileage if higher
-            if v_data.get('current_mileage'):
-                vehicle.update_mileage(v_data['current_mileage'])
-
-            # Import fuel entries
-            for entry_data in v_data.get('fuel_entries', []):
-                entry_date = _parse_date(entry_data.get('date'))
-                entry = FuelEntry(
-                    user_id=user.id,
-                    vehicle_id=vehicle.id,
-                    date=entry_date,
-                    odometer=entry_data.get('odometer'),
-                    amount=entry_data.get('amount', 0),
-                    liters=entry_data.get('liters'),
-                    price_per_liter=entry_data.get('price_per_liter'),
-                    total_price=entry_data.get('total_price'),
-                    full_tank=entry_data.get('full_tank', True),
-                    notes=entry_data.get('notes'),
-                    title='Fuel',
-                )
-                db.session.add(entry)
-                db.session.flush()
-                entry_data['_gc_entry_id'] = entry.id
-                imported['fuel_entries'] += 1
-
-            # Import service entries
-            for entry_data in v_data.get('service_entries', []):
-                entry_date = _parse_date(entry_data.get('date'))
-                entry = ServiceEntry(
-                    user_id=user.id,
-                    vehicle_id=vehicle.id,
-                    date=entry_date,
-                    odometer=entry_data.get('odometer'),
-                    amount=entry_data.get('amount', 0),
-                    service_type=entry_data.get('service_type'),
-                    description=entry_data.get('description'),
-                    notes=entry_data.get('notes'),
-                    title=entry_data.get('description', 'Service'),
-                )
-                db.session.add(entry)
-                db.session.flush()
-                entry_data['_gc_entry_id'] = entry.id
-                imported['service_entries'] += 1
-
-            # Import repair entries
-            for entry_data in v_data.get('repair_entries', []):
-                entry_date = _parse_date(entry_data.get('date'))
-                entry = RepairEntry(
-                    user_id=user.id,
-                    vehicle_id=vehicle.id,
-                    date=entry_date,
-                    odometer=entry_data.get('odometer'),
-                    amount=entry_data.get('amount', 0),
-                    repair_type=entry_data.get('repair_type'),
-                    description=entry_data.get('description'),
-                    notes=entry_data.get('notes'),
-                    title=entry_data.get('description', 'Repair'),
-                )
-                db.session.add(entry)
-                db.session.flush()
-                entry_data['_gc_entry_id'] = entry.id
-                imported['repair_entries'] += 1
-
-            # Import tax entries
-            for entry_data in v_data.get('tax_entries', []):
-                entry_date = _parse_date(entry_data.get('date'))
-                entry = TaxEntry(
-                    user_id=user.id,
-                    vehicle_id=vehicle.id,
-                    date=entry_date,
-                    amount=entry_data.get('amount', 0),
-                    tax_type=entry_data.get('tax_type'),
-                    title=entry_data.get('title'),
-                    description=entry_data.get('description'),
-                    status=entry_data.get('status', 'paid'),
-                    recurring=entry_data.get('recurring', False),
-                    recurrence_type=entry_data.get('recurrence_type'),
-                )
-                db.session.add(entry)
-                db.session.flush()
-                entry_data['_gc_entry_id'] = entry.id
-                imported['tax_entries'] += 1
-
-        # Import insurance policies
-        for policy_data in gearcargo_data.get('insurance_policies', []):
-            vid = policy_data.get('vehicle_lubelog_id', 1)
-            vehicle_id = vehicle_id_map.get(vid)
-            if not vehicle_id:
-                # The previous code fell back to next(iter(vehicle_id_map.values())),
-                # pinning an orphaned policy onto an ARBITRARY vehicle and
-                # corrupting that vehicle's costs. Skip it and record the count.
-                imported['skipped_unmatched_policies'] += 1
-                continue
-
-            start_date = _parse_date(policy_data.get('start_date'))
-            end_date = _parse_date(policy_data.get('end_date'))
-
-            # Deduplication (mirrors the ZIP-restore importer): provider +
-            # start_date + vehicle identifies a policy term; re-imports skip it.
-            existing = InsurancePolicy.query.filter_by(
-                user_id=user.id,
-                vehicle_id=vehicle_id,
-                provider=policy_data.get('provider', 'Unknown'),
-                start_date=start_date,
-            ).first()
-            if existing:
-                imported['skipped_duplicates'] += 1
-                continue
-
-            policy = InsurancePolicy(
-                user_id=user.id,
-                vehicle_id=vehicle_id,
-                provider=policy_data.get('provider', 'Unknown'),
-                policy_type=policy_data.get('policy_type', 'comprehensive'),
-                premium=policy_data.get('premium', 0),
-                payment_frequency=policy_data.get('payment_frequency', 'monthly'),
-                start_date=start_date,
-                end_date=end_date,
-                status=policy_data.get('status', 'active'),
-                notes=policy_data.get('notes'),
-            )
-            db.session.add(policy)
-            imported['insurance_policies'] += 1
-
-        # Import reminders
-        for rem_data in gearcargo_data.get('reminders', []):
-            vid = rem_data.get('vehicle_lubelog_id', 1)
-            vehicle_id = vehicle_id_map.get(vid)
-
-            title = rem_data.get('title', 'Reminder')
-            due_date = _parse_date(rem_data.get('due_date'))
-
-            # Deduplication (mirrors the ZIP-restore importer): re-running the
-            # same LubeLog import must not multiply reminders. Match on
-            # vehicle + title + due_date so distinct occurrences of a recurring
-            # reminder (different dates) still import.
-            existing = Reminder.query.filter_by(
-                user_id=user.id,
-                vehicle_id=vehicle_id,
-                title=title,
-                due_date=due_date,
-            ).first()
-            if existing:
-                imported['skipped_duplicates'] += 1
-                continue
-
-            reminder = Reminder(
-                user_id=user.id,
-                vehicle_id=vehicle_id,
-                title=title,
-                description=rem_data.get('description'),
-                reminder_type=rem_data.get('reminder_type', 'custom'),
-                due_date=due_date,
-                priority=rem_data.get('priority', 'medium'),
-            )
-            db.session.add(reminder)
-            imported['reminders'] += 1
-
-        # Flush to get entry IDs before linking attachments
-        db.session.flush()
-
-        # Step 4: Import attached documents and images
-        upload_folder = current_app.config.get('UPLOAD_FOLDER', '/app/volumes/attachments')
-        user_folder = os.path.join(upload_folder, str(user.id))
-        os.makedirs(user_folder, exist_ok=True)
-
-        # Build a map: file location → list of (entry_id, vehicle_id) for linking
-        file_to_entries = {}  # '/documents/uuid.jpg' → [{'entry_id': N, 'vehicle_id': M}]
-        for v_data in gearcargo_data['vehicles']:
-            ll_id = v_data.get('lubelog_id', 0)
-            gc_vid = vehicle_id_map.get(ll_id)
-            for entry_list in ['fuel_entries', 'service_entries', 'repair_entries', 'tax_entries']:
-                for entry_data in v_data.get(entry_list, []):
-                    entry_id = entry_data.get('_gc_entry_id')
-                    for f in entry_data.get('_lubelog_files', []):
-                        loc = f.get('Location', '')
-                        if loc:
-                            file_to_entries.setdefault(loc, []).append({
-                                'entry_id': entry_id,
-                                'vehicle_id': gc_vid,
-                                'original_name': f.get('Name', ''),
-                            })
-
-        # Also collect vehicle photo paths
-        vehicle_photos = {}
-        for v_data in gearcargo_data['vehicles']:
-            photo = v_data.get('photo')
-            if photo:
-                ll_id = v_data.get('lubelog_id', 0)
-                vehicle_photos[photo] = vehicle_id_map.get(ll_id)
-
-        # Extract and save files from the ZIP
-        for name in names:
-            if not name.startswith(('documents/', 'images/')):
-                continue
-            zip_path = '/' + name
-
-            is_referenced = zip_path in file_to_entries
-            is_vehicle_photo = zip_path in vehicle_photos
-
-            if not is_referenced and not is_vehicle_photo:
-                continue
-
-            try:
-                file_content = zf.read(name)
-                original_name = os.path.basename(name)
-                safe_name = f"{uuid.uuid4().hex}_{original_name}"
-                save_path = os.path.join(user_folder, safe_name)
-
-                with open(save_path, 'wb') as f:
-                    f.write(file_content)
-                os.chmod(save_path, 0o640)
-
-                # Determine file type
-                ext = original_name.rsplit('.', 1)[-1].lower() if '.' in original_name else ''
-                mime_map = {
-                    'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
-                    'png': 'image/png', 'gif': 'image/gif',
-                    'pdf': 'application/pdf',
-                }
-                file_type = mime_map.get(ext, 'application/octet-stream')
-
-                if is_referenced:
-                    # Create one attachment per entry that references this file
-                    refs = file_to_entries[zip_path]
-                    seen_entries = set()
-                    for ref in refs:
-                        eid = ref.get('entry_id')
-                        vid = ref.get('vehicle_id')
-                        # Avoid duplicate (same entry_id)
-                        entry_key = (eid, vid)
-                        if entry_key in seen_entries:
-                            continue
-                        seen_entries.add(entry_key)
-
-                        display_name = ref.get('original_name') or original_name
-                        attachment = Attachment(
-                            user_id=user.id,
-                            filename=safe_name,
-                            original_filename=display_name,
-                            filepath=save_path,
-                            file_type=file_type,
-                            file_size=len(file_content),
-                            description='Imported from LubeLogger',
-                            category='document' if ext == 'pdf' else 'receipt',
-                            entry_id=eid,
-                            vehicle_id=vid,
-                        )
-                        db.session.add(attachment)
-                        imported['attachments'] += 1
-                elif is_vehicle_photo:
-                    # Attachment for the photo
-                    gc_vid = vehicle_photos[zip_path]
-                    attachment = Attachment(
-                        user_id=user.id,
-                        filename=safe_name,
-                        original_filename=original_name,
-                        filepath=save_path,
-                        file_type=file_type,
-                        file_size=len(file_content),
-                        description='Vehicle photo from LubeLogger',
-                        category='photo',
-                        vehicle_id=gc_vid,
-                    )
-                    db.session.add(attachment)
-                    imported['attachments'] += 1
-
-                # Handle vehicle photo assignment
-                if is_vehicle_photo and vehicle_photos[zip_path]:
-                    gc_vid = vehicle_photos[zip_path]
-                    vehicle_obj = db.session.get(Vehicle, gc_vid)
-                    if vehicle_obj:
-                        uploads_folder = os.path.join(
-                            current_app.root_path, '..', 'uploads', 'vehicles'
-                        )
-                        os.makedirs(uploads_folder, mode=0o750, exist_ok=True)
-                        photo_name = f"{gc_vid}_{uuid.uuid4().hex}.{ext}"
-                        photo_path = os.path.join(uploads_folder, photo_name)
-                        shutil.copy2(save_path, photo_path)
-                        os.chmod(photo_path, 0o640)
-                        vehicle_obj.photo = f"/uploads/vehicles/{photo_name}"
-
-            except (KeyError, OSError) as e:
-                current_app.logger.warning(f'Failed to extract file {name}: {e}')
-                continue
-
-        # Records dropped during mapping because their vehicle is not in the
-        # backup — surfaced so the import is never silently lossy.
-        imported['skipped_unmatched_records'] = gearcargo_data.get(
-            'skipped_unmatched_records', 0)
-
-        db.session.commit()
-
-    # Build summary
-    total_entries = (imported['fuel_entries'] + imported['service_entries'] +
-                    imported['repair_entries'] + imported['tax_entries'])
-
-    return {
-        'success': True,
-        'imported': imported,
-        'summary': {
-            'source': 'LubeLogger',
-            'vehicles': imported['vehicles'],
-            'total_entries': total_entries,
-            'fuel_entries': imported['fuel_entries'],
-            'service_entries': imported['service_entries'],
-            'repair_entries': imported['repair_entries'],
-            'tax_entries': imported['tax_entries'],
-            'insurance_policies': imported['insurance_policies'],
-            'reminders': imported['reminders'],
-            'attachments': imported['attachments'],
-        }
-    }
+                key = (namespace, str(source_id) if owner is None else f'{owner}:{source_id}')
+            if len(key[1]) > 160:
+                raise ValueError('Source record ID is too long.')
+            source_keys[(kind, next_id)] = key
+            return next_id
+        def files_for(record, kind, vehicle_id, entry_id=None):
+            for item in record.get('_lubelog_files', []):
+                location = item.get('Location', '').lstrip('/')
+                if location:
+                    file_refs.setdefault(location, []).append((kind, record['id'], vehicle_id, entry_id, item.get('Name')))
+        for raw_vehicle in mapped['vehicles']:
+            vehicle = deepcopy(raw_vehicle)
+            source_id = vehicle.get('lubelog_id')
+            vehicle_id = identify('vehicles', vehicle, vehicle.get('_source_id'))
+            vehicles[source_id] = vehicle_id
+            vehicle.setdefault('distance_unit', distance_unit or 'km')
+            vehicle.setdefault('current_mileage', 0)
+            if vehicle.get('photo'):
+                photos[vehicle['photo'].lstrip('/')] = vehicle_id
+            for kind in ENTRY_COLLECTIONS:
+                for entry in vehicle.get(kind, []):
+                    identify(kind, entry, entry.get('_source_id'), source_id)
+                    entry['vehicle_id'] = vehicle_id
+                    entry.setdefault('currency', 'EUR')  # existing LubeLogger contract
+                    if kind == 'fuel_entries':
+                        entry.setdefault('title', 'Fuel')
+                    elif kind in ('service_entries', 'repair_entries'):
+                        entry.setdefault('title', entry.get('description'))
+                    files_for(entry, kind, vehicle_id, entry['id'])
+            data['vehicles'].append(vehicle)
+        unmatched_policies = 0
+        for kind in ('reminders', 'insurance_policies'):
+            for source in mapped.get(kind, []):
+                source_vehicle = source.get('vehicle_lubelog_id')
+                if source_vehicle not in vehicles:
+                    unmatched_policies += kind == 'insurance_policies'
+                    continue
+                row = deepcopy(source)
+                identify(kind, row, row.get('_source_id'), source_vehicle)
+                row['vehicle_id'] = vehicles[source_vehicle]
+                if kind == 'reminders':
+                    row.pop('recurring', None)  # retain the existing adapter's contract
+                files_for(row, kind, row['vehicle_id'])
+                data[kind].append(row)
+        for member in sorted(set(file_refs) | set(photos)):
+            if member not in names or not member.startswith(('documents/', 'images/')):
+                raise ValueError('A referenced source file is missing from the LubeLogger archive.')
+            content = zf.read(member)
+            checksum = hashlib.sha256(content).hexdigest()
+            references = file_refs.get(member) or [('vehicles', photos[member], photos[member], None, None)]
+            for parent_kind, parent_id, vehicle_id, entry_id, display_name in references:
+                row = dict(filename=os.path.basename(member), original_filename=display_name or os.path.basename(member),
+                           vehicle_id=vehicle_id, entry_id=entry_id, file_size=len(content), category='receipt' if entry_id else 'document',
+                           description='Imported from LubeLogger')
+                parent_key = source_keys[(parent_kind, parent_id)]
+                identify('attachments', row, digest([parent_key, parent_kind, member]))
+                row['_content_sha256'] = checksum
+                data['attachments'].append(row)
+                media[('attachments', row['id'])] = dict(collection='attachments', record_id=row['id'], member=member, sha256=checksum, size=len(content))
+            if member in photos:
+                media[('vehicles', photos[member])] = dict(collection='vehicles', record_id=photos[member], member=member, sha256=checksum, size=len(content))
+        prepared = prepare_backup(data)
+        # Missing full-backup-only fields are expected in this external adapter.
+        prepared.warnings = [warning for warning in prepared.warnings if warning['code'] not in ('legacy_incomplete', 'missing_fields')]
+        prepared.namespace, prepared.source_keys = namespace, source_keys
+        prepared.batch_key = digest({'file': file_hash, 'namespace': namespace, 'units': mapped.get('unit_conversion')})
+        # Archive-local IDs are reassigned during adaptation. Fingerprints use
+        # stable source references so adding a row cannot change another car's identity.
+        entry_kinds = {row['id']: kind for kind in ENTRY_COLLECTIONS for row in prepared.records[kind]}
+        for kind, rows in prepared.records.items():
+            for row in rows:
+                refs = {}
+                for field, target_kind in (('vehicle_id', 'vehicles'), ('entry_id', entry_kinds.get(row.get('entry_id')))):
+                    if row.get(field) is not None and target_kind:
+                        parent_namespace, parent_id = source_keys[(target_kind, row[field])]
+                        refs[field] = [parent_namespace, target_kind, parent_id]
+                row['_source_refs'] = refs
+        prepared.import_format = 'lubelog'
+        prepared.conflict_policy, prepared.preview_token = conflict_policy, preview_token
+        prepared.media_included = bool(media)
+        # Bytes belong to attachment identity checks, not expense identity.
+        from app.routes.backup import _fingerprint_media
+        _fingerprint_media(prepared, media)
+        plan = ImportPlan(user, prepared)
+        if preview:
+            return {'preview': plan.preview}
+        plan.validate_apply(conflict_policy, preview_token)
+        result = _perform_personal_restore(user, data, prepared, merge_mode, media, zf).get_json()
+        imported = result['imported']
+        imported['skipped_unmatched_records'] = mapped.get('skipped_unmatched_records', 0)
+        imported['skipped_unmatched_policies'] += unmatched_policies
+        return {'success': True, 'imported': imported, 'summary': {
+            'source': 'LubeLogger', 'unit_conversion': mapped.get('unit_conversion'),
+            **{kind: imported[kind] for kind in ('vehicles', 'fuel_entries', 'service_entries', 'repair_entries', 'tax_entries', 'insurance_policies', 'reminders', 'attachments')},
+            'total_entries': sum(imported[kind] for kind in ENTRY_COLLECTIONS),
+        }}

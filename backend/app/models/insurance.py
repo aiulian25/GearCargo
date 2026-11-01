@@ -3,8 +3,9 @@ GearCargo - Insurance Policy Model
 """
 
 from datetime import datetime
-from app.utils.timeutils import utc_naive_now, utc_today
+from app.utils.timeutils import utc_naive_now, utc_today, isoformat_utc
 from app import db
+from app.utils.revisions import next_revision
 
 
 class InsurancePolicy(db.Model):
@@ -13,6 +14,8 @@ class InsurancePolicy(db.Model):
     __tablename__ = 'insurance_policies'
     
     id = db.Column(db.Integer, primary_key=True)
+    revision = db.Column(db.BigInteger, nullable=False, default=1, server_default="1")
+    __mapper_args__ = {"version_id_col": revision, "version_id_generator": next_revision}
     vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id'), nullable=False, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     
@@ -119,6 +122,7 @@ class InsurancePolicy(db.Model):
         
         return {
             'id': self.id,
+            'revision': self.revision,
             'vehicle_id': self.vehicle_id,
             'policy_number': self.policy_number,
             'provider': self.provider,
@@ -144,5 +148,5 @@ class InsurancePolicy(db.Model):
             'auto_renew': self.auto_renew,
             'renewed_from_id': self.renewed_from_id,
             'notes': self.notes,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'created_at': isoformat_utc(self.created_at) if self.created_at else None,
         }

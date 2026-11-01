@@ -1,3 +1,6 @@
+import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
+import { localDate } from '../../utils/dateFormat'
+import { useMutationIntent } from '../../hooks/useMutationIntent'
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
@@ -6,11 +9,12 @@ import { fuelApi, vehicleApi } from '../../services/api'
 import { useTranslation } from '../../contexts/LanguageContext'
 import { useAuth } from '../../contexts/AuthContext'
 import {
-  normalizeDistanceUnit, usesGallons,
-  displayVolumeToLiters, displayPriceToPerLiter,
+  normalizeDistanceUnit,
+  displayVolumeToLiters, volumeUnitLabel, displayPriceToPerLiter,
 } from '../../utils/fuelEconomy'
 
 export default function AddFuel() {
+  const mutation = useMutationIntent()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const preselectedVehicle = searchParams.get('vehicle')
@@ -25,7 +29,7 @@ export default function AddFuel() {
   const { register, handleSubmit, watch, setValue, formState: { errors, isDirty } } = useForm({
     defaultValues: {
       vehicle_id: preselectedVehicle || '',
-      date: new Date().toISOString().split('T')[0],
+      date: localDate(),
       mileage: '',
       liters: '',
       price_per_liter: '',
@@ -72,7 +76,7 @@ export default function AddFuel() {
     fetchVehicles()
   }, [preselectedVehicle, setValue])
   
-  useUnsavedChanges(isDirty)
+  const markSaved = useUnsavedChanges(isDirty)
 
   const onSubmit = async (data) => {
     setIsSubmitting(true)
@@ -87,10 +91,17 @@ export default function AddFuel() {
         liters: displayVolumeToLiters(parseFloat(data.liters), user),
         price_per_liter: displayPriceToPerLiter(parseFloat(data.price_per_liter), user),
         total_cost: parseFloat(data.total_cost),
-      })
+      }, mutation.options())
       
+      if (!markSaved()) return
       navigate(-1)
     } catch (err) {
+      if (isOfflineWriteError(err)) {
+        announceOfflineSaved(t)
+        if (!markSaved()) return
+        navigate(-1)
+        return
+      }
       // Prefer the server's message_key so the reason (malformed date,
       // non-numeric litres, price or odometer) is shown in the user's own language.
       const data = err.response?.data
@@ -208,7 +219,7 @@ export default function AddFuel() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-(--color-text-muted) mb-1">
-                {usesGallons(user) ? (t('addFuel.gallons') || 'Gallons') : (t('addFuel.liters') || 'Liters')} *
+                {volumeUnitLabel(user, t)} *
               </label>
               <input
                 type="number" inputMode="decimal"
@@ -227,7 +238,7 @@ export default function AddFuel() {
             
             <div>
               <label className="block text-xs text-(--color-text-muted) mb-1">
-                {usesGallons(user) ? (t('addFuel.pricePerGallon') || 'Price/Gallon') : (t('addFuel.pricePerLiter') || 'Price/Liter')} *
+                {t('addFuel.pricePerUnit', { unit: volumeUnitLabel(user, t) })} *
               </label>
               <input
                 type="number" inputMode="decimal"

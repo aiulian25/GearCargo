@@ -1,10 +1,12 @@
+import FinancialBasis from '../../components/ui/FinancialBasis'
+import { mutationOptions } from '../../utils/mutationProtocol'
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { vehicleApi, externalApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { useConfirm } from '../../components/ui/ConfirmDialog'
-import { formatDate } from '../../utils/dateFormat'
+import { useDateFormat } from '../../hooks/useDateFormat'
 import { formatFuelEconomy, resolveFuelSystem } from '../../utils/fuelEconomy'
 
 // F22 — map vehicle.fuel_type onto the fuel-price payload keys (hybrids fill
@@ -168,6 +170,7 @@ const Icons = {
 }
 
 export default function VehicleDetail() {
+  const { formatDate } = useDateFormat()
   const { id } = useParams()
   const navigate = useNavigate()
   const { t } = useTranslation()
@@ -237,7 +240,7 @@ export default function VehicleDetail() {
     })
     if (ok) {
       try {
-        await vehicleApi.delete(id)
+        await vehicleApi.delete(id, mutationOptions(vehicle))
         navigate('/vehicles')
       } catch (error) {
         console.error('Failed to delete:', error)
@@ -250,23 +253,23 @@ export default function VehicleDetail() {
     const ok = await confirm(vehicle.archived
       ? {
           title: t('confirm.restoreVehicleTitle') || 'Restore vehicle?',
-          message: (t('confirm.restoreVehicleMessage') || 'Restore “{name}” from the archive?').replace('{name}', name),
+          message: (t('confirm.restoreVehicleMessage') || 'Restore “{name}”? Reminders and automatic entries resume from the saved schedules, including overdue work. Review insurance and recurring charges first; earlier cancellations are not undone.').replace('{name}', name),
           confirmLabel: t('archive.restore') || 'Restore',
           destructive: false,
         }
       : {
           title: t('confirm.archiveVehicleTitle') || 'Archive vehicle?',
-          message: (t('confirm.archiveVehicleMessage') || 'Archive “{name}”? It will be hidden from your dashboard but its data is kept.').replace('{name}', name),
+          message: (t('confirm.archiveVehicleMessage') || 'Archive “{name}”? Its history and obligations are kept. GearCargo pauses reminders and automatic entries until you restore it. Insurance and recurring charges are not cancelled; use their separate cancellation actions.').replace('{name}', name),
           confirmLabel: t('archive.archive') || 'Archive',
           destructive: false,
         })
     if (ok) {
       try {
         if (vehicle.archived) {
-          await vehicleApi.unarchive(id)
+          await vehicleApi.unarchive(id, mutationOptions(vehicle))
           navigate('/') // Go to dashboard after restoring
         } else {
-          await vehicleApi.archive(id)
+          await vehicleApi.archive(id, mutationOptions(vehicle))
           navigate('/') // Go to dashboard after archiving
         }
       } catch (error) {
@@ -291,8 +294,8 @@ export default function VehicleDetail() {
     
     setIsSavingMileage(true)
     try {
-      await vehicleApi.updateMileage(id, mileageValue)
-      setVehicle(prev => ({ ...prev, current_mileage: mileageValue }))
+      const response = await vehicleApi.updateMileage(id, mileageValue, mutationOptions(vehicle))
+      setVehicle(prev => ({ ...prev, current_mileage: mileageValue, revision: response.data.revision }))
       setShowMileageModal(false)
     } catch (error) {
       const messageKey = error.response?.data?.message_key
@@ -325,10 +328,7 @@ export default function VehicleDetail() {
     }
   }
 
-  const formatCurrency = (amount) => {
-    if (!amount && amount !== 0) return `${currency.symbol}0`
-    return `${currency.symbol}${Number(amount).toFixed(2)}`
-  }
+  const formatCurrency = (amount, code = stats?.display_currency || currency.code) => `${Number(amount ?? 0).toFixed(2)} ${code}`
   
   if (isLoading) {
     return (
@@ -348,7 +348,7 @@ export default function VehicleDetail() {
 
   const fuelEconomyUnit = vehicle?.distance_unit || user?.distance_unit || 'km'
   // F16: UK vs US MPG follows the user's region (US gallon differs ~20%).
-  const fuelSystem = resolveFuelSystem({ country: user?.country_preference, currency: user?.currency })
+  const fuelSystem = resolveFuelSystem({ country: user?.country_preference, currency: user?.currency, volumeUnit: user?.volume_unit })
   const mpgLabel = t(fuelSystem === 'us' ? 'units.mpgUs' : 'units.mpgUk') || 'MPG'
 
   // Stats cards configuration
@@ -356,7 +356,7 @@ export default function VehicleDetail() {
     { 
       id: 'ytdSpent',
       label: t('vehicleDetail.ytdSpent') || 'YTD Spent',
-      value: formatCurrency(stats?.ytd_spent || stats?.total_costs || 0),
+      value: formatCurrency(stats?.ytd_spent ?? stats?.total_costs ?? 0),
       icon: Icons.wallet,
       color: 'text-blue-500',
       bgColor: 'bg-blue-500/10',
@@ -640,6 +640,7 @@ export default function VehicleDetail() {
           
           {/* Stats Cards Grid */}
           <div className="flex-1 min-w-0">
+            {stats && <FinancialBasis data={stats} />}
             <div className="grid grid-cols-2 gap-3">
               {statsCards.map(stat => {
                 const cardContent = (
@@ -820,7 +821,7 @@ export default function VehicleDetail() {
                           {entry.description}
                         </td>
                         <td className="py-3 text-right text-sm font-medium">
-                          {formatCurrency(entry.cost)}
+                          {formatCurrency(entry.cost, entry.currency)}
                         </td>
                       </tr>
                     )

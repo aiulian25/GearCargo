@@ -18,7 +18,7 @@ import { useTranslation } from '../../contexts/LanguageContext'
 
 export const CURRENCY_CODES = ['GBP', 'EUR', 'RON', 'USD']
 
-export default function CurrencySelect({ register, name = 'currency', className = '' }) {
+export default function CurrencySelect({ register, name = 'currency', className = '', extraCurrency }) {
   const { t } = useTranslation()
   return (
     <div className={className}>
@@ -26,7 +26,7 @@ export default function CurrencySelect({ register, name = 'currency', className 
         {t('settings.currency') || 'Currency'}
       </label>
       <select {...register(name)} className="input">
-        {CURRENCY_CODES.map((code) => (
+        {[...new Set([...CURRENCY_CODES, ...(extraCurrency ? [extraCurrency] : [])])].map((code) => (
           <option key={code} value={code}>{code}</option>
         ))}
       </select>

@@ -2,6 +2,8 @@
 GearCargo - Vehicles Routes
 """
 
+from app.services.mutations import mutation_endpoint, commit_mutation
+
 import hashlib
 import json
 import os
@@ -15,7 +17,9 @@ from app import db
 from app.models import Vehicle, Entry, FuelEntry, ServiceEntry, RepairEntry
 from app.models.attachment import Attachment
 from app.services.ollama import chat as ollama_chat, OllamaError, resolve_model, ai_cache_get, ai_cache_set, AI_CACHE_TTL, validate_ollama_url, ollama_downtime_info, ollama_breaker_allows_probe
-from app.services.currency import to_display, sum_to_display, get_rates_cached
+from app.services.currency import get_rates_cached
+from app.services.expense_ledger import load_expenses, aggregate, annualized_total, convert
+from app.models.insurance import InsurancePolicy
 from app.services.warranty import build_vehicle_warranties, warranty_summary
 from app.routes.auth import token_required
 from app.utils.entryparse import (
@@ -24,7 +28,7 @@ from app.utils.entryparse import (
     invalid_field_response,
     parse_optional_int,
 )
-from app.utils.timeutils import utc_today
+from app.utils.timeutils import utc_today, isoformat_utc
 
 vehicles_bp = Blueprint('vehicles', __name__)
 
@@ -69,43 +73,18 @@ def get_archived_vehicles(current_user):
 
 
 def _archive_vehicle(vehicle):
-    """Archive *vehicle*: flag it + cancel active insurance and recurring
-    taxes. Shared by the Archive action and the soft-delete path (F21).
-    Does NOT commit — callers commit.
+    """Pause vehicle activity without changing its obligations or history.
+
+    Shared by Archive and soft delete; callers commit. Scheduled jobs and due
+    feeds exclude archived vehicles. Cancellation remains an explicit action.
     """
     vehicle.archived = True
     vehicle.archived_at = datetime.now(timezone.utc)
 
-    # Cancel all active insurance policies for this vehicle
-    try:
-        from app.models import InsurancePolicy
-        active_policies = InsurancePolicy.query.filter(
-            InsurancePolicy.vehicle_id == vehicle.id,
-            InsurancePolicy.status == 'active'
-        ).all()
-        for policy in active_policies:
-            policy.status = 'cancelled'
-            policy.end_date = datetime.now(timezone.utc).date()
-            policy.auto_renew = False
-    except Exception as e:
-        current_app.logger.warning(f'Failed to cancel insurance policies on archive: {e}')
-
-    # Cancel all recurring tax entries for this vehicle
-    try:
-        from app.models import TaxEntry
-        recurring_taxes = TaxEntry.query.filter(
-            TaxEntry.vehicle_id == vehicle.id,
-            TaxEntry.recurring == True
-        ).all()
-        for tax in recurring_taxes:
-            tax.recurring = False
-            tax.next_due_date = None
-    except Exception as e:
-        current_app.logger.warning(f'Failed to cancel recurring taxes on archive: {e}')
-
 
 @vehicles_bp.route('/<int:vehicle_id>/archive', methods=['POST'])
 @token_required
+@mutation_endpoint(Vehicle, 'vehicle_id')
 def archive_vehicle(current_user, vehicle_id):
     """Archive a vehicle."""
     vehicle = Vehicle.query.filter_by(
@@ -120,7 +99,7 @@ def archive_vehicle(current_user, vehicle_id):
         return jsonify({'error': 'Vehicle is already archived'}), 400
 
     _archive_vehicle(vehicle)
-    db.session.commit()
+    commit_mutation()
 
     return jsonify({
         'message': 'Vehicle archived successfully',
@@ -130,6 +109,7 @@ def archive_vehicle(current_user, vehicle_id):
 
 @vehicles_bp.route('/<int:vehicle_id>/unarchive', methods=['POST'])
 @token_required
+@mutation_endpoint(Vehicle, 'vehicle_id')
 def unarchive_vehicle(current_user, vehicle_id):
     """Restore an archived vehicle."""
     vehicle = Vehicle.query.filter_by(
@@ -145,7 +125,7 @@ def unarchive_vehicle(current_user, vehicle_id):
     
     vehicle.archived = False
     vehicle.archived_at = None
-    db.session.commit()
+    commit_mutation()
     
     return jsonify({
         'message': 'Vehicle restored successfully',
@@ -155,6 +135,7 @@ def unarchive_vehicle(current_user, vehicle_id):
 
 @vehicles_bp.route('', methods=['POST'])
 @token_required
+@mutation_endpoint(Vehicle)
 def create_vehicle(current_user):
     """Create a new vehicle."""
     data = request.get_json()
@@ -212,12 +193,14 @@ def create_vehicle(current_user):
         vehicle_weight_kg=data.get('vehicle_weight_kg'),
         purchase_date=purchase_date,
         purchase_price=data.get('purchase_price'),
+        purchase_currency=(data.get('purchase_currency') or current_user.currency or 'GBP')
+            if data.get('purchase_price') is not None else data.get('purchase_currency'),
         monthly_budget=data.get('monthly_budget'),
     )
     
     db.session.add(vehicle)
     try:
-        db.session.commit()
+        commit_mutation()
     except IntegrityError as exc:
         # R1: `vin` carries a UNIQUE constraint, so a duplicate (even another
         # user's) reached the client as an unhandled 500. Anything else is a
@@ -249,11 +232,15 @@ def get_vehicle(current_user, vehicle_id):
     if not vehicle:
         return jsonify({'error': 'Vehicle not found'}), 404
     
-    return jsonify(vehicle.to_dict(include_stats=True))
+    from app.utils.units import distance_unit_locked
+    payload = vehicle.to_dict(include_stats=True)
+    payload['distance_unit_locked'] = distance_unit_locked(vehicle)
+    return jsonify(payload)
 
 
 @vehicles_bp.route('/<int:vehicle_id>', methods=['PUT'])
 @token_required
+@mutation_endpoint(Vehicle, 'vehicle_id')
 def update_vehicle(current_user, vehicle_id):
     """Update a vehicle."""
     vehicle = Vehicle.query.filter_by(
@@ -265,14 +252,21 @@ def update_vehicle(current_user, vehicle_id):
         return jsonify({'error': 'Vehicle not found'}), 404
     
     data = request.get_json()
-    
+    from app.utils.units import distance_unit, distance_unit_locked
+    if ('distance_unit' in data
+            and distance_unit(data['distance_unit']) != distance_unit(vehicle.distance_unit)
+            and distance_unit_locked(vehicle)):
+        return jsonify({'error': 'Distance units cannot change while mileage, thresholds or history exist.',
+                        'message_key': 'vehicles.distanceUnitLocked', 'field': 'distance_unit',
+                        'code': 'DISTANCE_UNIT_LOCKED'}), 409
+
     # Update allowed fields — real Vehicle columns only (F21 removed the
     # phantom drive_type/body_type/notes/is_active/photo_url entries).
     allowed = ['name', 'make', 'model', 'year', 'vin', 'license_plate',
                'color', 'fuel_type', 'engine_cc', 'transmission',
                'drivetrain', 'current_mileage', 'distance_unit', 'tank_capacity',
                'vehicle_height_cm', 'vehicle_width_cm', 'vehicle_weight_kg',
-               'vehicle_length_cm', 'purchase_price']
+               'vehicle_length_cm', 'purchase_price', 'purchase_currency']
     
     for field in allowed:
         if field in data:
@@ -332,7 +326,7 @@ def update_vehicle(current_user, vehicle_id):
             vehicle.maintenance_intervals = cleaned or None
 
     try:
-        db.session.commit()
+        commit_mutation()
     except IntegrityError as exc:
         db.session.rollback()
         if 'vin' not in str(getattr(exc, 'orig', exc)).lower():
@@ -350,6 +344,7 @@ def update_vehicle(current_user, vehicle_id):
 
 @vehicles_bp.route('/<int:vehicle_id>', methods=['DELETE'])
 @token_required
+@mutation_endpoint(Vehicle, 'vehicle_id')
 def delete_vehicle(current_user, vehicle_id):
     """Delete a vehicle (soft delete by default)."""
     vehicle = Vehicle.query.filter_by(
@@ -364,27 +359,23 @@ def delete_vehicle(current_user, vehicle_id):
     hard_delete = request.args.get('hard', 'false').lower() == 'true'
     
     if hard_delete:
-        # Delete physical attachment files
-        attachments = Attachment.query.filter_by(vehicle_id=vehicle_id).all()
-        upload_folder = current_app.config.get('UPLOAD_FOLDER', 'uploads')
-        for att in attachments:
-            if att.filepath:
-                file_path = os.path.join(upload_folder, att.filepath) if not os.path.isabs(att.filepath) else att.filepath
-                try:
-                    if os.path.exists(file_path):
-                        os.remove(file_path)
-                except OSError:
-                    pass
-        # Cascade delete via SQLAlchemy relationships
-        db.session.delete(vehicle)
-        db.session.commit()
-        return jsonify({'message': 'Vehicle deleted'})
+        from app.services.deletion import DeletionConflict, delete_owned_data, finish_cleanup
+        try:
+            operation_id = delete_owned_data(current_user.id, vehicle_id=vehicle_id)
+        except DeletionConflict as exc:
+            db.session.rollback()
+            return jsonify({'error': str(exc)}), 409
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception('Vehicle deletion could not be confirmed')
+            return jsonify({'error': 'Could not confirm vehicle deletion. Refresh before retrying; files are retained unless deletion committed.'}), 500
+        return jsonify({'message': 'Vehicle deleted', 'cleanup': finish_cleanup(operation_id)})
 
     # Soft delete = archive (F21 — previously set a phantom `is_active`
     # attribute and persisted nothing while claiming "Vehicle deleted").
     if not vehicle.archived:
         _archive_vehicle(vehicle)
-    db.session.commit()
+    commit_mutation()
 
     return jsonify({
         'message': 'Vehicle archived',
@@ -448,343 +439,27 @@ def get_vehicle_stats(current_user, vehicle_id):
     if not vehicle:
         return jsonify({'error': 'Vehicle not found'}), 404
     
-    from datetime import datetime
-    from sqlalchemy import func, extract
+    today = utc_today()
 
-    # Current date info
-    now = datetime.now(timezone.utc)
-    today = now.date()  # Convert to date for comparison with entry dates
-    current_year = now.year
-    current_month = now.month
-
-    # --- Currency normalization (F28): convert per-currency sums into the
-    #     user's display currency BEFORE adding — same idiom as /summary and
-    #     /cost-analytics. Grouping keeps each aggregate a handful of rows.
-    display_ccy = (getattr(current_user, 'currency', None) or 'GBP').upper()
+    display_ccy = (current_user.currency or 'GBP').upper()
     rates = get_rates_cached(current_app._get_current_object())
-    fx_converted = True   # False if a needed rate was unavailable
-    fx_applied = False    # True if any amount was in another currency
-
-    def _sum_display(model, col, *filters):
-        """SUM(col) grouped by currency, converted into display_ccy."""
-        nonlocal fx_converted, fx_applied
-        rows = (
-            db.session.query(model.currency, func.coalesce(func.sum(col), 0))
-            .filter(*filters)
-            .group_by(model.currency)
-            .all()
-        )
-        total, ok, applied = sum_to_display(
-            [(ccy, float(amt or 0)) for ccy, amt in rows], display_ccy, rates)
-        if not ok:
-            fx_converted = False
-        if applied:
-            fx_applied = True
-        return total
-
-    def _conv(amount, ccy):
-        """Convert one amount into display_ccy, tracking the FX flags."""
-        nonlocal fx_converted, fx_applied
-        conv, ok = to_display(float(amount or 0), ccy, display_ccy, rates)
-        if not ok:
-            fx_converted = False
-        if (ccy or 'EUR').upper() != display_ccy:
-            fx_applied = True
-        return conv
-
-    # ------------------------------------------------------------------
-    # FUEL — DB-level aggregates; zero rows fetched into Python memory
-    # ------------------------------------------------------------------
-    total_fuel_cost = _sum_display(
-        FuelEntry, FuelEntry.total_price,
-        FuelEntry.vehicle_id == vehicle_id,
-    )
-    ytd_fuel_cost = _sum_display(
-        FuelEntry, FuelEntry.total_price,
-        FuelEntry.vehicle_id == vehicle_id,
-        extract('year', FuelEntry.date) == current_year,
-    )
-    fuel_month_cost = _sum_display(
-        FuelEntry, FuelEntry.total_price,
-        FuelEntry.vehicle_id == vehicle_id,
-        extract('year', FuelEntry.date) == current_year,
-        extract('month', FuelEntry.date) == current_month,
-    )
-    fuel_count = int(
-        db.session.query(func.count(FuelEntry.id))
-        .filter(FuelEntry.vehicle_id == vehicle_id)
-        .scalar() or 0
-    )
-
-    # ------------------------------------------------------------------
-    # SERVICE — aggregate for totals/counts; past-only (date <= today)
-    # ------------------------------------------------------------------
-    total_service_cost = _sum_display(
-        ServiceEntry, ServiceEntry.amount,
-        ServiceEntry.vehicle_id == vehicle_id, ServiceEntry.date <= today,
-    )
-    service_count = int(
-        db.session.query(func.count(ServiceEntry.id))
-        .filter(ServiceEntry.vehicle_id == vehicle_id, ServiceEntry.date <= today)
-        .scalar() or 0
-    )
-    service_month_cost = _sum_display(
-        ServiceEntry, ServiceEntry.amount,
-        ServiceEntry.vehicle_id == vehicle_id,
-        ServiceEntry.date <= today,
-        extract('year', ServiceEntry.date) == current_year,
-        extract('month', ServiceEntry.date) == current_month,
-    )
-    service_ytd_cost = _sum_display(
-        ServiceEntry, ServiceEntry.amount,
-        ServiceEntry.vehicle_id == vehicle_id,
-        ServiceEntry.date <= today,
-        extract('year', ServiceEntry.date) == current_year,
-    )
-
-    # ------------------------------------------------------------------
-    # REPAIR — DB-level aggregates
-    # ------------------------------------------------------------------
-    total_repair_cost = _sum_display(
-        RepairEntry, RepairEntry.amount,
-        RepairEntry.vehicle_id == vehicle_id,
-    )
-    repair_count = int(
-        db.session.query(func.count(RepairEntry.id))
-        .filter(RepairEntry.vehicle_id == vehicle_id)
-        .scalar() or 0
-    )
-    repair_month_cost = _sum_display(
-        RepairEntry, RepairEntry.amount,
-        RepairEntry.vehicle_id == vehicle_id,
-        extract('year', RepairEntry.date) == current_year,
-        extract('month', RepairEntry.date) == current_month,
-    )
-    repair_ytd_cost = _sum_display(
-        RepairEntry, RepairEntry.amount,
-        RepairEntry.vehicle_id == vehicle_id,
-        extract('year', RepairEntry.date) == current_year,
-    )
-
-    # ------------------------------------------------------------------
-    # PARKING — DB-level aggregates (model may not exist on all installs)
-    # ------------------------------------------------------------------
-    parking_costs = 0.0
-    parking_month_cost = 0.0
-    parking_ytd_cost = 0.0
-    try:
-        from app.models.parking import ParkingEntry
-        parking_costs = _sum_display(
-            ParkingEntry, ParkingEntry.amount,
-            ParkingEntry.vehicle_id == vehicle_id,
-        )
-        parking_month_cost = _sum_display(
-            ParkingEntry, ParkingEntry.amount,
-            ParkingEntry.vehicle_id == vehicle_id,
-            extract('year', ParkingEntry.date) == current_year,
-            extract('month', ParkingEntry.date) == current_month,
-        )
-        parking_ytd_cost = _sum_display(
-            ParkingEntry, ParkingEntry.amount,
-            ParkingEntry.vehicle_id == vehicle_id,
-            extract('year', ParkingEntry.date) == current_year,
-        )
-    except Exception:
-        pass
-
-    # ------------------------------------------------------------------
-    # TAX — DB-level aggregates
-    # ------------------------------------------------------------------
-    tax_costs = 0.0
-    ytd_tax_costs = 0.0
-    tax_month_cost = 0.0
-    try:
-        from app.models.tax import TaxEntry
-        tax_costs = _sum_display(
-            TaxEntry, TaxEntry.amount,
-            TaxEntry.vehicle_id == vehicle_id,
-        )
-        ytd_tax_costs = _sum_display(
-            TaxEntry, TaxEntry.amount,
-            TaxEntry.vehicle_id == vehicle_id,
-            extract('year', TaxEntry.date) == current_year,
-        )
-        tax_month_cost = _sum_display(
-            TaxEntry, TaxEntry.amount,
-            TaxEntry.vehicle_id == vehicle_id,
-            extract('year', TaxEntry.date) == current_year,
-            extract('month', TaxEntry.date) == current_month,
-        )
-    except Exception:
-        pass
-
-    # ------------------------------------------------------------------
-    # INSURANCE — bounded .all() (always < ~20 policies per vehicle).
-    # Complex frequency-based logic cannot be expressed in simple SQL.
-    # ------------------------------------------------------------------
-    insurance_policies = []
-    insurance_annual_cost = 0.0
-    try:
-        from app.models.insurance import InsurancePolicy
-        insurance_policies = InsurancePolicy.query.filter_by(vehicle_id=vehicle_id).all()
-        # F12: normalize each premium to a yearly cost via the single-source
-        # annualized_premium property (monthly×12, quarterly×4, semi×2, annual×1).
-        # F28: converted into the display currency before summing.
-        for policy in insurance_policies:
-            insurance_annual_cost += _conv(policy.annualized_premium, policy.currency)
-    except Exception:
-        pass
-
-    # ------------------------------------------------------------------
-    # DERIVED TOTALS (no iteration needed — all from DB scalars above)
-    # ------------------------------------------------------------------
-    total_costs = (
-        total_fuel_cost + total_service_cost + total_repair_cost
-        + parking_costs + tax_costs + insurance_annual_cost
-    )
-
-    # --- This month's costs ---
-    monthly_insurance_cost = 0.0
-    costs_this_month = (
-        fuel_month_cost + service_month_cost + repair_month_cost
-        + parking_month_cost + tax_month_cost
-    )
-    for policy in insurance_policies:
-        if not policy.start_date:
-            continue
-        policy_started = (
-            policy.start_date.year < current_year
-            or (policy.start_date.year == current_year and policy.start_date.month <= current_month)
-        )
-        policy_ended = policy.end_date and (
-            policy.end_date.year < current_year
-            or (policy.end_date.year == current_year and policy.end_date.month < current_month)
-        )
-        if not policy_started or policy_ended:
-            continue
-        premium = _conv(policy.premium, policy.currency)  # F28
-        frequency = policy.payment_frequency or 'annual'
-        if frequency == 'monthly':
-            payment_day = policy.start_date.day
-            if today.day >= payment_day:
-                monthly_insurance_cost += premium
-                costs_this_month += premium
-        elif frequency == 'quarterly':
-            start_month = policy.start_date.month
-            months_diff = (current_year - policy.start_date.year) * 12 + (current_month - start_month)
-            if months_diff >= 0 and months_diff % 3 == 0:
-                monthly_insurance_cost += premium
-                costs_this_month += premium
-        elif frequency in ('semi-annual', 'semi_annual'):
-            start_month = policy.start_date.month
-            months_diff = (current_year - policy.start_date.year) * 12 + (current_month - start_month)
-            if months_diff >= 0 and months_diff % 6 == 0:
-                monthly_insurance_cost += premium
-                costs_this_month += premium
-        elif frequency in ('annual', 'yearly', 'one_time'):
-            if policy.start_date.year == current_year and policy.start_date.month == current_month:
-                monthly_insurance_cost += premium
-                costs_this_month += premium
-
-    # --- YTD costs ---
-    ytd_insurance_costs = 0.0
-    for policy in insurance_policies:
-        if not policy.start_date:
-            continue
-        premium = _conv(policy.premium, policy.currency)  # F28
-        frequency = policy.payment_frequency or 'annual'
-        if frequency == 'monthly':
-            payment_day = policy.start_date.day
-            paid_through_month = current_month if today.day >= payment_day else current_month - 1
-            start_month = max(1, policy.start_date.month) if policy.start_date.year == current_year else 1
-            end_month = paid_through_month
-            if policy.end_date and policy.end_date.year == current_year:
-                end_month = min(end_month, policy.end_date.month)
-            if policy.start_date.year <= current_year and (not policy.end_date or policy.end_date.year >= current_year):
-                ytd_insurance_costs += premium * max(0, end_month - start_month + 1)
-        elif frequency == 'quarterly':
-            if policy.start_date.year <= current_year:
-                start_month = policy.start_date.month
-                payments = sum(
-                    1 for q in range(4)
-                    if (start_month + q * 3) <= 12
-                    and (start_month + q * 3) <= current_month
-                    and (not policy.end_date or policy.end_date >= today)
-                )
-                ytd_insurance_costs += premium * payments
-        elif frequency in ('semi-annual', 'semi_annual'):
-            if policy.start_date.year <= current_year:
-                start_month = policy.start_date.month
-                payments = sum(
-                    1 for s in range(2)
-                    if (start_month + s * 6) <= 12
-                    and (start_month + s * 6) <= current_month
-                    and (not policy.end_date or policy.end_date >= today)
-                )
-                ytd_insurance_costs += premium * payments
-        elif frequency in ('annual', 'yearly', 'one_time'):
-            if policy.start_date.year == current_year and policy.start_date.month <= current_month:
-                ytd_insurance_costs += premium
-
-    ytd_spent = (
-        ytd_fuel_cost + service_ytd_cost + repair_ytd_cost
-        + parking_ytd_cost + ytd_tax_costs + ytd_insurance_costs
-    )
+    rows = load_expenses([vehicle_id], end=today)
+    lifetime = aggregate(rows, display_ccy, rates, end=today)
+    ytd = aggregate(rows, display_ccy, rates, start=date(today.year, 1, 1), end=today)
+    monthly = aggregate(rows, display_ccy, rates, start=today.replace(day=1), end=today)
+    insurance_policies = InsurancePolicy.query.filter_by(vehicle_id=vehicle_id).all()
+    annualized = annualized_total(insurance_policies, display_ccy, rates, today)
 
     # ------------------------------------------------------------------
     # AVERAGE FUEL CONSUMPTION (L/100km)
-    # Attempt 1: DB AVG of stored efficiency values (no rows fetched).
-    # Fallback to capped queries only if the stored column is empty.
+    # Distance-weighted canonical consumption from full-to-full windows.
     # ------------------------------------------------------------------
-    avg_consumption = None
-    _avg_eff = (
-        db.session.query(func.avg(FuelEntry.fuel_efficiency))
-        .filter(
-            FuelEntry.vehicle_id == vehicle_id,
-            FuelEntry.fuel_efficiency.isnot(None),
-        )
-        .scalar()
-    )
-    if _avg_eff is not None:
-        avg_consumption = float(_avg_eff)
+    from app.services.fuel_efficiency import weighted_efficiency_query
+    avg_consumption = weighted_efficiency_query(
+        FuelEntry.vehicle_id == vehicle_id, FuelEntry.user_id == current_user.id)
+    # Missing full-to-full observations cannot be replaced with partial-fill or
+    # consecutive-odometer guesses. Existing caches can be rebuilt explicitly.
 
-    if avg_consumption is None:
-        # Fallback: trip_distance + liters (capped at 500 rows)
-        valid_trips = (
-            db.session.query(FuelEntry.liters, FuelEntry.trip_distance)
-            .filter(
-                FuelEntry.vehicle_id == vehicle_id,
-                FuelEntry.liters.isnot(None),
-                FuelEntry.trip_distance.isnot(None),
-                FuelEntry.trip_distance > 0,
-            )
-            .limit(500)
-            .all()
-        )
-        if valid_trips:
-            avg_consumption = sum(float(l) / float(d) * 100 for l, d in valid_trips) / len(valid_trips)
-
-    if avg_consumption is None:
-        # Fallback: consecutive odometer readings (capped at 500 rows)
-        sorted_fuel = (
-            db.session.query(FuelEntry.liters, FuelEntry.odometer)
-            .filter(
-                FuelEntry.vehicle_id == vehicle_id,
-                FuelEntry.odometer.isnot(None),
-                FuelEntry.liters.isnot(None),
-            )
-            .order_by(FuelEntry.odometer.asc())
-            .limit(500)
-            .all()
-        )
-        calc = []
-        for i in range(1, len(sorted_fuel)):
-            dist = float(sorted_fuel[i].odometer) - float(sorted_fuel[i - 1].odometer)
-            if dist > 0:
-                calc.append(float(sorted_fuel[i].liters) / dist * 100)
-        if calc:
-            avg_consumption = sum(calc) / len(calc)
-    
     # Next service due — the soonest of: an upcoming reminder, a future-dated
     # service entry, or a past service's next_due_date pointer.
     #
@@ -855,33 +530,80 @@ def get_vehicle_stats(current_user, vehicle_id):
     return jsonify({
         'vehicle_id': vehicle_id,
         'distance_unit': vehicle.distance_unit or 'km',
-        'fuel_economy_unit': 'mpg' if (vehicle.distance_unit or '').lower() in ('miles', 'mi') else 'L/100km',
-        # F28 — FX flags, mirroring /summary and /cost-analytics.
-        'display_currency': display_ccy,
-        'converted': fx_converted,         # False → a rate was unavailable
-        'fx_applied': fx_applied,          # True → totals crossed currencies
-        'total_costs': float(total_costs),
-        'ytd_spent': float(ytd_spent),
-        'costs_this_month': float(costs_this_month),
-        'monthly_insurance_cost': float(monthly_insurance_cost),  # Insurance cost for this month only
-        'fuel_costs': float(total_fuel_cost),
-        'ytd_fuel_costs': float(ytd_fuel_cost),
-        'service_costs': float(total_service_cost),
-        'repair_costs': float(total_repair_cost),
-        'parking_costs': float(parking_costs),
-        'parking_ytd_cost': float(parking_ytd_cost),  # YTD parking expenses
-        'tax_costs': float(ytd_tax_costs),  # YTD tax expenses
-        'insurance_costs': float(ytd_insurance_costs),  # YTD insurance paid
-        'insurance_annual_cost': float(insurance_annual_cost),  # Annualized insurance cost
-        'service_count': service_count,
-        'repair_count': repair_count,
-        'fuel_count': fuel_count,
+        'fuel_economy_unit': 'L/100km',
+        **{k: lifetime[k] for k in ('basis', 'basis_label', 'as_of', 'start_date', 'end_date',
+                                    'display_currency', 'converted', 'fx_applied', 'unconverted')},
+        'totals': lifetime['totals'],
+        'recorded_total': lifetime['recorded_total'],
+        'insurance_estimate': lifetime['insurance_estimate'],
+        'total_costs': lifetime['totals']['grand_total'],
+        'ytd_spent': ytd['totals']['grand_total'],
+        'costs_this_month': monthly['totals']['grand_total'],
+        'monthly_insurance_cost': monthly['insurance_estimate'],
+        'fuel_costs': lifetime['totals']['fuel'],
+        'ytd_fuel_costs': ytd['totals']['fuel'],
+        'service_costs': lifetime['totals']['service'],
+        'repair_costs': lifetime['totals']['repair'],
+        'parking_costs': lifetime['totals']['parking'],
+        'parking_ytd_cost': ytd['totals']['parking'],
+        'consumable_costs': lifetime['totals']['consumable'],
+        'tax_costs': ytd['totals']['tax'],
+        'insurance_costs': ytd['insurance_estimate'],
+        'insurance_annual_cost': annualized['insurance_estimate'],
+        'insurance_annual_converted': annualized['converted'],
+        'service_count': lifetime['entry_counts']['service'],
+        'repair_count': lifetime['entry_counts']['repair'],
+        'fuel_count': lifetime['entry_counts']['fuel'],
         'insurance_count': len(insurance_policies),
         'avg_consumption': float(avg_consumption) if avg_consumption else None,
         'next_service': next_service,
         'next_service_title': next_service_title,
         'next_service_days': next_service_days,
     })
+
+
+@vehicles_bp.route('/<int:vehicle_id>/expenses-summary', methods=['GET'])
+@token_required
+def get_expenses_summary(current_user, vehicle_id):
+    vehicle = Vehicle.query.filter_by(id=vehicle_id, user_id=current_user.id).first()
+    if not vehicle:
+        return jsonify({'error': 'Vehicle not found'}), 404
+    from app.services.expense_views import period_bounds, available_years
+    from app.services.expense_ledger import CATEGORIES
+    try:
+        start, end = period_bounds(request.args.get('year', utc_today().year), request.args.get('month'))
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Invalid year or month'}), 400
+    currency = (current_user.currency or 'GBP').upper()
+    rows = load_expenses([vehicle.id], start, end)
+    ledger = aggregate(rows, currency,
+                       get_rates_cached(current_app._get_current_object()), start, end)
+    ledger['available_years'] = available_years(vehicle.id)
+    ledger['categories'] = list(CATEGORIES)
+    ledger['available_months'] = [int(row['month'][5:]) for row in ledger['monthly']]
+    return jsonify(ledger)
+
+
+@vehicles_bp.route('/<int:vehicle_id>/expense-records', methods=['GET'])
+@token_required
+def get_expense_records(current_user, vehicle_id):
+    """Filtered source-record pages, separate from complete expense aggregates."""
+    from app.services.expense_views import period_bounds, detail_page
+    vehicle = Vehicle.query.filter_by(id=vehicle_id, user_id=current_user.id).first()
+    if not vehicle:
+        return jsonify({'error': 'Vehicle not found'}), 404
+    try:
+        start, end = period_bounds(request.args.get('year', utc_today().year), request.args.get('month'))
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 20))
+        if not 1 <= page <= 2147483647 or not 1 <= per_page <= 100:
+            raise ValueError('Invalid page')
+        result = detail_page(vehicle, current_user, request.args.get('category', 'fuel'),
+            start, end, page, per_page, request.args.get('scope', 'period'),
+            get_rates_cached(current_app._get_current_object()))
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Invalid period, category or pagination'}), 400
+    return jsonify(result)
 
 
 @vehicles_bp.route('/<int:vehicle_id>/cost-analytics', methods=['GET'])
@@ -899,7 +621,7 @@ def get_cost_analytics(current_user, vehicle_id):
     purchase_price is stored)::
 
         ownership: {
-            purchase_price:  float,          # as stored (see currency note below)
+            purchase_price:  float,          # original amount in purchase_currency
             purchase_date:   'YYYY-MM-DD' | None,
             months_owned:    int | None,     # purchase_date → today
             total_with_purchase: float,      # running total_cost + purchase_price
@@ -908,13 +630,11 @@ def get_cost_analytics(current_user, vehicle_id):
             avg_monthly_ownership: float | None,
         }
     """
-    from sqlalchemy import extract
-
     vehicle = Vehicle.query.filter_by(id=vehicle_id, user_id=current_user.id).first()
     if not vehicle:
         return jsonify({'error': 'Vehicle not found'}), 404
 
-    today = datetime.now(timezone.utc).date()
+    today = utc_today()
     MONTHS = 12  # size of the displayed trend window
 
     # --- Build the trailing month buckets (oldest -> newest, ending this month).
@@ -938,37 +658,11 @@ def get_cost_analytics(current_user, vehicle_id):
     def month_start(yy, mm):
         return date(yy, mm, 1)
 
-    # --- Currency normalization (F1): amounts are stored per-entry in their own
-    #     currency; convert each into the user's display currency BEFORE summing
-    #     so mixed-currency histories aren't added as if identical. Grouping by
-    #     currency keeps this a handful of rows (one rate applies per group).
-    display_ccy = (getattr(current_user, 'currency', None) or 'GBP').upper()
+    display_ccy = (current_user.currency or 'GBP').upper()
     rates = get_rates_cached(current_app._get_current_object())
-    fx_converted = True   # False if a needed rate was unavailable
-    fx_applied = False    # True if any amount was in another currency
-
-    # --- Monthly total cost across ALL entry types (Entry.amount covers fuel too,
-    #     since fuel stores amount=total_price). Past entries only.
-    cost_rows = (
-        db.session.query(
-            extract('year', Entry.date).label('y'),
-            extract('month', Entry.date).label('m'),
-            Entry.currency,
-            func.coalesce(func.sum(Entry.amount), 0),
-        )
-        .filter(Entry.vehicle_id == vehicle_id, Entry.date <= today)
-        .group_by('y', 'm', Entry.currency)
-        .all()
-    )
-    monthly_cost = {}
-    for yy, mm, ccy, total in cost_rows:
-        conv, ok = to_display(float(total or 0), ccy or 'EUR', display_ccy, rates)
-        key = (int(yy), int(mm))
-        monthly_cost[key] = monthly_cost.get(key, 0.0) + conv
-        if not ok:
-            fx_converted = False
-        if (ccy or 'EUR').upper() != display_ccy:
-            fx_applied = True
+    ledger = aggregate(load_expenses([vehicle_id], end=today), display_ccy, rates, end=today)
+    fx_converted, fx_applied = ledger['converted'], ledger['fx_applied']
+    monthly_cost = {tuple(map(int, row['month'].split('-'))): row['total'] for row in ledger['monthly']}
 
     # --- Odometer readings over the vehicle's whole history (for distance deltas).
     odo_points = (
@@ -1008,7 +702,7 @@ def get_cost_analytics(current_user, vehicle_id):
             d = cum - prev_cum
             if d > 0:
                 distance = int(d)
-                cost_per_distance = round(cost / d, 4)
+                cost_per_distance = round(cost / d, 4) if fx_converted else None
         if cum is not None:
             prev_cum = cum if (prev_cum is None or cum > prev_cum) else prev_cum
         series.append({
@@ -1018,19 +712,7 @@ def get_cost_analytics(current_user, vehicle_id):
             'cost_per_distance': cost_per_distance,
         })
 
-    # --- Lifetime cost-per-distance (all history, not just the window).
-    #     Grouped by currency, then converted+summed into the display currency.
-    total_rows = (
-        db.session.query(Entry.currency, func.coalesce(func.sum(Entry.amount), 0))
-        .filter(Entry.vehicle_id == vehicle_id, Entry.date <= today)
-        .group_by(Entry.currency)
-        .all()
-    )
-    total_cost, total_ok, total_fx = sum_to_display(total_rows, display_ccy, rates)
-    if not total_ok:
-        fx_converted = False
-    if total_fx:
-        fx_applied = True
+    total_cost = ledger['totals']['grand_total']
     total_distance = None
     cost_per_distance_lifetime = None
     span = 0
@@ -1039,11 +721,10 @@ def get_cost_analytics(current_user, vehicle_id):
         span = max(odo_values) - min(odo_values)
         if span > 0:
             total_distance = int(span)
-            cost_per_distance_lifetime = round(total_cost / span, 4)
+            cost_per_distance_lifetime = round(total_cost / span, 4) if fx_converted else None
 
-    # --- Cost of ownership (F24): fold the purchase price into lifetime cost.
-    #     Vehicle has NO purchase-currency column — the stored price is treated
-    #     as already being in the user's display currency (no invented FX).
+    # Purchase currency is stored independently of the display preference.
+    # Unknown historical currency requires review; never invent an ownership total.
     ownership = None
     if vehicle.purchase_price is not None:
         from dateutil.relativedelta import relativedelta
@@ -1052,17 +733,24 @@ def get_cost_analytics(current_user, vehicle_id):
         if vehicle.purchase_date:
             delta = relativedelta(today, vehicle.purchase_date)
             months_owned = max(0, delta.years * 12 + delta.months)
-        total_with_purchase = round(total_cost + purchase, 2)
+        converted_purchase = (convert(purchase, vehicle.purchase_currency, display_ccy, rates)
+                              if vehicle.purchase_currency else None)
+        total_with_purchase = (round(total_cost + float(converted_purchase), 2)
+                               if converted_purchase is not None and fx_converted else None)
         ownership = {
             'purchase_price': purchase,
+            'purchase_currency': vehicle.purchase_currency,
+            'purchase_price_display': float(converted_purchase) if converted_purchase is not None else None,
+            'purchase_currency_review_required': not bool(vehicle.purchase_currency),
+            'purchase_converted': converted_purchase is not None,
             'purchase_date': vehicle.purchase_date.isoformat() if vehicle.purchase_date else None,
             'months_owned': months_owned,
             'total_with_purchase': total_with_purchase,
             'cost_per_distance_with_purchase':
-                round(total_with_purchase / span, 4) if span > 0 else None,
+                round(total_with_purchase / span, 4) if span > 0 and total_with_purchase is not None else None,
             'avg_monthly_ownership':
                 round(total_with_purchase / max(1, months_owned), 2)
-                if months_owned is not None else None,
+                if months_owned is not None and total_with_purchase is not None else None,
         }
 
     # --- Forecast: least-squares linear regression over COMPLETE months.
@@ -1072,7 +760,7 @@ def get_cost_analytics(current_user, vehicle_id):
     complete = series[:-1]  # drop current in-progress month
     # Trim leading months with no cost AND no prior history.
     first_nonzero = next((i for i, s in enumerate(complete) if s['cost'] > 0), None)
-    if first_nonzero is not None:
+    if first_nonzero is not None and fx_converted:
         hist = complete[first_nonzero:]
         costs = [s['cost'] for s in hist]
         n = len(costs)
@@ -1108,6 +796,7 @@ def get_cost_analytics(current_user, vehicle_id):
                 'projected_next_12_total': round(running_total, 2),
                 'trend': trend,
                 'method': 'linear_regression',
+                'basis': 'forecast_from_recorded_expenses_and_scheduled_insurance',
                 'months_of_history': n,
                 'monthly': projected,
             }
@@ -1118,6 +807,7 @@ def get_cost_analytics(current_user, vehicle_id):
         'display_currency': display_ccy,
         'converted': fx_converted,         # False → a rate was unavailable
         'fx_applied': fx_applied,          # True → totals crossed currencies
+        **{k: ledger[k] for k in ('basis', 'basis_label', 'as_of', 'start_date', 'end_date', 'unconverted', 'totals', 'recorded_total', 'insurance_estimate')},
         'series': series,
         'cost_per_distance_lifetime': cost_per_distance_lifetime,
         'total_cost': round(total_cost, 2),
@@ -1187,11 +877,12 @@ def _build_forecast(user, vehicles, months=12, today=None):
         i = index.get(monthkey)
         if i is None:
             return
-        conv, ok = to_display(float(amount or 0), from_ccy or 'EUR', display_ccy, rates)
-        buckets[i][kind] += conv
-        if not ok:
+        conv = convert(amount, from_ccy, display_ccy, rates)
+        if conv is None:
             converted = False
-        if (from_ccy or 'EUR').upper() != display_ccy:
+        else:
+            buckets[i][kind] += float(conv)
+        if amount and (from_ccy or '').upper() != display_ccy:
             fx_applied = True
 
     def _project(entry, kind):
@@ -1274,6 +965,7 @@ def _build_forecast(user, vehicles, months=12, today=None):
         'monthly_budget': monthly_budget,
         'converted': converted,      # False → a needed FX rate was unavailable
         'fx_applied': fx_applied,    # True → amounts crossed currencies
+        'basis': 'forecast_with_monthly_annualized_insurance',
         'buckets': out,
     }
 
@@ -2543,7 +2235,7 @@ def get_vehicle_timeline(current_user, vehicle_id):
                         'payment_frequency': frequency,
                         'date':             policy.start_date.isoformat() if policy.start_date else None,
                         'vehicle_id':       policy.vehicle_id,
-                        'created_at':       policy.created_at.isoformat() if policy.created_at else None,
+                        'created_at':       isoformat_utc(policy.created_at) if policy.created_at else None,
                         'policy_type':      policy.policy_type,
                         'status':           policy.status,
                     })
@@ -2615,6 +2307,7 @@ def get_vehicle_timeline(current_user, vehicle_id):
 
 @vehicles_bp.route('/<int:vehicle_id>/mileage', methods=['POST'])
 @token_required
+@mutation_endpoint(Vehicle, 'vehicle_id')
 def update_mileage(current_user, vehicle_id):
     """Update vehicle mileage."""
     vehicle = Vehicle.query.filter_by(
@@ -2650,11 +2343,12 @@ def update_mileage(current_user, vehicle_id):
         }), 400
     
     vehicle.current_mileage = new_mileage
-    db.session.commit()
+    commit_mutation()
     
     return jsonify({
         'message': 'Mileage updated',
         'message_key': 'vehicles.mileageUpdated',
+        'revision': vehicle.revision,
         'current_mileage': vehicle.current_mileage
     })
 
@@ -2776,42 +2470,19 @@ def get_vehicles_summary(current_user):
     ).all()
     vehicle_ids = [v.id for v in vehicles]
 
-    # Currency normalization (F1): convert each per-entry amount into the user's
-    # display currency BEFORE summing, so mixed-currency fleets aren't added as
-    # if identical. Grouped by currency (Entry.amount covers fuel too).
-    display_ccy = (getattr(current_user, 'currency', None) or 'GBP').upper()
+    display_ccy = (current_user.currency or 'GBP').upper()
     rates = get_rates_cached(current_app._get_current_object())
-
-    total_cost = 0.0
-    total_fuel = 0.0
-    converted = True
-    fx_applied = False
-    if vehicle_ids:
-        cost_rows = (
-            db.session.query(Entry.currency, func.coalesce(func.sum(Entry.amount), 0))
-            .filter(
-                Entry.vehicle_id.in_(vehicle_ids),
-                Entry.type.in_(('fuel', 'service', 'repair')),
-            )
-            .group_by(Entry.currency)
-            .all()
-        )
-        total_cost, converted, fx_applied = sum_to_display(cost_rows, display_ccy, rates)
-
-        total_fuel = float(
-            db.session.query(func.coalesce(func.sum(FuelEntry.liters), 0))
-            .filter(FuelEntry.vehicle_id.in_(vehicle_ids))
-            .scalar() or 0
-        )
+    ledger = aggregate(load_expenses(vehicle_ids), display_ccy, rates)
+    total_fuel = float(db.session.query(func.coalesce(func.sum(FuelEntry.liters), 0))
+        .filter(FuelEntry.vehicle_id.in_(vehicle_ids), FuelEntry.date <= utc_today()).scalar() or 0)
 
     return jsonify({
         'vehicle_count': len(vehicles),
-        'total_cost': round(total_cost, 2),
+        'total_cost': ledger['totals']['grand_total'],
         'total_fuel_volume': round(total_fuel, 2),
         'currency': display_ccy,           # kept for backward compatibility
         'display_currency': display_ccy,
-        'converted': converted,
-        'fx_applied': fx_applied,
+        **{k: ledger[k] for k in ('basis', 'basis_label', 'as_of', 'start_date', 'end_date', 'converted', 'fx_applied', 'unconverted', 'totals', 'recorded_total', 'insurance_estimate')},
         'vehicles': [v.to_dict() for v in vehicles],
     })
 
@@ -3061,16 +2732,9 @@ def get_vehicle_health(current_user, vehicle_id):
         )
         .scalar()
     )
-    _avg_eff_raw = (
-        db.session.query(func.avg(FuelEntry.fuel_efficiency))
-        .filter(
-            FuelEntry.vehicle_id == vehicle_id,
-            FuelEntry.fuel_efficiency.isnot(None),
-            FuelEntry.fuel_efficiency > 0,
-        )
-        .scalar()
-    )
-    avg_efficiency = float(_avg_eff_raw) if _avg_eff_raw is not None else None
+    from app.services.fuel_efficiency import weighted_efficiency_query, weighted_efficiency
+    from app.utils.units import distance_to_km
+    avg_efficiency = weighted_efficiency_query(FuelEntry.vehicle_id == vehicle_id)
 
     total_distance = float(
         db.session.query(func.coalesce(func.sum(FuelEntry.trip_distance), 0))
@@ -3080,6 +2744,7 @@ def get_vehicle_health(current_user, vehicle_id):
         )
         .scalar()
     )
+    total_distance = float(distance_to_km(total_distance, vehicle.distance_unit) or 0)
     total_fuel_cost = float(
         db.session.query(func.coalesce(func.sum(FuelEntry.total_price), 0))
         .filter(FuelEntry.vehicle_id == vehicle_id)
@@ -3223,9 +2888,9 @@ def get_vehicle_health(current_user, vehicle_id):
     recent_entries = [e for e in fuel_top20[:5] if e.fuel_efficiency]
     older_entries = [e for e in fuel_top20[10:20] if e.fuel_efficiency]
     if len(recent_entries) >= 3 and len(older_entries) >= 3:
-        recent_avg = sum(e.fuel_efficiency for e in recent_entries) / len(recent_entries)
-        older_avg = sum(e.fuel_efficiency for e in older_entries) / len(older_entries)
-        if recent_avg > older_avg * 1.15:
+        recent_avg = weighted_efficiency(recent_entries)
+        older_avg = weighted_efficiency(older_entries)
+        if recent_avg is not None and older_avg is not None and recent_avg > older_avg * 1.15:
             fuel_tips.append({
                 'id': 'efficiency_drop',
                 'severity': 'warning',

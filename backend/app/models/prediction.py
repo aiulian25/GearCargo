@@ -3,7 +3,7 @@ GearCargo - Prediction Alert Model
 """
 
 from datetime import datetime, timezone
-from app.utils.timeutils import utc_naive_now
+from app.utils.timeutils import utc_naive_now, isoformat_utc
 from app import db
 from app.models.user import _as_utc  # C1 follow-up: naive→aware UTC coercion
 
@@ -150,5 +150,5 @@ class PredictionAlert(db.Model):
             'model_version': self.model_version,
             'user_id': self.user_id,
             'vehicle_id': self.vehicle_id,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'created_at': isoformat_utc(self.created_at) if self.created_at else None,
         }

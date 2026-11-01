@@ -1,10 +1,18 @@
+import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
+import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
+import { useMutationIntent } from '../../hooks/useMutationIntent'
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { vehicleApi } from '../../services/api'
+import { useAuth } from '../../contexts/AuthContext'
+import CurrencySelect from '../../components/ui/CurrencySelect'
 import { useLanguage } from '../../contexts/LanguageContext'
 
 export default function AddVehicle() {
+  const { user } = useAuth()
+  const mutation = useMutationIntent()
+  const createdVehicle = useRef(null)
   const navigate = useNavigate()
   const { t } = useLanguage()
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -16,8 +24,9 @@ export default function AddVehicle() {
   const fileInputRef = useRef(null)
   const cameraInputRef = useRef(null)
   
-  const { register, handleSubmit, formState: { errors } } = useForm({
+  const { register, handleSubmit, formState: { errors, isDirty } } = useForm({
     defaultValues: {
+      purchase_price: '', purchase_date: '', purchase_currency: user?.currency || 'GBP',
       name: '',
       make: '',
       model: '',
@@ -47,14 +56,18 @@ export default function AddVehicle() {
     }
   }
   
+  const markSaved = useUnsavedChanges(isDirty || photoFile || distanceUnit !== 'km')
+
   const onSubmit = async (data) => {
     if (isSubmitting) return   // guard against rapid double-click before React re-render
     setIsSubmitting(true)
     setError('')
     
     try {
-      const response = await vehicleApi.create({
+      const payload = {
         ...data,
+        purchase_price: data.purchase_price === '' ? null : Number(data.purchase_price),
+        purchase_date: data.purchase_date || null,
         year: parseInt(data.year),
         current_mileage: data.current_mileage ? parseInt(data.current_mileage) : 0,
         tank_capacity: data.tank_capacity ? parseFloat(data.tank_capacity) : null,
@@ -64,20 +77,32 @@ export default function AddVehicle() {
         vehicle_length_cm: data.vehicle_length_cm ? parseInt(data.vehicle_length_cm) : null,
         vehicle_weight_kg: data.vehicle_weight_kg ? parseInt(data.vehicle_weight_kg) : null,
         distance_unit: distanceUnit,
-      })
-      
+      }
+      const response = createdVehicle.current
+        ? await vehicleApi.update(createdVehicle.current.id, payload, mutation.options())
+        : await vehicleApi.create(payload, mutation.options())
+      const savedVehicle = response.data.vehicle || response.data
+      createdVehicle.current = savedVehicle
+      if (savedVehicle.revision) mutation.capture(savedVehicle)
+
       // Upload photo if selected
-      if (photoFile && response.data.vehicle?.id) {
-        try {
-          await vehicleApi.uploadPhoto(response.data.vehicle.id, photoFile)
-        } catch (photoErr) {
-          console.error('Photo upload failed:', photoErr)
-          // Continue anyway, vehicle was created
-        }
+      if (photoFile && savedVehicle.id) {
+        await vehicleApi.uploadPhoto(savedVehicle.id, photoFile)
       }
       
-      navigate(`/vehicles/${response.data.vehicle?.id || response.data.id}`)
+      if (!markSaved()) return
+      navigate(`/vehicles/${savedVehicle.id}`)
     } catch (err) {
+      if (isOfflineWriteError(err)) {
+        announceOfflineSaved(t)
+        if (photoFile) {
+          setError(t('unsavedChanges.fileNotSaved'))
+          return
+        }
+        if (!markSaved()) return
+        navigate('/vehicles')
+        return
+      }
       // Prefer the server's message_key so the reason is shown in the user's
       // language (e.g. a duplicate VIN); fall back to its English text.
       const data = err.response?.data
@@ -364,6 +389,13 @@ export default function AddVehicle() {
           </div>
         </div>
         
+        <div className="card grid grid-cols-2 gap-3">
+          <div><label className="block text-xs mb-1">{t('vehicles.purchasePrice')}</label>
+            <input type="number" step="0.01" {...register('purchase_price', { min: 0 })} className="input" /></div>
+          <CurrencySelect register={register} name="purchase_currency" />
+          <div><label className="block text-xs mb-1">{t('vehicles.purchaseDate')}</label>
+            <input type="date" {...register('purchase_date')} className="input" /></div>
+        </div>
         {/* Dimensions (Collapsible) */}
         <div className="card">
           <button

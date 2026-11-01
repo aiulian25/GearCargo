@@ -1,8 +1,6 @@
 """Tests for F24 — cost of ownership in /cost-analytics.
 
-The stored purchase_price has no currency column and is treated as already
-being in the user's display currency (documented in the route), so rates are
-pinned empty here — running costs are created in the display currency too.
+GC-019: known purchase currency is explicit, independent of display preferences.
 """
 
 from datetime import date, timedelta
@@ -24,7 +22,7 @@ def _no_fx(monkeypatch):
 
 
 def _mk_vehicle(user_id, **kwargs):
-    v = Vehicle(user_id=user_id, name='Octavia', make='Skoda', model='Octavia', **kwargs)
+    v = Vehicle(user_id=user_id, name='Octavia', make='Skoda', model='Octavia', purchase_currency='GBP', **kwargs)
     db.session.add(v)
     db.session.commit()
     db.session.refresh(v)

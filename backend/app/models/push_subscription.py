@@ -3,7 +3,7 @@ GearCargo - Push Subscription Model
 """
 
 from datetime import datetime, timezone
-from app.utils.timeutils import utc_naive_now
+from app.utils.timeutils import utc_naive_now, isoformat_utc
 from app import db
 
 
@@ -78,8 +78,8 @@ class PushSubscription(db.Model):
             'browser': self.browser,
             'os': self.os,
             'active': self.active,
-            'last_used_at': self.last_used_at.isoformat() if self.last_used_at else None,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'last_used_at': isoformat_utc(self.last_used_at) if self.last_used_at else None,
+            'created_at': isoformat_utc(self.created_at) if self.created_at else None,
         }
 
 
@@ -141,7 +141,7 @@ class NotificationLog(db.Model):
             'body': self.body,
             'channel': self.channel,
             'status': self.status,
-            'clicked_at': self.clicked_at.isoformat() if self.clicked_at else None,
-            'sent_at': self.sent_at.isoformat() if self.sent_at else None,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'clicked_at': isoformat_utc(self.clicked_at) if self.clicked_at else None,
+            'sent_at': isoformat_utc(self.sent_at) if self.sent_at else None,
+            'created_at': isoformat_utc(self.created_at) if self.created_at else None,
         }

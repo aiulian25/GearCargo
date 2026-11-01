@@ -1,5 +1,7 @@
+import UnsavedChangesProvider from './components/UnsavedChangesProvider'
 import { useEffect, lazy, Suspense } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { REMINDER_ROUTE, reminderAuthPath, reminderIdFromPath, reminderReturnPath } from './utils/reminderRoutes'
 import toast, { Toaster, useToasterStore } from 'react-hot-toast'
 import { useAuth } from './contexts/AuthContext'
 
@@ -51,6 +53,9 @@ const VehicleCharts = lazy(() => import('./pages/vehicles/VehicleCharts'))
 const VehicleAlerts = lazy(() => import('./pages/vehicles/VehicleAlerts'))
 const VehicleHealth = lazy(() => import('./pages/vehicles/VehicleHealth'))
 const VehicleDocuments = lazy(() => import('./pages/vehicles/VehicleDocuments'))
+const Reconciliation = lazy(() => import('./pages/Reconciliation'))
+const VehicleAppointments = lazy(() => import('./pages/vehicles/VehicleAppointments'))
+const VehicleTires = lazy(() => import('./pages/vehicles/VehicleTires'))
 const VehicleConsumables = lazy(() => import('./pages/vehicles/VehicleConsumables'))
 const AddVehicleConsumable = lazy(() => import('./pages/vehicles/AddVehicleConsumable'))
 const VehicleChat = lazy(() => import('./pages/vehicles/VehicleChat'))
@@ -63,6 +68,7 @@ const AddService = lazy(() => import('./pages/services/AddService'))
 const Repairs = lazy(() => import('./pages/repairs/Repairs'))
 const AddRepair = lazy(() => import('./pages/repairs/AddRepair'))
 const Reminders = lazy(() => import('./pages/reminders/Reminders'))
+const ReminderDetail = lazy(() => import('./pages/reminders/ReminderDetail'))
 const AddReminder = lazy(() => import('./pages/reminders/AddReminder'))
 const SmartRecommendations = lazy(() => import('./pages/predictions/SmartRecommendations'))
 const Settings = lazy(() => import('./pages/settings/Settings'))
@@ -72,6 +78,8 @@ const SharedReport = lazy(() => import('./pages/SharedReport'))
 // Protected Route Component
 const ProtectedRoute = ({ children, allowPasswordChange = false }) => {
   const { isAuthenticated, isLoading, user } = useAuth()
+  const location = useLocation()
+  const reminderId = reminderIdFromPath(location.pathname) || new URLSearchParams(location.search).get('reminder')
   
   if (isLoading) {
     return (
@@ -82,12 +90,12 @@ const ProtectedRoute = ({ children, allowPasswordChange = false }) => {
   }
   
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />
+    return <Navigate to={reminderAuthPath('/login', reminderId)} replace />
   }
   
   // Force password change if required (except on the password change page itself)
   if (user?.must_change_password && !allowPasswordChange) {
-    return <Navigate to="/change-password" replace />
+    return <Navigate to={reminderAuthPath('/change-password', reminderId)} replace />
   }
   
   return children
@@ -96,6 +104,7 @@ const ProtectedRoute = ({ children, allowPasswordChange = false }) => {
 // Public Route (redirect to app if authenticated)
 const PublicRoute = ({ children }) => {
   const { isAuthenticated, isLoading } = useAuth()
+  const location = useLocation()
   
   if (isLoading) {
     return (
@@ -106,7 +115,7 @@ const PublicRoute = ({ children }) => {
   }
   
   if (isAuthenticated) {
-    return <Navigate to="/" replace />
+    return <Navigate to={reminderReturnPath(location.search)} replace />
   }
   
   return children
@@ -197,6 +206,7 @@ function App() {
           <Route index element={<Dashboard />} />
           
           {/* Vehicles */}
+          <Route path="reconciliation" element={<Reconciliation />} />
           <Route path="vehicles" element={<Vehicles />} />
           <Route path="vehicles/add" element={<AddVehicle />} />
           <Route path="vehicles/:id" element={<VehicleDetail />} />
@@ -210,6 +220,8 @@ function App() {
           <Route path="vehicles/:id/todo/add" element={<AddVehicleTodo />} />
           <Route path="vehicles/:id/insurance/add" element={<AddVehicleInsurance />} />
           <Route path="vehicles/:id/consumables" element={<VehicleConsumables />} />
+          <Route path="vehicles/:id/appointments" element={<VehicleAppointments />} />
+          <Route path="vehicles/:id/tires" element={<VehicleTires />} />
           <Route path="vehicles/:id/consumable/add" element={<AddVehicleConsumable />} />
           <Route path="vehicles/:id/chat" element={<VehicleChat />} />
           <Route path="vehicles/:id/expenses" element={<VehicleExpenses />} />
@@ -240,6 +252,7 @@ function App() {
           {/* Reminders */}
           <Route path="reminders" element={<Reminders />} />
           <Route path="reminders/add" element={<AddReminder />} />
+          <Route path={REMINDER_ROUTE} element={<ReminderDetail />} />
           
           {/* Smart Recommendations */}
           <Route path="recommendations" element={<SmartRecommendations />} />
@@ -255,6 +268,13 @@ function App() {
       </Suspense>
     </>
   )
+}
+
+// Remount private pages and cancel any pending discard dialog on an account
+// boundary. Forced session expiry must clear old work without being blocked.
+export function AccountApp() {
+  const { user } = useAuth()
+  return <UnsavedChangesProvider key={user?.id ?? 'anonymous'}><App /></UnsavedChangesProvider>
 }
 
 export default App

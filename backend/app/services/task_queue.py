@@ -1,28 +1,14 @@
-"""
-Background task queue abstraction (S12).
+"""Generic background tasks (OCR uses the durable database queue instead).
 
-A single ``enqueue_task()`` entry point so the scattered ``threading.Thread``
-call sites no longer hand-roll background execution. Two interchangeable
-backends, chosen by ``TASK_QUEUE_BACKEND``:
-
-* ``thread`` (DEFAULT) — fire-and-forget daemon thread inside the web worker,
-  exactly the historical behaviour. Nothing changes for existing deployments.
-* ``rq`` — enqueue onto **RQ on the existing Redis**, executed by a separate
-  ``rq_worker.py`` process. Gives real process isolation for heavy work (OCR)
-  off the request workers, and survives web-worker restarts.
-
-The task function and its arguments MUST be import-by-reference and picklable
-for the ``rq`` backend (module-level function, primitive args). Both backends
-run the task inside a Flask application context, so tasks may use ``db`` and
-``current_app`` freely.
-
-If ``rq`` is requested but unavailable (package missing or Redis down), we log
-once and fall back to the thread backend so a misconfiguration never silently
-drops work.
+The legacy thread backend has two workers and at most 100 waiting tasks per
+process. Explicit RQ configuration fails visibly when unavailable; it never
+falls back to threads. Importable legacy OCR jobs only admit durable work.
 """
 
+from app.services.restore_transaction import guarded_app_context
 import logging
 import threading
+from concurrent.futures import ThreadPoolExecutor
 
 from flask import current_app
 
@@ -31,18 +17,21 @@ logger = logging.getLogger(__name__)
 _THREAD = 'thread'
 _RQ = 'rq'
 
-# Remember whether we've already warned about an RQ fallback, to avoid log spam.
-_warned_rq_fallback = False
+_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix='gearcargo-task')
+_capacity = threading.BoundedSemaphore(102)
+
+
+class QueueUnavailable(RuntimeError):
+    pass
 
 
 def resolve_backend(configured: str, rq_available: bool) -> str:
     """Pure backend selector (unit-testable without an app).
 
-    Returns ``'rq'`` only when explicitly requested AND usable; otherwise
-    ``'thread'``.
+    Explicit RQ unavailability returns 'unavailable', never a thread fallback.
     """
-    if str(configured or '').strip().lower() == _RQ and rq_available:
-        return _RQ
+    if str(configured or '').strip().lower() == _RQ:
+        return _RQ if rq_available else 'unavailable'
     return _THREAD
 
 
@@ -58,7 +47,7 @@ def _rq_queue():
         if not redis_url:
             return None
         conn = Redis.from_url(redis_url)
-        conn.ping()  # fail fast if Redis is down → caller falls back to thread
+        conn.ping()  # Fail fast without changing execution guarantees.
         name = current_app.config.get('TASK_QUEUE_NAME', 'gearcargo')
         timeout = int(current_app.config.get('TASK_QUEUE_DEFAULT_TIMEOUT', 600))
         return Queue(name, connection=conn, default_timeout=timeout)
@@ -68,20 +57,31 @@ def _rq_queue():
 
 
 def _spawn_thread(func, args, kwargs):
-    """Run *func* in a daemon thread, inside the current app context."""
+    """Run *func* in the bounded pool, inside the current app context."""
     try:
         app = current_app._get_current_object()
     except RuntimeError:
         app = None
 
-    def _runner():
-        if app is not None:
-            with app.app_context():
-                func(*args, **kwargs)
-        else:
-            func(*args, **kwargs)
+    capacity = _capacity
+    if not capacity.acquire(blocking=False):
+        raise QueueUnavailable('Background task queue is full')
 
-    threading.Thread(target=_runner, daemon=True).start()
+    def _runner():
+        try:
+            if app is not None:
+                with guarded_app_context(app):
+                    func(*args, **kwargs)
+            else:
+                func(*args, **kwargs)
+        finally:
+            capacity.release()
+
+    try:
+        _executor.submit(_runner)
+    except Exception:
+        capacity.release()
+        raise
     return None
 
 
@@ -90,22 +90,15 @@ def enqueue_task(func, *args, description=None, **kwargs):
 
     Returns the RQ ``Job`` (rq backend) or ``None`` (thread backend). Callers
     treat the work as fire-and-forget; status, when needed, is tracked in the
-    domain model (e.g. ``Attachment.ocr_processed``), not the queue.
+    caller's domain model. OCR admission does not use this generic API.
     """
-    global _warned_rq_fallback
-
     configured = current_app.config.get('TASK_QUEUE_BACKEND', _THREAD)
 
     if str(configured or '').strip().lower() == _RQ:
         queue = _rq_queue()
         if queue is not None:
             return queue.enqueue(func, *args, description=description, **kwargs)
-        if not _warned_rq_fallback:
-            logger.warning(
-                'TASK_QUEUE_BACKEND=rq but the queue is unavailable; '
-                'falling back to in-process threads.'
-            )
-            _warned_rq_fallback = True
+        raise QueueUnavailable('Configured RQ queue is unavailable; no fallback execution was started')
 
     return _spawn_thread(func, args, kwargs)
 

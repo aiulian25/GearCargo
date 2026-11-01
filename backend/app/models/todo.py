@@ -3,16 +3,20 @@ GearCargo - Todo Model
 """
 
 from datetime import datetime, timezone
-from app.utils.timeutils import utc_naive_now
+from app.utils.timeutils import utc_naive_now, isoformat_utc
 from app import db
+from app.utils.revisions import next_revision
 
 
 class Todo(db.Model):
     """Todo model for vehicle-related tasks."""
     
     __tablename__ = 'todos'
+    __table_args__ = (db.UniqueConstraint('completed_from_id', name='uq_todos_completed_from'),)
     
     id = db.Column(db.Integer, primary_key=True)
+    revision = db.Column(db.BigInteger, nullable=False, default=1, server_default="1")
+    __mapper_args__ = {"version_id_col": revision, "version_id_generator": next_revision}
     
     # Content
     title = db.Column(db.String(255), nullable=False)
@@ -21,6 +25,8 @@ class Todo(db.Model):
     # Scheduling
     due_date = db.Column(db.Date)
     priority = db.Column(db.String(10), default='medium')  # low, medium, high
+
+    completed_from_id = db.Column(db.Integer, db.ForeignKey('todos.id', name='fk_todos_completed_from', ondelete='SET NULL'), nullable=True)
 
     # Recurrence (F15 — parity with reminders): a recurring todo respawns its
     # next occurrence on completion, advancing due_date by frequency×value.
@@ -74,6 +80,7 @@ class Todo(db.Model):
         """Convert to dictionary."""
         return {
             'id': self.id,
+            'revision': self.revision,
             'title': self.title,
             'description': self.description,
             'due_date': self.due_date.isoformat() if self.due_date else None,
@@ -82,11 +89,11 @@ class Todo(db.Model):
             'frequency': self.frequency,
             'frequency_value': self.frequency_value,
             'completed': self.completed,
-            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
+            'completed_at': isoformat_utc(self.completed_at) if self.completed_at else None,
             'is_overdue': self.is_overdue,
             'days_until_due': self.days_until_due,
             'vehicle_id': self.vehicle_id,
             'user_id': self.user_id,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'created_at': isoformat_utc(self.created_at) if self.created_at else None,
+            'updated_at': isoformat_utc(self.updated_at) if self.updated_at else None,
         }

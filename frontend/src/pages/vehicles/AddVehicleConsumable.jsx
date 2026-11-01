@@ -1,8 +1,16 @@
+import CurrencySelect from '../../components/ui/CurrencySelect'
+import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
+import { localDate } from '../../utils/dateFormat'
+import useExpenseNavigation from '../../hooks/useExpenseNavigation'
+import { readPrivateNavigationState } from '../../utils/privateNavigation'
+import toast from 'react-hot-toast'
+import { saveExpenseWithReceipt } from '../../utils/receiptExpense'
+import { useMutationIntent } from '../../hooks/useMutationIntent'
 import { useState, useEffect } from 'react'
-import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom'
+import { useParams, useSearchParams, useLocation } from 'react-router-dom'
 import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
 import { useForm } from 'react-hook-form'
-import { vehicleApi, consumableApi, attachmentApi } from '../../services/api'
+import { vehicleApi, consumableApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import ReceiptUpload from '../../components/ReceiptUpload'
 
@@ -27,11 +35,12 @@ const CONSUMABLE_TYPES = [
 ]
 
 export default function AddVehicleConsumable() {
+  const mutation = useMutationIntent()
   const { id: vehicleId } = useParams()
   const [searchParams] = useSearchParams()
   const editId = searchParams.get('edit')
   const isEditMode = !!editId
-  const navigate = useNavigate()
+  const navigate = useExpenseNavigation(vehicleId)
   const location = useLocation()
   const { t } = useTranslation()
   const { currency } = useCurrency()
@@ -42,13 +51,14 @@ export default function AddVehicleConsumable() {
   const [isLoading, setIsLoading] = useState(true)
   const [receiptFile, setReceiptFile] = useState(null)
 
-  const { register, handleSubmit, formState: { errors }, reset } = useForm({
+  const { register, getValues, handleSubmit, formState: { errors, isDirty }, reset } = useForm({
     defaultValues: {
       consumable_type: 'tire',
       brand: '',
-      date: new Date().toISOString().split('T')[0],
+      date: localDate(),
       odometer: '',
       amount: '',
+      currency: currency.code,
       quantity: 1,
       expected_lifespan_km: '',
       expected_lifespan_months: '',
@@ -66,12 +76,14 @@ export default function AddVehicleConsumable() {
         if (isEditMode) {
           const entryRes = await consumableApi.get(editId)
           const entry = entryRes.data
+          mutation.capture(entry)
           reset({
             consumable_type: entry.consumable_type || 'tire',
             brand: entry.brand || '',
-            date: entry.date ? entry.date.split('T')[0] : new Date().toISOString().split('T')[0],
+            date: entry.date ? entry.date.split('T')[0] : localDate(),
             odometer: entry.install_odometer ?? entry.odometer ?? '',
             amount: entry.amount || '',
+            currency: entry.currency || currency.code,
             quantity: entry.quantity || 1,
             expected_lifespan_km: entry.expected_lifespan_km ?? '',
             expected_lifespan_months: entry.expected_lifespan_months ?? '',
@@ -83,13 +95,16 @@ export default function AddVehicleConsumable() {
           // reading for convenience, and — F43 "Replace now" — carry over the
           // worn part's type/brand/lifespans from router state so replacing is
           // two taps (the new entry then supersedes the old one, F43 due.py).
-          const prefill = location.state?.prefill
+          const prefill = readPrivateNavigationState(location.state)?.prefill
           reset((prev) => ({
             ...prev,
             ...(response.data?.current_mileage ? { odometer: response.data.current_mileage } : {}),
             ...(prefill ? {
               consumable_type: prefill.consumable_type ?? prev.consumable_type,
               brand: prefill.brand ?? '',
+              date: prefill.date ?? prev.date,
+              amount: prefill.amount ?? prev.amount,
+              currency: prefill.currency ?? prev.currency,
               quantity: prefill.quantity ?? 1,
               expected_lifespan_km: prefill.expected_lifespan_km ?? '',
               expected_lifespan_months: prefill.expected_lifespan_months ?? '',
@@ -105,7 +120,9 @@ export default function AddVehicleConsumable() {
       }
     }
     fetchData()
-  }, [vehicleId, editId, isEditMode, navigate, reset])
+  }, [vehicleId, editId, isEditMode, navigate, reset, mutation, location.state, currency.code])
+
+  const markSaved = useUnsavedChanges(isDirty || receiptFile)
 
   const onSubmit = async (data) => {
     setIsSubmitting(true)
@@ -119,6 +136,7 @@ export default function AddVehicleConsumable() {
         install_date: data.date,
         odometer: data.odometer === '' ? null : parseInt(data.odometer),
         install_odometer: data.odometer === '' ? null : parseInt(data.odometer),
+        currency: data.currency,
         amount: data.amount === '' ? 0 : parseFloat(data.amount),
         quantity: data.quantity === '' ? 1 : parseInt(data.quantity),
         expected_lifespan_km: data.expected_lifespan_km === '' ? null : parseInt(data.expected_lifespan_km),
@@ -127,30 +145,22 @@ export default function AddVehicleConsumable() {
         notes: data.notes || null,
       }
 
-      let response
-      if (isEditMode) {
-        response = await consumableApi.update(editId, payload)
+      if (receiptFile) {
+        const result = await saveExpenseWithReceipt({ resource: 'consumables', editId,
+          payload, config: mutation.options(), file: receiptFile, attachmentId: null })
+        if (result.receiptPending) toast(t('pwa.sync.receipts.savedPending'), { duration: 8000 })
+      } else if (isEditMode) {
+        await consumableApi.update(editId, payload, mutation.options())
       } else {
-        response = await consumableApi.create(payload)
+        await consumableApi.create(payload, mutation.options())
       }
 
-      const entryId = isEditMode ? editId : response.data?.entry?.id
-      if (receiptFile && entryId) {
-        try {
-          await attachmentApi.upload(receiptFile, {
-            vehicleId: parseInt(vehicleId),
-            entryId,
-            category: 'receipt',
-          })
-        } catch (uploadErr) {
-          console.error('Failed to upload receipt:', uploadErr)
-        }
-      }
-
+      if (!markSaved()) return
       navigate(`/vehicles/${vehicleId}/consumables`)
     } catch (err) {
       if (isOfflineWriteError(err)) {
         announceOfflineSaved(t)
+        if (!markSaved()) return
         navigate(`/vehicles/${vehicleId}/consumables`)
         return
       }
@@ -159,6 +169,7 @@ export default function AddVehicleConsumable() {
       const data = err.response?.data
       setError((data?.message_key && t(data.message_key))
         || data?.error
+        || err.message
         || t('addConsumable.error')
         || 'Failed to save consumable')
     } finally {
@@ -226,9 +237,11 @@ export default function AddVehicleConsumable() {
           </div>
           <div>
             <label className="label" htmlFor="amount">{t('addConsumable.cost') || 'Cost'} ({currency.symbol})</label>
-            <input id="amount" type="number" inputMode="decimal" step="0.01" min="0" className="input" placeholder="0.00" {...register('amount')} />
+            <input id="amount" type="number" inputMode="decimal" step="0.01" min={Number(readPrivateNavigationState(location.state)?.prefill?.amount) < 0 ? undefined : 0} className="input" placeholder="0.00" {...register('amount')} />
           </div>
         </div>
+
+        <CurrencySelect register={register} extraCurrency={readPrivateNavigationState(location.state)?.prefill?.currency || getValues('currency')} />
 
         {/* Odometer at install */}
         <div>
@@ -271,6 +284,7 @@ export default function AddVehicleConsumable() {
         {/* Receipt */}
         {!isEditMode && (
           <ReceiptUpload
+            durableDraft
             onFileSelect={setReceiptFile}
             onFileRemove={() => setReceiptFile(null)}
           />

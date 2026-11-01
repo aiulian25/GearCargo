@@ -1,3 +1,5 @@
+import { useDateFormat } from '../hooks/useDateFormat'
+import FinancialBasis from '../components/ui/FinancialBasis'
 /**
  * GearCargo - Public Shared Report viewer (F05)
  *
@@ -9,14 +11,16 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { reportsApi } from '../services/api'
 import { useTranslation } from '../contexts/LanguageContext'
+import { ReportSharePrivacyNotice } from '../components/settings/ReportSharePreview'
 
-const CATS = ['fuel', 'service', 'repair', 'tax', 'parking', 'insurance']
+const CATS = ['fuel', 'service', 'repair', 'tax', 'parking', 'consumable', 'insurance']
 const CAT_COLOR = {
   fuel: '#f59e0b', service: '#3b82f6', repair: '#ef4444',
   tax: '#f43f5e', parking: '#a855f7', insurance: '#10b981',
 }
 
 export default function SharedReport() {
+  const { formatDateShort } = useDateFormat()
   const { token } = useParams()
   const { t, language } = useTranslation()
   const [state, setState] = useState({ loading: true, data: null, error: null, status: null })
@@ -41,11 +45,7 @@ export default function SharedReport() {
       return `${currencyCode || ''} ${n.toFixed(0)}`
     }
   }
-  const fmtDate = (iso) => {
-    if (!iso) return ''
-    try { return new Date(iso).toLocaleDateString(language || 'en', { year: 'numeric', month: 'short', day: 'numeric' }) }
-    catch { return iso }
-  }
+  const fmtDate = iso => iso ? formatDateShort(iso) : ''
 
   // Themed container shared by all states.
   const Shell = ({ children }) => (
@@ -119,7 +119,7 @@ export default function SharedReport() {
               <li key={k} className="flex items-center justify-between gap-3">
                 <span className="flex items-center gap-2 min-w-0">
                   <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: CAT_COLOR[k] }} />
-                  <span className="text-sm truncate">{t(`charts.${k}`) || k}</span>
+                  <span className="text-sm truncate">{t(['insurance', 'consumable'].includes(k) ? `financial.${k}` : `charts.${k}`) || k}</span>
                   <span className="text-2xs text-(--color-text-muted) shrink-0">({d.entry_counts?.[k] || 0})</span>
                 </span>
                 <span className="text-sm font-medium shrink-0">{fmtMoney(d.currency, d.totals?.[k] || 0)}</span>
@@ -142,6 +142,8 @@ export default function SharedReport() {
       )}
 
       {/* PDF download */}
+      <FinancialBasis data={d} />
+      <div className="mb-4"><ReportSharePrivacyNotice /></div>
       <a
         href={reportsApi.sharedPdfUrl(token)}
         className="btn-primary w-full flex items-center justify-center gap-2"

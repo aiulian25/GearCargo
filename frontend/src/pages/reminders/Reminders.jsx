@@ -1,3 +1,4 @@
+import { mutationOptions } from '../../utils/mutationProtocol'
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { reminderApi } from '../../services/api'
@@ -5,6 +6,7 @@ import { formatDistanceToNow, isPast, isToday, isTomorrow, parseISO } from 'date
 import { useTranslation } from '../../contexts/LanguageContext'
 import toast from 'react-hot-toast'
 import EmptyState from '../../components/ui/EmptyState'
+import { reminderPath } from '../../utils/reminderRoutes'
 
 export default function Reminders() {
   const { t } = useTranslation()
@@ -43,20 +45,35 @@ export default function Reminders() {
     fetchReminders()
   }, [filter])
   
-  const handleComplete = async (id, e) => {
+  const handleComplete = async (id, e, completion = null) => {
     if (e) {
       e.preventDefault()
       e.stopPropagation()
     }
     
     try {
-      await reminderApi.complete(id)
+      await reminderApi.complete(id, completion, mutationOptions(reminders.find(r => r.id === id)))
       setReminders(reminders.filter(r => r.id !== id))
       // Refresh stats
       const statsResponse = await reminderApi.getStats()
       setStats(statsResponse.data)
     } catch (error) {
       console.error('Failed to complete reminder:', error)
+      const data = error.response?.data
+      if (data?.code === 'MILEAGE_RECURRENCE_REQUIRED' && !completion) {
+        const reminder = reminders.find(r => r.id === id)
+        const answer = window.prompt(t('reminderDelivery.nextMileagePrompt')
+          .replace('{minimum}', String(data.minimum_next_mileage))
+          .replace('{unit}', reminder?.vehicle_distance_unit || 'km'))
+        if (answer === null) return
+        const value = Number(answer)
+        if (!Number.isInteger(value) || value < data.minimum_next_mileage) {
+          toast.error(t('validation.invalidNumber'))
+          return
+        }
+        return handleComplete(id, null, { next_due_mileage: value })
+      }
+      toast.error(data?.message_key ? t(data.message_key) : data?.error || t('common.error'))
     }
   }
   
@@ -68,7 +85,7 @@ export default function Reminders() {
     
     setSnoozingId(id)
     try {
-      await reminderApi.snooze(id, days)
+      await reminderApi.snooze(id, days, mutationOptions(reminders.find(r => r.id === id)))
       toast.success(t('reminders.snoozedSuccess') || `Reminder snoozed for ${days} days`)
       // Refresh list
       const response = await reminderApi.getAll({ status: filter })
@@ -198,7 +215,7 @@ export default function Reminders() {
             return (
               <Link
                 key={reminder.id}
-                to={`/reminders/${reminder.id}`}
+                to={reminderPath(reminder.id)}
                 className="card flex items-start gap-3 touch-manipulation"
               >
                 {/* Icon */}

@@ -26,7 +26,9 @@ export function ConfirmProvider({ children }) {
   const prevFocusRef = useRef(null)
 
   const confirm = useCallback((opts = {}) => {
+    if (opts.signal?.aborted) return Promise.resolve(false)
     return new Promise((resolve) => {
+      resolveRef.current?.(false)
       resolveRef.current = resolve
       prevFocusRef.current = document.activeElement
       setOptions(opts)
@@ -43,6 +45,15 @@ export function ConfirmProvider({ children }) {
     }
     if (resolve) resolve(result)
   }, [])
+
+  useEffect(() => {
+    const signal = options?.signal
+    if (!signal) return
+    const cancel = () => settle(false)
+    if (signal.aborted) cancel()
+    else signal.addEventListener('abort', cancel, { once: true })
+    return () => signal.removeEventListener('abort', cancel)
+  }, [options, settle])
 
   // Focus management + keyboard handling while open.
   useEffect(() => {

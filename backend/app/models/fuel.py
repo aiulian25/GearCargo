@@ -24,7 +24,7 @@ class FuelEntry(Entry):
     
     # Computed
     fuel_efficiency = db.Column(db.Float)  # L/100km calculated
-    trip_distance = db.Column(db.Integer)  # km since last fill
+    trip_distance = db.Column(db.Integer)  # vehicle distance unit since previous full tank
     
     # OCR
     ocr_populated = db.Column(db.Boolean, default=False)
@@ -39,24 +39,30 @@ class FuelEntry(Entry):
         fills. Kept for backwards compatibility only; the app now computes
         full-to-full figures via services/fuel_efficiency.recalculate_efficiencies.
         """
-        if previous_odometer and self.odometer and self.liters:
+        from app.utils.units import distance_to_km
+        self.trip_distance = self.fuel_efficiency = None
+        if previous_odometer is not None and self.odometer is not None and self.liters is not None:
             distance = self.odometer - previous_odometer
             if distance > 0:
                 self.trip_distance = distance
-                self.fuel_efficiency = float(self.liters) / distance * 100
-    
+                km = distance_to_km(distance, getattr(self.vehicle, 'distance_unit', None))
+                if km:
+                    self.fuel_efficiency = float(self.liters) / float(km) * 100
+
     def to_dict(self, **kwargs):
         """Convert to dictionary."""
         data = super().to_dict(**kwargs)
         data.update({
-            'liters': float(self.liters) if self.liters else None,
-            'price_per_liter': float(self.price_per_liter) if self.price_per_liter else None,
+            'liters': float(self.liters) if self.liters is not None else None,
+            'price_per_liter': float(self.price_per_liter) if self.price_per_liter is not None else None,
             'station_address': self.station_address,
-            'total_price': float(self.total_price) if self.total_price else None,
+            'total_price': float(self.total_price) if self.total_price is not None else None,
             'fuel_type': self.fuel_type,
             'station': self.station,
             'full_tank': self.full_tank,
             'fuel_efficiency': self.fuel_efficiency,
             'trip_distance': self.trip_distance,
+            'volume_unit': 'liters',
+            'efficiency_unit': 'L/100km',
         })
         return data

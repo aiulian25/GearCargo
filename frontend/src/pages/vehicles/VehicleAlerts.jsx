@@ -1,8 +1,9 @@
+import { calendarDaysBetween, localDate, addCalendarYears } from '../../utils/dateFormat'
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { vehicleApi } from '../../services/api'
 import { useTranslation } from '../../contexts/LanguageContext'
-import { formatDate } from '../../utils/dateFormat'
+import { useDateFormat } from '../../hooks/useDateFormat'
 
 // SVG Icons
 const Icons = {
@@ -114,6 +115,7 @@ const predictionTypes = {
 }
 
 export default function VehicleAlerts() {
+  const { formatDate } = useDateFormat()
   const { id } = useParams()
   const navigate = useNavigate()
   const { t } = useTranslation()
@@ -148,7 +150,7 @@ export default function VehicleAlerts() {
   // Generate predictions based on vehicle data and stats
   const generatePredictions = (vehicle, stats) => {
     const predictions = []
-    const today = new Date()
+    const today = localDate()
     
     // Next service prediction
     if (stats?.next_service_days !== null && stats?.next_service_days !== undefined) {
@@ -184,15 +186,14 @@ export default function VehicleAlerts() {
     
     // Insurance expiry (if we have insurance data)
     if (vehicle?.insurance_expiry) {
-      const expiryDate = new Date(vehicle.insurance_expiry)
-      const daysUntil = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24))
+      const daysUntil = calendarDaysBetween(vehicle.insurance_expiry, today)
       
       if (daysUntil <= 60) {
         predictions.push({
           id: 'insurance',
           type: 'insurance_expiry',
           title: t('alerts.insuranceExpiry') || 'Insurance Expiry',
-          description: formatDate(expiryDate),
+          descriptionDate: vehicle.insurance_expiry,
           daysUntil,
           priority: daysUntil <= 14 ? 'high' : daysUntil <= 30 ? 'medium' : 'low',
           date: vehicle.insurance_expiry,
@@ -202,15 +203,14 @@ export default function VehicleAlerts() {
     
     // Tax due (if we have tax data)
     if (vehicle?.tax_due_date) {
-      const dueDate = new Date(vehicle.tax_due_date)
-      const daysUntil = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24))
+      const daysUntil = calendarDaysBetween(vehicle.tax_due_date, today)
       
       if (daysUntil <= 60) {
         predictions.push({
           id: 'tax',
           type: 'tax_due',
           title: t('alerts.taxDue') || 'Tax Due',
-          description: formatDate(dueDate),
+          descriptionDate: vehicle.tax_due_date,
           daysUntil,
           priority: daysUntil <= 14 ? 'high' : daysUntil <= 30 ? 'medium' : 'low',
           date: vehicle.tax_due_date,
@@ -237,17 +237,15 @@ export default function VehicleAlerts() {
     
     // Annual inspection
     if (vehicle?.last_inspection_date) {
-      const lastInspection = new Date(vehicle.last_inspection_date)
-      const nextInspection = new Date(lastInspection)
-      nextInspection.setFullYear(nextInspection.getFullYear() + 1)
-      const daysUntil = Math.ceil((nextInspection - today) / (1000 * 60 * 60 * 24))
+      const nextInspection = addCalendarYears(vehicle.last_inspection_date, 1)
+      const daysUntil = calendarDaysBetween(nextInspection, today)
       
       if (daysUntil <= 60) {
         predictions.push({
           id: 'inspection',
           type: 'inspection',
           title: t('alerts.inspection') || 'Vehicle Inspection',
-          description: formatDate(nextInspection),
+          descriptionDate: nextInspection,
           daysUntil,
           priority: daysUntil <= 14 ? 'high' : daysUntil <= 30 ? 'medium' : 'low',
         })
@@ -297,6 +295,7 @@ export default function VehicleAlerts() {
   
   return (
     <div className="pb-20">
+      <Link className="btn btn-primary mb-4" to={`/vehicles/${id}/appointments`}>{t('appointments.plan')}</Link>
       {/* Header */}
       <div className="sticky top-0 z-10 bg-(--color-bg-primary) border-b border-(--color-border)">
         <div className="flex items-center gap-3 p-4">
@@ -380,7 +379,7 @@ export default function VehicleAlerts() {
                       </div>
                       
                       <p className="text-sm text-(--color-text-secondary) mb-2">
-                        {prediction.description}
+                        {prediction.descriptionDate ? formatDate(prediction.descriptionDate) : prediction.description}
                       </p>
                       
                       {prediction.daysUntil !== undefined && (

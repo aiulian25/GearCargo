@@ -2,6 +2,8 @@
 GearCargo - Consumable Entry Routes (tires, battery, wipers, filters, …)
 """
 
+from app.services.mutations import mutation_endpoint, commit_mutation
+
 from datetime import datetime, timezone
 
 from flask import Blueprint, request, jsonify, current_app
@@ -109,6 +111,7 @@ def get_consumables_due(current_user):
 
 @consumables_bp.route('', methods=['POST'])
 @token_required
+@mutation_endpoint(ConsumableEntry)
 def create_consumable_entry(current_user):
     """Create a consumable entry."""
     data = request.get_json() or {}
@@ -169,7 +172,7 @@ def create_consumable_entry(current_user):
     )
 
     db.session.add(entry)
-    db.session.commit()
+    commit_mutation()
 
     return jsonify({
         'message': 'Consumable entry created',
@@ -197,6 +200,7 @@ def get_consumable_entry(current_user, entry_id):
 
 @consumables_bp.route('/<int:entry_id>', methods=['PUT'])
 @token_required
+@mutation_endpoint(ConsumableEntry, 'entry_id')
 def update_consumable_entry(current_user, entry_id):
     entry = ConsumableEntry.query.join(Vehicle).filter(
         ConsumableEntry.id == entry_id,
@@ -247,7 +251,7 @@ def update_consumable_entry(current_user, entry_id):
     for column, value in parsed_columns.items():
         setattr(entry, column, value)
 
-    db.session.commit()
+    commit_mutation()
     vehicle = db.session.get(Vehicle, entry.vehicle_id)
     return jsonify({
         'message': 'Consumable entry updated',
@@ -257,6 +261,7 @@ def update_consumable_entry(current_user, entry_id):
 
 @consumables_bp.route('/<int:entry_id>', methods=['DELETE'])
 @token_required
+@mutation_endpoint(ConsumableEntry, 'entry_id')
 def delete_consumable_entry(current_user, entry_id):
     entry = ConsumableEntry.query.join(Vehicle).filter(
         ConsumableEntry.id == entry_id,
@@ -265,5 +270,5 @@ def delete_consumable_entry(current_user, entry_id):
     if not entry:
         return jsonify({'error': 'Entry not found'}), 404
     db.session.delete(entry)
-    db.session.commit()
+    commit_mutation()
     return jsonify({'message': 'Consumable entry deleted'})

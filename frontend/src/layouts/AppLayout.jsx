@@ -1,3 +1,4 @@
+import useUnsavedExit from '../hooks/useUnsavedExit'
 import { useState, useRef, useEffect, Suspense } from 'react'
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
@@ -214,6 +215,7 @@ function UserMenu({ user, onLogout }) {
 
 export default function AppLayout() {
   const { user, logout } = useAuth()
+  const confirmExit = useUnsavedExit()
   const { available: updateAvailable, isDev, newerRelease } = useAppUpdate()
   const { t } = useTranslation()
   const location = useLocation()
@@ -233,6 +235,7 @@ export default function AppLayout() {
   }, [])
 
   const handleLogout = async () => {
+    if (!(await confirmExit())) return
     await logout()
     navigate('/login')
   }

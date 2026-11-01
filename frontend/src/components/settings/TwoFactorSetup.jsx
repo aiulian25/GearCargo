@@ -8,7 +8,7 @@ import { jsPDF } from 'jspdf'
 import api from '../../services/api'
 import { useTranslation } from '../../contexts/LanguageContext'
 import { useAuth } from '../../contexts/AuthContext'
-import { formatDate, formatDateTime } from '../../utils/dateFormat'
+import { useDateFormat } from '../../hooks/useDateFormat'
 import { APP_LOGO_SRC, APP_NAME } from '../../config/brand'
 
 // Backup-codes PDF header geometry, in millimetres (jsPDF's default unit).
@@ -108,6 +108,7 @@ const StepIndicator = ({ currentStep, totalSteps, t }) => {
 }
 
 export default function TwoFactorSetup({ isOpen, onClose, onSuccess, isEnabled = false }) {
+  const { formatDate, formatDateTime } = useDateFormat()
   const { t } = useTranslation()
   const { refreshUser } = useAuth()
   

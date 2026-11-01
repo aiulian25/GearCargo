@@ -2,6 +2,9 @@
 GearCargo - Service Entry Routes
 """
 
+from app.services.vehicle_archive import active_vehicle_condition
+from app.services.mutations import mutation_endpoint, commit_mutation
+
 from datetime import datetime, date, timezone
 from flask import Blueprint, request, jsonify, current_app
 from sqlalchemy import func
@@ -81,6 +84,7 @@ def get_service_entries(current_user):
 
 @services_bp.route('', methods=['POST'])
 @token_required
+@mutation_endpoint(ServiceEntry)
 def create_service_entry(current_user):
     """Create a new service entry."""
     data = request.get_json()
@@ -129,7 +133,7 @@ def create_service_entry(current_user):
         elif data.get('warranty_expires'):
             warranty_expires = parse_iso_date(data['warranty_expires'])
 
-        odometer = parse_optional_int(data.get('mileage') or data.get('odometer'),
+        odometer = parse_optional_int(data.get('mileage', data.get('odometer')),
                                       'Odometer must be a number')
         next_due_mileage = parse_optional_int(
             data.get('next_service_mileage') or data.get('next_due_mileage'),
@@ -187,7 +191,7 @@ def create_service_entry(current_user):
         vehicle.current_mileage = entry.odometer
     
     db.session.add(entry)
-    db.session.commit()
+    commit_mutation()
     
     # Auto-sync to calendar if enabled
     if current_user.calendar_enabled:
@@ -220,6 +224,7 @@ def get_service_entry(current_user, entry_id):
 
 @services_bp.route('/<int:entry_id>', methods=['PUT'])
 @token_required
+@mutation_endpoint(ServiceEntry, 'entry_id')
 def update_service_entry(current_user, entry_id):
     """Update a service entry."""
     entry = ServiceEntry.query.join(Vehicle).filter(
@@ -306,7 +311,7 @@ def update_service_entry(current_user, entry_id):
     if not amount_was_sent and labor_or_parts_changed:
         entry.amount = float(entry.labor_cost or 0) + float(entry.parts_cost or 0)
 
-    db.session.commit()
+    commit_mutation()
     
     return jsonify({
         'message': 'Service entry updated',
@@ -316,6 +321,7 @@ def update_service_entry(current_user, entry_id):
 
 @services_bp.route('/<int:entry_id>', methods=['DELETE'])
 @token_required
+@mutation_endpoint(ServiceEntry, 'entry_id')
 def delete_service_entry(current_user, entry_id):
     """Delete a service entry."""
     entry = ServiceEntry.query.join(Vehicle).filter(
@@ -327,7 +333,7 @@ def delete_service_entry(current_user, entry_id):
         return jsonify({'error': 'Entry not found'}), 404
     
     db.session.delete(entry)
-    db.session.commit()
+    commit_mutation()
     
     return jsonify({'message': 'Service entry deleted'})
 
@@ -339,6 +345,7 @@ def get_upcoming_services(current_user):
     vehicle_id = request.args.get('vehicle_id', type=int)
     
     query = ServiceEntry.query.join(Vehicle).filter(
+        active_vehicle_condition(ServiceEntry),
         Vehicle.user_id == current_user.id,
         ServiceEntry.next_due_date.isnot(None),
         ServiceEntry.next_due_date >= utc_today()

@@ -45,7 +45,7 @@ def test_fuel_stats(app, client, auth_headers):
         uid, vid = _mk(currency="GBP")
         db.session.add_all([
             FuelEntry(user_id=uid, vehicle_id=vid, currency="GBP", total_price=50,
-                      liters=40, fuel_efficiency=8.0, price_per_liter=1.25, date=TODAY),
+                      liters=40, fuel_efficiency=8.0, trip_distance=500, price_per_liter=1.25, date=TODAY),
             FuelEntry(user_id=uid, vehicle_id=vid, currency="GBP", total_price=30,
                       liters=20, fuel_efficiency=None, price_per_liter=None, date=TODAY),
         ])
@@ -57,7 +57,7 @@ def test_fuel_stats(app, client, auth_headers):
     assert d["total_cost"] == pytest.approx(80.0)
     assert d["total_liters"] == pytest.approx(60.0)
     assert d["entry_count"] == 2
-    assert d["avg_efficiency"] == pytest.approx(8.0)      # only the truthy one
+    assert d["avg_efficiency"] == pytest.approx(8.0)      # only the measured window
     assert d["avg_price_per_liter"] == pytest.approx(1.25)
     assert d["display_currency"] == "GBP"
     assert d["converted"] is True
@@ -174,16 +174,16 @@ def test_insurance_stats(app, client, auth_headers):
     with app.app_context():
         uid, vid = _mk()
         db.session.add_all([
-            InsurancePolicy(user_id=uid, vehicle_id=vid, provider="Acme", policy_type="auto",
+            InsurancePolicy(user_id=uid, vehicle_id=vid, currency="GBP", provider="Acme", policy_type="auto",
                             premium=1200, status="active",
                             start_date=TODAY - timedelta(days=100), end_date=TODAY + timedelta(days=100)),
-            InsurancePolicy(user_id=uid, vehicle_id=vid, provider="Beta", policy_type="auto",
+            InsurancePolicy(user_id=uid, vehicle_id=vid, currency="GBP", provider="Beta", policy_type="auto",
                             premium=600, status="active",
                             start_date=TODAY - timedelta(days=10), end_date=TODAY + timedelta(days=15)),
-            InsurancePolicy(user_id=uid, vehicle_id=vid, provider="Acme", policy_type="home",
+            InsurancePolicy(user_id=uid, vehicle_id=vid, currency="GBP", provider="Acme", policy_type="home",
                             premium=300, status="active",
                             start_date=TODAY - timedelta(days=400), end_date=TODAY - timedelta(days=40)),
-            InsurancePolicy(user_id=uid, vehicle_id=vid, provider="Acme", policy_type="auto",
+            InsurancePolicy(user_id=uid, vehicle_id=vid, currency="GBP", provider="Acme", policy_type="auto",
                             premium=999, status="cancelled",
                             start_date=TODAY - timedelta(days=10), end_date=TODAY + timedelta(days=200)),
         ])

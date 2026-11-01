@@ -1,3 +1,5 @@
+import { mutationOptions } from '../../utils/mutationProtocol'
+import { ocrFailed, ocrFinished, ocrLabel } from '../../utils/ocrStatus'
 import { useState, useEffect } from 'react'
 import { attachmentApi } from '../../services/api'
 import { useTranslation } from '../../contexts/LanguageContext'
@@ -139,36 +141,36 @@ const AttachmentViewer = ({
   // Handle single attachment or array
   const allAttachments = attachment ? [attachment] : attachments
   const currentAttachment = allAttachments[currentIndex]
+  const currentScanId = currentAttachment?.is_image || currentAttachment?.is_pdf ? currentAttachment.id : null
 
   useEffect(() => {
     setCurrentIndex(initialIndex)
     setZoom(1)
     setLoading(true)
     setError(null)
-    const targetAttachment = (attachment ? [attachment] : attachments)[initialIndex]
-    if (initialShowOcr && targetAttachment?.is_image) {
+  }, [initialIndex, isOpen])
+
+  // Reset on navigation and open the requested scan panel for images or PDFs.
+  useEffect(() => {
+    let cancelled = false
+    if (isOpen && initialShowOcr && currentIndex === initialIndex && currentScanId) {
       setShowOcrPanel(true)
       setOcrLoading(true)
-      attachmentApi.getOcr(targetAttachment.id)
-        .then(res => setOcrData(res.data))
-        .catch(() => setOcrData({ ocr_processed: false, has_text: false, ocr_text: '' }))
-        .finally(() => setOcrLoading(false))
+      attachmentApi.getOcr(currentScanId)
+        .then(res => { if (!cancelled) setOcrData(res.data) })
+        .catch(() => { if (!cancelled) setOcrData({ ocr_state: 'unavailable' }) })
+        .finally(() => { if (!cancelled) setOcrLoading(false) })
     } else {
       setShowOcrPanel(false)
       setOcrData(null)
     }
-  }, [initialIndex, isOpen, initialShowOcr])
-
-  // Reset OCR panel when user navigates between attachments
-  useEffect(() => {
-    setShowOcrPanel(false)
-    setOcrData(null)
     setOcrCopied(false)
     setOcrParsed(null)
     setOcrParseError('')
     setOcrRetrying(false)
     setOcrRetryError('')
-  }, [currentIndex])
+    return () => { cancelled = true }
+  }, [currentIndex, currentScanId, initialIndex, isOpen, initialShowOcr])
 
   // PDF blob loader — runs whenever the viewer opens or the current attachment
   // changes.  Fetches the PDF through the regular authenticated Axios instance
@@ -290,10 +292,11 @@ const AttachmentViewer = ({
       const response = await attachmentApi.update(currentAttachment.id, {
         description: editDescription,
         category: editCategory,
-      })
+      }, mutationOptions(currentAttachment))
       
       // Update the attachment in place
       if (response.data.attachment) {
+        currentAttachment.revision = response.data.attachment.revision
         currentAttachment.description = response.data.attachment.description
         currentAttachment.category = response.data.attachment.category
       }
@@ -301,6 +304,7 @@ const AttachmentViewer = ({
       // Notify parent of update if callback provided
       if (onUpdate) {
         onUpdate(currentAttachment.id, {
+          revision: response.data.attachment?.revision,
           description: editDescription,
           category: editCategory,
         })
@@ -316,7 +320,7 @@ const AttachmentViewer = ({
 
   // --- OCR helpers ---
   const handleToggleOcr = async () => {
-    if (!currentAttachment?.is_image) return
+    if (!['image', 'pdf'].includes(fileType)) return
     if (showOcrPanel) {
       setShowOcrPanel(false)
       return
@@ -381,9 +385,9 @@ const AttachmentViewer = ({
     setOcrRetrying(true)
     setOcrRetryError('')
     try {
-      await attachmentApi.retryOcr(currentAttachment.id)
+      const accepted = await attachmentApi.retryOcr(currentAttachment.id)
       // Reset local OCR data so the panel shows "Scanning…"
-      setOcrData({ ocr_processed: false, has_text: false, ocr_text: '' })
+      setOcrData({ ocr_processed: false, has_text: false, ocr_text: '', ...accepted.data })
       // Poll every 3 s, up to 20 attempts (60 s total)
       let attempts = 0
       const poll = async () => {
@@ -394,8 +398,8 @@ const AttachmentViewer = ({
         attempts++
         try {
           const res = await attachmentApi.getOcr(currentAttachment.id)
-          if (res.data.ocr_processed) {
-            setOcrData(res.data)
+          setOcrData(res.data)
+          if (ocrFinished(res.data)) {
             setOcrRetrying(false)
           } else {
             setTimeout(poll, 3000)
@@ -407,7 +411,10 @@ const AttachmentViewer = ({
       setTimeout(poll, 3000)
     } catch (err) {
       const status = err.response?.status
-      if (status === 429) {
+      if (err.response?.data?.ocr_state) {
+        setOcrData(err.response.data)
+        setOcrRetryError(ocrLabel(err.response.data, t))
+      } else if (status === 429) {
         setOcrRetryError(t('attachments.ocrRetryRateLimited') || 'Too many retry requests. Please wait.')
       } else {
         setOcrRetryError(t('attachments.ocrRetryError') || 'Re-scan failed. Please try again.')
@@ -538,8 +545,8 @@ const AttachmentViewer = ({
               {Icons.edit}
             </button>
 
-            {/* OCR scan button — images only */}
-            {fileType === 'image' && (
+            {/* OCR and PDF text status */}
+            {['image', 'pdf'].includes(fileType) && (
               <button
                 onClick={handleToggleOcr}
                 className={`p-2 rounded-lg transition-colors ${showOcrPanel ? 'bg-cyan-500/30 text-cyan-300' : 'hover:bg-white/10'}`}
@@ -597,7 +604,7 @@ const AttachmentViewer = ({
         </div>
 
         {/* OCR Panel — slides in below the image when scan button is active */}
-        {showOcrPanel && fileType === 'image' && (
+        {showOcrPanel && ['image', 'pdf'].includes(fileType) && (
           <div className="bg-gray-900/80 border-t border-white/10 rounded-b-lg p-4 max-h-72 overflow-y-auto">
             <div className="flex items-center justify-between mb-2">
               <span className="flex items-center gap-2 text-sm font-medium text-cyan-300">
@@ -636,12 +643,10 @@ const AttachmentViewer = ({
                 <div className="w-4 h-4 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin shrink-0" />
                 {t('attachments.ocrPending') || 'Scanning…'}
               </div>
-            ) : !ocrData?.ocr_processed ? (
+            ) : ocrFailed(ocrData) || !ocrData?.ocr_processed ? (
               <div className="flex items-center justify-between gap-3">
                 <p className="text-sm text-gray-500 italic">
-                  {ocrRetrying
-                    ? (t('attachments.ocrRetrying') || 'Re-scanning…')
-                    : (t('attachments.ocrPending') || 'Scan in progress — check back in a moment.')}
+                  {ocrLabel(ocrData, t)}
                 </p>
                 {!ocrRetrying && (
                   <button
@@ -774,13 +779,14 @@ const AttachmentViewer = ({
               // OCR status — only meaningful for images
               let ocrBadge = null
               if (isImage) {
-                if (!att.ocr_processed) {
+                if (ocrFailed(att) || !att.ocr_processed) {
                   ocrBadge = (
                     <span
                       className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center rounded-full bg-gray-900/80"
-                      title={t('attachments.ocrStatusScanning') || 'Scanning…'}
+                      title={ocrLabel(att, t)}
                     >
-                      <span className="w-3 h-3 border border-cyan-400 border-t-transparent rounded-full animate-spin block" />
+                      {ocrFailed(att) ? '!' : att.ocr_state === 'running'
+                        ? <span className="w-3 h-3 border border-cyan-400 border-t-transparent rounded-full animate-spin block" /> : '…'}
                     </span>
                   )
                 } else if (att.has_text) {

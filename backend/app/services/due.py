@@ -28,6 +28,7 @@ per-type endpoints filter columns that do not exist on the current models
 without depending on them.
 """
 
+from app.services.vehicle_archive import active_vehicle_condition
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import func
@@ -138,6 +139,7 @@ def build_due_items(user_id, days=None, today=None):
     # F52 — a snoozed reminder is silent until snoozed_until passes (matches the
     # push job + email digest so snooze means the same thing on every surface).
     reminders = Reminder.query.filter(
+        active_vehicle_condition(Reminder),
         Reminder.user_id == user_id,
         Reminder.completed == False,   # noqa: E712
         Reminder.dismissed == False,   # noqa: E712
@@ -155,6 +157,7 @@ def build_due_items(user_id, days=None, today=None):
     # Dismissal is occurrence-scoped via DueDismissal (todos have no native
     # dismissed flag), pinned to due_date by _resolve_due_ref.
     todos = Todo.query.filter(
+        active_vehicle_condition(Todo),
         Todo.user_id == user_id,
         Todo.completed == False,   # noqa: E712
         Todo.due_date.isnot(None),
@@ -220,6 +223,7 @@ def build_due_items(user_id, days=None, today=None):
 
     # --- 4. Insurance expiry --------------------------------------------------
     policies = InsurancePolicy.query.filter(
+        active_vehicle_condition(InsurancePolicy),
         InsurancePolicy.user_id == user_id,
         InsurancePolicy.status == 'active',
         InsurancePolicy.end_date.isnot(None),
@@ -231,6 +235,7 @@ def build_due_items(user_id, days=None, today=None):
 
     # --- 5. Document expiry (attachments) -------------------------------------
     docs = Attachment.query.filter(
+        active_vehicle_condition(Attachment),
         Attachment.user_id == user_id,
         Attachment.expires_at.isnot(None),
         Attachment.expires_at <= cutoff,
@@ -356,6 +361,17 @@ def build_due_items(user_id, days=None, today=None):
         add('prediction', p.id, p.title or 'Prediction', p.vehicle_id, None,
             f'/vehicles/{p.vehicle_id}/alerts',
             days_left=None, severity=severity, extra=extra)
+
+    # Only user-configured thresholds; storage contributes no mileage.
+    from app.models import TireSet
+    for tire_set in TireSet.query.filter(TireSet.user_id == user_id, TireSet.vehicle_id.in_(active_ids)):
+        data = tire_set.to_dict()
+        for alert in data['alerts']:
+            dates = [e.date for e in tire_set.events if e.kind in ('install', 'rotate')] if alert == 'rotation' else [r.date for r in tire_set.readings]
+            measured = max(dates) if dates else None
+            add('tire_' + alert, tire_set.id, tire_set.name, tire_set.vehicle_id, measured,
+                f'/vehicles/{tire_set.vehicle_id}/tires', severity='warning',
+                extra={'i18n_key': 'tires.' + alert + 'Alert', 'measured_date': measured.isoformat() if measured else None})
 
     return _finalize(items)
 

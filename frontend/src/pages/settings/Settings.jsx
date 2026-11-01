@@ -1,3 +1,6 @@
+import FinancialBasis from '../../components/ui/FinancialBasis'
+import { mutationOptions } from '../../utils/mutationProtocol'
+import { notifyPendingCleanup } from '../../utils/deletionFeedback'
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DISPLAY_VERSION } from '../../config/build'
@@ -5,17 +8,20 @@ import { useTheme } from '../../contexts/ThemeContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { useLanguage, useTranslation } from '../../contexts/LanguageContext'
 import { backupApi, vehicleApi, authApi, calendarApi, reportsApi, attachmentApi, pushApi } from '../../services/api'
+import CalendarSyncStatus from '../../components/settings/CalendarSyncStatus'
 import { usePushNotifications } from '../../hooks/usePushNotifications'
 import { useConfirm } from '../../components/ui/ConfirmDialog'
 import UserManagement from '../../components/admin/UserManagement'
 import SystemLogs from '../../components/admin/SystemLogs'
 import MaintenanceCleanup from '../../components/admin/MaintenanceCleanup'
-import { formatDate, formatDateTime } from '../../utils/dateFormat'
+import { useDateFormat } from '../../hooks/useDateFormat'
 import SecurityBlocking from '../../components/admin/SecurityBlocking'
 import AiStatusPanel from '../../components/admin/AiStatusPanel'
 import TwoFactorSetup from '../../components/settings/TwoFactorSetup'
+import PasskeySettings from '../../components/settings/PasskeySettings'
 import SecurityQuestionsSetup from '../../components/settings/SecurityQuestionsSetup'
 import BackupSettings from '../../components/settings/BackupSettings'
+import ReportSharePreview from '../../components/settings/ReportSharePreview'
 import IntegrationSettings from '../../components/settings/IntegrationSettings'
 import PrivacyPolicy from '../../components/settings/PrivacyPolicy'
 import TermsOfService from '../../components/settings/TermsOfService'
@@ -173,6 +179,7 @@ const SettingsIcons = {
 }
 
 export default function Settings() {
+  const { formatDate, formatDateTime } = useDateFormat()
   const navigate = useNavigate()
   const { theme, setTheme } = useTheme()
   const { user, logout, refreshUser } = useAuth()
@@ -276,6 +283,7 @@ export default function Settings() {
     month: new Date().getMonth() + 1,
   })
   const [reportPreview, setReportPreview] = useState(null)
+  const reportPreviewRequest = useRef(0)
   const [reportLoading, setReportLoading] = useState(false)
   const [reportGenerating, setReportGenerating] = useState(false)
   // F05 — shareable report links
@@ -482,7 +490,7 @@ export default function Settings() {
     if (!window.confirm(t('archive.restoreConfirm') || 'Restore this vehicle?')) return
     
     try {
-      await vehicleApi.unarchive(vehicleId)
+      await vehicleApi.unarchive(vehicleId, mutationOptions(archivedVehicles.find(v => v.id === vehicleId)))
       setArchivedVehicles(prev => prev.filter(v => v.id !== vehicleId))
       toast.success(t('archive.restoreSuccess') || 'Vehicle restored successfully')
     } catch (error) {
@@ -503,12 +511,14 @@ export default function Settings() {
     if (!ok) return
 
     try {
-      await vehicleApi.hardDelete(vehicleId)
+      const response = await vehicleApi.hardDelete(vehicleId)
       setArchivedVehicles(prev => prev.filter(v => v.id !== vehicleId))
-      toast.success(t('archive.deleteSuccess') || 'Vehicle deleted permanently')
+      if (!notifyPendingCleanup(response, t)) {
+        toast.success(t('archive.deleteSuccess') || 'Vehicle deleted permanently')
+      }
     } catch (error) {
       console.error('Failed to delete vehicle:', error)
-      toast.error(t('archive.deleteFailed') || 'Failed to delete vehicle')
+      toast.error(error.response?.data?.error || t('archive.deleteFailed') || 'Failed to delete vehicle')
     }
   }
   
@@ -848,7 +858,7 @@ export default function Settings() {
       try {
         const status = await calendarApi.getSyncJobStatus()
         const { status: state, synced, failed, error } = status.data
-        if (state === 'done') {
+        if (state === 'done' || state === 'idle') {
           stopSyncPoll()
           if (failed > 0) {
             toast.success(
@@ -864,13 +874,16 @@ export default function Settings() {
         } else if (state === 'failed') {
           stopSyncPoll()
           toast.error(error || t('settings.calendarSyncFailed') || 'Sync failed')
+        } else if (state === 'paused') {
+          stopSyncPoll()
+          toast(t('calendarQueue.pausedExplanation'))
         }
       } catch (_) {
         // poll error — keep trying
       }
       if (attempts >= maxAttempts) {
         stopSyncPoll()
-        toast.error(t('settings.calendarSyncFailed') || 'Sync timed out')
+        toast(t('calendarQueue.backgroundContinues'))
       }
     }, 2000)
   }
@@ -901,11 +914,15 @@ export default function Settings() {
   
   // Report handlers
   const handleReportSettingChange = (field, value) => {
+    reportPreviewRequest.current += 1
     setReportSettings(prev => ({ ...prev, [field]: value }))
     setReportPreview(null) // Clear preview when settings change
+    setCreatedShare(null)
+    setReportLoading(false)
   }
   
   const handlePreviewReport = async () => {
+    const requestId = ++reportPreviewRequest.current
     setReportLoading(true)
     try {
       const data = {
@@ -915,12 +932,12 @@ export default function Settings() {
         month: reportSettings.month,
       }
       const response = await reportsApi.preview(data)
-      setReportPreview(response.data)
+      if (requestId === reportPreviewRequest.current) setReportPreview(response.data)
     } catch (error) {
       console.error('Failed to preview report:', error)
       toast.error(t('settings.reportPreviewFailed') || 'Failed to load report preview')
     } finally {
-      setReportLoading(false)
+      if (requestId === reportPreviewRequest.current) setReportLoading(false)
     }
   }
   
@@ -978,9 +995,10 @@ export default function Settings() {
   }
 
   const handleCreateShare = async () => {
-    if (shareCreating) return
+    if (shareCreating || reportLoading || !reportPreview) return
     setShareCreating(true)
     setCreatedShare(null)
+    const previewRequestId = reportPreviewRequest.current
     try {
       const res = await reportsApi.createShare({
         vehicle_ids: reportSettings.vehicleId === 'all' ? 'all' : [parseInt(reportSettings.vehicleId)],
@@ -989,7 +1007,7 @@ export default function Settings() {
         month: reportSettings.month,
         expires_in_days: shareExpiryDays,
       })
-      setCreatedShare(res.data)
+      if (previewRequestId === reportPreviewRequest.current) setCreatedShare(res.data)
       await loadShares()
       toast.success(t('reportShare.created') || 'Share link created')
     } catch (error) {
@@ -1791,6 +1809,7 @@ export default function Settings() {
             
             {/* Calendar Configuration */}
             <div className="mt-4 space-y-4">
+              <CalendarSyncStatus />
               <div className="flex items-center justify-between">
                 <span className="text-xs text-(--color-text-muted)">
                   {t('settings.calendarSourcesConfigured') || 'Configured sources'}: {(calendarSettings.sources || []).length}
@@ -2232,6 +2251,7 @@ export default function Settings() {
                   {reportLoading ? (t('common.loading') || 'Loading...') : (t('settings.previewReport') || 'Preview Report Info')}
                 </button>
                 
+                {reportPreview && <FinancialBasis data={reportPreview} />}
                 {/* Preview Info */}
                 {reportPreview && (
                   <div className="bg-(--color-bg-tertiary) rounded-lg p-4 space-y-3">
@@ -2275,7 +2295,11 @@ export default function Settings() {
                           <span>{reportPreview.entry_counts?.parking || 0}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-(--color-text-muted)">🛡️ {t('settings.insurance') || 'Insurance'}:</span>
+                          <span className="text-(--color-text-muted)">{t('financial.consumable')}:</span>
+                          <span>{reportPreview.entry_counts?.consumable || 0}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-(--color-text-muted)">{t('financial.insurance')}:</span>
                           <span>{reportPreview.entry_counts?.insurance || 0}</span>
                         </div>
                       </div>
@@ -2331,6 +2355,8 @@ export default function Settings() {
                       </p>
                     </div>
 
+                    <ReportSharePreview preview={reportPreview} />
+
                     <div className="flex items-end gap-2">
                       <div className="flex-1">
                         <label className="block text-2xs text-(--color-text-muted) mb-1" htmlFor="shareExpiry">
@@ -2350,7 +2376,7 @@ export default function Settings() {
                       </div>
                       <button
                         onClick={handleCreateShare}
-                        disabled={shareCreating}
+                        disabled={shareCreating || reportLoading || !reportPreview}
                         className="px-4 py-2 rounded-lg bg-(--color-bg-tertiary) text-sm font-medium hover:opacity-90 disabled:opacity-50 whitespace-nowrap"
                       >
                         {shareCreating ? (t('reportShare.creating') || 'Creating…') : (t('reportShare.createButton') || 'Create link')}
@@ -2493,6 +2519,8 @@ export default function Settings() {
         </button>
       </div>
       
+      <PasskeySettings />
+
       {/* Data & Backup */}
       <div className="card mb-4">
         <button

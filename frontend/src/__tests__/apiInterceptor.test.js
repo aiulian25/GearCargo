@@ -25,6 +25,12 @@ function makeDeps(overrides = {}) {
 
 const err = (status, data = {}, config = {}) => ({ config, response: { status, data } })
 
+it.each(['expired', 'refresh-failed'])('preserves the reminder destination when authentication is %s', async mode => {
+  const deps = makeDeps({ getPath: () => '/reminders/42', refresh: vi.fn().mockRejectedValue(err(401)) })
+  await expect(handleAuthError(err(401, mode === 'expired' ? { code: 'SESSION_EXPIRED' } : {}), deps)).rejects.toBeTruthy()
+  expect(mode === 'expired' ? deps.redirectSoon : deps.redirectNow).toHaveBeenCalledWith('/login?reminder=42')
+})
+
 describe('handleAuthError', () => {
   it('401 → refreshes once, retries the original request, and marks it _retry', async () => {
     const deps = makeDeps()
@@ -109,4 +115,39 @@ describe('handleAuthError', () => {
     expect(deps.clearAuth).not.toHaveBeenCalled()
     expect(deps.redirectNow).not.toHaveBeenCalled()
   })
+
+  it('GC011 regression: an exhausted 401 retry waits for private cleanup', async () => {
+    let release
+    const deps = makeDeps({ clearAuth: vi.fn(() => new Promise(resolve => { release = resolve })) })
+    let finished = false
+    const result = handleAuthError(err(401, {}, { _retry: true }), deps).catch(() => { finished = true })
+    await Promise.resolve()
+    expect(deps.clearAuth).toHaveBeenCalledOnce()
+    expect(finished).toBe(false)
+    release()
+    await result
+    expect(finished).toBe(true)
+  })
+  it('GC011 regression: expired bootstrap on the login page clears private data', async () => {
+    const deps = makeDeps({ getPath: () => '/login' })
+    await expect(handleAuthError(err(401, {}, { url: '/auth/me' }), deps)).rejects.toBeDefined()
+    expect(deps.clearAuth).toHaveBeenCalledOnce()
+    expect(deps.refresh).not.toHaveBeenCalled()
+  })
+})
+
+it.each(['CSRF_INVALID', 'CSRF_ORIGIN_REJECTED'])('a %s refresh failure does not clear an otherwise valid browser session', async code => {
+  const failure = err(403, { code })
+  const deps = makeDeps({ refresh: vi.fn().mockRejectedValue(failure) })
+  await expect(handleAuthError(err(401), deps)).rejects.toBe(failure)
+  expect(deps.clearAuth).not.toHaveBeenCalled()
+  expect(deps.redirectNow).not.toHaveBeenCalled()
+})
+
+it('does not sign out the newer account when refresh is cancelled during proof acquisition', async () => {
+  const failure = Object.assign(new Error('Sign-in changed'), { code: 'AUTH_CONTEXT_CHANGED' })
+  const deps = makeDeps({ refresh: vi.fn().mockRejectedValue(failure) })
+  await expect(handleAuthError(err(401), deps)).rejects.toBe(failure)
+  expect(deps.clearAuth).not.toHaveBeenCalled()
+  expect(deps.redirectNow).not.toHaveBeenCalled()
 })

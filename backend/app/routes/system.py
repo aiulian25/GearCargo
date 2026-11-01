@@ -181,7 +181,7 @@ def get_due_surface(current_user):
 # the kinds emitted by app.services.due.build_due_items.
 _DISMISSIBLE_KINDS = frozenset((
     'reminder', 'service', 'tax', 'insurance', 'document',
-    'parking', 'fine', 'consumable', 'todo', 'prediction',
+    'parking', 'fine', 'consumable', 'todo', 'prediction', 'tire_rotation', 'tire_tread',
 ))
 
 # Kinds that carry their OWN ``dismissed`` boolean column, so a feed dismissal
@@ -237,6 +237,12 @@ def _resolve_due_ref(user, kind, ref_id):
         # Fines carry no due date (dismissal hides the fine until un-dismissed
         # or its status changes on the record itself).
         return obj, (obj.permit_expires if (obj and kind == 'parking') else None)
+    if kind in ('tire_rotation', 'tire_tread'):
+        from app.models import TireSet
+        obj = TireSet.query.filter_by(id=ref_id, user_id=user.id).first()
+        dates = ([e.date for e in obj.events if e.kind in ('install', 'rotate')] if kind == 'tire_rotation'
+                 else [r.date for r in obj.readings]) if obj else []
+        return obj, max(dates) if dates else None
     if kind == 'consumable':
         obj = ConsumableEntry.query.filter_by(id=ref_id, user_id=user.id).first()
         return obj, None

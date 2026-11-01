@@ -2,7 +2,7 @@
 # docker-backup.sh — Containerised GearCargo backup
 #
 # The archive builder for the single all-in-one image. Invoked by the in-image
-# scheduler (run-backup.sh), which exports DB_HOST/PGPORT/credentials so pg_dump
+# scheduler service or manual run-backup.sh, which export DB_HOST/PGPORT/credentials so pg_dump
 # connects to the embedded PostgreSQL over the loopback interface.
 #
 # Called by the scheduler:
@@ -20,8 +20,18 @@
 #   ATTACHMENTS_DIR — Read-only attachments mount    (default: /attachments)
 #   UPLOADS_DIR     — Read-only uploads mount        (default: /uploads)
 #   KEEP_LAST       — Oldest archives to retain      (default: 7)
+#   BACKUP_PASSPHRASE_FILE — Optional mounted secret; enables .tar.gz.gcb encryption
 
 set -eu
+umask 077
+
+crypto_script="$(dirname "$0")/../backup_crypto.py"
+if [ ! -f "$crypto_script" ]; then crypto_script="$(dirname "$0")/../backend/backup_crypto.py"; fi
+protection=plaintext
+if [ -n "${BACKUP_PASSPHRASE_FILE:-}" ]; then
+    python3 "$crypto_script" check-key --passphrase-file "$BACKUP_PASSPHRASE_FILE"
+    protection=encrypted
+fi
 
 BACKUP_ROOT="${BACKUP_ROOT:-/backups}"
 ATTACHMENTS_DIR="${ATTACHMENTS_DIR:-/attachments}"
@@ -40,21 +50,42 @@ case "${FREQUENCY}" in
         ;;
 esac
 
-timestamp="$(date +"%Y%m%d_%H%M%S")"
+timestamp="${BACKUP_OCCURRENCE:-$(date +"%Y%m%d_%H%M%S")}"
+case "$timestamp" in *[!0-9_]*|'') echo '[backup] Invalid occurrence identity' >&2; exit 1;; esac
 backup_dir="${BACKUP_ROOT}/${FREQUENCY}"
 archive_name="gearcargo_${FREQUENCY}_${timestamp}.tar.gz"
+if [ "$protection" = encrypted ]; then archive_name="${archive_name}.gcb"; fi
 archive_path="${backup_dir}/${archive_name}"
+if [ -n "${BACKUP_OCCURRENCE:-}" ] && [ -f "$archive_path" ]; then
+    if [ "$protection" = encrypted ]; then
+        # Authenticate the existing artifact before treating a retry as complete.
+        python3 "$crypto_script" verify --passphrase-file "$BACKUP_PASSPHRASE_FILE" --input "$archive_path"
+        echo '[backup] Encrypted scheduled occurrence already archived.'
+        exit 0
+    elif tar -tzf "$archive_path" >/dev/null 2>&1; then
+        echo '[backup] Plaintext scheduled occurrence already archived.'
+        exit 0
+    fi
+fi
+partial_archive=""
 temp_dir="$(mktemp -d /tmp/gc-backup.XXXXXX)"
 
-cleanup() { rm -rf "${temp_dir}"; }
-trap cleanup EXIT INT TERM
+cleanup() { rm -rf "${temp_dir}"; if [ -n "$partial_archive" ]; then rm -f "$partial_archive"; fi; }
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 mkdir -p "${backup_dir}" \
          "${temp_dir}/database" \
          "${temp_dir}/media/attachments" \
          "${temp_dir}/media/uploads"
+partial_archive="$(mktemp "${archive_path}.partial.XXXXXX")"
 
 echo "[backup] ${FREQUENCY} backup started — $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+echo "[backup] Artifact protection: ${protection}"
+if [ "$protection" = plaintext ]; then
+    echo '[backup] Contents are readable without a backup key. Use access-restricted encrypted storage.'
+fi
 
 # ── Database dump (PGPASSWORD inherited from environment) ────────────────────
 echo "[backup] Dumping PostgreSQL database (${DB_HOST}/${DB_NAME})"
@@ -63,7 +94,8 @@ pg_dump \
     -U "${DB_USER}" \
     "${DB_NAME}" \
     --clean --if-exists --no-owner --no-privileges \
-    | gzip -c > "${temp_dir}/database/database.sql.gz"
+    > "${temp_dir}/database/database.sql"
+gzip "${temp_dir}/database/database.sql"
 echo "[backup] Database dump complete ($(du -h "${temp_dir}/database/database.sql.gz" | cut -f1))"
 
 # ── Media directories (read-only mounts, best-effort) ───────────────────────
@@ -86,6 +118,7 @@ cat > "${temp_dir}/manifest.json" << MANIFEST
 {
   "version": "3.0",
   "type": "system_full",
+  "artifact_protection": "${protection}",
   "frequency": "${FREQUENCY}",
   "created_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
   "database": {
@@ -101,13 +134,20 @@ cat > "${temp_dir}/manifest.json" << MANIFEST
 MANIFEST
 
 # ── Archive ──────────────────────────────────────────────────────────────────
-tar -C "${temp_dir}" -czf "${archive_path}" manifest.json database media
+tar -C "${temp_dir}" -czf "$partial_archive" manifest.json database media
+if [ "$protection" = encrypted ]; then
+    python3 "$crypto_script" encrypt --format tar.gz --passphrase-file "$BACKUP_PASSPHRASE_FILE" \
+        --input "$partial_archive" --output "$archive_path"
+    rm -f "$partial_archive"
+else
+    mv -f "$partial_archive" "$archive_path"
+fi
 archive_size="$(du -h "${archive_path}" | cut -f1)"
 echo "[backup] Archive: ${archive_path} (${archive_size})"
 
 # ── Rotation: remove oldest archives beyond KEEP_LAST ───────────────────────
 set +e
-ls -1t "${backup_dir}"/gearcargo_*.tar.gz 2>/dev/null \
+ls -1t "${backup_dir}"/gearcargo_*.tar.gz "${backup_dir}"/gearcargo_*.tar.gz.gcb 2>/dev/null \
     | tail -n "+$((KEEP_LAST + 1))" \
     | xargs -r rm -f
 set -e

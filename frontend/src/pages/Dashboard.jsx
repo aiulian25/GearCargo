@@ -1,3 +1,6 @@
+import { notifyPendingCleanup } from '../utils/deletionFeedback'
+import { getBoundIdentity, requireCurrentIdentity } from '../utils/offlineIdentity'
+import { sameIdentity } from '../utils/offlinePolicy'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
@@ -5,7 +8,7 @@ import { vehicleApi, externalApi, insuranceApi, configApi, dueApi } from '../ser
 import { useCurrency, useTranslation } from '../contexts/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 import { isOfflineWriteError, announceOfflineSaved } from '../utils/offlineWrite'
-import { formatDate, formatDateShort } from '../utils/dateFormat'
+import { useDateFormat } from '../hooks/useDateFormat'
 import ServiceUnavailable from '../components/ui/ServiceUnavailable'
 import { useConfirm } from '../components/ui/ConfirmDialog'
 import ChatModal from '../components/chat/ChatModal'
@@ -40,6 +43,7 @@ function fuelTrend(history, type) {
 
 // Fuel Prices Widget
 function FuelPricesWidget({ fuelPrices, history, currency, t, onRefresh, isRefreshing, lastAutoUpdate, error, onRetry, retrying, onDismiss }) {
+  const { formatDateShort } = useDateFormat()
   // Use currency from fuel prices API (based on detected country) or fallback to user's currency
   const fuelCurrency = fuelPrices?.currency || currency.symbol
 
@@ -66,8 +70,7 @@ function FuelPricesWidget({ fuelPrices, history, currency, t, onRefresh, isRefre
   const formatLastUpdate = (dateStr) => {
     if (!dateStr) return ''
     try {
-      const date = new Date(dateStr)
-      return formatDateShort(date)
+      return formatDateShort(dateStr)
     } catch {
       return dateStr
     }
@@ -209,6 +212,7 @@ const INS_FREQ_KEY = {
 
 // Recent Transactions — fleet-wide feed of the latest cost-bearing entries.
 function RecentTransactions({ transactions, loading, error, t, formatCurrency }) {
+  const { formatDateShort } = useDateFormat()
   const txLink = (tx) => {
     const type = TIMELINE_FILTER_TYPES.has(tx.type) ? tx.type : 'all'
     return `/vehicles/${tx.vehicle_id}/timeline?type=${type}&focus=${tx.id}`
@@ -484,6 +488,7 @@ function DueSoon({ items, loading, error, t, onDismiss }) {
 }
 
 export default function Dashboard() {
+  const { formatDate } = useDateFormat()
   const navigate = useNavigate()
   const { currency, setCurrencyFromCountry, formatCurrency } = useCurrency()
   const { t } = useTranslation()
@@ -544,6 +549,8 @@ export default function Dashboard() {
   
   // Get user location - checks user's saved location first, then auto-detect
   useEffect(() => {
+    let cancelled = false
+    const identity = getBoundIdentity()
     // If user has a manually set location and auto-detect is disabled, use it
     if (user && !user.location_auto_detect && user.location_lat && user.location_lon) {
       setUserLocation({
@@ -561,7 +568,7 @@ export default function Dashboard() {
       try {
         const cached = JSON.parse(cachedLocation)
         // Use cached if less than 10 minutes old
-        if (cached.timestamp && Date.now() - cached.timestamp < 600000) {
+        if (sameIdentity(cached.identity, identity) && cached.timestamp && Date.now() - cached.timestamp < 600000) {
           setUserLocation({ lat: cached.lat, lon: cached.lon, cached: true })
         }
       } catch (e) {
@@ -572,7 +579,9 @@ export default function Dashboard() {
     // Auto-detect location — only available over HTTPS or localhost
     if ('geolocation' in navigator && window.isSecureContext) {
       navigator.geolocation.getCurrentPosition(
-        (position) => {
+        async (position) => {
+          try { await requireCurrentIdentity(identity) } catch { return }
+          if (cancelled || !sameIdentity(identity, getBoundIdentity())) return
           const loc = {
             lat: position.coords.latitude,
             lon: position.coords.longitude,
@@ -583,10 +592,12 @@ export default function Dashboard() {
           localStorage.setItem('gearcargo_user_location', JSON.stringify({
             lat: loc.lat,
             lon: loc.lon,
+            identity,
             timestamp: Date.now()
           }))
         },
         (error) => {
+          if (cancelled || !sameIdentity(identity, getBoundIdentity())) return
           console.warn('Geolocation error:', error)
           // Default to London center when geolocation unavailable
           setUserLocation({ lat: 51.5074, lon: -0.1278, default: true })
@@ -601,6 +612,7 @@ export default function Dashboard() {
       // Default to London center when geolocation not supported
       setUserLocation({ lat: 51.5074, lon: -0.1278, default: true })
     }
+    return () => { cancelled = true }
   }, [user])
   
   // Fetch vehicles. Returns true on success so the caller can schedule a
@@ -957,10 +969,12 @@ export default function Dashboard() {
     if (!ok) return
 
     try {
-      await vehicleApi.hardDelete(vehicleId)
+      const response = await vehicleApi.hardDelete(vehicleId)
+      notifyPendingCleanup(response, t)
       setVehicles(vehicles.filter(v => v.id !== vehicleId))
     } catch (error) {
       console.error('Failed to delete vehicle:', error)
+      toast.error(error.response?.data?.error || t('archive.deleteFailed'))
     }
   }
   

@@ -3,8 +3,9 @@ GearCargo - Base Entry Model (Joined Table Inheritance)
 """
 
 from datetime import datetime
-from app.utils.timeutils import utc_naive_now
+from app.utils.timeutils import utc_naive_now, isoformat_utc
 from app import db
+from app.utils.revisions import next_revision
 
 
 class Entry(db.Model):
@@ -13,6 +14,7 @@ class Entry(db.Model):
     __tablename__ = 'entries'
     
     id = db.Column(db.Integer, primary_key=True)
+    revision = db.Column(db.BigInteger, nullable=False, default=1, server_default="1")
     type = db.Column(db.String(50))  # Discriminator column
     
     # Common fields
@@ -39,10 +41,16 @@ class Entry(db.Model):
     # nothing and cost one round trip per serialized row.
     attachments = db.relationship('Attachment', backref='entry',
                                   foreign_keys='Attachment.entry_id')
+
+    __table_args__ = (
+        db.Index('ix_entries_user_vehicle_date_id', 'user_id', 'vehicle_id', 'date', 'id'),
+    )
     
     __mapper_args__ = {
         'polymorphic_identity': 'entry',
-        'polymorphic_on': type
+        'polymorphic_on': type,
+        'version_id_col': revision,
+        'version_id_generator': next_revision
     }
     
     def __repr__(self):
@@ -53,6 +61,7 @@ class Entry(db.Model):
         amount_value = float(self.amount) if self.amount else 0
         data = {
             'id': self.id,
+            'revision': self.revision,
             'type': self.type,
             'title': self.title,
             'description': self.description or self.title or '',
@@ -63,7 +72,7 @@ class Entry(db.Model):
             'date': self.date.isoformat() if self.date else None,
             'notes': self.notes,
             'vehicle_id': self.vehicle_id,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'created_at': isoformat_utc(self.created_at) if self.created_at else None,
         }
         
         # Include attachments if requested. Batched by the list endpoints via

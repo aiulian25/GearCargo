@@ -1,3 +1,6 @@
+import { appointmentTime } from '../../utils/appointmentTime'
+import { calendarDate, localDate } from '../../utils/dateFormat'
+import { useDateFormat } from '../../hooks/useDateFormat'
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from '../../contexts/LanguageContext'
@@ -7,6 +10,7 @@ import toast from 'react-hot-toast'
 
 // Entry type icons and colors
 const entryConfig = {
+  appointment: { icon: '◷', color: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30', dotColor: 'bg-indigo-500' },
   fuel: {
     icon: (
       <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -82,13 +86,14 @@ const entryConfig = {
 }
 
 // Helper to get days in month
-const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate()
+const getDaysInMonth = (year, month) => Number(calendarDate(year, month + 1, 0).slice(8))
 
 // Helper to get first day of month (0 = Sunday)
-const getFirstDayOfMonth = (year, month) => new Date(year, month, 1).getDay()
+const getFirstDayOfMonth = (year, month) => new Date(`${calendarDate(year, month)}T00:00:00Z`).getUTCDay()
 
 export default function Calendar() {
-  const { t } = useTranslation()
+  const { t, language } = useTranslation()
+  const { formatDateWithWeekday } = useDateFormat()
   const navigate = useNavigate()
   
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -122,8 +127,8 @@ export default function Calendar() {
       setLoading(true)
       try {
         // Get entries for current month and surrounding months
-        const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0]
-        const endDate = new Date(year, month + 2, 0).toISOString().split('T')[0]
+        const startDate = calendarDate(year, month - 1, 1)
+        const endDate = calendarDate(year, month + 2, 0)
         
         const response = await calendarApi.getEntries(startDate, endDate, selectedVehicle)
         setEntries(response.data.entries || [])
@@ -172,18 +177,18 @@ export default function Calendar() {
       days.push({
         day: prevMonthDays - i,
         isCurrentMonth: false,
-        date: new Date(year, month - 1, prevMonthDays - i).toISOString().split('T')[0]
+        date: calendarDate(year, month - 1, prevMonthDays - i)
       })
     }
     
     // Current month days
     for (let i = 1; i <= daysInMonth; i++) {
-      const date = new Date(year, month, i).toISOString().split('T')[0]
+      const date = calendarDate(year, month, i)
       days.push({
         day: i,
         isCurrentMonth: true,
         date,
-        isToday: date === new Date().toISOString().split('T')[0]
+        isToday: date === localDate()
       })
     }
     
@@ -193,7 +198,7 @@ export default function Calendar() {
       days.push({
         day: i,
         isCurrentMonth: false,
-        date: new Date(year, month + 1, i).toISOString().split('T')[0]
+        date: calendarDate(year, month + 1, i)
       })
     }
     
@@ -242,6 +247,7 @@ export default function Calendar() {
   
   // Entry type labels for filter
   const entryTypes = [
+    { key: 'appointment', label: t('appointments.heading') },
     { key: 'all', label: t('calendar.filter.all') },
     { key: 'fuel', label: t('calendar.filter.fuel') },
     { key: 'service', label: t('calendar.filter.service') },
@@ -279,6 +285,8 @@ export default function Calendar() {
         </select>
       </div>
       
+      <button className="btn btn-primary mb-4" disabled={!selectedVehicle} onClick={() => navigate(`/vehicles/${selectedVehicle}/appointments`)}>{t('appointments.plan')}</button>
+      {!selectedVehicle && <p className="text-sm mb-4">{t('appointments.selectVehicle')}</p>}
       {/* Calendar Navigation */}
       <div className="flex items-center justify-between mb-4 bg-(--color-bg-card) rounded-xl p-3 border border-(--color-border)">
         <button
@@ -314,7 +322,7 @@ export default function Calendar() {
         {Object.entries(entryConfig).map(([type, config]) => (
           <div key={type} className="flex items-center gap-1.5 text-xs">
             <div className={`w-2 h-2 rounded-full ${config.dotColor}`}></div>
-            <span className="text-(--color-text-muted)">{t(`calendar.types.${type}`)}</span>
+            <span className="text-(--color-text-muted)">{type === 'appointment' ? t('appointments.heading') : t(`calendar.types.${type}`)}</span>
           </div>
         ))}
       </div>
@@ -395,8 +403,7 @@ export default function Calendar() {
           <span className="text-(--color-text-muted)">{t('calendar.entriesThisMonth')}</span>
           <span className="font-semibold text-(--color-text-primary)">
             {entries.filter(e => {
-              const entryDate = new Date(e.date)
-              return entryDate.getMonth() === month && entryDate.getFullYear() === year
+              return e.date?.slice(0, 7) === calendarDate(year, month).slice(0, 7)
             }).length}
           </span>
         </div>
@@ -417,12 +424,7 @@ export default function Calendar() {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-(--color-text-primary)">
-                    {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-GB', { 
-                      weekday: 'long', 
-                      year: 'numeric', 
-                      month: 'long', 
-                      day: 'numeric' 
-                    })}
+                    {formatDateWithWeekday(selectedDate)}
                   </h2>
                   <p className="text-sm text-(--color-text-muted)">
                     {selectedDateEntries.length} {t('calendar.entries')}
@@ -474,7 +476,7 @@ export default function Calendar() {
                       key={entry.id}
                       onClick={() => {
                         if (entry.vehicle_id) {
-                          navigate(`/vehicles/${entry.vehicle_id}/expenses?tab=${entry.type}`)
+                          navigate(entry.type === 'appointment' ? `/vehicles/${entry.vehicle_id}/appointments` : `/vehicles/${entry.vehicle_id}/expenses?tab=${entry.type}`)
                         }
                       }}
                       className={`p-3 rounded-xl border ${config.color} transition-transform active:scale-[0.98] ${entry.vehicle_id ? 'cursor-pointer hover:brightness-110' : ''}`}
@@ -495,7 +497,7 @@ export default function Calendar() {
                             )}
                           </div>
                           <p className="text-xs text-(--color-text-muted) mt-0.5">
-                            {t(`calendar.types.${entry.type}`)}
+                            {entry.type === 'appointment' ? `${appointmentTime(entry.details.start_at, entry.details.time_zone, language)} (${entry.details.time_zone})` : t(`calendar.types.${entry.type}`)}
                             {entry.vehicle_name && ` • ${entry.vehicle_name}`}
                           </p>
                           {entry.status && (
@@ -505,7 +507,7 @@ export default function Calendar() {
                                 entry.status === 'overdue' ? 'bg-red-500/20 text-red-400' : 
                                 'bg-yellow-500/20 text-yellow-400'}
                             `}>
-                              {t(`common.${entry.status}`)}
+                              {t(`${entry.type === 'appointment' ? 'appointments' : 'common'}.${entry.status}`)}
                             </span>
                           )}
                         </div>

@@ -1,14 +1,20 @@
-import { useState, useEffect } from 'react'
-import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom'
+import { localDate } from '../../utils/dateFormat'
+import useExpenseNavigation from '../../hooks/useExpenseNavigation'
+import { readPrivateNavigationState } from '../../utils/privateNavigation'
+import toast from 'react-hot-toast'
+import { saveExpenseWithReceipt } from '../../utils/receiptExpense'
+import { useMutationIntent } from '../../hooks/useMutationIntent'
+import { useState, useEffect, useRef } from 'react'
+import { useParams, useSearchParams, useLocation } from 'react-router-dom'
 import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
 import { useForm } from 'react-hook-form'
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
-import { fuelApi, vehicleApi, attachmentApi } from '../../services/api'
+import { fuelApi, vehicleApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { useAuth } from '../../contexts/AuthContext'
 import {
-  normalizeDistanceUnit, usesGallons, litersToDisplayVolume,
-  displayVolumeToLiters, pricePerLiterToDisplay, displayPriceToPerLiter,
+  normalizeDistanceUnit, litersToDisplayVolume,
+  pricePerLiterToDisplay, volumeUnitLabel, fuelFormPayload, editedFuelTotal,
 } from '../../utils/fuelEconomy'
 import ReceiptUpload from '../../components/ReceiptUpload'
 import ScanReceiptBanner from '../../components/ui/ScanReceiptBanner'
@@ -35,16 +41,18 @@ const Icons = {
 }
 
 export default function AddVehicleFuel() {
+  const mutation = useMutationIntent()
   const { id: vehicleId } = useParams()
   const [searchParams] = useSearchParams()
   const editId = searchParams.get('edit')
   const isEditMode = !!editId
-  const navigate = useNavigate()
+  const navigate = useExpenseNavigation(vehicleId)
   const { t } = useTranslation()
   const { user } = useAuth()
-  const gallons = usesGallons(user)  // F27 — input/labels in the user's unit
   const { currency } = useCurrency()
   
+  const initialValues = useRef(null)
+  const originalEntry = useRef(null)
   const [vehicle, setVehicle] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -53,9 +61,9 @@ export default function AddVehicleFuel() {
   const [existingAttachments, setExistingAttachments] = useState([])
   const [uploadedAttachmentId, setUploadedAttachmentId] = useState(null)
   
-  const { register, handleSubmit, watch, setValue, reset, formState: { errors, isDirty } } = useForm({
+  const { register, getValues, handleSubmit, watch, setValue, reset, formState: { errors, isDirty } } = useForm({
     defaultValues: {
-      date: new Date().toISOString().split('T')[0],
+      date: localDate(),
       mileage: '',
       liters: '',
       price_per_liter: '',
@@ -71,14 +79,14 @@ export default function AddVehicleFuel() {
   const liters = watch('liters')
   const pricePerLiter = watch('price_per_liter')
   
-  // Auto-calculate total cost
+  // Opening an edit must not replace stored totals with rounded display math.
   useEffect(() => {
-    if (liters && pricePerLiter) {
-      const total = (parseFloat(liters) * parseFloat(pricePerLiter)).toFixed(2)
-      setValue('total_cost', total)
-    }
-  }, [liters, pricePerLiter, setValue])
-  
+    if (isEditMode && !initialValues.current) return
+    const total = editedFuelTotal({ liters, price_per_liter: pricePerLiter }, user,
+      initialValues.current, originalEntry.current)
+    if (total != null) setValue('total_cost', total)
+  }, [liters, pricePerLiter, setValue, isEditMode, user])
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -90,22 +98,26 @@ export default function AddVehicleFuel() {
         if (isEditMode) {
           const entryRes = await fuelApi.get(editId)
           const entry = entryRes.data
+          mutation.capture(entry)
           
-          reset({
-            date: entry.date ? entry.date.split('T')[0] : new Date().toISOString().split('T')[0],
-            mileage: entry.odometer || '',
+          originalEntry.current = entry
+          const displayed = {
+            date: entry.date ? entry.date.split('T')[0] : localDate(),
+            mileage: entry.odometer ?? '',
             // F27 — stored litres shown in the user's volume unit.
             liters: entry.liters != null
               ? Math.round(litersToDisplayVolume(entry.liters, user) * 100) / 100 : '',
             price_per_liter: entry.price_per_liter != null
               ? Math.round(pricePerLiterToDisplay(entry.price_per_liter, user) * 1000) / 1000 : '',
-            total_cost: entry.total_price || '',
+            total_cost: entry.total_price ?? '',
             currency: entry.currency || user?.currency || 'EUR',
             is_full_tank: entry.full_tank ?? true,
             fuel_type: entry.fuel_type || '',
             station_name: entry.station || '',
             notes: entry.notes || '',
-          })
+          }
+          initialValues.current = displayed
+          reset(displayed)
           
         } else {
           // Pre-fill mileage from current vehicle mileage for new entries
@@ -125,23 +137,24 @@ export default function AddVehicleFuel() {
     }
     
     fetchData()
-  }, [vehicleId, editId, isEditMode, navigate, setValue, reset])
+  }, [vehicleId, editId, isEditMode, navigate, setValue, reset, mutation])
 
   // F33 — receipt routed from ShareTarget: apply the AI-parsed fields and
   // adopt the already-uploaded attachment (linked to the entry after create).
   const location = useLocation()
   useEffect(() => {
-    const st = location.state
+    const st = readPrivateNavigationState(location.state)
     if (!st || isEditMode) return
     const d = st.prefill || {}
-    if (d.date) setValue('date', d.date)
-    if (d.amount != null) setValue('total_cost', String(d.amount))
-    if (d.vendor) setValue('station_name', d.vendor)
+    if (d.date) setValue('date', d.date, { shouldDirty: true })
+    if (d.currency) setValue('currency', d.currency, { shouldDirty: true })
+    if (d.amount != null) setValue('total_cost', String(d.amount), { shouldDirty: true })
+    if (d.vendor) setValue('station_name', d.vendor, { shouldDirty: true })
     if (st.attachmentId) setUploadedAttachmentId(st.attachmentId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  useUnsavedChanges(isDirty)
+  const markSaved = useUnsavedChanges(isDirty || receiptFile || uploadedAttachmentId)
 
   const onSubmit = async (data) => {
     setIsSubmitting(true)
@@ -149,48 +162,26 @@ export default function AddVehicleFuel() {
     
     try {
       const payload = {
-        ...data,
+        ...fuelFormPayload(data, user, isEditMode ? initialValues.current : null),
         vehicle_id: parseInt(vehicleId),
-        mileage: parseInt(data.mileage),
-        // F27 — storage is always litres; convert from the user's unit.
-        liters: displayVolumeToLiters(parseFloat(data.liters), user),
-        price_per_liter: displayPriceToPerLiter(parseFloat(data.price_per_liter), user),
-        total_cost: parseFloat(data.total_cost),
       }
       
-      let response
-      if (isEditMode) {
-        response = await fuelApi.update(editId, payload)
+      if (receiptFile || uploadedAttachmentId) {
+        const result = await saveExpenseWithReceipt({ resource: 'fuel', editId,
+          payload, config: mutation.options(), file: receiptFile, attachmentId: uploadedAttachmentId })
+        if (result.receiptPending) toast(t('pwa.sync.receipts.savedPending'), { duration: 8000 })
+      } else if (isEditMode) {
+        await fuelApi.update(editId, payload, mutation.options())
       } else {
-        response = await fuelApi.create(payload)
+        await fuelApi.create(payload, mutation.options())
       }
-      
-      // Link or upload receipt attachment
-      const entryId = isEditMode ? editId : response.data?.entry?.id
-      if (uploadedAttachmentId && entryId) {
-        // File was already uploaded by ScanReceiptBanner — just link it to the entry
-        try {
-          await attachmentApi.update(uploadedAttachmentId, { entry_id: entryId })
-        } catch (linkErr) {
-          console.error('Failed to link attachment:', linkErr)
-        }
-      } else if (receiptFile && entryId) {
-        // Normal flow: upload now
-        try {
-          await attachmentApi.upload(receiptFile, {
-            vehicleId: parseInt(vehicleId),
-            entryId: entryId,
-            category: 'receipt',
-          })
-        } catch (uploadErr) {
-          console.error('Failed to upload receipt:', uploadErr)
-        }
-      }
-      
+
+      if (!markSaved()) return
       navigate(`/vehicles/${vehicleId}`)
     } catch (err) {
       if (isOfflineWriteError(err)) {
         announceOfflineSaved(t)
+        if (!markSaved()) return
         navigate(`/vehicles/${vehicleId}`)
         return
       }
@@ -199,6 +190,7 @@ export default function AddVehicleFuel() {
       const data = err.response?.data
       setError((data?.message_key && t(data.message_key))
         || data?.error
+        || err.message
         || t('addFuel.error')
         || 'Failed to add fuel entry')
     } finally {
@@ -217,7 +209,7 @@ export default function AddVehicleFuel() {
     { value: 'electric', label: t('addFuel.electric') || 'Electric (kWh)' },
   ]
 
-  const distUnit = normalizeDistanceUnit(vehicle?.distance_unit) === 'miles' ? 'mi' : 'km'
+  const distUnit = vehicle?.distance_unit ? (normalizeDistanceUnit(vehicle.distance_unit) === 'miles' ? 'mi' : 'km') : t('units.unknown')
   
   if (isLoading) {
     return (
@@ -292,7 +284,7 @@ export default function AddVehicleFuel() {
               <input
                 type="number" inputMode="decimal"
                 {...register('mileage', { 
-                  required: t('addFuel.mileageRequired') || 'Mileage is required',
+                  required: !isEditMode && (t('addFuel.mileageRequired') || 'Mileage is required'),
                   min: { value: 0, message: t('addFuel.invalidMileage') || 'Invalid mileage' }
                 })}
                 className="input"
@@ -314,14 +306,14 @@ export default function AddVehicleFuel() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-(--color-text-muted) mb-1">
-                {gallons ? (t('addFuel.gallons') || 'Gallons') : (t('addFuel.liters') || 'Liters')} *
+                {volumeUnitLabel(user, t)} *
               </label>
               <input
                 type="number" inputMode="decimal"
                 step="0.01"
                 {...register('liters', {
-                  required: t('addFuel.litersRequired') || 'Liters is required',
-                  min: { value: 0.01, message: t('addFuel.invalidAmount') || 'Invalid amount' }
+                  required: !isEditMode && (t('addFuel.litersRequired') || 'Liters is required'),
+                  min: { value: 0, message: t('addFuel.invalidAmount') || 'Invalid amount' }
                 })}
                 className="input"
                 placeholder="0.00"
@@ -333,14 +325,13 @@ export default function AddVehicleFuel() {
             
             <div>
               <label className="block text-xs text-(--color-text-muted) mb-1">
-                {gallons ? (t('addFuel.pricePerGallon') || 'Price/Gallon') : (t('addFuel.pricePerLiter') || 'Price/Liter')} ({currency.symbol}) *
+                {t('addFuel.pricePerUnit', { unit: volumeUnitLabel(user, t) })} ({currency.symbol}) *
               </label>
               <input
                 type="number" inputMode="decimal"
                 step="0.001"
                 {...register('price_per_liter', { 
-                  required: t('addFuel.priceRequired') || 'Price is required',
-                  min: { value: 0.01, message: t('addFuel.invalidPrice') || 'Invalid price' }
+                  required: !isEditMode && (t('addFuel.priceRequired') || 'Price is required')
                 })}
                 className="input"
                 placeholder="0.000"
@@ -364,7 +355,7 @@ export default function AddVehicleFuel() {
                 placeholder={t('addFuel.calculatedAuto') || 'Calculated automatically'}
               />
             </div>
-            <CurrencySelect register={register} className="w-28 shrink-0" />
+            <CurrencySelect extraCurrency={readPrivateNavigationState(location.state)?.prefill?.currency || getValues('currency')} register={register} className="w-28 shrink-0" />
           </div>
           
           <div className="flex items-center gap-3">
@@ -427,6 +418,7 @@ export default function AddVehicleFuel() {
         {/* Receipt Upload + OCR Scan Banner */}
         <div className="card">
           <ReceiptUpload
+            durableDraft
             selectedFile={receiptFile}
             onFileSelect={(f) => { setReceiptFile(f); setUploadedAttachmentId(null) }}
             onFileRemove={() => { setReceiptFile(null); setUploadedAttachmentId(null) }}

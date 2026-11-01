@@ -1,11 +1,18 @@
 #!/command/with-contenv bash
 # Oneshot (gated on the postgres service having started): wait until the database
 # genuinely accepts queries and is out of crash recovery, then apply migrations.
-# gunicorn and cron depend on this oneshot, so the schema is guaranteed present
+# gunicorn and the dedicated scheduler depend on this oneshot, so the schema is guaranteed present
 # before the app or backups run. Works for both embedded and external databases.
 set -u
-. /etc/gearcargo/env.sh
-cd /app
+export GEARCARGO_PROCESS_ROLE=cli
+. /etc/gearcargo/env.sh || {
+    echo "[migrate] ERROR: could not load the required environment; refusing startup." >&2
+    exit 1
+}
+cd /app || {
+    echo "[migrate] ERROR: application directory is unavailable; refusing startup." >&2
+    exit 1
+}
 
 echo "[migrate] Waiting for database to accept queries ($GC_DB_HOST:$GC_DB_PORT)..."
 ready=0
@@ -38,17 +45,26 @@ if [ "$ready" != "1" ]; then
     exit 1
 fi
 
+echo "[migrate] Recovering any interrupted restore before schema changes ..."
+if ! s6-setuidgid gearcargo env PATH="$PATH" DATABASE_URL="$DATABASE_URL" flask recover-restores; then
+    echo "[migrate] ERROR: restore recovery is incomplete; refusing schema changes." >&2
+    exit 1
+fi
+
 echo "[migrate] Running flask db upgrade ..."
 # Migrations only write to the database (network), never the container FS — so
 # this is compatible with a read-only rootfs. Run as the unprivileged app user.
-s6-setuidgid gearcargo env PATH="$PATH" DATABASE_URL="$DATABASE_URL" flask db upgrade
+if ! s6-setuidgid gearcargo env PATH="$PATH" DATABASE_URL="$DATABASE_URL" flask db upgrade; then
+    echo "[migrate] ERROR: database migration failed; refusing to start the application and backup scheduler. Review the migration error before retrying." >&2
+    exit 1
+fi
 
 # Opt-in belt-and-suspenders schema self-heal. Default OFF (a healthy database
 # needs nothing here). Set
 # DB_SCHEMA_SYNC=true only for one-off recovery after a missed migration.
 if [ "${DB_SCHEMA_SYNC:-false}" = "true" ]; then
     echo "[migrate] DB_SCHEMA_SYNC=true — verifying model tables/columns exist ..."
-    s6-setuidgid gearcargo env PATH="$PATH" DATABASE_URL="$DATABASE_URL" python3 - <<'PY'
+    if ! s6-setuidgid gearcargo env PATH="$PATH" DATABASE_URL="$DATABASE_URL" python3 - <<'PY'
 from app import create_app, db
 from sqlalchemy import inspect, text
 
@@ -70,10 +86,15 @@ with app.app_context():
             try:
                 db.session.execute(text(sql)); db.session.commit()
                 print(f'  + {table.name}.{col_name}')
-            except Exception as e:
-                db.session.rollback(); print(f'  ! {table.name}.{col_name} failed: {e}')
+            except Exception:
+                db.session.rollback()
+                raise  # Required schema recovery must fail the oneshot too.
     print('[migrate] Schema verification complete.')
 PY
+    then
+        echo "[migrate] ERROR: schema synchronization failed; refusing to start the application and backup scheduler. Review the schema error before retrying." >&2
+        exit 1
+    fi
 fi
 
 echo "[migrate] Database setup complete."

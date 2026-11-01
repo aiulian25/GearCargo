@@ -10,6 +10,22 @@ The message keys already exist in en/ro/es under the ``validation.*`` namespace.
 """
 
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
+
+# ISO 4217 code snapshot from the system iso-codes dataset (iso_4217.json).
+# Unknown/test markers XXX/XTS are not usable currencies. The existing client
+# BGN option is retained for vehicle history; FX availability is separate.
+CURRENCY_CODES = frozenset("""
+AED AFN ALL AMD AOA ARS AUD AWG AZN BAM BBD BDT BGN BHD BIF BMD BND BOB BOV BRL BSD
+BTN BWP BYN BZD CAD CDF CHE CHF CHW CLF CLP CNY COP COU CRC CUP CVE CZK DJF DKK
+DOP DZD EGP ERN ETB EUR FJD FKP GBP GEL GHS GIP GMD GNF GTQ GYD HKD HNL HTG HUF
+IDR ILS INR IQD IRR ISK JMD JOD JPY KES KGS KHR KMF KPW KRW KWD KYD KZT LAK LBP
+LKR LRD LSL LYD MAD MDL MGA MKD MMK MNT MOP MRU MUR MVR MWK MXN MXV MYR MZN NAD
+NGN NIO NOK NPR NZD OMR PAB PEN PGK PHP PKR PLN PYG QAR RON RSD RUB RWF SAR SBD
+SCR SDG SEK SGD SHP SLE SOS SRD SSP STN SVC SYP SZL THB TJS TMT TND TOP TRY TTD
+TWD TZS UAH UGX USD USN UYI UYU UYW UZS VED VES VND VUV WST XAD XAF XAG XAU XBA
+XBB XBC XBD XCD XCG XDR XOF XPD XPF XPT XSU XUA YER ZAR ZMW ZWG
+""".split())
 
 REQUIRED_FIELD_KEY = 'validation.required'
 INVALID_DATE_KEY = 'validation.invalidDate'
@@ -20,10 +36,11 @@ INVALID_CURRENCY_KEY = 'validation.invalidCurrency'
 class InvalidFieldError(ValueError):
     """A user-supplied value that cannot be parsed. Carries its localization key."""
 
-    def __init__(self, message_key, error='Invalid value'):
+    def __init__(self, message_key, error='Invalid value', field=None):
         super().__init__(error)
         self.message_key = message_key
         self.error = error
+        self.field = field
 
 
 def parse_iso_date(value):
@@ -51,11 +68,17 @@ def parse_optional_date(value):
 
 
 def parse_amount(value, error='Amount must be a number'):
-    """Money amount -> float, or InvalidFieldError."""
-    try:
-        return float(value)
-    except (TypeError, ValueError):
+    """Finite decimal from an API number/string; storage scale is field-specific."""
+    if isinstance(value, bool) or not isinstance(value, (str, int, float, Decimal)):
         raise InvalidFieldError(INVALID_NUMBER_KEY, error)
+    try:
+        parsed = Decimal(str(value))
+        # Bound before arithmetic/quantization; no supported column is this wide.
+        if not parsed.is_finite() or abs(parsed) >= Decimal('1e20'):
+            raise ValueError()
+        return parsed
+    except (ValueError, InvalidOperation, OverflowError):
+        raise InvalidFieldError(INVALID_NUMBER_KEY, error) from None
 
 
 # PostgreSQL INTEGER is 32-bit signed. A value outside this range parses fine in
@@ -75,6 +98,7 @@ def parse_optional_int(value, error='Value must be a number'):
 
     Rejects, as a typed 400 rather than a 500:
       * free text, containers, and thousands-separated strings;
+      * fractional values — whole numbers are never silently truncated;
       * booleans — ``int(True) == 1`` would silently invent a reading;
       * ``nan`` / ``inf`` / ``1e400``, which float() accepts and int() then
         raises ValueError **or OverflowError** on;
@@ -82,20 +106,14 @@ def parse_optional_int(value, error='Value must be a number'):
     """
     if value is None or value == '':
         return None
-    # bool is a subclass of int, so this must precede the numeric conversion.
-    if isinstance(value, bool):
+    parsed = parse_amount(value, error)
+    if parsed != parsed.to_integral_value() or not (_INT32_MIN <= parsed <= _INT32_MAX):
         raise InvalidFieldError(INVALID_NUMBER_KEY, error)
-    try:
-        parsed = int(float(value))
-    except (TypeError, ValueError, OverflowError):
-        raise InvalidFieldError(INVALID_NUMBER_KEY, error)
-    if not (_INT32_MIN <= parsed <= _INT32_MAX):
-        raise InvalidFieldError(INVALID_NUMBER_KEY, error)
-    return parsed
+    return int(parsed)
 
 
 def parse_optional_amount(value, error='Amount must be a number'):
-    """Nullable money column -> float or None, or InvalidFieldError.
+    """Nullable decimal column -> Decimal or None, or InvalidFieldError.
 
     ``parse_amount`` is for a column that must hold a number; this is for one the
     user may legitimately leave blank (coverage_amount, deductible, labor_cost…),
@@ -106,16 +124,10 @@ def parse_optional_amount(value, error='Amount must be a number'):
     return parse_amount(value, error)
 
 
-def parse_currency_code(value, error='Currency must be a 3-letter code'):
-    """ISO-4217-shaped currency code, upper-cased, or InvalidFieldError.
-
-    Entry.currency is String(3) and InsurancePolicy.currency is String(3), so a
-    longer value is a guaranteed DataError at flush — a 500 for input we can see
-    is unstorable. Normalising to upper-case also keeps the FX lookups (which
-    upper-case before comparing) consistent with what is stored.
-    """
-    code = str(value or '').strip().upper()
-    if len(code) != 3 or not code.isalpha():
+def parse_currency_code(value, error='Currency must be a recognized code'):
+    """Recognized ISO currency code, uppercased, or a localized field error."""
+    code = value.strip().upper() if isinstance(value, str) else ''
+    if code not in CURRENCY_CODES:
         raise InvalidFieldError(INVALID_CURRENCY_KEY, error)
     return code
 
@@ -125,4 +137,7 @@ def invalid_field_response(exc):
 
     Matches the shape the inline R2 guards return in routes/vehicles.py.
     """
-    return {'error': exc.error, 'message_key': exc.message_key}, 400
+    payload = {'error': exc.error, 'message_key': exc.message_key}
+    if exc.field is not None:
+        payload['field'] = exc.field
+    return payload, 400

@@ -99,20 +99,22 @@ def test_turning_recurring_off_matches_the_cancel_endpoint(app, client, user, au
                (cancel_entry.recurring, cancel_entry.next_due_date) == (False, None)
 
 
-def test_string_false_is_not_truthy(app, client, user, auth_headers):
-    """bool() coercion — an API client sending "false" must not stay recurring."""
+def test_non_boolean_recurrence_is_rejected_without_changing_schedule(app, client, user, auth_headers):
+    """GC-014 requires JSON booleans and keeps rejected edits atomic."""
     with app.app_context():
         vehicle = _vehicle(user.id)
         tax = _tax(user.id, vehicle.id, recurring=True, recurrence_type='monthly',
                    next_due_date=TODAY + relativedelta(months=1))
         tax_id = tax.id
 
-    client.put(f'{TAXES_URL}/{tax_id}', json={'recurring': ''},
-               headers=auth_headers(user.id))
+    response = client.put(f'{TAXES_URL}/{tax_id}', json={'recurring': ''},
+                          headers=auth_headers(user.id))
+    assert response.status_code == 400
+    assert response.json['field'] == 'recurring'
 
     entry = _reload(app, tax_id)
-    assert entry.recurring is False
-    assert entry.next_due_date is None
+    assert entry.recurring is True
+    assert entry.next_due_date == TODAY + relativedelta(months=1)
 
 
 # --- switching ON --------------------------------------------------------------

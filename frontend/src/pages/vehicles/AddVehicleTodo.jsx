@@ -1,5 +1,7 @@
-import { useState, useEffect } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import useExpenseNavigation from '../../hooks/useExpenseNavigation'
+import { useMutationIntent } from '../../hooks/useMutationIntent'
+import { useState, useEffect, useRef } from 'react'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
 import { useForm } from 'react-hook-form'
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
@@ -29,17 +31,19 @@ const Icons = {
 
 // Todo API (may need to be added to the backend)
 const todoApi = {
-  create: (data) => api.post('/todos', data),
+  create: (data, config) => api.post('/todos', data, config),
   get: (id) => api.get(`/todos/${id}`),
-  update: (id, data) => api.put(`/todos/${id}`, data),
+  update: (id, data, config) => api.put(`/todos/${id}`, data, config),
 }
 
 export default function AddVehicleTodo() {
+  const mutation = useMutationIntent()
+  const savedEntry = useRef(null)
   const { id: vehicleId } = useParams()
   const [searchParams] = useSearchParams()
   const editId = searchParams.get('edit')
   const isEditMode = !!editId
-  const navigate = useNavigate()
+  const navigate = useExpenseNavigation(vehicleId)
   const { t } = useTranslation()
   
   const [vehicle, setVehicle] = useState(null)
@@ -69,6 +73,7 @@ export default function AddVehicleTodo() {
         if (isEditMode) {
           const entryRes = await todoApi.get(editId)
           const entry = entryRes.data
+          mutation.capture(entry)
           
           reset({
             title: entry.title || '',
@@ -88,9 +93,9 @@ export default function AddVehicleTodo() {
     }
     
     fetchData()
-  }, [vehicleId, editId, isEditMode, navigate, reset])
+  }, [vehicleId, editId, isEditMode, navigate, reset, mutation])
   
-  useUnsavedChanges(isDirty)
+  const markSaved = useUnsavedChanges(isDirty || receiptFile)
 
   const onSubmit = async (data) => {
     setIsSubmitting(true)
@@ -107,31 +112,40 @@ export default function AddVehicleTodo() {
         frequency_value: 1,
       }
       
+      const targetId = editId || savedEntry.current?.id
       let response
-      if (isEditMode) {
-        response = await todoApi.update(editId, payload)
+      if (targetId) {
+        response = await todoApi.update(targetId, payload, mutation.options())
       } else {
-        response = await todoApi.create(payload)
+        response = await todoApi.create(payload, mutation.options())
       }
       
+      // A document failure keeps the form open; retry against this saved parent.
+      if (response.data?.todo) {
+        savedEntry.current = response.data.todo
+        mutation.capture(savedEntry.current)
+      }
+
       // Upload document if selected (only for new entries or if new file selected)
-      const entryId = isEditMode ? editId : response.data?.todo?.id
+      const entryId = targetId || savedEntry.current?.id
       if (receiptFile && entryId) {
-        try {
-          await attachmentApi.upload(receiptFile, {
-            vehicleId: parseInt(vehicleId),
-            entryId: entryId,
-            category: 'document',
-          })
-        } catch (uploadErr) {
-          console.error('Failed to upload document:', uploadErr)
-        }
+        await attachmentApi.upload(receiptFile, {
+          vehicleId: parseInt(vehicleId),
+          entryId: entryId,
+          category: 'document',
+        })
       }
       
+      if (!markSaved()) return
       navigate(`/vehicles/${vehicleId}`)
     } catch (err) {
       if (isOfflineWriteError(err)) {
         announceOfflineSaved(t)
+        if (receiptFile) {
+          setError(t('unsavedChanges.fileNotSaved'))
+          return
+        }
+        if (!markSaved()) return
         navigate(`/vehicles/${vehicleId}`)
         return
       }

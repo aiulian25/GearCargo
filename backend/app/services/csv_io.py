@@ -14,9 +14,8 @@ Design notes
   returned (no single bad row aborts the whole import).
 * `vehicle_id` is required on every import row and is verified to belong to the
   authenticated user (ownership enforcement — never trust the CSV).
-* In the default 'merge' mode, rows duplicating an existing entry by
-  (vehicle_id, date, rounded amount) are skipped, matching the dedup key used by
-  scripts/deduplicate_entries.py.
+* Source IDs identify exact repeats. Identity-free rows use file + row position,
+  so equal-cost rows remain distinct. Similar content is review information.
 """
 
 import csv
@@ -24,6 +23,8 @@ import io
 from datetime import date, datetime
 
 from app import db
+from app.services.domain_validation import validate_field
+from app.utils.entryparse import parse_amount, parse_optional_int, InvalidFieldError
 from app.models import (
     FuelEntry, ServiceEntry, RepairEntry, TaxEntry, ParkingEntry,
     ConsumableEntry, Vehicle,
@@ -151,10 +152,12 @@ def _parse(value, kind):
     if v == '':
         return None
     if kind == 'int':
-        return int(float(v))  # tolerate "12000.0"
+        return parse_optional_int(v)
     if kind == 'float':
-        return float(v)
+        return parse_amount(v)
     if kind == 'bool':
+        if v.lower() not in ('1', 'true', 'yes', 'y', 'on', '0', 'false', 'no', 'n', 'off'):
+            raise ValueError('Invalid boolean')
         return v.lower() in ('1', 'true', 'yes', 'y', 'on')
     if kind == 'date':
         try:
@@ -198,9 +201,10 @@ def export_entries_csv(user, entry_type, vehicle_id=None):
 
     out = io.StringIO()
     writer = csv.writer(out)
-    writer.writerow([header for header, _, _ in cols])
+    from app.services.import_identity import native_namespace
+    writer.writerow(['source_namespace', 'source_id'] + [header for header, _, _ in cols])
     for entry in query.all():
-        writer.writerow([_fmt(getattr(entry, attr, None), kind) for _, attr, kind in cols])
+        writer.writerow([native_namespace(user), entry.id] + [_fmt(getattr(entry, attr, None), kind) for _, attr, kind in cols])
     return out.getvalue()
 
 
@@ -208,17 +212,13 @@ def export_entries_csv(user, entry_type, vehicle_id=None):
 # Import
 # --------------------------------------------------------------------------
 
-def _dedup_key(vehicle_id, the_date, amount):
-    rounded = round(float(amount), 2) if amount is not None else None
-    return (vehicle_id, the_date, rounded)
-
-
-def import_entries_csv(user, entry_type, csv_text, merge_mode='merge'):
+def import_entries_csv(user, entry_type, csv_text, merge_mode='merge', *, source_label=None,
+                       preview=False, conflict_policy='reject', preview_token=None):
     """Create entries from CSV text. Returns a summary dict:
         {created, skipped, error_count, errors:[{row, error}], total}
 
     - vehicle_id is required per row and must belong to *user*.
-    - 'merge' (default) skips rows duplicating an existing entry; 'replace' is
+    - 'merge' (default) skips proven source replays; 'replace' is
       treated like merge here (we never delete on CSV import — non-destructive).
     """
     if entry_type not in TYPE_MODELS:
@@ -229,17 +229,18 @@ def import_entries_csv(user, entry_type, csv_text, merge_mode='merge'):
     # Ownership allowlist — never trust vehicle_id from the file.
     owned_vehicle_ids = {v.id for v in Vehicle.query.filter_by(user_id=user.id).all()}
 
-    # Existing-entry dedup set for merge mode.
-    existing = {
-        _dedup_key(e.vehicle_id, e.date, e.amount)
-        for e in model.query.filter_by(user_id=user.id).all()
-    }
-
+    from app.services.backup_schema import PreparedBackup
+    from app.services.import_identity import ImportPlan, digest, namespace_for, lock_imports
+    if merge_mode not in ('merge', 'replace'):
+        raise ValueError('Unsupported merge mode.')
+    file_key = digest(csv_text)
+    namespace = namespace_for('csv:' + entry_type, source_label, file_key)
+    kind = entry_type + '_entries' if entry_type != 'consumable' else 'consumable_entries'
+    rows, source_keys = [], {}
     reader = csv.DictReader(io.StringIO(csv_text))
     if reader.fieldnames is None or 'vehicle_id' not in reader.fieldnames or 'date' not in reader.fieldnames:
         raise ValueError("CSV must include at least 'vehicle_id' and 'date' columns")
 
-    created = skipped = 0
     errors = []
     total = 0
 
@@ -251,48 +252,78 @@ def import_entries_csv(user, entry_type, csv_text, merge_mode='merge'):
             if not vid_raw:
                 errors.append({'row': line_no, 'error': 'missing vehicle_id'})
                 continue
-            vehicle_id = int(float(vid_raw))
+            vehicle_id = validate_field(model, 'vehicle_id', vid_raw)
             if vehicle_id not in owned_vehicle_ids:
                 errors.append({'row': line_no, 'error': f'unknown or unauthorized vehicle_id {vehicle_id}'})
                 continue
 
             kwargs = {}
+            empty_fields = []
             for header, raw in row.items():
                 spec = header_to_spec.get(header)
                 if not spec:
                     continue  # ignore unknown / extra columns
-                attr, kind = spec
+                attr, field_kind = spec
                 if attr == 'vehicle_id':
                     continue  # handled explicitly above
-                parsed = _parse(raw, kind)
-                if parsed is not None:
-                    kwargs[attr] = parsed
+                try:
+                    parsed = _parse(raw, field_kind)
+                    if parsed is None:
+                        empty_fields.append(attr)
+                    else:
+                        kwargs[attr] = validate_field(model, attr, parsed)
+                except InvalidFieldError as exc:
+                    exc.field = attr
+                    raise
 
             if not kwargs.get('date'):
                 errors.append({'row': line_no, 'error': 'missing or invalid date'})
                 continue
 
-            key = _dedup_key(vehicle_id, kwargs['date'], kwargs.get('amount'))
-            if key in existing:
-                skipped += 1
-                continue
-
-            entry = model(user_id=user.id, vehicle_id=vehicle_id, **kwargs)
-            db.session.add(entry)
-            existing.add(key)
-            created += 1
+            source_id = (row.get('source_id') or '').strip()
+            source_namespace = (row.get('source_namespace') or '').strip() or namespace
+            if len(source_id) > 160 or len(source_namespace) > 160:
+                raise ValueError('Source identity is too long.')
+            source_keys[(kind, line_no)] = ((source_namespace, source_id) if source_id else
+                                          ('csv:' + entry_type + ':file:' + file_key, str(line_no)))
+            rows.append(dict(id=line_no, vehicle_id=vehicle_id, _empty_fields=empty_fields, **kwargs))
         except Exception as ex:  # noqa: BLE001 — per-row isolation
-            errors.append({'row': line_no, 'error': str(ex)[:200]})
+            issue = {'row': line_no, 'error': str(ex)[:200]}
+            if isinstance(ex, InvalidFieldError):
+                issue.update(field=ex.field, message_key=ex.message_key)
+            errors.append(issue)
 
-    if created:
-        db.session.commit()
-    else:
-        db.session.rollback()
-
-    return {
-        'created': created,
-        'skipped': skipped,
-        'error_count': len(errors),
-        'errors': errors[:50],   # cap payload
-        'total': total,
-    }
+    prepared = PreparedBackup('csv', {kind: rows}, {}, [], False, namespace=namespace,
+                              batch_key=digest({'format': kind, 'file': file_key, 'namespace': namespace}),
+                              import_format='csv', source_keys=source_keys)
+    if not preview:
+        lock_imports(user.id)
+    plan = ImportPlan(user, prepared)
+    if preview:
+        return {'preview': {**plan.preview, 'error_count': len(errors), 'errors': errors[:50]}}
+    plan.validate_apply(conflict_policy, preview_token)
+    plan.begin(conflict_policy)
+    created = skipped = kept = 0
+    affected_vehicles = set()
+    for row in rows:
+        key = (kind, row['id'])
+        decision = plan.actions[key]
+        entry = decision['target']
+        if decision['action'] == 'create':
+            entry = model(user_id=user.id, **{key: value for key, value in row.items() if key != 'id' and not key.startswith('_')})
+            db.session.add(entry)
+            db.session.flush()
+            affected_vehicles.add(entry.vehicle_id)
+            created += 1
+        elif decision['action'] == 'exact_repeat':
+            skipped += 1
+        else:
+            kept += 1
+        plan.remember(key, entry)
+    if entry_type == 'fuel':
+        from app.services.fuel_efficiency import recalculate_efficiencies
+        for vehicle_id in affected_vehicles:
+            recalculate_efficiencies(vehicle_id, user.id)
+    db.session.commit()
+    return {**plan.result(), 'created': created, 'new_records': created, 'skipped': skipped,
+            'skipped_conflicts': kept, 'error_count': len(errors), 'errors': errors[:50], 'total': total}

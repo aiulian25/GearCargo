@@ -10,6 +10,7 @@ from flask import Blueprint, request, jsonify, current_app
 from sqlalchemy.orm.attributes import flag_modified
 import requests
 
+from app.utils.timeutils import isoformat_utc
 from app import db
 from app.models import Vehicle, FuelEntry, ServiceEntry, RepairEntry, PredictionAlert
 from app.models.prediction import GENERATED_BY_PREDICTION
@@ -425,7 +426,7 @@ def _stale_predictions_response(current_user, vehicle_id: int, locale: str):
         .limit(20)
         .all()
     )
-    last_updated_at = existing[0].created_at.isoformat() if existing else None
+    last_updated_at = isoformat_utc(existing[0].created_at) if existing else None
     return jsonify({
         'predictions': [p.to_dict(locale=locale) for p in existing],
         'ollama_offline': True,

@@ -45,7 +45,7 @@ def test_setup_returns_a_png_carrying_the_mark(app, client, user, auth_headers):
     width = image.size[0]
     centre = image.convert('RGB').crop((
         int(width * 0.45), int(width * 0.45), int(width * 0.55), int(width * 0.55)))
-    assert len(set(centre.getdata())) > 2, 'centre looks like bare QR modules'
+    assert len(set(centre.get_flattened_data())) > 2, 'centre looks like bare QR modules'
 
 
 def test_the_mark_stays_inside_the_error_correction_budget():
@@ -112,7 +112,7 @@ def test_an_unreadable_mark_never_blocks_enrolment(app, monkeypatch):
         result = auth_module._overlay_app_mark(plain)
 
         assert result.size == plain.size
-        assert list(result.getdata()) == list(plain.getdata()), 'should be untouched'
+        assert list(result.get_flattened_data()) == list(plain.get_flattened_data()), 'should be untouched'
 
 
 def test_the_mark_is_found_without_a_built_frontend(app, monkeypatch):

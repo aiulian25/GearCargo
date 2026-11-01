@@ -10,6 +10,7 @@ Encrypted fields handled:
   users.email_otp_secret
   users.notification_email
   users.calendar_password   (CalDAV credential)
+  backup_schedules.backup_passphrase_encrypted
 
 USE CASES
 ---------
@@ -56,7 +57,7 @@ def main():
     args = parser.parse_args()
 
     from app import create_app, db
-    from app.models import User
+    from app.models import User, BackupSchedule
     from app.utils.encryption import decrypt_field, encrypt_field
 
     app = create_app()
@@ -101,6 +102,16 @@ def main():
                 if args.execute and pending >= args.batch:
                     db.session.commit()
                     pending = 0
+
+        for schedule in BackupSchedule.query.filter(BackupSchedule.backup_passphrase_encrypted.isnot(None)).all():
+            plaintext = decrypt_field(schedule.backup_passphrase_encrypted)
+            if not plaintext:
+                skipped_undecryptable += 1
+                print(f'  ! backup schedule={schedule.id}: could not decrypt — skipped')
+                continue
+            if args.execute:
+                schedule.backup_passphrase_encrypted = encrypt_field(plaintext)
+            changed_fields += 1
 
         if args.execute:
             db.session.commit()

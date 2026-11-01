@@ -1,4 +1,5 @@
 import os
+import secrets
 from datetime import datetime, timedelta
 from app.utils.timeutils import utc_naive_now
 
@@ -80,17 +81,20 @@ def user(app):
 
 @pytest.fixture()
 def auth_headers(app):
-    def _build(user_id, is_admin=False, jti="test-jti"):
+    def _build(user_id, is_admin=False, jti=None):
+        # Each synthetic sign-in needs its own identity, just like real login.
+        # Reusing one ID across owners/revocations would revive old credentials.
+        jti = jti or secrets.token_urlsafe(16)
         payload = {
             "user_id": user_id,
+            "type": "access",
             "is_admin": is_admin,
             "jti": jti,
             "exp": utc_naive_now() + timedelta(hours=1),
         }
         token = jwt.encode(payload, app.config["JWT_SECRET_KEY"], algorithm="HS256")
-        # Auth now requires a real server-side session (48h absolute wall +
-        # single-device enforcement): token_required → validate_session checks
-        # Redis (authoritative when present) then the user_sessions DB mirror.
+        # Every JWT authorization requires a valid durable session, regardless
+        # of Redis availability. Cache entries alone cannot authorize requests.
         # Register the session the same way login does so the token is accepted.
         from app.routes.auth import create_session
         with app.test_request_context():

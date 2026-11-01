@@ -4,9 +4,8 @@
  * (Safari/Firefox) or without permission it resolves to `false` and never
  * throws, so callers can fire-and-forget.
  *
- * Offline WRITES are replayed by the Workbox background-sync queue inside the
- * service worker, which registers and handles its own tag — no page-side
- * registration is involved.
+ * Offline writes use the worker's durable queue. Manual and online-triggered
+ * replay do not require the Background Sync API.
  */
 
 import { REMINDER_REFRESH_TAG, REMINDER_REFRESH_MIN_INTERVAL } from './syncTags'

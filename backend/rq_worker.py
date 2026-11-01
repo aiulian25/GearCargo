@@ -12,7 +12,7 @@ Example optional compose service (add to your deployment when you enable RQ):
 
     rq-worker:
       image: <same image as backend>
-      command: python rq_worker.py
+      entrypoint: ["python", "rq_worker.py"]
       environment:
         TASK_QUEUE_BACKEND: "rq"
         REDIS_URL: "redis://redis:6379/0"
@@ -30,7 +30,7 @@ from app.services.task_queue import build_worker
 
 
 def main():
-    app = create_app()
+    app = create_app(process_role='worker')
     with app.app_context():
         worker = build_worker(app)
         app.logger.info('RQ worker starting (queue=%s)', app.config.get('TASK_QUEUE_NAME', 'gearcargo'))

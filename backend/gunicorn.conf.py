@@ -34,24 +34,17 @@ tmp_upload_dir = None
 errorlog = "-"
 accesslog = "-"
 loglevel = os.environ.get("LOG_LEVEL", "info")
-access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" %(D)s'
+# Only trusted route templates and server-generated IDs reach the formatter.
+# Queries, referrers, user agents and arbitrary headers are deliberately absent.
+logger_class = 'gearcargo_gunicorn_logger.CapabilitySafeLogger'
+access_log_format = '%(t)s method=%(m)s route=%(gc_route)s status=%(s)s bytes=%(b)s duration_us=%(D)s request_id=%(gc_request_id)s'
 
 # Process naming
 proc_name = "gearcargo"
 
-# Load the Flask application once in the master process so all workers share
-# the same code-object and only ONE scheduler instance is ever started.
-# Without this, each worker calls create_app() independently and starts its
-# own scheduler — multiplying every cron/interval job by the worker count
-# (duplicate reminder emails, backups, predictions, etc.).
-#
-# DO NOT set this to False to "fix" slow startup. Disabling preload trades the
-# connection-sharing issue for duplicated cron jobs across workers, which is
-# worse and user-visible. The correct fix is to keep preload AND ensure each
-# worker disposes its inherited DB pool in post_fork() — see
-# STARTUP_SLOWNESS_INVESTIGATION.md §4.1/§4.3. The two are coupled: preload is
-# what makes post_fork's pool disposal necessary, and post_fork is what makes
-# preload safe.
+# Preload shares code objects. Schedules run only in scheduler.py, never in
+# the web master or workers. Keep the established post_fork pool disposal:
+# preloading still requires workers to discard inherited database connections.
 preload_app = True
 
 def _resolve_flask_app(server, worker):
@@ -74,13 +67,8 @@ def post_fork(server, worker):
     """
     Called in each worker immediately after fork().
 
-    With preload_app=True the master has already called create_app() and
-    started the APScheduler.  After fork() the child inherits the Python
-    objects but POSIX threads are NOT copied, so the scheduler's thread pool
-    is already dead in the worker — we just clean up its state so no
-    zombie references remain.
-
-    We also dispose the SQLAlchemy connection pool: file-descriptors for DB
+    With preload_app=True the master has already called create_app().
+    Dispose the SQLAlchemy connection pool: file-descriptors for DB
     connections opened in the master must not be shared across processes or
     queries will corrupt each other's results.
     """
@@ -112,11 +100,8 @@ def post_fork(server, worker):
             "the master's connections", getattr(worker, "pid", "?"), e
         )
 
-    # 2. Shut down any APScheduler state that survived the fork as a zombie.
-    #    The scheduler's background thread is already dead; this clears the
-    #    running flag and releases internal locks so the worker process is
-    #    not left with a stale reference that might cause spurious logging or
-    #    lock contention with the master's live scheduler.
+    # 2. Defensive cleanup for a stale/third-party preload hook. The normal web
+    #    factory starts no scheduler; scheduler.py owns that process role.
     try:
         from app.services import scheduler
         if scheduler.running:

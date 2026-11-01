@@ -4,7 +4,7 @@ GearCargo - Backup Model
 
 import json
 from datetime import datetime, timezone
-from app.utils.timeutils import utc_naive_now
+from app.utils.timeutils import utc_naive_now, isoformat_utc
 from app import db
 
 
@@ -41,7 +41,7 @@ class Backup(db.Model):
     error_message = db.Column(db.Text)
     
     # Encryption
-    encrypted = db.Column(db.Boolean, default=True)
+    encrypted = db.Column(db.Boolean, default=False)
     checksum = db.Column(db.String(64))  # SHA-256
     
     # Timestamps
@@ -93,10 +93,11 @@ class Backup(db.Model):
             # sentinel when an error is recorded; the full detail lives in server logs.
             'error_message': 'Backup failed. Check server logs for details.' if self.error_message else None,
             'encrypted': self.encrypted,
+            'protection': 'encrypted' if self.encrypted else 'plaintext',
             'duration_seconds': self.duration_seconds,
-            'started_at': self.started_at.isoformat() if self.started_at else None,
-            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'started_at': isoformat_utc(self.started_at) if self.started_at else None,
+            'completed_at': isoformat_utc(self.completed_at) if self.completed_at else None,
+            'created_at': isoformat_utc(self.created_at) if self.created_at else None,
         }
 
 
@@ -122,6 +123,8 @@ class BackupSchedule(db.Model):
     # Options
     backup_type = db.Column(db.String(20), default='full')
     include_attachments = db.Column(db.Boolean, default=True)
+    encryption_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    backup_passphrase_encrypted = db.Column(db.Text)
     
     # External backup destination
     external_enabled = db.Column(db.Boolean, default=False)
@@ -310,6 +313,8 @@ class BackupSchedule(db.Model):
             'hour': self.hour,
             'backup_type': self.backup_type,
             'include_attachments': self.include_attachments,
+            'encryption_enabled': self.encryption_enabled,
+            'has_backup_passphrase': bool(self.backup_passphrase_encrypted),
             'external_enabled': self.external_enabled,
             'external_url': self.external_url,
             'external_path': self.external_path,
@@ -334,10 +339,10 @@ class BackupSchedule(db.Model):
             'max_backups': self.max_backups,
             'notify_on_success': self.notify_on_success,
             'notify_on_failure': self.notify_on_failure,
-            'last_run_at': self.last_run_at.isoformat() if self.last_run_at else None,
+            'last_run_at': isoformat_utc(self.last_run_at) if self.last_run_at else None,
             'last_status': self.last_status,
             'last_error': self.last_error,
-            'next_run_at': self.next_run_at.isoformat() if self.next_run_at else None,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'next_run_at': isoformat_utc(self.next_run_at) if self.next_run_at else None,
+            'created_at': isoformat_utc(self.created_at) if self.created_at else None,
+            'updated_at': isoformat_utc(self.updated_at) if self.updated_at else None,
         }

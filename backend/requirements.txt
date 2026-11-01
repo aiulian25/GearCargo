@@ -34,6 +34,7 @@ Flask-Login~=0.6
 Flask-Bcrypt~=1.0
 PyJWT~=2.12
 PyOTP~=2.9
+webauthn~=3.0        # passkeys (WebAuthn); pure-python, verifies attestation/assertions
 qrcode[pil]~=7.4
 Flask-Talisman~=1.1
 Flask-Limiter~=3.5
@@ -55,7 +56,8 @@ email-validator~=2.1
 
 # OCR
 pytesseract~=0.3
-Pillow~=12.0
+# 13.0.0 fixes the reachable GIF/EXIF parser advisories (GC-005).
+Pillow~=13.0
 pillow-heif~=1.0    # decode/transcode iPhone HEIC/HEIF receipt photos (F9); wheels vendor libheif
 numpy~=2.0          # local-illumination normalisation in the OCR preprocessing pipeline
 

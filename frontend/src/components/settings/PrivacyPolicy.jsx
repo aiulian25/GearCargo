@@ -1,6 +1,6 @@
 /**
  * GearCargo - Privacy Policy Component
- * Displays comprehensive privacy policy information in a modal
+ * Describes built-in data handling and the instance operator’s responsibilities
  */
 
 import { useTranslation } from '../../contexts/LanguageContext'
@@ -94,7 +94,7 @@ export default function PrivacyPolicy({ isOpen, onClose }) {
                 {t('privacy.title')}
               </h2>
               <p className="text-sm text-(--color-text-muted)">
-                {t('privacy.lastUpdated')}: February 2026
+                {t('privacy.lastUpdated')}: {t('privacy.updatedDate')}
               </p>
             </div>
           </div>
@@ -133,7 +133,7 @@ export default function PrivacyPolicy({ isOpen, onClose }) {
             <BulletPoint>{t('privacy.dataSecurityItem4')}</BulletPoint>
           </PolicySection>
 
-          {/* No Third-Party Sharing */}
+          {/* Connected services and public links */}
           <PolicySection icon={Icons.userX} title={t('privacy.noThirdPartyTitle')}>
             <div className="p-4 bg-green-500/10 rounded-lg border border-green-500/20 mb-3">
               <p className="text-green-400 font-medium">{t('privacy.noThirdPartyHighlight')}</p>
@@ -152,6 +152,14 @@ export default function PrivacyPolicy({ isOpen, onClose }) {
             <BulletPoint>{t('privacy.dataAccessItem3')}</BulletPoint>
           </PolicySection>
 
+          {/* Notification choices */}
+          <PolicySection icon={Icons.eye} title={t('privacy.notificationTitle')}>
+            <p className="mb-3">{t('privacy.notificationDesc')}</p>
+            <BulletPoint>{t('privacy.notificationItem1')}</BulletPoint>
+            <BulletPoint>{t('privacy.notificationItem2')}</BulletPoint>
+            <BulletPoint>{t('privacy.notificationItem3')}</BulletPoint>
+          </PolicySection>
+
           {/* Data Deletion */}
           <PolicySection icon={Icons.trash} title={t('privacy.dataDeletionTitle')}>
             <p className="mb-3">{t('privacy.dataDeletionDesc')}</p>
@@ -168,12 +176,6 @@ export default function PrivacyPolicy({ isOpen, onClose }) {
             <p className="text-(--color-text-secondary) text-sm">
               {t('privacy.contactDesc')}
             </p>
-            <a 
-              href="mailto:gearcargo.team@gmail.com" 
-              className="inline-block mt-2 text-(--color-accent) hover:underline text-sm font-medium"
-            >
-              gearcargo.team@gmail.com
-            </a>
           </div>
         </div>
         

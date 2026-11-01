@@ -6,17 +6,26 @@ from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify, current_app
 from sqlalchemy import func, desc
 
+from app.utils.timeutils import isoformat_utc
 from app import db
 from app.utils.entryparse import (
     InvalidFieldError,
     invalid_field_response,
     parse_optional_int,
 )
-from app.models import (User, Vehicle, Entry, Backup, ActivityLog, BlockedIP, BlockedDevice,
-                         NotificationLog, BackupSchedule, Todo, EmailConsentLog)
+from app.models import User, Vehicle, Entry, Backup, ActivityLog, BlockedIP, BlockedDevice
 from app.routes.auth import admin_required, MIN_PASSWORD_LENGTH
 
 admin_bp = Blueprint('admin', __name__)
+
+
+@admin_bp.route('/scheduler', methods=['GET'])
+@admin_required
+def get_scheduler_status(current_user):
+    """Owner-independent schedule health; never expose delivery payloads."""
+    from app.services.scheduler_ownership import scheduler_status
+    from app.services.scheduled_effects import delivery_status
+    return jsonify(jobs=scheduler_status(), deliveries=delivery_status())
 
 
 @admin_bp.route('/stats', methods=['GET'])
@@ -282,56 +291,18 @@ def delete_user(current_user, user_id):
         if admin_count <= 1:
             return jsonify({'error': 'Cannot delete the last admin user'}), 400
     
-    # Log the deletion before making changes (user_id = admin who did it, not the deleted user)
-    ActivityLog.log(
-        event_type='user_deleted',
-        event_category='admin',
-        user_id=current_user.id,
-        description=f'User {user.email} deleted by {current_user.email}',
-        success=True,
-        extra_data={'deleted_user_id': user.id, 'deleted_email': user.email, 'was_admin': user.is_admin}
-    )
-
+    from app.services.deletion import DeletionConflict, delete_owned_data, finish_cleanup
     try:
-        # Step 1: Delete notification logs first — they FK to push_subscriptions,
-        # reminders, prediction_alerts, and vehicles which will be cascade-deleted later.
-        NotificationLog.query.filter_by(user_id=user_id).delete(synchronize_session=False)
-
-        # Step 2: Delete backup schedule — not covered by User.backups cascade.
-        BackupSchedule.query.filter_by(user_id=user_id).delete(synchronize_session=False)
-
-        # Step 3: Delete todos — FK to both users and vehicles, not in any cascade.
-        Todo.query.filter_by(user_id=user_id).delete(synchronize_session=False)
-
-        # Step 4: Delete GDPR consent log — FK to users, append-only but user is being removed.
-        EmailConsentLog.query.filter_by(user_id=user_id).delete(synchronize_session=False)
-
-        # Step 5: Null out nullable FK references so blocked-entity records are preserved
-        # for audit purposes even after the target user is gone.
-        BlockedIP.query.filter_by(target_user_id=user_id).update(
-            {'target_user_id': None}, synchronize_session=False
-        )
-        BlockedDevice.query.filter_by(target_user_id=user_id).update(
-            {'target_user_id': None}, synchronize_session=False
-        )
-
-        # Step 6: Preserve activity-log records for audit trail; just detach from the user.
-        ActivityLog.query.filter_by(user_id=user_id).update(
-            {'user_id': None}, synchronize_session=False
-        )
-
-        # Step 7: ORM-level delete — SQLAlchemy cascades in FK-safe order:
-        #   User → vehicles → (fuel/service/repair/tax/parking entries, reminders,
-        #                       predictions, attachments, insurance_policies)
-        #        → reminders, backups, push_subscriptions
-        db.session.delete(user)
-        db.session.commit()
+        operation_id = delete_owned_data(user_id, actor_id=current_user.id)
+    except DeletionConflict as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 409
     except Exception:
         db.session.rollback()
-        current_app.logger.error('Failed to delete user %s', user_id, exc_info=True)
-        return jsonify({'error': 'Failed to delete user. Please try again later.'}), 500
+        current_app.logger.exception('Account deletion could not be confirmed')
+        return jsonify({'error': 'Could not confirm account deletion. Refresh before retrying; files are retained unless deletion committed.'}), 500
 
-    return jsonify({'message': 'User deleted'})
+    return jsonify({'message': 'User deleted', 'cleanup': finish_cleanup(operation_id)})
 
 
 @admin_bp.route('/settings', methods=['GET'])
@@ -394,7 +365,7 @@ def get_settings(current_user):
             'total': total_predictions,
             'active': active_predictions,
             'last_generated_at': (
-                last_alert.created_at.isoformat() if last_alert else None
+                isoformat_utc(last_alert.created_at) if last_alert else None
             ),
         }
     except Exception:
@@ -1267,65 +1238,18 @@ def get_blocked_summary(current_user):
 @admin_bp.route('/maintenance/ocr-backfill', methods=['POST'])
 @admin_required
 def ocr_backfill(current_user):
-    """Bulk-requeue OCR for all unprocessed image attachments.
-
-    Safe to call at any time — only images with a file that exists on disk are
-    re-queued.  Returns immediately; OCR runs in background threads (max 2
-    concurrent to avoid saturating the NAS CPU).
-
-    Query params:
-      force=true   — also reprocess images that are already OCR'd (ocr_processed=True).
-                     Use this after upgrading the OCR pipeline to refresh stale results.
-    """
-    import os
-    import threading
-    from app.models.attachment import Attachment
-    from app.routes.attachments import _throttled_ocr_background, _OCR_CONCURRENCY
-
+    """Admit one bounded page, including PDFs; force also retries terminal work."""
+    from app.services.ocr_queue import backfill
     force = request.args.get('force', 'false').lower() == 'true'
+    after_id = request.args.get('after_id', 0, type=int)
+    if after_id is None or after_id < 0:
+        return jsonify({'error': 'Invalid page cursor'}), 400
+    result = backfill(force=force, after_id=after_id)
+    return jsonify(**result, force=force, message=f"Queued {result['queued']} scans. At most two run across the deployment.")
 
-    _app = current_app._get_current_object()
 
-    if force:
-        candidates = Attachment.query.all()
-    else:
-        candidates = Attachment.query.filter_by(ocr_processed=False).all()
-
-    queued = 0
-    skipped_no_file = 0
-    for att in candidates:
-        if not att.is_image:
-            continue
-        if not att.filepath or not os.path.exists(att.filepath):
-            skipped_no_file += 1
-            continue
-        # When force=true, reset the flag so the UI shows "Scanning…" again
-        if force:
-            att.ocr_processed = False
-            att.ocr_text = None
-        threading.Thread(
-            target=_throttled_ocr_background,
-            args=(_app, att.id, att.filepath),
-            daemon=False,
-            name=f'ocr-admin-backfill-{att.id}',
-        ).start()
-        queued += 1
-
-    if force and queued:
-        from app import db
-        try:
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-
-    current_app.logger.info(
-        'Admin OCR backfill: force=%s queued=%d skipped_no_file=%d triggered_by=%s',
-        force, queued, skipped_no_file, current_user.email,
-    )
-    return jsonify({
-        'queued': queued,
-        'force': force,
-        'skipped_no_file': skipped_no_file,
-        'message': f'OCR re-queued for {queued} image(s) (max {_OCR_CONCURRENCY} concurrent). Results will appear shortly.',
-    })
-
+@admin_bp.route('/ocr', methods=['GET'])
+@admin_required
+def ocr_queue_status(current_user):
+    from app.services.ocr_queue import queue_status
+    return jsonify(queue_status())

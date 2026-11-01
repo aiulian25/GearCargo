@@ -14,6 +14,7 @@ Sources:
   - EU: https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en
 """
 
+from app.services.restore_transaction import guarded_app_context
 import csv
 import json
 import os
@@ -375,7 +376,7 @@ def record_price_history(country, data, app):
         if has_app_context():
             _upsert()
         else:
-            with app.app_context():
+            with guarded_app_context(app):
                 _upsert()
     except Exception as e:
         try:

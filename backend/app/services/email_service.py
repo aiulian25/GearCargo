@@ -290,7 +290,7 @@ class EmailService:
         if not EmailService.is_enabled():
             logger.warning("Email not enabled, skipping send")
             return False
-        
+
         try:
             app_url = current_app.config.get('APP_URL', 'http://localhost:5000')
             logo_url = f"{app_url}/icons/logo.png"
@@ -418,7 +418,7 @@ class EmailService:
             logo_url=logo_url
         )
         
-        return EmailService.send_email(
+        return EmailService._send_user_email(user, 'alert',
             to=to_email,
             subject=titles.get(alert_type, "Alert"),
             content_html=content_html,
@@ -451,7 +451,7 @@ class EmailService:
             logo_url=logo_url
         )
         
-        return EmailService.send_email(
+        return EmailService._send_user_email(user, 'weekly_report',
             to=to_email,
             subject=f"Weekly Report ({period})",
             content_html=content_html,
@@ -494,12 +494,23 @@ class EmailService:
             logo_url=logo_url
         )
         
-        return EmailService.send_email(
+        return EmailService._send_user_email(user, 'monthly_report',
             to=to_email,
             subject=f"Monthly Report - {month_name} {year}",
             content_html=content_html,
             unsubscribe_url=unsubscribe_url
         )
+
+    @staticmethod
+    def _send_user_email(user, delivery_key, **payload) -> bool:
+        """Durably accept scheduled reports; preserve synchronous mail elsewhere."""
+        from app.services.scheduler_ownership import active_run
+        from app.services.scheduled_effects import enqueue_effect
+        run = active_run.get()
+        if (EmailService.is_enabled() and run and run.name != 'check_reminders'
+                and enqueue_effect('email', user.id, delivery_key, payload)):
+            return True
+        return EmailService.send_email(**payload)
     
     @staticmethod
     def send_test_email(user) -> bool:

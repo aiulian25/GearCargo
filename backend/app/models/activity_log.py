@@ -6,7 +6,7 @@ from datetime import datetime
 
 from flask import current_app
 
-from app.utils.timeutils import utc_naive_now
+from app.utils.timeutils import utc_naive_now, isoformat_utc
 from app import db
 
 
@@ -85,7 +85,7 @@ class ActivityLog(db.Model):
             'success': self.success,
             'error_message': self.error_message,
             'extra_data': self.extra_data,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'created_at': isoformat_utc(self.created_at) if self.created_at else None,
         }
     
     @classmethod

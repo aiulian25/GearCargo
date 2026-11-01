@@ -1,10 +1,11 @@
+import { reminderReturnPath } from '../../utils/reminderRoutes'
 /**
  * GearCargo - Setup Security Questions Page
  * Shown after first login password change to encourage security question setup
  */
 
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from '../../contexts/LanguageContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { authApi } from '../../services/api'
@@ -51,6 +52,7 @@ export default function SetupSecurityQuestions() {
   const { t } = useTranslation()
   const { refreshUser } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   
   const [step, setStep] = useState(1) // 1: intro, 2: questions, 3: success
   const [availableQuestions, setAvailableQuestions] = useState([])
@@ -111,7 +113,7 @@ export default function SetupSecurityQuestions() {
       icon: '💡',
       duration: 5000,
     })
-    navigate('/')
+    navigate(reminderReturnPath(searchParams.toString()), { replace: true })
   }
   
   const handleAddQuestion = () => {
@@ -155,7 +157,7 @@ export default function SetupSecurityQuestions() {
       
       // Auto-redirect after showing success
       setTimeout(() => {
-        navigate('/')
+        navigate(reminderReturnPath(searchParams.toString()), { replace: true })
       }, 2500)
     } catch (err) {
       const errorData = err.response?.data

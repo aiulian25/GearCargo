@@ -10,6 +10,7 @@ from pywebpush import webpush, WebPushException
 import json
 import requests.exceptions
 
+from app.utils.timeutils import isoformat_utc
 from app import db
 from app.models import PushSubscription, NotificationLog
 from app.routes.auth import token_required
@@ -312,7 +313,7 @@ def notification_history(current_user):
             # Own data — surfaced so the UI can explain a failed delivery.
             'error_message': log.error_message if log.status == 'failed' else None,
             'vehicle_id': log.vehicle_id,
-            'created_at': log.created_at.isoformat() if log.created_at else None,
+            'created_at': isoformat_utc(log.created_at) if log.created_at else None,
         }
 
     return jsonify({
@@ -424,6 +425,12 @@ def test_notification(current_user):
 def send_push_to_user(user_id, title, body, data=None, tag=None):
     """Send push notification to all user's subscriptions."""
     from flask import current_app
+
+    from app.services.scheduled_effects import enqueue_effect
+    if (data or {}).get('type') not in ('reminder', 'reminder_mileage') and enqueue_effect(
+        'push', user_id, tag or (data or {}).get('type', 'general'),
+        dict(title=title, body=body, data=data, tag=tag)):
+        return 1  # Accepted durably; actual transport acknowledgement is separate.
     
     subscriptions = PushSubscription.query.filter_by(
         user_id=user_id,

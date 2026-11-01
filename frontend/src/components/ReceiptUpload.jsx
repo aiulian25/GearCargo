@@ -44,7 +44,7 @@ const Icons = {
   ),
 }
 
-export default function ReceiptUpload({ onFileSelect, onFileRemove, selectedFile, preview, label, disabled = false }) {
+export default function ReceiptUpload({ onFileSelect, onFileRemove, selectedFile, preview, label, durableDraft = false, disabled = false }) {
   const { t } = useTranslation()
   const fileInputRef = useRef(null)
   const cameraInputRef = useRef(null)
@@ -52,7 +52,7 @@ export default function ReceiptUpload({ onFileSelect, onFileRemove, selectedFile
   const [previewUrl, setPreviewUrl] = useState(preview || null)
 
   const handleFileSelect = (file) => {
-    if (!file) return
+    if (!file || disabled) return
 
     // Validate file type. iPhones shoot HEIC by default; some browsers report its
     // MIME as image/heic, others leave file.type empty — so we also accept by
@@ -142,6 +142,8 @@ export default function ReceiptUpload({ onFileSelect, onFileRemove, selectedFile
         {label || t('receipt.label') || 'Receipt / Document'} ({t('receipt.optional') || 'optional'})
       </label>
       
+      {durableDraft && <p className="text-xs text-(--color-text-muted)">{t('pwa.sync.receipts.selectionNotice')}</p>}
+
       {/* Hidden file inputs */}
       <input
         ref={fileInputRef}

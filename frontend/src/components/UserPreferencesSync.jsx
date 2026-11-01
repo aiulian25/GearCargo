@@ -5,6 +5,7 @@
  * from the backend to the local context providers when user data is loaded.
  */
 import { useEffect, useRef } from 'react'
+import { DateFormatProvider } from '../contexts/DateFormatContext'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 import { useLanguage } from '../contexts/LanguageContext'
@@ -12,30 +13,35 @@ import { useLanguage } from '../contexts/LanguageContext'
 export default function UserPreferencesSync({ children }) {
   const { user, isAuthenticated } = useAuth()
   const { loadThemeFromUser } = useTheme()
-  const { loadLanguageFromUser } = useLanguage()
-  const lastSyncedUserId = useRef(null)
+  const { language, isLoaded, loadLanguageFromUser } = useLanguage()
+  const lastSyncedPreferences = useRef(null)
   
   // Sync preferences when user logs in or user data changes
   useEffect(() => {
-    if (isAuthenticated && user && user.id !== lastSyncedUserId.current) {
+    // Apply the profile after local preference loading, so a stale local read cannot override it.
+    if (isAuthenticated && user && isLoaded) {
+      const previous = lastSyncedPreferences.current
       // Sync theme from user data
-      if (user.theme) {
+      if (user.theme && previous?.id !== user.id) {
         loadThemeFromUser(user)
       }
       
       // Sync language from user data
-      if (user.language) {
+      if (user.language && (previous?.id !== user.id || previous?.language !== user.language)) {
         loadLanguageFromUser(user)
       }
       
-      lastSyncedUserId.current = user.id
+      lastSyncedPreferences.current = { id: user.id, language: user.language }
     }
     
     // Reset when logged out
     if (!isAuthenticated) {
-      lastSyncedUserId.current = null
+      lastSyncedPreferences.current = null
     }
-  }, [user, isAuthenticated, loadThemeFromUser, loadLanguageFromUser])
+  }, [user, isAuthenticated, isLoaded, loadThemeFromUser, loadLanguageFromUser])
   
-  return children
+  const preferences = isAuthenticated ? user : null
+  return <DateFormatProvider language={language} dateFormat={preferences?.date_format} timezone={preferences?.timezone}>
+    {children}
+  </DateFormatProvider>
 }

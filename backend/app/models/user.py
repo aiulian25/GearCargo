@@ -3,12 +3,13 @@ GearCargo - User Model
 """
 
 from datetime import datetime, timedelta, timezone
-from app.utils.timeutils import utc_naive_now
+from app.utils.timeutils import utc_naive_now, isoformat_utc
 import base64
 import hashlib
 import hmac
 import re
 import secrets
+import uuid
 from flask_login import UserMixin
 from app import db, bcrypt, login_manager
 
@@ -66,6 +67,8 @@ class User(UserMixin, db.Model):
     """User model for authentication and profile."""
     
     __tablename__ = 'users'
+    __table_args__ = (db.UniqueConstraint('export_namespace', name='uq_user_export_namespace'),)
+    export_namespace = db.Column(db.String(36), nullable=False, default=lambda: str(uuid.uuid4()))
     
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False, index=True)
@@ -176,6 +179,7 @@ class User(UserMixin, db.Model):
     reminders = db.relationship('Reminder', backref='user', lazy='dynamic', cascade='all, delete-orphan')
     backups = db.relationship('Backup', backref='user', lazy='dynamic', cascade='all, delete-orphan')
     push_subscriptions = db.relationship('PushSubscription', backref='user', lazy='dynamic', cascade='all, delete-orphan')
+    passkeys = db.relationship('Passkey', backref='user', lazy='dynamic', cascade='all, delete-orphan')
     
     def __repr__(self):
         return f'<User {self.username}>'
@@ -509,14 +513,14 @@ class User(UserMixin, db.Model):
             'security_questions_status': {
                 'configured': self.has_security_questions(),
                 'count': len(self.security_questions) if self.security_questions else 0,
-                'set_at': self.security_questions_set_at.isoformat() if self.security_questions_set_at else None
+                'set_at': isoformat_utc(self.security_questions_set_at) if self.security_questions_set_at else None
             },
             'vehicle_limit': self.vehicle_limit,
             # R4-17: callers listing many users pass a pre-computed count so
             # this does not issue one query per serialized user.
             'vehicle_count': (self.vehicles.count() if vehicle_count is None
                               else vehicle_count),
-            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'created_at': isoformat_utc(self.created_at) if self.created_at else None,
         }
         
         if include_private:
@@ -542,6 +546,6 @@ class User(UserMixin, db.Model):
             data['calendar_username'] = self.calendar_username
             data['calendar_id'] = self.calendar_id
             data['calendar_configured'] = bool(self.calendar_provider and self.calendar_url and self.calendar_username)
-            data['calendar_last_sync'] = self.calendar_last_sync.isoformat() if self.calendar_last_sync else None
+            data['calendar_last_sync'] = isoformat_utc(self.calendar_last_sync) if self.calendar_last_sync else None
         
         return data

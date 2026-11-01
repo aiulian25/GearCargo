@@ -1,13 +1,20 @@
-import { useState, useEffect, useMemo, Fragment } from 'react'
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { vehicleApi, fuelApi, serviceApi, repairApi, taxApi, reminderApi, insuranceApi, parkingApi } from '../../services/api'
+import { localDate } from '../../utils/dateFormat'
+import useExpenseFilters from '../../hooks/useExpenseFilters'
+import useExpenseRecords from '../../hooks/useExpenseRecords'
+import ExpensePagination from '../../components/ui/ExpensePagination'
+import useExpenseSummary from '../../hooks/useExpenseSummary'
+import FinancialBasis from '../../components/ui/FinancialBasis'
+import { mutationOptions } from '../../utils/mutationProtocol'
+import { useState, useEffect, useMemo, useId, Fragment } from 'react'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
+import { vehicleApi, fuelApi, serviceApi, repairApi, taxApi, reminderApi, insuranceApi, parkingApi, consumableApi } from '../../services/api'
 import api from '../../services/api'
 import toast from 'react-hot-toast'
 import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
-import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
+import { useTranslation } from '../../contexts/LanguageContext'
 import { useAuth } from '../../contexts/AuthContext'
-import { usesGallons, litersToDisplayVolume, pricePerLiterToDisplay, volumeUnitLabel } from '../../utils/fuelEconomy'
-import { formatDate } from '../../utils/dateFormat'
+import { litersToDisplayVolume, pricePerLiterToDisplay, volumeUnitLabel } from '../../utils/fuelEconomy'
+import { useDateFormat } from '../../hooks/useDateFormat'
 import { Skeleton, SkeletonScreen } from '../../components/ui/Skeleton'
 import AttachmentViewer from '../../components/ui/AttachmentViewer'
 
@@ -121,7 +128,7 @@ const Icons = {
 }
 
 // Donut Chart Component
-const DonutChart = ({ data, centerText, centerSubtext }) => {
+const DonutChart = ({ data, centerText, centerSubtext, currency }) => {
   const total = data.reduce((sum, item) => sum + item.value, 0)
   let currentAngle = -90 // Start from top
   
@@ -150,7 +157,7 @@ const DonutChart = ({ data, centerText, centerSubtext }) => {
 
   return (
     <div className="relative">
-      <svg viewBox="0 0 200 200" className="w-full max-w-[280px] mx-auto">
+      <svg aria-hidden="true" viewBox="0 0 200 200" className="w-full max-w-[280px] mx-auto">
         {/* Background circle when no data */}
         {total === 0 && (
           <circle cx="100" cy="100" r="80" fill="var(--color-bg-tertiary)" />
@@ -185,8 +192,8 @@ const DonutChart = ({ data, centerText, centerSubtext }) => {
               <span className="text-(--color-text-primary)">{item.label}</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-(--color-accent)">{item.value.toFixed(2)}</span>
-              <span className="text-(--color-text-muted)">({((item.value / (total || 1)) * 100).toFixed(1)}%)</span>
+              <span className="text-(--color-text-primary)">{item.value.toFixed(2)} {currency}</span>
+              <span className="text-(--color-text-secondary)">({((item.value / (total || 1)) * 100).toFixed(1)}%)</span>
             </div>
           </div>
         ))}
@@ -195,71 +202,95 @@ const DonutChart = ({ data, centerText, centerSubtext }) => {
   )
 }
 
-const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-const MONTH_NAMES_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-// Bar Chart Component
-const BarChart = ({ data, categories, title, onMonthClick, selectedMonth, hintText }) => {
+// Monthly filters and a readable equivalent of the chart's complete totals.
+const BarChart = ({ data, categories, title, onMonthClick, selectedMonth, hintText, currency, year }) => {
+  const { monthNames, monthNamesShort } = useDateFormat()
+  const { t, language } = useTranslation()
+  const chartId = useId()
   const maxValue = Math.max(...data.map(d => d.total), 1)
+  const formatTotal = value => `${new Intl.NumberFormat(language || 'en', {
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  }).format(value)} ${currency || t('financial.unknownCurrency')}`
+  const months = monthNames.map((name, i) => ({ name, shortName: monthNamesShort[i],
+    total: data.find(d => d.month === i + 1)?.total ?? 0 }))
+  const selection = selectedMonth === null
+    ? t('expenses.showingYear').replace('{year}', year)
+    : t('expenses.showingMonth').replace('{month}', monthNames[selectedMonth]).replace('{year}', year)
 
   return (
-    <div className="h-full flex flex-col">
-      <h3 className="text-(--color-accent) text-sm font-medium mb-1 text-center">{title}</h3>
-      {hintText && <p className="text-[10px] text-center text-(--color-text-muted) mb-3">{hintText}</p>}
+    <section className="h-full flex flex-col" aria-labelledby={`${chartId}-title`}>
+      <h3 id={`${chartId}-title`} className="text-(--color-text-primary) text-sm font-medium mb-1 text-center">{title}</h3>
+      <p id={`${chartId}-hint`} className="text-xs text-center text-(--color-text-secondary) mb-3">{hintText}</p>
 
-      <div className="flex-1 flex items-end gap-1 px-2">
-        {MONTH_NAMES_SHORT.map((month, i) => {
-          const monthData = data.find(d => d.month === i + 1) || { total: 0, breakdown: {} }
-          const height = maxValue > 0 ? (monthData.total / maxValue) * 100 : 0
-          const isSelected = selectedMonth === i
-          const isDimmed = selectedMonth !== null && !isSelected
-
-          return (
-            <div
-              key={month}
-              className="flex-1 flex flex-col items-center cursor-pointer"
-              onClick={() => onMonthClick && onMonthClick(i)}
-              role="button"
-              aria-pressed={isSelected}
-              aria-label={MONTH_NAMES[i]}
-            >
-              <div className={`w-full flex flex-col justify-end h-32 relative transition-opacity duration-200 ${isDimmed ? 'opacity-30' : 'opacity-100'}`}>
-                {isSelected && (
-                  <div className="absolute inset-x-0 -top-0.5 bottom-0 rounded-sm border-2 border-(--color-accent) pointer-events-none" />
-                )}
-                {/* Stacked bars */}
-                <div
-                  className="w-full rounded-t transition-all duration-300"
-                  style={{
-                    height: `${Math.max(height, 0)}%`,
-                    minHeight: monthData.total > 0 ? '4px' : '0',
-                    background: monthData.total > 0
-                      ? 'linear-gradient(to top, #22c55e, #84cc16, #facc15, #f97316, #ef4444)'
-                      : 'transparent'
-                  }}
-                />
-              </div>
-              <span className={`text-[10px] mt-1 transition-colors duration-200 ${isSelected ? 'text-(--color-accent) font-semibold' : 'text-(--color-text-muted)'}`}>
-                {month}
-              </span>
-            </div>
-          )
-        })}
+      {/* Keep each month a usable touch target; focus scrolls it into view on narrow screens. */}
+      <div className="overflow-x-auto px-1 py-2">
+        <div role="group" aria-labelledby={`${chartId}-title`} aria-describedby={`${chartId}-hint`}
+          className="flex items-end gap-2 min-w-max">
+          {months.map((month, i) => {
+            const height = (month.total / maxValue) * 100
+            const isSelected = selectedMonth === i
+            const label = t('expenses.monthFilterLabel').replace('{month}', month.name)
+              .replace('{year}', year).replace('{total}', formatTotal(month.total))
+            return (
+              <button
+                key={i}
+                type="button"
+                className={`flex-1 min-w-11 min-h-11 flex flex-col items-center rounded-sm px-1 py-1 text-(--color-text-primary)
+                  focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text-primary)
+                  ${isSelected ? 'bg-(--color-bg-tertiary) font-semibold' : 'hover:bg-(--color-bg-tertiary)'}`}
+                onClick={() => onMonthClick(i)}
+                aria-pressed={isSelected}
+                aria-label={label}
+              >
+                <span aria-hidden="true" className="w-full flex flex-col justify-end h-32 relative">
+                  <span className="w-full rounded-t border-(--color-text-primary)"
+                    style={{ height: `${Math.max(height, 0)}%`, minHeight: month.total > 0 ? '4px' : '0',
+                      borderWidth: month.total > 0 ? '1px' : '0',
+                      background: month.total > 0 ? 'linear-gradient(to top, #22c55e, #84cc16, #facc15, #f97316, #ef4444)' : 'transparent' }} />
+                </span>
+                <span aria-hidden="true" className={`text-xs mt-1 ${isSelected ? 'underline underline-offset-4' : ''}`}>
+                  {month.shortName}
+                </span>
+              </button>
+            )
+          })}
+        </div>
       </div>
+      <button type="button" onClick={() => onMonthClick(null)} aria-pressed={selectedMonth === null}
+        className="self-start min-h-11 px-3 mt-2 rounded-sm text-sm text-(--color-text-primary) underline underline-offset-2
+          focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text-primary)">
+        {t('expenses.fullYear')}
+      </button>
+      <p role="status" className="text-xs text-(--color-text-secondary) mt-1">{selection}</p>
 
-      {/* Category badges */}
+      <details className="mt-3 text-sm text-(--color-text-primary)">
+        <summary className="min-h-11 py-3 px-1 cursor-pointer rounded-sm
+          focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text-primary)">
+          {t('expenses.monthlyTotals')}
+        </summary>
+        <table className="w-full text-left text-sm">
+          <caption className="text-left py-2 text-(--color-text-secondary)">
+            {t('expenses.monthlyTotalsYear').replace('{year}', year)}
+          </caption>
+          <thead><tr><th scope="col" className="py-2">{t('expenses.monthColumn')}</th>
+            <th scope="col" className="py-2 text-right">{t('expenses.totalColumn')}</th></tr></thead>
+          <tbody>{months.map((month, i) => <tr key={i}>
+            <th scope="row" className="py-1 font-normal">{month.name}</th>
+            <td className="py-1 text-right tabular-nums">{formatTotal(month.total)}</td>
+          </tr>)}</tbody>
+        </table>
+      </details>
+
       <div className="flex flex-wrap gap-2 mt-4 justify-center">
         {categories.map((cat, i) => (
-          <span
-            key={i}
-            className="px-2 py-0.5 rounded-sm text-xs font-medium"
-            style={{ backgroundColor: cat.color, color: '#fff' }}
-          >
+          <span key={i} className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-xs font-medium bg-(--color-bg-tertiary) text-(--color-text-primary)">
+            <span aria-hidden="true" className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }} />
             {cat.label}
           </span>
         ))}
       </div>
-    </div>
+    </section>
   )
 }
 
@@ -293,12 +324,12 @@ const TabButton = ({ active, icon, label, count, onClick, tabId }) => (
   </button>
 )
 
-const VALID_TABS = ['fuel', 'service', 'tax', 'parking', 'repair', 'insurance', 'todo', 'reminder']
 
 // F34 — badge for recurring series templates: "Monthly · next 01 Aug". Makes
 // the template visually distinct from generated occurrences so users know
 // which row's "Stop repeating" ends the series.
 function RecurringChip({ entry, t }) {
+  const { formatDate } = useDateFormat()
   if (!entry.recurring) return null
   const freq = entry.recurrence_type
     ? (t(`recurring.${entry.recurrence_type}`) || entry.recurrence_type)
@@ -317,19 +348,25 @@ function RecurringChip({ entry, t }) {
 }
 
 export default function VehicleExpenses() {
+  const { formatDate, monthNames, monthNamesShort } = useDateFormat()
   const { id } = useParams()
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
+  const location = useLocation()
   const { t } = useTranslation()
-  const { formatCurrency } = useCurrency()
+  const formatCurrency = (amount, currency) => `${Number(amount ?? 0).toFixed(2)} ${currency || t('financial.unknownCurrency')}`
   const { user } = useAuth()  // F27 — volume unit preference
   
   const [vehicle, setVehicle] = useState(null)
   const [loading, setLoading] = useState(true)
-  const initialTab = searchParams.get('tab')
-  const [activeTab, setActiveTab] = useState(VALID_TABS.includes(initialTab) ? initialTab : 'fuel')
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
-  const [selectedMonth, setSelectedMonth] = useState(null)
+  const { tab: activeTab, setTab: setActiveTab, year: selectedYear, setYear: setSelectedYear,
+    month, setMonth, page, setPage } = useExpenseFilters()
+  const selectedMonth = month == null ? null : month - 1
+  const setSelectedMonth = index => setMonth(index == null ? null : index + 1)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [finePage, setFinePage] = useState(1)
+  const [vehicleError, setVehicleError] = useState(false)
+  const refresh = () => setRefreshKey(value => value + 1)
+
 
   // Attachment viewer state
   const [viewerOpen, setViewerOpen] = useState(false)
@@ -337,262 +374,69 @@ export default function VehicleExpenses() {
   const [viewerInitialIndex, setViewerInitialIndex] = useState(0)
   const [viewerInitialShowOcr, setViewerInitialShowOcr] = useState(false)
   
-  // Data states
-  const [fuelEntries, setFuelEntries] = useState([])
-  const [serviceEntries, setServiceEntries] = useState([])
-  const [taxEntries, setTaxEntries] = useState([])
-  const [parkingEntries, setParkingEntries] = useState([])
-  const [repairEntries, setRepairEntries] = useState([])
-  const [insuranceEntries, setInsuranceEntries] = useState([])
-  const [todoEntries, setTodoEntries] = useState([])
-  const [reminderEntries, setReminderEntries] = useState([])
-  const [outstandingFines, setOutstandingFines] = useState([])  // F14
-  const [expandedInsurance, setExpandedInsurance] = useState(null)  // F55
+  const [expandedInsurance, setExpandedInsurance] = useState(null)
+  const expenseState = useExpenseSummary(id, selectedYear, refreshKey)
+  const expenseSummary = expenseState.data
+  const detailState = useExpenseRecords(id, { category: activeTab, year: selectedYear, month, page }, refreshKey)
+  const fineState = useExpenseRecords(id, { category: 'parking', scope: 'outstanding', page: finePage }, refreshKey, activeTab === 'parking')
 
   useEffect(() => {
-    fetchAllData()
-  }, [id])
+    let active = true
+    setLoading(true)
+    setVehicleError(false)
+    vehicleApi.getById(id)
+      .then(response => { if (active) setVehicle(response.data) })
+      .catch(() => { if (active) setVehicleError(true) })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [id, refreshKey])
 
+  const fuelEntries = activeTab === 'fuel' ? detailState.data?.records || [] : []
+  const setFuelEntries = detailState.setRecords
+  const serviceEntries = activeTab === 'service' ? detailState.data?.records || [] : []
+  const setServiceEntries = detailState.setRecords
+  const taxEntries = activeTab === 'tax' ? detailState.data?.records || [] : []
+  const setTaxEntries = detailState.setRecords
+  const parkingEntries = activeTab === 'parking' ? detailState.data?.records || [] : []
+  const setParkingEntries = detailState.setRecords
+  const repairEntries = activeTab === 'repair' ? detailState.data?.records || [] : []
+  const setRepairEntries = detailState.setRecords
+  const insuranceEntries = activeTab === 'insurance' ? detailState.data?.records || [] : []
+  const setInsuranceEntries = detailState.setRecords
+  const consumableEntries = activeTab === 'consumable' ? detailState.data?.records || [] : []
+  const todoEntries = activeTab === 'todo' ? detailState.data?.records || [] : []
+  const setTodoEntries = detailState.setRecords
+  const reminderEntries = activeTab === 'reminder' ? detailState.data?.records || [] : []
+  const setReminderEntries = detailState.setRecords
+  const outstandingFines = fineState.data?.records || []
+  const setOutstandingFines = fineState.setRecords
+
+  // Deleting the last row can remove a page. Recover to the last valid page.
   useEffect(() => {
-    setSelectedMonth(null)
-  }, [selectedYear])
+    if (detailState.data && page > Math.max(1, detailState.data.pages)) setPage(Math.max(1, detailState.data.pages), true)
+  }, [detailState.data, page, setPage])
+  useEffect(() => {
+    if (fineState.data && finePage > Math.max(1, fineState.data.pages)) setFinePage(Math.max(1, fineState.data.pages))
+  }, [fineState.data, finePage])
 
-  const fetchAllData = async () => {
-    try {
-      setLoading(true)
-      
-      // Fetch each API separately with error handling
-      const vehicleRes = await vehicleApi.getById(id)
-      setVehicle(vehicleRes.data)
-      
-      // Fetch all data with individual error handling
-      const results = await Promise.allSettled([
-        fuelApi.getByVehicle(id),
-        serviceApi.getByVehicle(id),
-        repairApi.getByVehicle(id),
-        taxApi.getAll(id),
-        api.get(`/parking?vehicle_id=${id}`),
-        reminderApi.getAll(id),
-        api.get(`/todos?vehicle_id=${id}`),
-        insuranceApi.getAll(id),
-        parkingApi.getFines(),
-      ])
-
-      // Process results with proper fallbacks
-      const [fuelRes, serviceRes, repairRes, taxRes, parkingRes, reminderRes, todoRes, insuranceRes, finesRes] = results
-      
-      if (fuelRes.status === 'fulfilled') {
-        setFuelEntries(fuelRes.value.data.entries || fuelRes.value.data || [])
-      }
-      if (serviceRes.status === 'fulfilled') {
-        setServiceEntries(serviceRes.value.data.entries || serviceRes.value.data || [])
-      }
-      if (repairRes.status === 'fulfilled') {
-        setRepairEntries(repairRes.value.data.entries || repairRes.value.data || [])
-      }
-      if (taxRes.status === 'fulfilled') {
-        setTaxEntries(taxRes.value.data.entries || taxRes.value.data || [])
-      }
-      if (parkingRes.status === 'fulfilled') {
-        setParkingEntries(parkingRes.value.data.entries || parkingRes.value.data || [])
-      }
-      if (reminderRes.status === 'fulfilled') {
-        setReminderEntries(reminderRes.value.data.reminders || reminderRes.value.data || [])
-      }
-      if (todoRes.status === 'fulfilled') {
-        setTodoEntries(todoRes.value.data.todos || todoRes.value.data || [])
-      }
-      if (insuranceRes.status === 'fulfilled') {
-        setInsuranceEntries(insuranceRes.value.data.policies || insuranceRes.value.data || [])
-      }
-      if (finesRes.status === 'fulfilled') {
-        // The endpoint is user-scoped; keep only this vehicle's outstanding fines.
-        const all = finesRes.value.data.fines || []
-        setOutstandingFines(all.filter(f => f.vehicle_id === Number(id)))
-      }
-
-    } catch (error) {
-      console.error('Failed to fetch data:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // Calculate totals by category filtered to selectedYear
-  const categoryTotals = useMemo(() => {
-    const inYear = (dateStr) => dateStr && new Date(dateStr).getFullYear() === selectedYear
-
-    const fuelTotal = fuelEntries
-      .filter(e => inYear(e.date))
-      .reduce((sum, e) => sum + (parseFloat(e.total_price) || 0), 0)
-    const serviceTotal = serviceEntries
-      .filter(e => inYear(e.date))
-      .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0)
-    const taxTotal = taxEntries
-      .filter(e => inYear(e.date))
-      .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0)
-    const parkingTotal = parkingEntries
-      .filter(e => inYear(e.date))
-      .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0)
-    const repairTotal = repairEntries
-      .filter(e => inYear(e.date))
-      .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0)
-
-    // Insurance: count actual payments made in selectedYear (mirrors monthlyData logic)
-    const today = new Date()
-    const currentYear = today.getFullYear()
-    let insuranceTotal = 0
-    insuranceEntries.forEach(policy => {
-      const premium = parseFloat(policy.premium) || 0
-      const startDate = policy.start_date ? new Date(policy.start_date) : null
-      const endDate = policy.end_date ? new Date(policy.end_date) : null
-      const frequency = policy.payment_frequency || 'annual'
-      if (!startDate) return
-
-      if (frequency === 'annual' || frequency === 'yearly') {
-        if (startDate.getFullYear() === selectedYear) insuranceTotal += premium
-      } else if (frequency === 'monthly') {
-        const paymentDay = startDate.getDate()
-        const yearStart = new Date(selectedYear, 0, 1)
-        const yearEnd = endDate
-          ? new Date(Math.min(endDate.getTime(), new Date(selectedYear, 11, 31).getTime()))
-          : new Date(selectedYear, 11, 31)
-        const periodStart = new Date(Math.max(startDate.getTime(), yearStart.getTime()))
-        let periodEnd = yearEnd
-        if (selectedYear === currentYear) {
-          const paidThroughMonth = today.getDate() >= paymentDay ? today.getMonth() : today.getMonth() - 1
-          const cappedDate = new Date(selectedYear, paidThroughMonth, 28)
-          if (cappedDate < periodEnd) periodEnd = cappedDate
-        }
-        if (startDate.getFullYear() <= selectedYear && (!endDate || endDate.getFullYear() >= selectedYear) && periodStart <= periodEnd) {
-          const months = periodEnd.getMonth() - periodStart.getMonth() + 1
-          insuranceTotal += premium * Math.max(0, months)
-        }
-      } else if (frequency === 'quarterly') {
-        const startMonth = startDate.getMonth()
-        for (let q = 0; q < 4; q++) {
-          const paymentMonth = (startMonth + q * 3) % 12
-          const paymentYear = startDate.getFullYear() + Math.floor((startMonth + q * 3) / 12)
-          if (paymentYear === selectedYear && (!endDate || new Date(paymentYear, paymentMonth, 1) <= endDate)) {
-            insuranceTotal += premium
-          }
-        }
-      } else if (frequency === 'semi-annual' || frequency === 'semi_annual') {
-        const startMonth = startDate.getMonth()
-        for (let s = 0; s < 2; s++) {
-          const paymentMonth = (startMonth + s * 6) % 12
-          const paymentYear = startDate.getFullYear() + Math.floor((startMonth + s * 6) / 12)
-          if (paymentYear === selectedYear && (!endDate || new Date(paymentYear, paymentMonth, 1) <= endDate)) {
-            insuranceTotal += premium
-          }
-        }
-      }
-    })
-
-    return { fuelTotal, serviceTotal, taxTotal, parkingTotal, repairTotal, insuranceTotal }
-  }, [fuelEntries, serviceEntries, taxEntries, parkingEntries, repairEntries, insuranceEntries, selectedYear])
-
-  // Monthly expenses calculation
-  const monthlyData = useMemo(() => {
-    const months = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, total: 0, breakdown: {} }))
-    
-    const addToMonth = (entries, key, getAmount, getDate) => {
-      entries.forEach(entry => {
-        const dateStr = getDate(entry)
-        if (!dateStr) return
-        const date = new Date(dateStr)
-        if (date.getFullYear() === selectedYear) {
-          const monthIndex = date.getMonth()
-          const amount = getAmount(entry)
-          months[monthIndex].total += amount
-          months[monthIndex].breakdown[key] = (months[monthIndex].breakdown[key] || 0) + amount
-        }
-      })
-    }
-    
-    addToMonth(fuelEntries, 'fuel', e => parseFloat(e.total_price) || 0, e => e.date)
-    addToMonth(serviceEntries, 'service', e => parseFloat(e.amount) || 0, e => e.date)
-    addToMonth(taxEntries, 'tax', e => parseFloat(e.amount) || 0, e => e.date)
-    addToMonth(parkingEntries, 'parking', e => parseFloat(e.amount) || 0, e => e.date)
-    addToMonth(repairEntries, 'repair', e => parseFloat(e.amount) || 0, e => e.date)
-    
-    // Handle insurance based on payment frequency
-    insuranceEntries.forEach(policy => {
-      const premium = parseFloat(policy.premium) || 0
-      const startDate = policy.start_date ? new Date(policy.start_date) : null
-      const endDate = policy.end_date ? new Date(policy.end_date) : null
-      const frequency = policy.payment_frequency || 'annual'
-      
-      if (!startDate) return
-      
-      if (frequency === 'annual' || frequency === 'yearly') {
-        // Annual: add full amount on start date
-        if (startDate.getFullYear() === selectedYear) {
-          const monthIndex = startDate.getMonth()
-          months[monthIndex].total += premium
-          months[monthIndex].breakdown['insurance'] = (months[monthIndex].breakdown['insurance'] || 0) + premium
-        }
-      } else if (frequency === 'monthly') {
-        // Monthly: add premium only on the payment day each month (same day-of-month as start date)
-        const today = new Date()
-        const currentYear = today.getFullYear()
-        const paymentDay = startDate.getDate()
-        const yearStart = new Date(selectedYear, 0, 1)
-        const yearEnd = endDate
-          ? new Date(Math.min(endDate.getTime(), new Date(selectedYear, 11, 31).getTime()))
-          : new Date(selectedYear, 11, 31)
-        const periodStart = new Date(Math.max(startDate.getTime(), yearStart.getTime()))
-        let periodEnd = yearEnd
-        // For current year, only count months where the payment day has already passed
-        if (selectedYear === currentYear) {
-          const paidThroughMonth = today.getDate() >= paymentDay ? today.getMonth() : today.getMonth() - 1
-          const cappedDate = new Date(selectedYear, paidThroughMonth, 28)
-          if (cappedDate < periodEnd) periodEnd = cappedDate
-        }
-        if (periodStart <= periodEnd && startDate.getFullYear() <= selectedYear && (!endDate || endDate.getFullYear() >= selectedYear)) {
-          for (let m = periodStart.getMonth(); m <= periodEnd.getMonth(); m++) {
-            months[m].total += premium
-            months[m].breakdown['insurance'] = (months[m].breakdown['insurance'] || 0) + premium
-          }
-        }
-      } else if (frequency === 'quarterly') {
-        // Quarterly: add premium every 3 months from start date
-        const startMonth = startDate.getMonth()
-        for (let q = 0; q < 4; q++) {
-          const paymentMonth = (startMonth + q * 3) % 12
-          const paymentYear = startDate.getFullYear() + Math.floor((startMonth + q * 3) / 12)
-          if (paymentYear === selectedYear && (!endDate || new Date(paymentYear, paymentMonth, 1) <= endDate)) {
-            months[paymentMonth].total += premium
-            months[paymentMonth].breakdown['insurance'] = (months[paymentMonth].breakdown['insurance'] || 0) + premium
-          }
-        }
-      } else if (frequency === 'semi-annual' || frequency === 'semi_annual') {
-        // Semi-annual: add premium every 6 months from start date
-        const startMonth = startDate.getMonth()
-        for (let s = 0; s < 2; s++) {
-          const paymentMonth = (startMonth + s * 6) % 12
-          const paymentYear = startDate.getFullYear() + Math.floor((startMonth + s * 6) / 12)
-          if (paymentYear === selectedYear && (!endDate || new Date(paymentYear, paymentMonth, 1) <= endDate)) {
-            months[paymentMonth].total += premium
-            months[paymentMonth].breakdown['insurance'] = (months[paymentMonth].breakdown['insurance'] || 0) + premium
-          }
-        }
-      }
-    })
-    
-    return months
-  }, [fuelEntries, serviceEntries, taxEntries, parkingEntries, repairEntries, insuranceEntries, selectedYear])
+  const categoryTotals = Object.fromEntries(['fuel', 'service', 'tax', 'parking', 'repair', 'insurance', 'consumable']
+    .map(key => [`${key}Total`, expenseSummary?.totals?.[key] ?? 0]))
+  const monthlyData = Array.from({ length: 12 }, (_, i) => {
+    const row = expenseSummary?.monthly?.find(item => Number(item.month.slice(5)) === i + 1)
+    return { month: i + 1, total: row?.total ?? 0, breakdown: row?.breakdown ?? {} }
+  })
 
   // Donut data: full-year or filtered to selectedMonth
   const activeDonutData = useMemo(() => {
-    const colorMap = { fuel: '#3b82f6', service: '#22c55e', tax: '#a855f7', parking: '#f59e0b', repair: '#ef4444', insurance: '#10b981' }
+    const colorMap = { fuel: '#3b82f6', service: '#22c55e', tax: '#a855f7', parking: '#f59e0b', repair: '#ef4444', insurance: '#10b981', consumable: '#06b6d4' }
     const labelMap = {
       fuel: t('expenses.fuel') || 'Fuel',
       service: t('expenses.service') || 'Service',
       tax: t('expenses.tax') || 'Tax',
       parking: t('expenses.parking') || 'Parking',
       repair: t('expenses.repair') || 'Repairs',
-      insurance: t('expenses.insurance') || 'Insurance',
+      insurance: t('financial.insurance'),
+      consumable: t('financial.consumable'),
     }
     if (selectedMonth !== null) {
       const breakdown = monthlyData[selectedMonth]?.breakdown || {}
@@ -607,6 +451,7 @@ export default function VehicleExpenses() {
       { label: labelMap.parking, value: categoryTotals.parkingTotal, color: colorMap.parking },
       { label: labelMap.repair, value: categoryTotals.repairTotal, color: colorMap.repair },
       { label: labelMap.insurance, value: categoryTotals.insuranceTotal, color: colorMap.insurance },
+      { label: labelMap.consumable, value: categoryTotals.consumableTotal, color: colorMap.consumable },
     ]
   }, [selectedMonth, monthlyData, categoryTotals, t])
 
@@ -616,26 +461,18 @@ export default function VehicleExpenses() {
     { label: t('expenses.tax') || 'Tax', color: '#a855f7' },
     { label: t('expenses.parking') || 'Parking', color: '#f59e0b' },
     { label: t('expenses.repair') || 'Repairs', color: '#ef4444' },
-    { label: t('expenses.insurance') || 'Insurance', color: '#10b981' },
+    { label: t('financial.insurance'), color: '#10b981' },
+    { label: t('financial.consumable'), color: '#06b6d4' },
   ]
 
-  // Available years
-  const years = useMemo(() => {
-    const allDates = [
-      ...fuelEntries.map(e => e.date),
-      ...serviceEntries.map(e => e.date),
-      ...taxEntries.map(e => e.date),
-      ...parkingEntries.map(e => e.date),
-      ...repairEntries.map(e => e.date),
-      ...insuranceEntries.map(e => e.start_date),
-    ].filter(Boolean)
-    
-    const yearSet = new Set(allDates.map(d => new Date(d).getFullYear()))
-    yearSet.add(new Date().getFullYear())
-    return Array.from(yearSet).sort((a, b) => b - a)
-  }, [fuelEntries, serviceEntries, taxEntries, parkingEntries, repairEntries, insuranceEntries])
+  const years = [...new Set([selectedYear, ...(expenseSummary?.available_years || [])])].sort((a, b) => b - a)
+  const categoryTotal = month == null ? expenseSummary?.totals?.[activeTab]
+    : expenseSummary?.monthly?.find(row => Number(row.month.slice(5)) === month)?.breakdown?.[activeTab] ?? 0
 
-  // formatDate imported from utils/dateFormat
+
+  const recordFor = (type, entryId) => ({ fuel: fuelEntries, service: serviceEntries,
+    repair: repairEntries, tax: taxEntries, parking: parkingEntries,
+    insurance: insuranceEntries, consumable: consumableEntries, reminder: reminderEntries, todo: todoEntries })[type]?.find(e => e.id === entryId)
 
   const handleCancelRecurring = async (type, entryId) => {
     const msg = type === 'insurance'
@@ -646,16 +483,17 @@ export default function VehicleExpenses() {
     if (!confirm(msg)) return
     try {
       if (type === 'insurance') {
-        const res = await insuranceApi.cancel(entryId)
+        const res = await insuranceApi.cancel(entryId, mutationOptions(recordFor(type, entryId)))
         setInsuranceEntries(prev => prev.map(e => e.id === entryId ? res.data.policy : e))
       } else if (type === 'tax') {
-        const res = await taxApi.cancel(entryId)
+        const res = await taxApi.cancel(entryId, mutationOptions(recordFor(type, entryId)))
         setTaxEntries(prev => prev.map(e => e.id === entryId ? res.data.entry : e))
       } else if (type === 'parking') {
         // F34 — stop a recurring permit/subscription series.
-        const res = await parkingApi.cancel(entryId)
+        const res = await parkingApi.cancel(entryId, mutationOptions(recordFor(type, entryId)))
         setParkingEntries(prev => prev.map(e => e.id === entryId ? res.data.entry : e))
       }
+      refresh()
     } catch (error) {
       console.error('Failed to cancel recurring:', error)
       toast.error(error.response?.data?.error
@@ -669,39 +507,43 @@ export default function VehicleExpenses() {
     
     try {
       switch (type) {
+        case 'consumable':
+          await consumableApi.delete(entryId, mutationOptions(recordFor(type, entryId)))
+          break
         case 'fuel':
-          await fuelApi.delete(entryId)
+          await fuelApi.delete(entryId, mutationOptions(recordFor(type, entryId)))
           setFuelEntries(prev => prev.filter(e => e.id !== entryId))
           break
         case 'service':
-          await serviceApi.delete(entryId)
+          await serviceApi.delete(entryId, mutationOptions(recordFor(type, entryId)))
           setServiceEntries(prev => prev.filter(e => e.id !== entryId))
           break
         case 'repair':
-          await repairApi.delete(entryId)
+          await repairApi.delete(entryId, mutationOptions(recordFor(type, entryId)))
           setRepairEntries(prev => prev.filter(e => e.id !== entryId))
           break
         case 'tax':
-          await taxApi.delete(entryId)
+          await taxApi.delete(entryId, mutationOptions(recordFor(type, entryId)))
           setTaxEntries(prev => prev.filter(e => e.id !== entryId))
           break
         case 'parking':
-          await api.delete(`/parking/${entryId}`)
+          await api.delete(`/parking/${entryId}`, mutationOptions(recordFor(type, entryId)))
           setParkingEntries(prev => prev.filter(e => e.id !== entryId))
           break
         case 'reminder':
-          await reminderApi.delete(entryId)
+          await reminderApi.delete(entryId, mutationOptions(recordFor(type, entryId)))
           setReminderEntries(prev => prev.filter(e => e.id !== entryId))
           break
         case 'todo':
-          await api.delete(`/todos/${entryId}`)
+          await api.delete(`/todos/${entryId}`, mutationOptions(recordFor(type, entryId)))
           setTodoEntries(prev => prev.filter(e => e.id !== entryId))
           break
         case 'insurance':
-          await insuranceApi.delete(entryId)
+          await insuranceApi.delete(entryId, mutationOptions(recordFor(type, entryId)))
           setInsuranceEntries(prev => prev.filter(e => e.id !== entryId))
           break
       }
+      refresh()
     } catch (error) {
       console.error('Failed to delete:', error)
       toast.error(error.response?.data?.error
@@ -713,6 +555,7 @@ export default function VehicleExpenses() {
   // Navigate to edit page for entry
   const handleEdit = (type, entryId) => {
     const editRoutes = {
+      consumable: `/vehicles/${id}/consumable/add?edit=${entryId}`,
       fuel: `/vehicles/${id}/fuel/add?edit=${entryId}`,
       service: `/vehicles/${id}/service/add?edit=${entryId}`,
       repair: `/vehicles/${id}/repair/add?edit=${entryId}`,
@@ -722,22 +565,25 @@ export default function VehicleExpenses() {
       todo: `/vehicles/${id}/todo/add?edit=${entryId}`,
       insurance: `/vehicles/${id}/insurance/add?edit=${entryId}`,
     }
-    navigate(editRoutes[type])
+    navigate(editRoutes[type], { state: { expenseReturnTo: location.pathname + location.search } })
   }
 
   const handleMonthClick = (monthIndex) => {
-    setSelectedMonth(prev => prev === monthIndex ? null : monthIndex)
+    setSelectedMonth(selectedMonth === monthIndex ? null : monthIndex)
   }
 
   // F14 — settle an outstanding parking fine (optimistic, offline-tolerant).
   const handleMarkFinePaid = async (fine) => {
     const previous = outstandingFines
+    const previousParking = parkingEntries
     setOutstandingFines(prev => prev.filter(f => f.id !== fine.id))
     setParkingEntries(prev => prev.map(e =>
       e.id === fine.id ? { ...e, fine_status: 'paid' } : e
     ))
     try {
-      await parkingApi.update(fine.id, { fine_status: 'paid' })
+      const response = await parkingApi.update(fine.id, { fine_status: 'paid' }, mutationOptions(fine))
+      setParkingEntries(prev => prev.map(e => e.id === fine.id ? response.data.entry : e))
+      refresh()
       toast.success(t('parking.markedPaid') || 'Fine marked as paid')
     } catch (err) {
       if (isOfflineWriteError(err)) {
@@ -745,6 +591,7 @@ export default function VehicleExpenses() {
         return
       }
       setOutstandingFines(previous)
+      setParkingEntries(previousParking)
       toast.error(t('parking.markPaidError') || 'Could not update fine — try again')
     }
   }
@@ -753,12 +600,14 @@ export default function VehicleExpenses() {
   // 'paid' + paid_date today so it drops out of the Coming-up feed.
   const handleMarkTaxPaid = async (entry) => {
     const previous = taxEntries
-    const today = new Date().toISOString().split('T')[0]
+    const today = localDate()
     setTaxEntries(prev => prev.map(e =>
       e.id === entry.id ? { ...e, status: 'paid', paid_date: today } : e
     ))
     try {
-      await taxApi.update(entry.id, { status: 'paid', paid_date: today })
+      const response = await taxApi.update(entry.id, { status: 'paid', paid_date: today }, mutationOptions(entry))
+      setTaxEntries(prev => prev.map(e => e.id === entry.id ? response.data.entry : e))
+      refresh()
       toast.success(t('taxes.markedPaid') || 'Tax marked as paid')
     } catch (err) {
       if (isOfflineWriteError(err)) {
@@ -824,19 +673,30 @@ export default function VehicleExpenses() {
 
   // Tab definitions
   const tabs = [
-    { id: 'fuel', label: t('expenses.fuel') || 'Fuel', icon: Icons.fuel, count: fuelEntries.length },
-    { id: 'service', label: t('expenses.service') || 'Service', icon: Icons.service, count: serviceEntries.length },
-    { id: 'tax', label: t('expenses.tax') || 'Tax', icon: Icons.tax, count: taxEntries.length },
-    { id: 'parking', label: t('expenses.parking') || 'Parking', icon: Icons.parking, count: parkingEntries.length },
-    { id: 'repair', label: t('expenses.repair') || 'Repairs', icon: Icons.repair, count: repairEntries.length },
-    { id: 'insurance', label: t('expenses.insurance') || 'Insurance', icon: Icons.shield, count: insuranceEntries.length },
-    { id: 'todo', label: t('expenses.todos') || 'Todos', icon: Icons.todo, count: todoEntries.length },
-    { id: 'reminder', label: t('expenses.reminders') || 'Reminders', icon: Icons.reminder, count: reminderEntries.length },
+    { id: 'consumable', label: t('financial.consumable'), icon: Icons.service, count: activeTab === 'consumable' ? detailState.data?.total : undefined },
+    { id: 'fuel', label: t('expenses.fuel') || 'Fuel', icon: Icons.fuel, count: activeTab === 'fuel' ? detailState.data?.total : undefined },
+    { id: 'service', label: t('expenses.service') || 'Service', icon: Icons.service, count: activeTab === 'service' ? detailState.data?.total : undefined },
+    { id: 'tax', label: t('expenses.tax') || 'Tax', icon: Icons.tax, count: activeTab === 'tax' ? detailState.data?.total : undefined },
+    { id: 'parking', label: t('expenses.parking') || 'Parking', icon: Icons.parking, count: activeTab === 'parking' ? detailState.data?.total : undefined },
+    { id: 'repair', label: t('expenses.repair') || 'Repairs', icon: Icons.repair, count: activeTab === 'repair' ? detailState.data?.total : undefined },
+    { id: 'insurance', label: t('expenses.insurance') || 'Insurance', icon: Icons.shield, count: activeTab === 'insurance' ? detailState.data?.total : undefined },
+    { id: 'todo', label: t('expenses.todos') || 'Todos', icon: Icons.todo, count: activeTab === 'todo' ? detailState.data?.total : undefined },
+    { id: 'reminder', label: t('expenses.reminders') || 'Reminders', icon: Icons.reminder, count: activeTab === 'reminder' ? detailState.data?.total : undefined },
   ]
 
   // Render table based on active tab
   const renderTable = () => {
     switch (activeTab) {
+      case 'consumable':
+        return <table className="w-full"><thead><tr className="text-left text-sm">
+          <th className="p-3">{t('common.date')}</th><th className="p-3">{t('addService.description')}</th>
+          <th className="p-3">{t('addFuel.totalCost')}</th><th className="p-3">{t('common.attachment')}</th><th className="p-3">{t('common.actions')}</th>
+        </tr></thead><tbody>{consumableEntries.map(entry => <tr key={entry.id} className="border-t border-(--color-border)">
+          <td className="p-3">{formatDate(entry.date)}</td><td className="p-3">{entry.title || entry.description || entry.consumable_type}</td>
+          <td className="p-3">{formatCurrency(entry.amount, entry.currency)}</td><td className="p-3">{renderAttachmentButton(entry)}</td>
+          <td className="p-3"><button title={t('common.edit')} onClick={() => handleEdit('consumable', entry.id)}>{Icons.edit}</button>
+            <button title={t('common.delete')} onClick={() => handleDelete('consumable', entry.id)}>{Icons.delete}</button></td>
+        </tr>)}</tbody></table>
       case 'fuel':
         return (
           <table className="w-full">
@@ -844,8 +704,8 @@ export default function VehicleExpenses() {
               <tr className="text-left text-(--color-text-secondary) text-sm border-b border-(--color-border)">
                 <th className="pb-3 px-4">{t('common.date') || 'Date'}</th>
                 <th className="pb-3 px-4">{t('addFuel.odometer') || 'Odometer'}</th>
-                <th className="pb-3 px-4">{usesGallons(user) ? (t('addFuel.gallons') || 'Gallons') : (t('addFuel.liters') || 'Liters')}</th>
-                <th className="pb-3 px-4">{usesGallons(user) ? (t('addFuel.pricePerGallon') || 'Price per Gallon') : (t('addFuel.pricePerLiter') || 'Price per Liter')}</th>
+                <th className="pb-3 px-4">{volumeUnitLabel(user, t)}</th>
+                <th className="pb-3 px-4">{t('addFuel.pricePerUnit', { unit: volumeUnitLabel(user, t) })}</th>
                 <th className="pb-3 px-4">{t('addFuel.totalCost') || 'Total Price'}</th>
                 <th className="pb-3 px-4">{t('addFuel.fuelType') || 'Fuel Type'}</th>
                 <th className="pb-3 px-4">{t('addFuel.station') || 'Station'}</th>
@@ -862,9 +722,9 @@ export default function VehicleExpenses() {
                     {entry.liters != null ? litersToDisplayVolume(entry.liters, user).toFixed(2) : '--'} {volumeUnitLabel(user, t)}
                   </td>
                   <td className="py-3 px-4 text-(--color-accent)">
-                    {formatCurrency(entry.price_per_liter != null ? pricePerLiterToDisplay(entry.price_per_liter, user) : entry.price_per_liter)}
+                    {formatCurrency(entry.price_per_liter != null ? pricePerLiterToDisplay(entry.price_per_liter, user) : entry.price_per_liter, entry.currency)}
                   </td>
-                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.total_price)}</td>
+                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.total_price, entry.currency)}</td>
                   <td className="py-3 px-4">{entry.fuel_type || '-'}</td>
                   <td className="py-3 px-4">{entry.station || '-'}</td>
                   <td className="py-3 px-4">
@@ -919,9 +779,9 @@ export default function VehicleExpenses() {
                   <td className="py-3 px-4">{formatDate(entry.date)}</td>
                   <td className="py-3 px-4">{(entry.service_types?.length > 0 ? entry.service_types.map(st => st.replace(/_/g, ' ')).join(', ') : entry.service_type || entry.title || '-')}</td>
                   <td className="py-3 px-4">{entry.odometer?.toLocaleString()} {vehicle?.distance_unit || 'km'}</td>
-                  <td className="py-3 px-4">{formatCurrency(entry.parts_cost || 0)}</td>
-                  <td className="py-3 px-4">{formatCurrency(entry.labor_cost || 0)}</td>
-                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.amount)}</td>
+                  <td className="py-3 px-4">{formatCurrency(entry.parts_cost || 0, entry.currency)}</td>
+                  <td className="py-3 px-4">{formatCurrency(entry.labor_cost || 0, entry.currency)}</td>
+                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.amount, entry.currency)}</td>
                   <td className="py-3 px-4">
                     <div title={entry.work_order_number ? `${t('addService.workOrder') || 'Work order #'}: ${entry.work_order_number}` : undefined}>
                       <span>{entry.provider || '-'}</span>
@@ -989,7 +849,7 @@ export default function VehicleExpenses() {
                       )}
                     </span>
                   </td>
-                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.amount)}</td>
+                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.amount, entry.currency)}</td>
                   <td className="py-3 px-4">{formatDate(entry.due_date)}</td>
                   <td className="py-3 px-4">
                     {entry.insurance_policy ? (
@@ -1072,7 +932,7 @@ export default function VehicleExpenses() {
                       <div className="mt-1"><RecurringChip entry={entry} t={t} /></div>
                     )}
                   </td>
-                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.amount)}</td>
+                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.amount, entry.currency)}</td>
                   <td className="py-3 px-4">{entry.duration || '-'}</td>
                   <td className="py-3 px-4">{renderAttachmentButton(entry)}</td>
                   <td className="py-3 px-4">
@@ -1142,9 +1002,9 @@ export default function VehicleExpenses() {
                     </div>
                   </td>
                   <td className="py-3 px-4">{entry.odometer?.toLocaleString()} {vehicle?.distance_unit || 'km'}</td>
-                  <td className="py-3 px-4">{formatCurrency(entry.parts_cost || 0)}</td>
-                  <td className="py-3 px-4">{formatCurrency(entry.labor_cost || 0)}</td>
-                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.amount)}</td>
+                  <td className="py-3 px-4">{formatCurrency(entry.parts_cost || 0, entry.currency)}</td>
+                  <td className="py-3 px-4">{formatCurrency(entry.labor_cost || 0, entry.currency)}</td>
+                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.amount, entry.currency)}</td>
                   <td className="py-3 px-4">{entry.provider || '-'}</td>
                   <td className="py-3 px-4">{renderAttachmentButton(entry)}</td>
                   <td className="py-3 px-4">
@@ -1221,7 +1081,7 @@ export default function VehicleExpenses() {
                   </td>
                   <td className="py-3 px-4">{entry.policy_number || '-'}</td>
                   <td className="py-3 px-4 capitalize">{entry.policy_type?.replace('_', ' ') || '-'}</td>
-                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.premium)}</td>
+                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.premium, entry.currency)}<span className="block text-xs">{t('expensePages.policyEstimate')}: {entry.period_amount == null ? t('financial.unavailable') : formatCurrency(entry.period_amount, detailState.data?.display_currency)}</span></td>
                   <td className="py-3 px-4 capitalize">{entry.payment_frequency || '-'}</td>
                   <td className="py-3 px-4">{formatDate(entry.start_date)}</td>
                   <td className="py-3 px-4">{formatDate(entry.end_date)}</td>
@@ -1317,13 +1177,13 @@ export default function VehicleExpenses() {
                           {entry.coverage_amount != null && (
                             <div>
                               <p className="text-2xs uppercase tracking-wide text-(--color-text-muted) mb-0.5">{t('addInsurance.coverageAmount') || 'Coverage'}</p>
-                              <span>{formatCurrency(entry.coverage_amount)}</span>
+                              <span>{formatCurrency(entry.coverage_amount, entry.currency)}</span>
                             </div>
                           )}
                           {entry.deductible != null && (
                             <div>
                               <p className="text-2xs uppercase tracking-wide text-(--color-text-muted) mb-0.5">{t('addInsurance.deductible') || 'Deductible'}</p>
-                              <span>{formatCurrency(entry.deductible)}</span>
+                              <span>{formatCurrency(entry.deductible, entry.currency)}</span>
                             </div>
                           )}
                         </div>
@@ -1504,14 +1364,18 @@ export default function VehicleExpenses() {
     )
   }
 
+  if (vehicleError) return <div role="alert" className="p-4">{t('expensePages.loadFailed')} <button onClick={refresh}>{t('expensePages.retry')}</button></div>
+
   return (
     <div className="min-h-screen bg-(--color-bg-primary) text-(--color-text-primary) pb-20">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-(--color-bg-primary) border-b border-(--color-border)">
         <div className="flex items-center gap-3 p-4">
           <button 
+            type="button"
+            aria-label={t('expenses.backToVehicle')}
             onClick={() => navigate(`/vehicles/${id}`)}
-            className="p-2 -ml-2 rounded-lg hover:bg-(--color-bg-tertiary) transition-colors"
+            className="p-2 -ml-2 min-w-11 min-h-11 rounded-lg hover:bg-(--color-bg-tertiary) transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text-primary)"
           >
             {Icons.arrowBack}
           </button>
@@ -1525,26 +1389,24 @@ export default function VehicleExpenses() {
       </div>
 
       <div className="p-4 md:p-6">
+      <FinancialBasis data={expenseSummary} error={expenseState.error} />
+      {expenseState.error && <button className="btn btn-secondary" onClick={refresh}>{t('expensePages.retry')}</button>}
       {/* Top Section - Charts */}
+      {expenseSummary && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Donut Chart Card */}
         <div className="bg-(--color-bg-secondary) rounded-xl p-6 border border-(--color-border)">
           {selectedMonth !== null && (
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-medium px-2 py-1 rounded-full bg-(--color-accent)/20 text-(--color-accent)">
-                {MONTH_NAMES[selectedMonth]} {selectedYear}
+              <span className="text-xs font-medium px-2 py-1 rounded-full bg-(--color-bg-tertiary) text-(--color-text-primary)">
+                {monthNames[selectedMonth]} {selectedYear}
               </span>
-              <button
-                onClick={() => setSelectedMonth(null)}
-                className="text-xs text-(--color-text-secondary) hover:text-(--color-text-primary) transition-colors underline underline-offset-2"
-              >
-                {t('expenses.fullYear') || 'Full Year'}
-              </button>
             </div>
           )}
           <DonutChart
             data={activeDonutData}
-            centerText={selectedMonth !== null ? MONTH_NAMES_SHORT[selectedMonth] : `${vehicle?.year || ''} ${vehicle?.make || ''}`}
+            currency={expenseSummary.display_currency}
+            centerText={selectedMonth !== null ? monthNamesShort[selectedMonth] : `${vehicle?.year || ''} ${vehicle?.make || ''}`}
             centerSubtext={selectedMonth !== null ? String(selectedYear) : (vehicle?.model || '')}
           />
         </div>
@@ -1554,6 +1416,7 @@ export default function VehicleExpenses() {
           <div className="flex items-center justify-between mb-4">
             <span className="text-(--color-text-secondary) text-sm">{t('expenses.selectYear') || 'Select Year'}</span>
             <select
+              aria-label={t('expenses.selectYear')}
               value={selectedYear}
               onChange={(e) => setSelectedYear(Number(e.target.value))}
               className="bg-(--color-bg-tertiary) border border-(--color-border) rounded-sm px-3 py-1 text-(--color-text-primary)"
@@ -1566,6 +1429,8 @@ export default function VehicleExpenses() {
           <BarChart
             data={monthlyData}
             categories={categories}
+            currency={expenseSummary.display_currency}
+            year={selectedYear}
             title={t('charts.monthlyExpenses') || 'Monthly Expenses'}
             onMonthClick={handleMonthClick}
             selectedMonth={selectedMonth}
@@ -1573,6 +1438,8 @@ export default function VehicleExpenses() {
           />
         </div>
       </div>
+
+      )}
 
       {/* Tab Navigation */}
       <div className="flex flex-wrap gap-2 mb-6 overflow-x-auto pb-2">
@@ -1590,15 +1457,17 @@ export default function VehicleExpenses() {
       </div>
 
       {/* F14 — Unpaid fines for this vehicle */}
-      {activeTab === 'parking' && outstandingFines.length > 0 && (
+      {activeTab === 'parking' && fineState.loading && <p role="status">{t('common.loading')}</p>}
+      {activeTab === 'parking' && fineState.error && <p role="alert">{t('expensePages.finesFailed')} <button onClick={refresh}>{t('expensePages.retry')}</button></p>}
+      {activeTab === 'parking' && fineState.data && outstandingFines.length > 0 && (
         <div className="bg-orange-500/5 border border-orange-500/20 rounded-xl p-4 mb-6">
           <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
             <h3 className="text-sm font-semibold text-orange-600 dark:text-orange-400">
-              {t('parking.unpaidFines') || 'Unpaid fines'} ({outstandingFines.length})
+              {t('parking.unpaidFines') || 'Unpaid fines'} ({fineState.data.total})
             </h3>
             <span className="text-sm font-semibold">
-              {t('parking.totalOwed') || 'Total owed'}:{' '}
-              {formatCurrency(outstandingFines.reduce((sum, f) => sum + (parseFloat(f.amount) || 0), 0))}
+              {t('expensePages.pageTotal')}:{' '}
+              {formatCurrency(fineState.data.page_total, fineState.data.display_currency)}
             </span>
           </div>
           <ul className="space-y-2">
@@ -1617,7 +1486,7 @@ export default function VehicleExpenses() {
                   </p>
                 </div>
                 <span className="text-sm font-semibold text-orange-500 whitespace-nowrap">
-                  {formatCurrency(fine.amount)}
+                  {formatCurrency(fine.amount, fine.currency)}
                 </span>
                 <button
                   onClick={() => handleMarkFinePaid(fine)}
@@ -1628,13 +1497,26 @@ export default function VehicleExpenses() {
               </li>
             ))}
           </ul>
+          {fineState.data.converted === false && <p>{t('financial.partial')}</p>}
+          <ExpensePagination data={fineState.data} page={finePage} onPage={setFinePage} />
         </div>
       )}
 
       {/* Data Table */}
-      <div className="bg-(--color-bg-secondary) rounded-xl border border-(--color-border) overflow-x-auto">
-        {renderTable()}
-      </div>
+      {detailState.loading ? <p role="status">{t('common.loading')}</p>
+        : detailState.error ? <p role="alert">{t('expensePages.loadFailed')} <button onClick={refresh}>{t('expensePages.retry')}</button></p>
+        : detailState.data && <>
+          <p className="text-xs mb-2">{t(['todo', 'reminder'].includes(activeTab) ? 'expensePages.tasksAllDates' : activeTab === 'insurance' ? 'expensePages.policyRows' : 'expensePages.recordRows')}</p>
+          {detailState.data.records.length ? <div className="bg-(--color-bg-secondary) rounded-xl border border-(--color-border) overflow-x-auto">{renderTable()}</div>
+            : <p>{t('expenses.noEntries')}</p>}
+          {!['todo', 'reminder'].includes(activeTab) && <div className="text-sm py-2">
+            <p>{t('expensePages.pageTotal')}: {formatCurrency(detailState.data.page_total, detailState.data.display_currency)}</p>
+            {detailState.data.converted === false && <p>{t('financial.partial')}</p>}
+            {expenseSummary && <p>{t('expensePages.periodTotal')}: {formatCurrency(categoryTotal ?? 0, expenseSummary.display_currency)}</p>}
+          </div>}
+          <ExpensePagination data={detailState.data} page={page} onPage={setPage} />
+        </>}
+
       </div>
 
       {/* Attachment Viewer Modal */}

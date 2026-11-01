@@ -1,3 +1,6 @@
+import useExpenseFilters, { expensePath } from '../../hooks/useExpenseFilters'
+import useExpenseSummary from '../../hooks/useExpenseSummary'
+import FinancialBasis from '../../components/ui/FinancialBasis'
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { vehicleApi } from '../../services/api'
@@ -269,22 +272,16 @@ export default function VehicleCharts() {
   const { currency, language } = useCurrency()
 
   const [vehicle, setVehicle] = useState(null)
-  const [timeline, setTimeline] = useState([])
   const [analytics, setAnalytics] = useState(null)
   const [forecast, setForecast] = useState(null)  // F11 — forward cost projection
   const [isLoading, setIsLoading] = useState(true)
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
+  const { year: selectedYear, setYear: setSelectedYear } = useExpenseFilters()
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [vehicleRes, , timelineRes] = await Promise.all([
-          vehicleApi.getById(id),
-          vehicleApi.getStats(id),
-          vehicleApi.getTimeline(id)
-        ])
+        const vehicleRes = await vehicleApi.getById(id)
         setVehicle(vehicleRes.data)
-        setTimeline(timelineRes.data?.entries || [])
       } catch (error) {
         console.error('Failed to fetch data:', error)
         navigate('/vehicles')
@@ -329,62 +326,28 @@ export default function VehicleCharts() {
 
   // Per-distance values are small (e.g. 0.15) so they need decimals, unlike the
   // whole-currency formatCurrency used elsewhere on this page.
-  const formatPerDistance = (v) => `${currency.symbol}${Number(v).toFixed(2)}`
+  const formatPerDistance = (v) => `${Number(v).toFixed(2)} ${analytics?.display_currency || expenseSummary?.display_currency || currency.code}`
   
-  const formatCurrency = (amount) => {
-    if (!amount && amount !== 0) return `${currency.symbol}0`
-    return `${currency.symbol}${Number(amount).toFixed(0)}`
-  }
+  const formatCurrency = (amount, code = analytics?.display_currency || expenseSummary?.display_currency || currency.code) => `${Number(amount ?? 0).toFixed(2)} ${code}`
+  const formatExpenseCurrency = amount => formatCurrency(amount, expenseSummary?.display_currency || currency.code)
   
+  const expenseState = useExpenseSummary(id, selectedYear)
+  const expenseSummary = expenseState.data
+
   // Calculate chart data
   const chartData = useMemo(() => {
-    if (!timeline.length) return null
+    if (!expenseSummary) return null
     
-    // I17 + B11: Use string slicing instead of new Date() on date-only strings.
-    // new Date('2025-01-01') is parsed as UTC midnight, which shifts the date
-    // in negative-offset timezones (e.g. UTC-5 sees 2024-12-31).
-    const getYear  = (d) => parseInt(d.slice(0, 4), 10)
-    const getMonth = (d) => parseInt(d.slice(5, 7), 10) - 1  // 0-indexed
-    
-    // Filter by selected year
-    const yearEntries = timeline.filter(entry => getYear(entry.date) === selectedYear)
-    
-    // Get available years
-    const years = [...new Set(timeline.map(e => getYear(e.date)))].sort((a, b) => b - a)
-    
-    // Expenses by category
-    const categoryTotals = {
-      fuel: 0,
-      service: 0,
-      repair: 0,
-      tax: 0,
-      parking: 0,
-      other: 0
-    }
-    
-    yearEntries.forEach(entry => {
-      const cost = parseFloat(entry.cost) || 0
-      if (Object.prototype.hasOwnProperty.call(categoryTotals, entry.type)) {
-        categoryTotals[entry.type] += cost
-      } else {
-        categoryTotals.other += cost
-      }
-    })
-    
-    const totalExpenses = Object.values(categoryTotals).reduce((a, b) => a + b, 0)
-    
-    // Monthly expenses
-    const monthlyExpenses = Array(12).fill(0)
-    yearEntries.forEach(entry => {
-      const month = getMonth(entry.date)
-      monthlyExpenses[month] += parseFloat(entry.cost) || 0
-    })
-    
+    const years = [...new Set([selectedYear, ...(expenseSummary.available_years || [])])].sort((a, b) => b - a)
+    const { grand_total: totalExpenses, ...categoryTotals } = expenseSummary.totals
+    const monthlyExpenses = Array.from({ length: 12 }, (_, i) =>
+      expenseSummary.monthly.find(row => Number(row.month.slice(5)) === i + 1)?.total || 0)
+
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
     const monthlyData = monthlyExpenses.map((value, idx) => ({
       label: monthNames[idx],
       value,
-      displayValue: formatCurrency(value)
+      displayValue: `${Number(value).toFixed(2)} ${expenseSummary.display_currency}`
     }))
     
     // Donut chart data
@@ -394,13 +357,13 @@ export default function VehicleCharts() {
       repair: '#ef4444',
       tax: '#f43f5e',
       parking: '#a855f7',
-      other: '#6b7280'
+      other: '#6b7280', insurance: '#10b981', consumable: '#06b6d4'
     }
     
     const donutData = Object.entries(categoryTotals)
       .filter(([_, value]) => value > 0)
       .map(([key, value]) => ({
-        label: t(`charts.${key}`) || key.charAt(0).toUpperCase() + key.slice(1),
+        label: t(['insurance', 'consumable'].includes(key) ? `financial.${key}` : `charts.${key}`),
         value,
         color: categoryColors[key],
         percentage: totalExpenses > 0 ? ((value / totalExpenses) * 100).toFixed(1) : 0
@@ -414,7 +377,7 @@ export default function VehicleCharts() {
       donutData,
       maxMonthly: Math.max(...monthlyExpenses)
     }
-  }, [timeline, selectedYear, currency.symbol, t])
+  }, [expenseSummary, selectedYear, t])
   
   if (isLoading) {
     return (
@@ -447,9 +410,11 @@ export default function VehicleCharts() {
             </div>
           </div>
           
+          <Link className="text-sm underline" to={expensePath(id, { year: selectedYear })}>{t('expensePages.viewRecords')}</Link>
           {/* Year selector */}
           {chartData?.years?.length > 0 && (
             <select
+              aria-label={t('expenses.selectYear')}
               value={selectedYear}
               onChange={(e) => setSelectedYear(parseInt(e.target.value))}
               className="px-3 py-2 rounded-lg bg-(--color-bg-secondary) border border-(--color-border) text-sm"
@@ -472,12 +437,13 @@ export default function VehicleCharts() {
           const cpdPoints = analytics.series.map((s) => ({ label: monthShort(s.month), value: s.cost_per_distance }))
           return (
             <>
+            <FinancialBasis data={analytics} />
             {(analytics.converted === false || analytics.fx_applied) && (
               <p className="text-2xs text-(--color-text-muted) flex items-start gap-1.5">
                 <span aria-hidden="true">≈</span>
                 <span>
                   {analytics.converted === false
-                    ? (t('analytics.rateUnavailable') || 'Some amounts could not be converted — exchange rate unavailable.')
+                    ? t('financial.partial')
                     : (t('analytics.approxConverted') || 'Converted from mixed currencies at today’s rates.')}
                 </span>
               </p>
@@ -552,18 +518,19 @@ export default function VehicleCharts() {
               {analytics.ownership ? (
                 <>
                   <p className="text-2xs text-(--color-text-muted) mb-4">
-                    {formatCurrency(analytics.ownership.purchase_price)}
+                    {Number(analytics.ownership.purchase_price).toFixed(2)} {analytics.ownership.purchase_currency || t('financial.unknownCurrency')}
                     {analytics.ownership.purchase_date && ` • ${analytics.ownership.purchase_date}`}
                     {analytics.ownership.months_owned != null &&
                       ` • ${analytics.ownership.months_owned} ${t('ownership.months') || 'months'}`}
                   </p>
+                  {analytics.ownership.purchase_currency_review_required && <p className="text-sm mb-3">{t('financial.reviewPurchase')}</p>}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div className="rounded-lg p-3 bg-(--color-bg-tertiary)">
                       <p className="text-xs text-(--color-text-muted)">
                         {t('ownership.totalWithPurchase') || 'Total incl. purchase'}
                       </p>
                       <p className="text-lg font-bold tabular-nums whitespace-nowrap">
-                        {formatCurrency(analytics.ownership.total_with_purchase)}
+                        {analytics.ownership.total_with_purchase == null ? t('financial.unavailable') : formatCurrency(analytics.ownership.total_with_purchase)}
                       </p>
                     </div>
 
@@ -626,7 +593,7 @@ export default function VehicleCharts() {
                   <span aria-hidden="true">≈</span>
                   <span>
                     {forecast.converted === false
-                      ? (t('analytics.rateUnavailable') || 'Some amounts could not be converted — exchange rate unavailable.')
+                      ? t('financial.partial')
                       : (t('analytics.approxConverted') || 'Converted from mixed currencies at today’s rates.')}
                   </span>
                 </p>
@@ -663,18 +630,9 @@ export default function VehicleCharts() {
             Case 2 — entries exist in other years but not the selected year:
                      chartData is set but totalExpenses is 0; year selector
                      remains visible in the header so the user can switch. */}
-        {!chartData ? (
-          /* Case 1: vehicle has no expenses recorded at all */
-          <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-            <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-(--color-bg-secondary) flex items-center justify-center opacity-60">
-              {Icons.calendar}
-            </div>
-            <h3 className="text-lg font-semibold mb-2">{t('charts.noData')}</h3>
-            <p className="text-sm text-(--color-text-secondary) max-w-xs leading-relaxed">
-              {t('charts.noDataDesc')}
-            </p>
-          </div>
-        ) : chartData.totalExpenses === 0 ? (
+        <FinancialBasis data={expenseSummary} error={expenseState.error} />
+        {expenseState.error && <button className="btn btn-secondary" onClick={expenseState.retry}>{t('expensePages.retry')}</button>}
+        {!chartData ? null : chartData.totalExpenses === 0 ? (
           /* Case 2: entries exist but none in the currently selected year */
           <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
             <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-(--color-bg-secondary) flex items-center justify-center opacity-60">
@@ -694,7 +652,7 @@ export default function VehicleCharts() {
               <h2 className="text-sm font-medium text-(--color-text-secondary) mb-2">
                 {t('charts.totalExpenses') || 'Total Expenses'} ({selectedYear})
               </h2>
-              <p className="text-3xl font-bold">{formatCurrency(chartData.totalExpenses)}</p>
+              <p className="text-3xl font-bold">{formatExpenseCurrency(chartData.totalExpenses)}</p>
             </div>
             
             {/* Category breakdown + monthly spend — two per row; stacks on phones */}
@@ -709,7 +667,7 @@ export default function VehicleCharts() {
                 <DonutChart 
                   data={chartData.donutData} 
                   total={chartData.totalExpenses}
-                  centerLabel={formatCurrency(chartData.totalExpenses)}
+                  centerLabel={formatExpenseCurrency(chartData.totalExpenses)}
                   totalLabel={t('common.total') || 'Total'}
                 />
                 
@@ -725,7 +683,7 @@ export default function VehicleCharts() {
                         <span className="text-sm">{item.label}</span>
                       </div>
                       <div className="text-right">
-                        <span className="text-sm font-medium">{formatCurrency(item.value)}</span>
+                        <span className="text-sm font-medium">{formatExpenseCurrency(item.value)}</span>
                         <span className="text-xs text-(--color-text-secondary) ml-2">
                           ({item.percentage}%)
                         </span>
@@ -766,7 +724,7 @@ export default function VehicleCharts() {
                     </span>
                   </div>
                   <p className="text-lg font-semibold text-amber-500">
-                    {formatCurrency(chartData.categoryTotals.fuel)}
+                    {formatExpenseCurrency(chartData.categoryTotals.fuel)}
                   </p>
                 </div>
                 
@@ -778,7 +736,7 @@ export default function VehicleCharts() {
                     </span>
                   </div>
                   <p className="text-lg font-semibold text-blue-500">
-                    {formatCurrency(chartData.categoryTotals.service)}
+                    {formatExpenseCurrency(chartData.categoryTotals.service)}
                   </p>
                 </div>
                 
@@ -790,7 +748,7 @@ export default function VehicleCharts() {
                     </span>
                   </div>
                   <p className="text-lg font-semibold text-red-500">
-                    {formatCurrency(chartData.categoryTotals.repair)}
+                    {formatExpenseCurrency(chartData.categoryTotals.repair)}
                   </p>
                 </div>
                 
@@ -802,7 +760,7 @@ export default function VehicleCharts() {
                     </span>
                   </div>
                   <p className="text-lg font-semibold text-rose-500">
-                    {formatCurrency(chartData.categoryTotals.tax)}
+                    {formatExpenseCurrency(chartData.categoryTotals.tax)}
                   </p>
                 </div>
               </div>

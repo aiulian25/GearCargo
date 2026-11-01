@@ -19,8 +19,8 @@ def test_default_is_thread():
 
 def test_rq_only_when_requested_and_available():
     assert resolve_backend("rq", rq_available=True) == "rq"
-    # Requested but unavailable → safe fallback to thread.
-    assert resolve_backend("rq", rq_available=False) == "thread"
+    # Requested but unavailable must not change execution guarantees.
+    assert resolve_backend("rq", rq_available=False) == "unavailable"
 
 
 def test_backend_value_is_case_insensitive_and_trimmed():
@@ -53,3 +53,44 @@ def test_thread_backend_runs_task_in_app_context(app):
     assert done.wait(timeout=5), "background task did not run"
     assert captured["value"] == 42
     assert captured["had_context"] is True  # task ran inside an app context
+
+
+def test_unavailable_rq_never_starts_a_fallback_thread(app, monkeypatch):
+    import pytest
+    from app.services import task_queue
+    monkeypatch.setattr(task_queue, '_rq_queue', lambda: None)
+    monkeypatch.setattr(task_queue, '_spawn_thread', lambda *args: pytest.fail('Unsafe fallback'))
+    with app.app_context():
+        app.config['TASK_QUEUE_BACKEND'] = 'rq'
+        with pytest.raises(RuntimeError):
+            enqueue_task(lambda: None)
+
+
+def test_thread_backend_bounds_running_and_waiting_tasks(monkeypatch):
+    import pytest
+    from concurrent.futures import ThreadPoolExecutor
+    from app.services import task_queue
+    release = threading.Event()
+    started = threading.Barrier(3)
+    count = 0
+    mutex = threading.Lock()
+    def task():
+        nonlocal count
+        with mutex:
+            count += 1
+            position = count
+        if position <= 2:
+            started.wait(timeout=5)
+        release.wait(timeout=5)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        monkeypatch.setattr(task_queue, '_executor', executor)
+        monkeypatch.setattr(task_queue, '_capacity', threading.BoundedSemaphore(102))
+        try:
+            for _ in range(102): task_queue._spawn_thread(task, (), {})
+            started.wait(timeout=5)
+            assert count == 2
+            with pytest.raises(task_queue.QueueUnavailable):
+                task_queue._spawn_thread(task, (), {})
+        finally:
+            release.set()
+    assert count == 102

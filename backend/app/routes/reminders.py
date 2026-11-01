@@ -2,6 +2,9 @@
 GearCargo - Reminders Routes
 """
 
+from app.services.vehicle_archive import active_vehicle_condition
+from app.services.mutations import mutation_endpoint, commit_mutation
+
 from datetime import datetime, date, timedelta, timezone
 from flask import Blueprint, request, jsonify, current_app
 from sqlalchemy import func, case, and_
@@ -22,11 +25,18 @@ reminders_bp = Blueprint('reminders', __name__)
 
 # UI "Repeats" values (AddVehicleReminder.jsx) ↔ (frequency, frequency_value).
 _REPEAT_INTERVALS = {
+    '1_week': ('weekly', 1),
     '1_month': ('monthly', 1),
     '3_months': ('monthly', 3),
     '6_months': ('monthly', 6),
     '1_year': ('yearly', 1),
     '2_years': ('yearly', 2),
+    # The standalone AddReminder form uses these equivalent tokens.
+    'weekly': ('weekly', 1),
+    'monthly': ('monthly', 1),
+    'quarterly': ('monthly', 3),
+    'biannually': ('monthly', 6),
+    'yearly': ('yearly', 1),
 }
 
 
@@ -35,6 +45,7 @@ _REPEAT_INTERVALS = {
 # reaches the column (R4-11). Canonical name last, so it wins when both are sent.
 _INTEGER_FIELDS = {
     'due_mileage': 'due_mileage',
+    'repeat_mileage': 'repeat_mileage',
     'notify_days_before': 'notify_days_before',
     'recurrence_interval': 'frequency_value',
     'frequency_value': 'frequency_value',
@@ -64,6 +75,8 @@ def get_reminders(current_user):
     per_page = max(1, min(request.args.get('per_page', 20, type=int), 100))
     
     query = Reminder.query.filter_by(user_id=current_user.id)
+    if status in ('upcoming', 'overdue', 'pending', 'snoozed'):
+        query = query.filter(active_vehicle_condition(Reminder))
     
     if vehicle_id:
         query = query.filter(Reminder.vehicle_id == vehicle_id)
@@ -111,6 +124,7 @@ def get_reminders(current_user):
 
 @reminders_bp.route('', methods=['POST'])
 @token_required
+@mutation_endpoint(Reminder)
 def create_reminder(current_user):
     """Create a new reminder."""
     data = request.get_json()
@@ -157,6 +171,7 @@ def create_reminder(current_user):
         reminder_type=data.get('reminder_type', 'custom'),
         due_date=due_date,
         due_mileage=due_mileage,
+        repeat_mileage=data.get('repeat_mileage'),
         priority=data.get('priority', 'medium'),
         completed=False,
         dismissed=False,
@@ -166,8 +181,8 @@ def create_reminder(current_user):
         frequency_value=frequency_value,
         # Notifications
         notify_days_before=notify_days_before,
-        notify_push=data.get('notify_via_push', True),
-        notify_email=data.get('notify_via_email', True),
+        notify_push=data.get('notify_push', data.get('notify_via_push', True)),
+        notify_email=data.get('notify_email', data.get('notify_via_email', True)),
         # Calendar
         calendar_sync=data.get('sync_to_calendar', False),
         # Translations
@@ -182,8 +197,13 @@ def create_reminder(current_user):
     if 'repeat_interval' in data:
         _apply_repeat_interval(reminder, data['repeat_interval'])
 
+    if reminder.repeat_mileage is not None and (not reminder.recurring or not reminder.frequency or reminder.due_mileage is None):
+        return jsonify({'error': 'Choose a repeat interval and a due mileage before setting a mileage interval.',
+                        'message_key': 'reminderDelivery.intervalRequired'}), 400
+    if reminder.recurring:
+        reminder.recurrence_anchor_date = reminder.due_date
     db.session.add(reminder)
-    db.session.commit()
+    commit_mutation()
     
     # Auto-sync to calendar if enabled
     if current_user.calendar_enabled:
@@ -216,6 +236,7 @@ def get_reminder(current_user, reminder_id):
 
 @reminders_bp.route('/<int:reminder_id>', methods=['PUT'])
 @token_required
+@mutation_endpoint(Reminder, 'reminder_id')
 def update_reminder(current_user, reminder_id):
     """Update a reminder."""
     reminder = Reminder.query.filter_by(
@@ -228,6 +249,8 @@ def update_reminder(current_user, reminder_id):
     
     data = request.get_json()
     
+    old_schedule = (reminder.due_date, reminder.due_mileage)
+
     # F18 — request keys mapped to the REAL model columns. Aliases first,
     # canonical names last so the canonical value wins when both are sent.
     # ('status' and 'recurrence_unit' were dropped — no such columns; the
@@ -273,7 +296,17 @@ def update_reminder(current_user, reminder_id):
     if 'repeat_interval' in data:
         _apply_repeat_interval(reminder, data['repeat_interval'])
     
-    db.session.commit()
+    if reminder.repeat_mileage is not None and (not reminder.recurring or not reminder.frequency or reminder.due_mileage is None):
+        return jsonify({'error': 'Choose a repeat interval and a due mileage before setting a mileage interval.',
+                        'message_key': 'reminderDelivery.intervalRequired'}), 400
+    if old_schedule != (reminder.due_date, reminder.due_mileage):
+        reminder.notification_state = {}
+        reminder.last_notified_at = None
+        reminder.mileage_notified = False
+    if reminder.recurring and (old_schedule[0] != reminder.due_date or not reminder.recurrence_anchor_date):
+        reminder.recurrence_anchor_date = reminder.due_date
+
+    commit_mutation()
     
     return jsonify({
         'message': 'Reminder updated',
@@ -283,6 +316,7 @@ def update_reminder(current_user, reminder_id):
 
 @reminders_bp.route('/<int:reminder_id>', methods=['DELETE'])
 @token_required
+@mutation_endpoint(Reminder, 'reminder_id')
 def delete_reminder(current_user, reminder_id):
     """Delete a reminder."""
     reminder = Reminder.query.filter_by(
@@ -294,13 +328,14 @@ def delete_reminder(current_user, reminder_id):
         return jsonify({'error': 'Reminder not found'}), 404
     
     db.session.delete(reminder)
-    db.session.commit()
+    commit_mutation()
     
     return jsonify({'message': 'Reminder deleted'})
 
 
 @reminders_bp.route('/<int:reminder_id>/complete', methods=['POST'])
 @token_required
+@mutation_endpoint(Reminder, 'reminder_id')
 def complete_reminder(current_user, reminder_id):
     """Mark reminder as completed."""
     reminder = Reminder.query.filter_by(
@@ -310,32 +345,49 @@ def complete_reminder(current_user, reminder_id):
     
     if not reminder:
         return jsonify({'error': 'Reminder not found'}), 404
-    
+
+    if not reminder.completed and reminder.recurring and reminder.vehicle and reminder.vehicle.archived:
+        return jsonify({'error': 'Restore the vehicle before completing a recurring task.', 'code': 'VEHICLE_ARCHIVED'}), 409
+
+    if reminder.completed:
+        return jsonify({'message': 'Reminder completed', 'reminder': reminder.to_dict()})
+    next_due_date = None
+    next_due_mileage = None
+    if reminder.recurring and reminder.frequency:
+        from app.services.reminder_recurrence import next_date
+        try:
+            next_due_date = next_date(reminder)
+        except (ValueError, OverflowError):
+            return jsonify({'error': 'The next recurrence is outside the supported date range.'}), 400
+        if next_due_date and reminder.recurrence_end and next_due_date > reminder.recurrence_end:
+            next_due_date = None
+        if next_due_date and reminder.due_mileage is not None:
+            floor = max(reminder.due_mileage, reminder.vehicle.current_mileage or 0) if reminder.vehicle else reminder.due_mileage
+            if reminder.repeat_mileage:
+                next_due_mileage = floor + reminder.repeat_mileage
+            else:
+                try:
+                    next_due_mileage = parse_optional_int((request.get_json(silent=True) or {}).get('next_due_mileage'))
+                except InvalidFieldError as invalid:
+                    payload, status = invalid_field_response(invalid)
+                    return jsonify(payload), status
+            if next_due_mileage is None or not floor < next_due_mileage <= 2147483647:
+                return jsonify({'error': 'Set a mileage repeat interval in Edit reminder, or provide a new threshold above the current mileage.',
+                                'message_key': 'reminderDelivery.mileageRequired', 'code': 'MILEAGE_RECURRENCE_REQUIRED',
+                                'minimum_next_mileage': floor + 1}), 409
     reminder.completed = True
     reminder.completed_at = datetime.now(timezone.utc)
-    
-    # Handle recurring reminder
-    if reminder.recurring and reminder.frequency:
-        # Create next occurrence
-        from dateutil.relativedelta import relativedelta
-        next_due_date = None
-        freq_value = reminder.frequency_value or 1
-        
-        if reminder.frequency == 'daily':
-            next_due_date = reminder.due_date + relativedelta(days=freq_value)
-        elif reminder.frequency == 'weekly':
-            next_due_date = reminder.due_date + relativedelta(weeks=freq_value)
-        elif reminder.frequency == 'monthly':
-            next_due_date = reminder.due_date + relativedelta(months=freq_value)
-        elif reminder.frequency == 'yearly':
-            next_due_date = reminder.due_date + relativedelta(years=freq_value)
-        
+
+    if reminder.recurring and reminder.frequency and not Reminder.query.filter_by(completed_from_id=reminder.id).first():
         if next_due_date and (not reminder.recurrence_end or next_due_date <= reminder.recurrence_end):
             next_reminder = Reminder(
+                completed_from_id=reminder.id,
                 title=reminder.title,
                 description=reminder.description,
                 due_date=next_due_date,
-                due_mileage=reminder.due_mileage,
+                due_mileage=next_due_mileage,
+                repeat_mileage=reminder.repeat_mileage,
+                recurrence_anchor_date=reminder.recurrence_anchor_date or reminder.due_date,
                 reminder_type=reminder.reminder_type,
                 priority=reminder.priority,
                 recurring=reminder.recurring,
@@ -350,7 +402,7 @@ def complete_reminder(current_user, reminder_id):
             )
             db.session.add(next_reminder)
     
-    db.session.commit()
+    commit_mutation()
     
     return jsonify({
         'message': 'Reminder completed',
@@ -360,6 +412,7 @@ def complete_reminder(current_user, reminder_id):
 
 @reminders_bp.route('/<int:reminder_id>/snooze', methods=['POST'])
 @token_required
+@mutation_endpoint(Reminder, 'reminder_id')
 def snooze_reminder(current_user, reminder_id):
     """Snooze a reminder."""
     reminder = Reminder.query.filter_by(
@@ -371,14 +424,18 @@ def snooze_reminder(current_user, reminder_id):
         return jsonify({'error': 'Reminder not found'}), 404
     
     data = request.get_json()
-    days = data.get('days', 1)
-    
-    if reminder.due_date:
-        reminder.due_date = reminder.due_date + timedelta(days=days)
-    
+    try:
+        days = parse_optional_int((data or {}).get('days', 1))
+        if days is None or not 1 <= days <= 365:
+            return jsonify({'error': 'Snooze days must be between 1 and 365.'}), 400
+    except InvalidFieldError as invalid:
+        payload, status = invalid_field_response(invalid)
+        return jsonify(payload), status
+    from app.services.reminder_delivery import delivery_state
+    reminder.notification_state = delivery_state(reminder)
     reminder.snoozed_until = datetime.now(timezone.utc) + timedelta(days=days)
     
-    db.session.commit()
+    commit_mutation()
     
     return jsonify({
         'message': f'Reminder snoozed for {days} days',
@@ -394,6 +451,7 @@ def get_upcoming_reminders(current_user):
     cutoff = utc_today() + timedelta(days=days)
     
     reminders = Reminder.query.filter(
+        active_vehicle_condition(Reminder),
         Reminder.user_id == current_user.id,
         Reminder.completed == False,
         Reminder.dismissed == False,
@@ -411,6 +469,7 @@ def get_upcoming_reminders(current_user):
 def get_overdue_reminders(current_user):
     """Get overdue reminders."""
     reminders = Reminder.query.filter(
+        active_vehicle_condition(Reminder),
         Reminder.user_id == current_user.id,
         Reminder.completed == False,
         Reminder.dismissed == False,
@@ -443,6 +502,7 @@ def get_mileage_reminders(current_user):
     threshold = request.args.get('threshold', 1000, type=int)
     
     reminders = Reminder.query.filter(
+        active_vehicle_condition(Reminder),
         Reminder.user_id == current_user.id,
         Reminder.vehicle_id == vehicle_id,
         Reminder.completed == False,  # noqa: E712
@@ -469,7 +529,9 @@ def get_reminder_stats(current_user):
     uid = current_user.id
     today = datetime.now(timezone.utc).date()
     is_completed = Reminder.completed.is_(True)
-    is_pending = and_(Reminder.completed.isnot(True), Reminder.dismissed.isnot(True))
+    # Total/completed retain history; actionable counts follow the pending view.
+    is_pending = and_(active_vehicle_condition(Reminder),
+                      Reminder.completed.isnot(True), Reminder.dismissed.isnot(True))
     is_overdue = and_(is_pending, Reminder.due_date < today)
 
     completed_1 = func.coalesce(func.sum(case((is_completed, 1), else_=0)), 0)

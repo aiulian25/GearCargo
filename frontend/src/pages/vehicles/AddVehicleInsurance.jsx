@@ -1,9 +1,14 @@
+import { localDate, addCalendarYears } from '../../utils/dateFormat'
+import useExpenseNavigation from '../../hooks/useExpenseNavigation'
+import toast from 'react-hot-toast'
+import { saveExpenseWithReceipt } from '../../utils/receiptExpense'
+import { useMutationIntent } from '../../hooks/useMutationIntent'
 import { useState, useEffect } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
 import { useForm } from 'react-hook-form'
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
-import { insuranceApi, vehicleApi, attachmentApi } from '../../services/api'
+import { insuranceApi, vehicleApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import ReceiptUpload from '../../components/ReceiptUpload'
 
@@ -37,11 +42,12 @@ const Icons = {
 }
 
 export default function AddVehicleInsurance() {
+  const mutation = useMutationIntent()
   const { id: vehicleId } = useParams()
   const [searchParams] = useSearchParams()
   const editId = searchParams.get('edit')
   const isEditMode = !!editId
-  const navigate = useNavigate()
+  const navigate = useExpenseNavigation(vehicleId)
   const { t } = useTranslation()
   const { currency } = useCurrency()
   
@@ -52,8 +58,8 @@ export default function AddVehicleInsurance() {
   const [receiptFile, setReceiptFile] = useState(null)
   
   // Calculate default dates
-  const today = new Date().toISOString().split('T')[0]
-  const oneYearLater = new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0]
+  const today = localDate()
+  const oneYearLater = addCalendarYears(today, 1)
   
   const { register, handleSubmit, formState: { errors, isDirty }, reset, watch } = useForm({
     defaultValues: {
@@ -87,6 +93,7 @@ export default function AddVehicleInsurance() {
         if (isEditMode) {
           const policyRes = await insuranceApi.get(editId)
           const policy = policyRes.data
+          mutation.capture(policy)
           
           reset({
             provider: policy.provider || '',
@@ -115,9 +122,9 @@ export default function AddVehicleInsurance() {
     }
     
     fetchData()
-  }, [vehicleId, editId, isEditMode, navigate, reset, today, oneYearLater])
+  }, [vehicleId, editId, isEditMode, navigate, reset, today, oneYearLater, mutation])
   
-  useUnsavedChanges(isDirty)
+  const markSaved = useUnsavedChanges(isDirty || receiptFile)
 
   const onSubmit = async (data) => {
     setIsSubmitting(true)
@@ -132,31 +139,22 @@ export default function AddVehicleInsurance() {
         deductible: data.deductible ? parseFloat(data.deductible) : null,
       }
       
-      let response
-      if (isEditMode) {
-        response = await insuranceApi.update(editId, payload)
+      if (receiptFile) {
+        const result = await saveExpenseWithReceipt({ resource: 'insurance', editId,
+          payload, config: mutation.options(), file: receiptFile, attachmentId: null })
+        if (result.receiptPending) toast(t('pwa.sync.receipts.savedPending'), { duration: 8000 })
+      } else if (isEditMode) {
+        await insuranceApi.update(editId, payload, mutation.options())
       } else {
-        response = await insuranceApi.create(payload)
+        await insuranceApi.create(payload, mutation.options())
       }
-      
-      // Upload document if selected
-      const policyId = isEditMode ? editId : response.data?.policy?.id
-      if (receiptFile && policyId) {
-        try {
-          await attachmentApi.upload(receiptFile, {
-            vehicleId: parseInt(vehicleId),
-            entryId: policyId,
-            category: 'insurance_document',
-          })
-        } catch (uploadErr) {
-          console.error('Failed to upload document:', uploadErr)
-        }
-      }
-      
+
+      if (!markSaved()) return
       navigate(`/vehicles/${vehicleId}`)
     } catch (err) {
       if (isOfflineWriteError(err)) {
         announceOfflineSaved(t)
+        if (!markSaved()) return
         navigate(`/vehicles/${vehicleId}`)
         return
       }
@@ -165,6 +163,7 @@ export default function AddVehicleInsurance() {
       const data = err.response?.data
       setError((data?.message_key && t(data.message_key))
         || data?.error
+        || err.message
         || t('addInsurance.error')
         || 'Failed to add insurance policy')
     } finally {
@@ -530,6 +529,7 @@ export default function AddVehicleInsurance() {
         {/* Document Upload */}
         <div className="card">
           <ReceiptUpload
+            durableDraft
             selectedFile={receiptFile}
             onFileSelect={setReceiptFile}
             onFileRemove={() => setReceiptFile(null)}

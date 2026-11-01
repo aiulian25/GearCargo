@@ -7,7 +7,20 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 
-import { findClientToFocus, parsePushData } from '../swNotifications'
+import { findClientToFocus, parsePushData, notificationTarget } from '../swNotifications'
+
+it.each(['reminder', 'reminder_mileage'])('keeps the backend %s payload target', type => {
+  const payload = { title: 'Oil', data: { type, reminder_id: 42, vehicle_id: 7, url: '/reminders/42' } }
+  expect(notificationTarget(parsePushData(jsonData(payload)), 'https://gearcargo.test')).toBe('/reminders/42')
+})
+it('keeps old top-level and already displayed notification targets working', () => {
+  for (const payload of [{ url: '/reminders/42' }, { data: { url: '/reminders/42' } }]) {
+    expect(notificationTarget(payload, 'https://gearcargo.test')).toBe('/reminders/42')
+  }
+})
+it.each(['https://other.test/reminders/42', '//other.test', 'javascript:alert(1)'])('does not open an external target: %s', url => {
+  expect(notificationTarget({ data: { url } }, 'https://gearcargo.test')).toBe('/')
+})
 
 function jsonData(payload) {
   return { json: () => payload, text: () => JSON.stringify(payload) }

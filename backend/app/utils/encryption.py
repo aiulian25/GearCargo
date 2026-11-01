@@ -1,6 +1,7 @@
 """
 GearCargo - Field-Level Encryption Utility
-AES-128-CBC + HMAC via Fernet (symmetric) for GDPR-compliant PII storage.
+AES-128-CBC + HMAC-SHA256 via Fernet for selected sensitive database fields.
+This is field protection, not whole-database encryption or legal certification.
 
 This module is the single source of truth for at-rest field encryption (2FA /
 email-OTP secrets, notification email, CalDAV credentials).

@@ -1,8 +1,14 @@
+import { Link } from 'react-router-dom'
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from '../../contexts/LanguageContext'
 import { backupApi } from '../../services/api'
 import toast from 'react-hot-toast'
-import { formatDate, formatDateTime } from '../../utils/dateFormat'
+import BackupImportResult from './BackupImportResult'
+import ImportReview from './ImportReview'
+import RestoreProgress from './RestoreProgress'
+import BackupProtectionFields from './BackupProtectionFields'
+import { protectionOptions } from '../../utils/backupProtection'
+import { useDateFormat } from '../../hooks/useDateFormat'
 
 // SVG Icons
 const Icons = {
@@ -69,12 +75,22 @@ const Icons = {
 }
 
 export default function BackupSettings() {
+  const { formatDate, formatDateTime } = useDateFormat()
   const { t } = useTranslation()
   const fileInputRef = useRef(null)
   const lubelogFileInputRef = useRef(null)
   const uploadInputRef = useRef(null)
   const csvFileInputRef = useRef(null)
   
+  const [encryptManual, setEncryptManual] = useState(false)
+  const [backupPassphrase, setBackupPassphrase] = useState('')
+  const [backupConfirmation, setBackupConfirmation] = useState('')
+  const [schedulePassphrase, setSchedulePassphrase] = useState('')
+  const [scheduleConfirmation, setScheduleConfirmation] = useState('')
+  const [restorePassphrase, setRestorePassphrase] = useState('')
+  const manualProtection = () => protectionOptions(encryptManual, backupPassphrase, backupConfirmation, t)
+  const clearManualKey = () => { setBackupPassphrase(''); setBackupConfirmation('') }
+
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [backing, setBacking] = useState(false)
@@ -82,6 +98,8 @@ export default function BackupSettings() {
   const [importing, setImporting] = useState(false)
   const [importingLubelog, setImportingLubelog] = useState(false)
   const [lubelogDistanceUnit, setLubelogDistanceUnit] = useState('miles')
+  const [sourceVolumeUnit, setSourceVolumeUnit] = useState('')
+  const [sourceDistanceUnit, setSourceDistanceUnit] = useState('')
   // F01 — CSV export/import (fuel/service/repair/tax/parking)
   const [csvType, setCsvType] = useState('fuel')
   const [csvExporting, setCsvExporting] = useState(false)
@@ -94,6 +112,48 @@ export default function BackupSettings() {
   const [restoringExternal, setRestoringExternal] = useState(false)
   
   const [status, setStatus] = useState(null)
+  const [importResult, setImportResult] = useState(null)
+  const [sourceLabel, setSourceLabel] = useState('')
+  const [importReview, setImportReview] = useState(null)
+  const [applyingImport, setApplyingImport] = useState(false)
+
+  const reviewImport = async (submit) => {
+    setImportResult(null)
+    setRestoreFailure(null)
+    setImportReview(null)
+    const response = await submit({ preview: true, source_label: sourceLabel })
+    setImportReview({ submit, sourceLabel, preview: response.data.preview })
+  }
+
+  const reviewUpload = (formData, apiMethod) => reviewImport((options) => {
+    for (const [key, value] of Object.entries(options)) formData.set(key, String(value))
+    return apiMethod(formData)
+  })
+
+  const applyImport = async () => {
+    if (!importReview || applyingImport) return
+    setApplyingImport(true)
+    try {
+      const response = await importReview.submit({
+        preview: false, source_label: importReview.sourceLabel,
+        preview_token: importReview.preview.preview_token,
+        conflict_policy: importReview.preview.conflicts ? 'keep_existing' : 'reject',
+      })
+      setRestorePassphrase('')
+      setImportResult(response.data.imported || response.data)
+      setImportReview(null)
+      await loadBackupStatus()
+    } catch (error) {
+      if (error.response?.data?.preview) {
+        setImportReview(previous => ({ ...previous, preview: error.response.data.preview }))
+      }
+      setRestoreFailure(error.response?.data?.recovery || null)
+      toast.error(error.response?.data?.error || t('backup.importFailed'))
+    } finally {
+      setApplyingImport(false)
+    }
+  }
+  const [restoreFailure, setRestoreFailure] = useState(null)
   const createEmptyDestination = (index = 1) => ({
     id: `destination_${Date.now()}_${index}`,
     name: `${t('backup.destinationLabel') || 'Destination'} ${index}`,
@@ -132,7 +192,7 @@ export default function BackupSettings() {
       }]
     }
 
-    return [createEmptyDestination(1)]
+    return [{ ...createEmptyDestination(1), enabled: false }]
   }
 
   const syncLegacyExternalFields = (nextSchedule) => {
@@ -160,6 +220,8 @@ export default function BackupSettings() {
     day_of_month: 1,
     hour: 3,
     include_attachments: true,
+    encryption_enabled: false,
+    has_backup_passphrase: false,
     external_enabled: false,
     external_url: '',
     external_api_key: '',
@@ -363,13 +425,16 @@ export default function BackupSettings() {
 
       const primaryDestination = enabledDestinations[0] || destinationsToSave[0]
 
+      const protection = protectionOptions(schedule.encryption_enabled, schedulePassphrase,
+        scheduleConfirmation, t, schedule.has_backup_passphrase)
       const schedulePayload = {
         ...schedule,
+        ...(protection.passphrase ? { passphrase: protection.passphrase } : {}),
         external_enabled: schedule.external_enabled,
         external_url: primaryDestination?.external_url || '',
         external_api_key: primaryDestination?.external_api_key || '',
         external_path: primaryDestination?.external_path || '/GearCargo',
-        external_destinations: destinations.map((destination) => ({
+        external_destinations: destinationsToSave.map((destination) => ({
           id: destination.id,
           name: destination.name,
           provider: destination.provider,
@@ -382,11 +447,12 @@ export default function BackupSettings() {
       }
       
       await backupApi.updateSchedule(schedulePayload)
+      setSchedulePassphrase('')
+      setScheduleConfirmation('')
       toast.success(t('backup.scheduleSaved') || 'Backup schedule saved')
       loadBackupStatus()
     } catch (error) {
-      console.error('Failed to save schedule:', error)
-      toast.error(error.response?.data?.error || t('backup.saveFailed') || 'Failed to save schedule')
+      toast.error(error.response?.data?.error || error.message || t('backup.saveFailed') || 'Failed to save schedule')
     } finally {
       setSaving(false)
     }
@@ -395,7 +461,8 @@ export default function BackupSettings() {
   const runBackupNow = async () => {
     try {
       setBacking(true)
-      const response = await backupApi.runNow(schedule.include_attachments, schedule.external_enabled)
+      const response = await backupApi.runNow(schedule.include_attachments, schedule.external_enabled, manualProtection())
+      clearManualKey()
       if (response.data.external_error) {
         toast.error(`${t('backup.externalFailed') || 'External upload failed'}: ${response.data.external_error}`)
         toast.success(t('backup.backupSavedLocally') || 'Backup saved locally')
@@ -404,8 +471,7 @@ export default function BackupSettings() {
       }
       loadBackupStatus()
     } catch (error) {
-      console.error('Backup failed:', error)
-      toast.error(error.response?.data?.error || t('backup.backupFailed') || 'Backup failed')
+      toast.error(error.response?.data?.error || error.message || t('backup.backupFailed') || 'Backup failed')
     } finally {
       setBacking(false)
     }
@@ -414,21 +480,21 @@ export default function BackupSettings() {
   const downloadBackup = async () => {
     try {
       setBacking(true)
-      const response = await backupApi.export('zip', schedule.include_attachments, false)
+      const response = await backupApi.export('zip', schedule.include_attachments, false, manualProtection())
+      clearManualKey()
       
       // Create download link
-      const blob = new Blob([response.data], { type: 'application/zip' })
+      const blob = new Blob([response.data], { type: response.headers?.['content-type'] || 'application/octet-stream' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `gearcargo_backup_${new Date().toISOString().split('T')[0]}.zip`
+      a.download = `gearcargo_backup_${new Date().toISOString().split('T')[0]}.zip${encryptManual ? '.gcb' : ''}`
       a.click()
       URL.revokeObjectURL(url)
       
       toast.success(t('backup.downloadComplete') || 'Backup downloaded')
     } catch (error) {
-      console.error('Download failed:', error)
-      toast.error(t('backup.downloadFailed') || 'Failed to download backup')
+      toast.error(error.response?.data?.error || error.message || t('backup.downloadFailed'))
     } finally {
       setBacking(false)
     }
@@ -443,7 +509,7 @@ export default function BackupSettings() {
     if (!file) return
     
     // Validate file type
-    const validTypes = ['.json', '.zip']
+    const validTypes = ['.json', '.zip', '.gcb']
     const hasValidExtension = validTypes.some(ext => file.name.toLowerCase().endsWith(ext))
     if (!hasValidExtension) {
       toast.error(t('backup.invalidFileType') || 'Please select a JSON or ZIP file')
@@ -451,37 +517,18 @@ export default function BackupSettings() {
       return
     }
     
-    // Confirm before importing
-    if (!window.confirm(t('backup.importConfirm') || 'This will merge the backup data with your existing data. Continue?')) {
-      event.target.value = ''
-      return
-    }
-    
     setImporting(true)
+    setImportResult(null)
+    setRestoreFailure(null)
     try {
       const formData = new FormData()
       formData.append('file', file)
+      formData.append('passphrase', restorePassphrase)
       formData.append('merge_mode', 'merge')
       
-      const response = await backupApi.import(formData)
-      
-      const imported = response.data.imported || {}
-      const summary = []
-      if (imported.vehicles > 0) summary.push(`${imported.vehicles} ${t('backup.vehicles') || 'vehicles'}`)
-      if (imported.fuel_entries > 0) summary.push(`${imported.fuel_entries} ${t('backup.fuelEntries') || 'fuel entries'}`)
-      if (imported.service_entries > 0) summary.push(`${imported.service_entries} ${t('backup.serviceEntries') || 'service entries'}`)
-      if (imported.attachments > 0) summary.push(`${imported.attachments} ${t('backup.attachments') || 'attachments'}`)
-      
-      toast.success(
-        summary.length > 0 
-          ? `${t('backup.importSuccess') || 'Import completed'}: ${summary.join(', ')}`
-          : t('backup.importSuccess') || 'Import completed'
-      )
-      
-      // Reload page to refresh all data
-      setTimeout(() => window.location.reload(), 1500)
+      await reviewUpload(formData, backupApi.import)
     } catch (error) {
-      console.error('Import failed:', error)
+      setRestoreFailure(error.response?.data?.recovery || null)
       toast.error(error.response?.data?.error || t('backup.importFailed') || 'Failed to import data')
     } finally {
       setImporting(false)
@@ -524,11 +571,6 @@ export default function BackupSettings() {
       event.target.value = ''
       return
     }
-    if (!window.confirm(t('backup.csvImportConfirm') || 'Import these rows into your data? Duplicate entries are skipped.')) {
-      event.target.value = ''
-      return
-    }
-
     setCsvImporting(true)
     try {
       const formData = new FormData()
@@ -536,14 +578,7 @@ export default function BackupSettings() {
       formData.append('type', csvType)
       formData.append('merge_mode', 'merge')
 
-      const response = await backupApi.importCsv(formData)
-      const { created = 0, skipped = 0, error_count = 0 } = response.data || {}
-      toast.success(
-        (t('backup.csvImportSuccess') || 'Import complete')
-        + `: ${created} ${t('backup.csvCreated') || 'added'}, ${skipped} ${t('backup.csvSkipped') || 'skipped'}`
-        + (error_count ? `, ${error_count} ${t('backup.csvErrors') || 'errors'}` : '')
-      )
-      if (created > 0) setTimeout(() => window.location.reload(), 1500)
+      await reviewUpload(formData, backupApi.importCsv)
     } catch (error) {
       console.error('CSV import failed:', error)
       toast.error(error.response?.data?.error || t('backup.csvImportFailed') || 'Failed to import CSV')
@@ -567,51 +602,16 @@ export default function BackupSettings() {
       return
     }
 
-    if (!window.confirm(t('backup.lubelogImportConfirm') || 'Import data from LubeLogger backup? This will create new vehicles and entries.')) {
-      event.target.value = ''
-      return
-    }
-
     setImportingLubelog(true)
     try {
       const formData = new FormData()
       formData.append('file', file)
       formData.append('merge_mode', 'merge')
       formData.append('distance_unit', lubelogDistanceUnit)
+      formData.append('source_volume_unit', sourceVolumeUnit)
+      if (sourceDistanceUnit) formData.append('source_distance_unit', sourceDistanceUnit)
 
-      const response = await backupApi.importLubelog(formData)
-
-      const imported = response.data.imported || {}
-      const summary = []
-      if (imported.vehicles > 0) summary.push(`${imported.vehicles} ${t('backup.vehicles') || 'vehicles'}`)
-      if (imported.fuel_entries > 0) summary.push(`${imported.fuel_entries} ${t('backup.fuelEntries') || 'fuel entries'}`)
-      if (imported.service_entries > 0) summary.push(`${imported.service_entries} ${t('backup.serviceEntries') || 'service entries'}`)
-      if (imported.repair_entries > 0) summary.push(`${imported.repair_entries} ${t('backup.repairEntries') || 'repair entries'}`)
-      if (imported.tax_entries > 0) summary.push(`${imported.tax_entries} ${t('backup.taxEntries') || 'tax entries'}`)
-      if (imported.insurance_policies > 0) summary.push(`${imported.insurance_policies} ${t('backup.insurancePolicies') || 'insurance policies'}`)
-      if (imported.reminders > 0) summary.push(`${imported.reminders} ${t('backup.reminders') || 'reminders'}`)
-      if (imported.attachments > 0) summary.push(`${imported.attachments} ${t('backup.attachments') || 'attachments'}`)
-
-      toast.success(
-        summary.length > 0
-          ? `${t('backup.lubelogImportSuccess') || 'LubeLogger import completed'}: ${summary.join(', ')}`
-          : t('backup.lubelogImportSuccess') || 'LubeLogger import completed'
-      )
-
-      // Records whose vehicle is missing from the backup are dropped on purpose,
-      // but the user must be told — otherwise the import looks lossless when it
-      // is not. Shown as its own longer-lived toast so it survives the reload.
-      const skipped = (imported.skipped_unmatched_records || 0)
-        + (imported.skipped_unmatched_policies || 0)
-      if (skipped > 0) {
-        toast(
-          t('backup.lubelogImportSkipped', { count: skipped })
-            || `${skipped} record(s) skipped — their vehicle is not in the backup`,
-          { icon: '\u26a0\ufe0f', duration: 8000 }
-        )
-      }
-
-      setTimeout(() => window.location.reload(), 1500)
+      await reviewUpload(formData, backupApi.importLubelog)
     } catch (error) {
       console.error('LubeLogger import failed:', error)
       toast.error(error.response?.data?.error || t('backup.lubelogImportFailed') || 'Failed to import LubeLogger data')
@@ -622,17 +622,13 @@ export default function BackupSettings() {
   }
 
   const restoreBackup = async (filename) => {
-    if (!window.confirm(t('backup.restoreConfirm') || 'Restore this backup? This will merge data with your existing records.')) {
-      return
-    }
-    
+    setImportResult(null)
+    setRestoreFailure(null)
     try {
       setImporting(true)
-      await backupApi.restoreFromStorage(filename, 'merge')
-      toast.success(t('backup.restoreSuccess') || 'Backup restored successfully')
-      setTimeout(() => window.location.reload(), 1500)
+      await reviewImport(options => backupApi.restoreFromStorage(filename, 'merge', { ...options, passphrase: restorePassphrase }))
     } catch (error) {
-      console.error('Restore failed:', error)
+      setRestoreFailure(error.response?.data?.recovery || null)
       toast.error(error.response?.data?.error || t('backup.restoreFailed') || 'Failed to restore backup')
     } finally {
       setImporting(false)
@@ -662,7 +658,7 @@ export default function BackupSettings() {
     const file = event.target.files?.[0]
     if (!file) return
 
-    if (!file.name.toLowerCase().endsWith('.zip')) {
+    if (!['.zip', '.gcb'].some(ext => file.name.toLowerCase().endsWith(ext))) {
       toast.error(t('backup.invalidZipFile') || 'Please select a .zip backup file')
       event.target.value = ''
       return
@@ -672,11 +668,12 @@ export default function BackupSettings() {
     try {
       const formData = new FormData()
       formData.append('file', file)
+      formData.append('passphrase', restorePassphrase)
       const response = await backupApi.uploadBackup(formData)
       toast.success(response.data.message || 'Backup uploaded')
+      setRestorePassphrase('')
       loadBackupStatus()
     } catch (error) {
-      console.error('Upload failed:', error)
       toast.error(error.response?.data?.error || 'Failed to upload backup')
     } finally {
       setUploading(false)
@@ -708,32 +705,16 @@ export default function BackupSettings() {
 
   const restoreFromExternal = async (filename) => {
     const activeDestination = getActiveDestination()
-    if (!window.confirm(t('backup.restoreExternalConfirm') || `Restore from external backup "${filename}"? This will merge data with your existing records.`)) {
-      return
-    }
+    setImportResult(null)
+    setRestoreFailure(null)
     try {
       setRestoringExternal(true)
-      const response = await backupApi.restoreFromExternal(
-        filename,
-        activeDestination?.external_url,
-        activeDestination?.external_api_key || null,
-        activeDestination?.external_path
-      )
-      const imported = response.data.imported || {}
-      const summary = []
-      if (imported.vehicles > 0) summary.push(`${imported.vehicles} vehicles`)
-      if (imported.fuel_entries > 0) summary.push(`${imported.fuel_entries} fuel entries`)
-      if (imported.service_entries > 0) summary.push(`${imported.service_entries} service entries`)
-      if (imported.attachments > 0) summary.push(`${imported.attachments} attachments`)
-      toast.success(
-        summary.length > 0
-          ? `Restored: ${summary.join(', ')}`
-          : 'Restore completed'
-      )
-      setExternalFiles(null)
-      loadBackupStatus()
+      await reviewImport(options => backupApi.restoreFromExternal(
+        filename, activeDestination?.external_url, activeDestination?.external_api_key || null,
+        activeDestination?.external_path, 'merge', { ...options, passphrase: restorePassphrase }
+      ))
     } catch (error) {
-      console.error('External restore failed:', error)
+      setRestoreFailure(error.response?.data?.recovery || null)
       toast.error(error.response?.data?.error || 'Failed to restore from external')
     } finally {
       setRestoringExternal(false)
@@ -829,6 +810,22 @@ export default function BackupSettings() {
         </div>
       </div>
       
+      <RestoreProgress active={importing || restoringExternal || applyingImport} failure={restoreFailure} />
+      <ImportReview preview={importReview?.preview} busy={applyingImport} onApply={applyImport} onCancel={() => { setImportReview(null); setRestorePassphrase('') }} />
+      <section className="card p-4 space-y-2">
+        <label className="block text-sm font-medium">
+          {t('backup.importReview.sourceLabel')}
+          <input className="input mt-1" value={sourceLabel} maxLength={100}
+            onChange={event => setSourceLabel(event.target.value)} />
+        </label>
+        <p className="text-xs text-(--color-text-muted)">{t('backup.importReview.sourceHint')}</p>
+      </section>
+      <BackupImportResult result={importResult} onRefresh={() => window.location.reload()} />
+      <p className="text-sm text-(--color-text-secondary) mb-4">{t('backup.portableScope')}</p>
+      {!schedule.include_attachments && (
+        <p className="text-sm text-amber-600 dark:text-amber-400 mb-4">{t('backup.dataOnlyNotice')}</p>
+      )}
+
       {/* Last Backup Info */}
       {status?.last_backup && (
         <div className="bg-green-500/10 rounded-lg p-3 mb-4">
@@ -844,11 +841,22 @@ export default function BackupSettings() {
               {' '}{status.last_backup_details.entries_count || 0} {t('backup.entries') || 'entries'}, 
               {' '}{status.last_backup_details.attachments_count || 0} {t('backup.attachments') || 'attachments'}
               {status.last_backup_details.file_size_human && ` • ${status.last_backup_details.file_size_human}`}
+              {' · '}{t(`backup.protection.${status.last_backup_details.encrypted ? 'encrypted' : 'plaintext'}`)}
             </p>
           )}
         </div>
       )}
       
+      <BackupProtectionFields title={t('backup.protection.manualTitle')}
+        enabled={encryptManual} onEnabled={value => { setEncryptManual(value); clearManualKey() }}
+        passphrase={backupPassphrase} onPassphrase={setBackupPassphrase}
+        confirmation={backupConfirmation} onConfirmation={setBackupConfirmation} />
+      <label className="block text-sm font-medium">
+        {t('backup.protection.restoreKey')}
+        <input type="password" autoComplete="off" className="input mt-1 w-full" maxLength={1024}
+          value={restorePassphrase} onChange={event => setRestorePassphrase(event.target.value)} />
+        <span className="block text-xs font-normal text-(--color-text-secondary) mt-1">{t('backup.protection.restoreHint')}</span>
+      </label>
       {/* Quick Actions */}
       <div className="grid grid-cols-3 gap-3 mb-4">
         <button
@@ -866,7 +874,7 @@ export default function BackupSettings() {
         
         <button
           onClick={handleImportClick}
-          disabled={importing}
+          disabled={importing || applyingImport}
           className="flex flex-col items-center gap-2 p-4 bg-(--color-bg-tertiary) rounded-xl hover:bg-(--color-bg-tertiary)/80 transition-colors"
         >
           <span className="text-(--color-accent)">
@@ -893,14 +901,14 @@ export default function BackupSettings() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".json,.zip"
+          accept=".json,.zip,.gcb"
           onChange={handleImportFile}
           className="hidden"
         />
         <input
           ref={uploadInputRef}
           type="file"
-          accept=".zip"
+          accept=".zip,.gcb"
           onChange={handleUploadFile}
           className="hidden"
         />
@@ -922,10 +930,31 @@ export default function BackupSettings() {
           </div>
         </div>
 
+        <div className="mb-3 space-y-2">
+          <label className="block text-xs font-medium">
+            {t('backup.sourceVolume')}
+            <select className="input mt-1" value={sourceVolumeUnit} onChange={event => setSourceVolumeUnit(event.target.value)}>
+              <option value="">{t('backup.chooseSourceVolume')}</option>
+              <option value="liters">{t('common.liters')}</option>
+              <option value="us_gallons">{t('units.gallonsUs')}</option>
+              <option value="imperial_gallons">{t('units.gallonsUk')}</option>
+            </select>
+          </label>
+          <label className="block text-xs font-medium">
+            {t('backup.sourceDistance')}
+            <select className="input mt-1" value={sourceDistanceUnit} onChange={event => setSourceDistanceUnit(event.target.value)}>
+              <option value="">{t('backup.fromSourceSettings')}</option>
+              <option value="km">{t('backup.km')}</option>
+              <option value="miles">{t('backup.miles')}</option>
+            </select>
+          </label>
+          <p className="text-xs text-(--color-text-muted)">{t('backup.sourceUnitsHint')}</p>
+        </div>
+
         {/* Distance Unit Selector */}
         <div className="mb-3">
           <label className="block text-xs font-medium text-(--color-text-secondary) mb-2">
-            {t('backup.distanceUnit') || 'Distance Unit'}
+            {t('backup.targetDistanceUnit')}
           </label>
           <div className="grid grid-cols-2 gap-2">
             {['miles', 'km'].map((unit) => (
@@ -950,7 +979,7 @@ export default function BackupSettings() {
 
         <button
           onClick={handleLubelogImportClick}
-          disabled={importingLubelog}
+          disabled={importingLubelog || applyingImport || !sourceVolumeUnit}
           className="w-full py-2.5 px-4 rounded-lg bg-(--color-bg-secondary) text-(--color-text-secondary) hover:bg-(--color-bg-secondary)/80 transition-colors flex items-center justify-center gap-2"
         >
           {importingLubelog ? (
@@ -969,6 +998,11 @@ export default function BackupSettings() {
         />
       </div>
 
+      <div className="card p-4 space-y-2">
+        <h3 className="font-semibold">{t('reconciliation.title')}</h3>
+        <p className="text-sm text-gray-500">{t('reconciliation.intro')}</p>
+        <Link className="btn btn-secondary" to="/reconciliation">{t('reconciliation.import')}</Link>
+      </div>
       {/* F01 — CSV Export / Import */}
       <div className="bg-(--color-bg-tertiary) rounded-xl p-4">
         <div className="flex items-center gap-3 mb-3">
@@ -981,6 +1015,7 @@ export default function BackupSettings() {
             <span className="text-sm font-medium">{t('backup.csvTitle') || 'Export / Import CSV'}</span>
             <p className="text-2xs text-(--color-text-muted)">
               {t('backup.csvDesc') || 'Download or upload your history as a spreadsheet (CSV)'}
+              {' '}{t('backup.protection.csv')}
             </p>
           </div>
         </div>
@@ -1021,7 +1056,7 @@ export default function BackupSettings() {
           </button>
           <button
             onClick={handleCsvImportClick}
-            disabled={csvImporting}
+            disabled={csvImporting || applyingImport}
             className="py-2.5 px-4 rounded-lg bg-(--color-bg-secondary) text-(--color-text-secondary) hover:bg-(--color-bg-secondary)/80 transition-colors flex items-center justify-center gap-2"
           >
             {csvImporting
@@ -1031,7 +1066,7 @@ export default function BackupSettings() {
           </button>
         </div>
         <p className="text-2xs text-(--color-text-muted) mt-2">
-          {t('backup.csvImportHint') || 'Import accepts files exported here. Duplicate rows (same vehicle, date and amount) are skipped.'}
+          {t('backup.csvImportHint')}
         </p>
         <input
           ref={csvFileInputRef}
@@ -1146,6 +1181,12 @@ export default function BackupSettings() {
         )}
       </div>
       
+      <BackupProtectionFields title={t('backup.protection.scheduleTitle')}
+        enabled={schedule.encryption_enabled} stored={schedule.has_backup_passphrase}
+        onEnabled={value => { handleScheduleChange('encryption_enabled', value); setSchedulePassphrase(''); setScheduleConfirmation('') }}
+        passphrase={schedulePassphrase} onPassphrase={setSchedulePassphrase}
+        confirmation={scheduleConfirmation} onConfirmation={setScheduleConfirmation} />
+      <p className="text-xs text-(--color-text-secondary)">{t('backup.protection.scheduleHint')}</p>
       {/* External Backup */}
       <div className="bg-(--color-bg-tertiary) rounded-xl">
         <button
@@ -1471,13 +1512,14 @@ export default function BackupSettings() {
                             <div key={file.name} className="flex items-center justify-between p-2 rounded-sm hover:bg-(--color-bg-tertiary) transition-colors">
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm text-(--color-text-primary) truncate">{file.name}</p>
+                                <p className="text-xs">{t(`backup.protection.${file.protection === 'encrypted_unverified' ? 'unverified' : 'plaintext'}`)}</p>
                                 <p className="text-2xs text-(--color-text-muted)">
                                   {file.size_human}{file.last_modified ? ` • ${formatDate(file.last_modified)}` : ''}
                                 </p>
                               </div>
                               <button
                                 onClick={() => restoreFromExternal(file.name)}
-                                disabled={restoringExternal}
+                                disabled={restoringExternal || applyingImport}
                                 className="ml-2 px-3 py-1.5 text-xs text-(--color-accent) hover:bg-(--color-accent)/10 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
                               >
                                 {restoringExternal ? (
@@ -1605,7 +1647,7 @@ export default function BackupSettings() {
                         {backup.label || formatDateTime(backup.created_at)}
                       </p>
                       <p className="text-2xs text-(--color-text-muted)">
-                        {backup.size_human}
+                        {backup.size_human} · {t(`backup.protection.${backup.encrypted ? 'encrypted' : 'plaintext'}`)}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -1613,7 +1655,7 @@ export default function BackupSettings() {
                         onClick={async () => {
                           try {
                             const response = await backupApi.downloadStored(backup.filename)
-                            const blob = new Blob([response.data], { type: 'application/zip' })
+                            const blob = new Blob([response.data], { type: response.headers?.['content-type'] || 'application/octet-stream' })
                             const url = URL.createObjectURL(blob)
                             const a = document.createElement('a')
                             a.href = url
@@ -1621,7 +1663,7 @@ export default function BackupSettings() {
                             a.click()
                             URL.revokeObjectURL(url)
                           } catch (error) {
-                            toast.error(t('backup.downloadFailed') || 'Failed to download backup')
+                            toast.error(error.response?.data?.error || error.message || t('backup.downloadFailed'))
                           }
                         }}
                         className="p-2 text-(--color-text-secondary) hover:bg-(--color-accent)/10 rounded-lg transition-colors"
@@ -1655,7 +1697,7 @@ export default function BackupSettings() {
                       )}
                       <button
                         onClick={() => restoreBackup(backup.filename)}
-                        disabled={importing}
+                        disabled={importing || applyingImport}
                         className="p-2 text-(--color-accent) hover:bg-(--color-accent)/10 rounded-lg transition-colors"
                         title={t('backup.restore') || 'Restore'}
                       >
@@ -1738,7 +1780,7 @@ export default function BackupSettings() {
       <div className="bg-blue-500/10 rounded-xl p-4">
         <p className="text-xs text-blue-600 dark:text-blue-400">
           <strong>{t('backup.infoTitle') || 'About Backups'}:</strong>{' '}
-          {t('backup.infoText') || 'Backups include all your vehicles, fuel logs, service records, repairs, taxes, reminders, and uploaded attachments. You can restore from any backup at any time.'}
+          {t('backup.infoText') || 'Personal backups preserve vehicle records and portable preferences. Include files to preserve receipts and photos. Older backups may be incomplete; review restore warnings.'}
         </p>
       </div>
     </div>

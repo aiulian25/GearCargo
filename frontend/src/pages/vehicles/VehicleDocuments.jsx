@@ -1,3 +1,5 @@
+import { ocrFailed, ocrFinished, ocrLabel } from '../../utils/ocrStatus'
+import { mutationOptions } from '../../utils/mutationProtocol'
 /**
  * VehicleDocuments — per-vehicle documents & receipts page with OCR text search
  *
@@ -20,7 +22,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { vehicleApi, attachmentApi } from '../../services/api'
 import { useTranslation } from '../../contexts/LanguageContext'
-import { formatDate } from '../../utils/dateFormat'
+import { useDateFormat } from '../../hooks/useDateFormat'
 import AttachmentViewer from '../../components/ui/AttachmentViewer'
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
@@ -115,16 +117,16 @@ function CategoryBadge({ category }) {
 
 // ── OCR Status badge ───────────────────────────────────────────────────────────
 function OcrBadge({ attachment, onClick, t }) {
-  if (!attachment.ocr_processed) {
+  if (ocrFailed(attachment) || !attachment.ocr_processed) {
     return (
       <span
-        title={t('vehicleDocuments.ocrPending') || 'OCR pending'}
+        title={ocrLabel(attachment, t)}
         className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[10px] font-medium bg-gray-500/15 text-gray-400"
       >
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin opacity-70">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={attachment.ocr_state === 'running' ? 'animate-spin opacity-70' : 'opacity-70'}>
           <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
         </svg>
-        {t('vehicleDocuments.ocrScanning') || 'Scanning'}
+        {ocrLabel(attachment, t)}
       </span>
     )
   }
@@ -153,6 +155,7 @@ function OcrBadge({ attachment, onClick, t }) {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function VehicleDocuments() {
+  const { formatDate } = useDateFormat()
   const { id: vehicleId } = useParams()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -216,7 +219,7 @@ export default function VehicleDocuments() {
         description: editForm.description || null,
         category: editForm.category || null,
         expires_at: editForm.expires_at || null,   // '' clears it (backend re-arms sentinel)
-      })
+      }, mutationOptions(editAtt))
       const updated = res.data?.attachment || res.data
       setAttachments((prev) => prev.map((x) => (x.id === editAtt.id ? { ...x, ...updated } : x)))
       setEditAtt(null)
@@ -399,7 +402,7 @@ export default function VehicleDocuments() {
       setAttachments([])
       fetchAttachments(1, debouncedQ)
       // Start OCR polling for images
-      if (attachment?.is_image && ocrStatus === 'pending') {
+      if ((attachment?.is_image || attachment?.is_pdf) && ocrStatus === 'pending') {
         _startOcrPoll(attachment.id, attachment.original_filename || attachment.filename)
       }
     } catch {
@@ -418,8 +421,9 @@ export default function VehicleDocuments() {
       try {
         const res = await attachmentApi.getOcr(id)
         const d = res.data
-        if (d.ocr_processed) {
-          if (d.has_text) {
+        if (ocrFinished(d)) {
+          fetchAttachments(1, debouncedQ)
+          if (d.ocr_processed && d.has_text && !ocrFailed(d)) {
             // Refresh so the list shows OCR badge
             fetchAttachments(1, debouncedQ)
             // Show toast
@@ -747,7 +751,7 @@ export default function VehicleDocuments() {
                       )}
                       {a.created_at && (
                         <span className="text-[10px] text-(--color-text-muted)">
-                          {new Date(a.created_at).toLocaleDateString()}
+                          {formatDate(a.created_at)}
                         </span>
                       )}
                     </div>

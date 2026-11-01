@@ -1,13 +1,10 @@
 """
 GearCargo - User Session Model
 
-S01: durable, database-backed mirror of the Redis
-session store.  Redis remains the fast path for session validation, single-device
-enforcement, the 48-hour absolute-expiry wall, and logout/blacklist revocation.
-This table is the *fallback* consulted only when Redis is unavailable, so a Redis
-outage no longer silently fails OPEN (accepting stale / revoked / cross-device
-tokens).  It mirrors the existing DB-backed account-lockout fallback pattern
-(see ``_db_is_account_locked`` in routes/auth.py).
+GC-026: authoritative session validity, non-sliding expiry and revocation.
+Every JWT authorization consults this table, including while Redis is healthy.
+Redis is only an optional cache/additional denylist. The GC-026 migration revokes
+legacy sessions once because older best-effort mirrors could omit revocations.
 
 All timestamps are stored as naive UTC (``utc_naive_now``) to match the rest of
 the schema (e.g. blocked_entity, user).  Helper comparisons in routes/auth.py
@@ -15,7 +12,7 @@ always compare against a naive-UTC "now", so there is never an aware/naive mix.
 """
 
 from datetime import datetime
-from app.utils.timeutils import utc_naive_now
+from app.utils.timeutils import utc_naive_now, isoformat_utc
 from app import db
 
 
@@ -24,7 +21,7 @@ class UserSession(db.Model):
 
     One row is written per ``generate_tokens()`` call (login + every refresh).
     Rows are revoked (not deleted) on logout / session invalidation so the
-    Redis-down validation path can reject them; expired and revoked rows are
+    validation path can reject them; expired and revoked rows are
     purged by the daily ``cleanup_old_data`` scheduler job.
     """
 
@@ -44,11 +41,11 @@ class UserSession(db.Model):
     # Unique + indexed: validation looks a session up by (user_id, jti).
     jti = db.Column(db.String(64), nullable=False, unique=True, index=True)
 
-    # Non-sliding 48h wall. Copied from the original login on every refresh so
+    # Configured non-sliding session wall. Copied from the original login on every refresh so
     # refreshing never extends the window. Validation rejects once this passes.
     absolute_expires_at = db.Column(db.DateTime, nullable=False, index=True)
 
-    # Revocation — set True on logout / single-device invalidation. The Redis-down
+    # Revocation — set True on logout / single-device invalidation. The durable
     # validation path treats a revoked row as invalid, preserving logout semantics
     # without Redis.
     revoked = db.Column(db.Boolean, nullable=False, default=False, index=True)
@@ -70,10 +67,10 @@ class UserSession(db.Model):
         return {
             'id': self.id,
             'jti_prefix': (self.jti[:8] + '…') if self.jti else None,
-            'absolute_expires_at': self.absolute_expires_at.isoformat() if self.absolute_expires_at else None,
+            'absolute_expires_at': isoformat_utc(self.absolute_expires_at) if self.absolute_expires_at else None,
             'revoked': self.revoked,
-            'revoked_at': self.revoked_at.isoformat() if self.revoked_at else None,
+            'revoked_at': isoformat_utc(self.revoked_at) if self.revoked_at else None,
             'user_agent': self.user_agent,
             'ip': self.ip,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'created_at': isoformat_utc(self.created_at) if self.created_at else None,
         }

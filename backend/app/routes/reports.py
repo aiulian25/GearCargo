@@ -16,8 +16,10 @@ from app.utils.entryparse import (
     parse_optional_int,
 )
 from app.services.pdf_report_service import (
-    generate_pdf_report, get_report_filename, get_period_dates
+    generate_pdf_report, get_report_filename, get_period_dates,
+    generate_shared_pdf_report, get_shared_report_filename,
 )
+from app.services.shared_report import SharedReport
 from app.utils.security_audit import security_audit
 
 reports_bp = Blueprint('reports', __name__)
@@ -58,44 +60,24 @@ def _report_summary(user, vehicles, period, year, month):
     Shared by the authenticated preview and the public shared-report view so the
     numbers are always identical. Returns only aggregate, non-sensitive data.
     """
-    from app.services.pdf_report_service import get_vehicle_entries
+    from app.services.expense_ledger import load_expenses, aggregate
     from app.services.currency import get_rates_cached
 
     start_date, end_date, period_label = get_period_dates(period, year, month)
-    currency = (getattr(user, 'currency', 'EUR') or 'EUR').upper()
+    currency = (getattr(user, 'currency', None) or 'GBP').upper()
     rates = get_rates_cached(current_app._get_current_object())
 
-    cats = ['fuel', 'service', 'repair', 'tax', 'parking', 'insurance']
-    totals = {k: 0 for k in cats}
-    totals['grand_total'] = 0
-    counts = {k: 0 for k in cats}
-    converted = True
-    fx_applied = False
-
-    for vehicle in vehicles:
-        entries = get_vehicle_entries(vehicle, start_date, end_date, currency, rates)
-        for key in cats:
-            totals[key] += entries['totals'][key]
-            counts[key] += len(entries[key])
-        totals['grand_total'] += entries['totals']['grand_total']
-        converted = converted and entries['totals'].get('converted', True)
-        fx_applied = fx_applied or entries['totals'].get('fx_applied', False)
-    counts['total'] = sum(counts[k] for k in cats)
+    ledger = aggregate(load_expenses([v.id for v in vehicles], start_date, end_date),
+                       currency, rates, start_date, end_date)
 
     return {
+        **{k: ledger[k] for k in ('basis', 'basis_label', 'as_of', 'start_date', 'end_date',
+            'entry_counts', 'totals', 'currency', 'display_currency', 'converted', 'fx_applied',
+            'unconverted', 'recorded_total', 'insurance_estimate')},
         'period_label': period_label,
-        'start_date': start_date.strftime('%Y-%m-%d'),
-        'end_date': end_date.strftime('%Y-%m-%d'),
         'vehicle_count': len(vehicles),
-        # Only make/model/name — no VIN, plate, addresses, or owner identity.
         'vehicles': [{'name': v.name or f'{v.make} {v.model}'.strip(),
                       'make': v.make, 'model': v.model} for v in vehicles],
-        'entry_counts': counts,
-        'totals': totals,
-        'currency': currency,
-        'display_currency': currency,
-        'converted': converted,
-        'fx_applied': fx_applied,
     }
 
 
@@ -374,6 +356,15 @@ def _lookup_active_share(token):
     return share, None
 
 
+def _shared_report_data(share, owner):
+    vehicles = _resolve_report_vehicles(owner, share.vehicle_ids)
+    summary = _report_summary(owner, vehicles, share.period, share.year, share.month)
+    return SharedReport.from_summary(
+        summary, label=share.label, app_name=current_app.config.get('APP_NAME', 'GearCargo'),
+        expires_at=share.expires_at.replace(tzinfo=timezone.utc).isoformat() if share.expires_at else None,
+    )
+
+
 @reports_bp.route('/shared/<token>', methods=['GET'])
 def view_shared_report(token):
     """PUBLIC (no auth): return the aggregate report for a valid share token.
@@ -390,8 +381,7 @@ def view_shared_report(token):
         return jsonify({'error': 'Link not found', 'status': 'invalid'}), 404
 
     try:
-        vehicles = _resolve_report_vehicles(owner, share.vehicle_ids)
-        summary = _report_summary(owner, vehicles, share.period, share.year, share.month)
+        summary = _shared_report_data(share, owner)
     except Exception as e:
         current_app.logger.error(f'Shared report render failed: {e}')
         return jsonify({'error': 'Unable to load this report right now'}), 500
@@ -404,10 +394,7 @@ def view_shared_report(token):
     except Exception:
         db.session.rollback()
 
-    summary['label'] = share.label
-    summary['app_name'] = current_app.config.get('APP_NAME', 'GearCargo')
-    summary['expires_at'] = share.expires_at.replace(tzinfo=timezone.utc).isoformat() if share.expires_at else None
-    return jsonify(summary)
+    return jsonify(summary.to_dict())
 
 
 @reports_bp.route('/shared/<token>/pdf', methods=['GET'])
@@ -422,15 +409,11 @@ def download_shared_report_pdf(token):
         return jsonify({'error': 'Link not found', 'status': 'invalid'}), 404
 
     try:
-        vehicles = _resolve_report_vehicles(owner, share.vehicle_ids)
-        if not vehicles:
+        summary = _shared_report_data(share, owner)
+        if not summary.vehicles:
             return jsonify({'error': 'No data'}), 404
-        language = getattr(owner, 'language', 'en') or 'en'
-        pdf_buffer = generate_pdf_report(
-            user=owner, vehicles=vehicles, period=share.period,
-            year=share.year, month=share.month, language=language,
-        )
-        filename = get_report_filename(vehicles, share.period, share.year, share.month)
+        pdf_buffer = generate_shared_pdf_report(summary)
+        filename = get_shared_report_filename(summary)
         return send_file(pdf_buffer, mimetype='application/pdf',
                          as_attachment=True, download_name=filename)
     except Exception as e:

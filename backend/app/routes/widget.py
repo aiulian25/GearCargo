@@ -2,6 +2,7 @@
 GearCargo - Widget API Routes (Gethomepage integration)
 """
 
+from app.services.vehicle_archive import active_vehicle_condition
 import hashlib
 import secrets
 from functools import wraps
@@ -48,6 +49,7 @@ def api_key_required(f):
 
         return f(user, *args, **kwargs)
 
+    decorated._csrf_auth = 'api-key'
     return decorated
 
 
@@ -112,6 +114,7 @@ def homepage_widget(current_user):
 
     # Active reminders
     reminder_count = Reminder.query.filter(
+        active_vehicle_condition(Reminder),
         Reminder.user_id == current_user.id,
         Reminder.completed == False,
         Reminder.dismissed == False
@@ -119,6 +122,7 @@ def homepage_widget(current_user):
 
     # Next upcoming reminder
     next_reminder = Reminder.query.filter(
+        active_vehicle_condition(Reminder),
         Reminder.user_id == current_user.id,
         Reminder.completed == False,
         Reminder.dismissed == False,
@@ -166,6 +170,7 @@ def homepage_widget(current_user):
         from app.models import ParkingEntry
         fine_rows = ParkingEntry.query.join(Vehicle).filter(
             Vehicle.user_id == current_user.id,
+            Vehicle.archived.is_(False),
             ParkingEntry.parking_type == 'fine',
             db.or_(
                 ParkingEntry.fine_status.in_(('pending', 'contested')),

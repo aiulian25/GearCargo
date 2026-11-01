@@ -1,10 +1,11 @@
+import { calendarDaysBetween, localDate } from '../../utils/dateFormat'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { vehicleApi, predictionApi } from '../../services/api'
 import { useTranslation } from '../../contexts/LanguageContext'
 import { useAuth } from '../../contexts/AuthContext'
 import SeasonalChecklists from '../../components/recommendations/SeasonalChecklists'
-import { formatDate } from '../../utils/dateFormat'
+import { useDateFormat } from '../../hooks/useDateFormat'
 import { formatFuelEconomy, resolveFuelSystem } from '../../utils/fuelEconomy'
 
 // SVG Icons
@@ -79,10 +80,11 @@ const Icons = {
 }
 
 export default function SmartRecommendations() {
+  const { formatDate } = useDateFormat()
   const { t, language } = useTranslation()
   const { user } = useAuth()
   // F16: MPG gallon system (US vs Imperial) follows the user's region.
-  const fuelSystem = resolveFuelSystem({ country: user?.country_preference, currency: user?.currency })
+  const fuelSystem = resolveFuelSystem({ country: user?.country_preference, currency: user?.currency, volumeUnit: user?.volume_unit })
   const mpgLabel = t(fuelSystem === 'us' ? 'units.mpgUs' : 'units.mpgUk') || 'MPG'
   const [recommendations, setRecommendations] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -119,10 +121,11 @@ export default function SmartRecommendations() {
 
   // Pick the right localized description
   const getAiDescription = useCallback((pred) => {
+    if (pred.descriptionDate) return formatDate(pred.descriptionDate)
     if (language === 'ro' && pred.description_ro) return pred.description_ro
     if (language === 'es' && pred.description_es) return pred.description_es
     return pred.description_en || pred.description || ''
-  }, [language])
+  }, [language, formatDate])
 
   useEffect(() => {
     const fetchData = async () => {
@@ -322,7 +325,7 @@ export default function SmartRecommendations() {
 
   const generatePredictions = (vehicle, stats) => {
     const predictions = []
-    const today = new Date()
+    const today = localDate()
 
     // Next service due
     if (stats?.next_service_days !== null && stats?.next_service_days !== undefined) {
@@ -343,8 +346,7 @@ export default function SmartRecommendations() {
 
     // Insurance expiry
     if (vehicle?.insurance_expiry) {
-      const expiryDate = new Date(vehicle.insurance_expiry)
-      const daysUntil = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24))
+      const daysUntil = calendarDaysBetween(vehicle.insurance_expiry, today)
       
       if (daysUntil <= 60 && daysUntil > 0) {
         predictions.push({
@@ -353,7 +355,7 @@ export default function SmartRecommendations() {
           vehicleName: vehicle.name,
           type: 'insurance_expiry',
           title: t('smartRecommendations.insuranceExpiry') || 'Insurance Expiry',
-          description: formatDate(expiryDate),
+          descriptionDate: vehicle.insurance_expiry,
           daysUntil,
           priority: daysUntil <= 14 ? 'high' : daysUntil <= 30 ? 'medium' : 'low',
           icon: Icons.shield,
@@ -365,8 +367,7 @@ export default function SmartRecommendations() {
 
     // Tax due
     if (vehicle?.tax_due_date) {
-      const dueDate = new Date(vehicle.tax_due_date)
-      const daysUntil = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24))
+      const daysUntil = calendarDaysBetween(vehicle.tax_due_date, today)
       
       if (daysUntil <= 60 && daysUntil > 0) {
         predictions.push({
@@ -375,7 +376,7 @@ export default function SmartRecommendations() {
           vehicleName: vehicle.name,
           type: 'tax_due',
           title: t('smartRecommendations.taxDue') || 'Tax Due',
-          description: formatDate(dueDate),
+          descriptionDate: vehicle.tax_due_date,
           daysUntil,
           priority: daysUntil <= 14 ? 'high' : daysUntil <= 30 ? 'medium' : 'low',
           icon: Icons.clock,

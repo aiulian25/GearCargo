@@ -164,8 +164,9 @@ RUN set -eux; \
     # Install helpers executable.
     chmod +x /install/print-installer.sh /install/setup.sh /usr/local/bin/gearcargo-entrypoint.sh
 
+# Restart-oriented liveness only; deployment traffic gates use /health/ready.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
-    CMD curl -f http://localhost:5000/health || exit 1
+    CMD curl -f http://localhost:5000/health/live || exit 1
 
 EXPOSE 5000
 

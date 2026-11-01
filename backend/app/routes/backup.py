@@ -22,36 +22,57 @@ from requests.adapters import HTTPAdapter
 from urllib3.poolmanager import PoolManager
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
+from pathlib import Path
 from urllib.parse import urlparse, urlunparse
+from werkzeug.http import parse_options_header
 from flask import Blueprint, request, jsonify, current_app, send_file
+from sqlalchemy import create_engine, inspect as inspect_database, text
 from sqlalchemy.engine.url import make_url
-from sqlalchemy import func
+from sqlalchemy.orm.attributes import flag_modified
 
+from app.utils.timeutils import isoformat_utc
 from app import db
-from app.models import (Vehicle, Entry, FuelEntry, ServiceEntry, RepairEntry,
-                       TaxEntry, ParkingEntry, Reminder, InsurancePolicy,
-                       Attachment, Backup, BackupSchedule, Todo)
+from app.models import Vehicle, Attachment, Backup, BackupSchedule
 from app.routes.auth import token_required, admin_required
 from app.utils.security_audit import security_audit
 
+from app.services.backup_schema import (
+    USER_BACKUP_VERSION, LEGACY_VERSIONS, BackupSchemaError, warning,
+    export_user_data, prepare_backup, import_records,
+)
+
+from app.services import restore_transaction as restore_tx
+from app.services import backup_encryption as backup_crypto
+from app.services.system_restore_budget import Budget, CHUNK
+
 backup_bp = Blueprint('backup', __name__)
 
-SYSTEM_BACKUP_VERSION = '3.0'
+
+@backup_bp.errorhandler(backup_crypto.BackupEncryptionError)
+def _encryption_error(exc):
+    db.session.rollback()
+    return jsonify({'error': str(exc), 'message_key': 'backup.protectionError'}), 400
+
+
+@backup_bp.after_request
+def _protection_header(response):
+    if 'attachment' in response.headers.get('Content-Disposition', ''):
+        _, options = parse_options_header(response.headers['Content-Disposition'])
+        encrypted = options.get('filename', '').lower().endswith('.gcb')
+        response.headers.setdefault('X-Backup-Protection', 'encrypted' if encrypted else 'plaintext')
+    return response
+
+
+def _restore_user_artifact(user, source, filename, merge_mode, passphrase=None):
+    with backup_crypto.open_backup(source, filename, passphrase) as (plaintext, inner_format):
+        if inner_format == 'zip':
+            return restore_from_zip(user, plaintext, merge_mode)
+        if inner_format == 'json':
+            return restore_from_json(user, plaintext, merge_mode)
+        raise backup_crypto.BackupEncryptionError('Use a personal JSON/ZIP backup here. System archives require administrator recovery.')
+
+SYSTEM_BACKUP_VERSION = '3.1'
 SYSTEM_BACKUP_PREFIX = 'gearcargo_system_backup'
-
-
-def _safe_mime_from_meta(filename: str) -> str:
-    """Return a safe MIME type for an attachment filename sourced from backup metadata.
-
-    S13 fix: the file_type field in backup ZIP metadata is completely untrusted
-    (an attacker can craft a ZIP with file_type='text/html').  Re-derive the MIME
-    type from the filename extension using the canonical allowlist in attachments.py
-    instead.  Uses a lazy import to avoid a circular import at module load time.
-    """
-    # Lazy import — app.routes.attachments imports app.routes.auth which imports
-    # app, so a top-level cross-route import would create a circular dependency.
-    from app.routes.attachments import safe_attachment_mime
-    return safe_attachment_mime(filename or '')
 
 
 class BackupDestinationConfig:
@@ -97,51 +118,6 @@ def localized_message(message_key, default_message, **payload):
     }
     response.update(payload)
     return response
-
-
-# ── Backup export field filtering ─────────────────────────────────────────────
-# These fields are server-internal and must NOT appear in user backup files:
-#   - They reveal the DB schema / internal identifiers
-#   - They are runtime-computed values that cannot be portably stored
-#   - They contain server-specific URLs or processing-state flags
-#   - import_backup_data() never reads any of them, so stripping them has
-#     zero impact on restore fidelity (external, internal, or uploaded backup).
-_BACKUP_STRIP_FIELDS: frozenset = frozenset({
-    # Internal DB FK — always reassigned to the restoring user on import
-    'user_id',
-    # Server-side timestamps — not portable between deployments
-    'created_at', 'updated_at',
-    # Runtime booleans — recomputed on each API call
-    'is_overdue', 'days_until_due', 'days_until_expiry',
-    'is_active', 'is_expiring_soon',
-    # Relationship-resolved display values — not needed to reconstruct records
-    'vehicle_name', 'vehicle_distance_unit', 'full_name',
-    # Nested embedded objects — imported via their own top-level lists
-    'insurance_policy',   # embedded inside TaxEntry — not read by importer
-    # Server-specific URLs — will change between deployments
-    'url', 'download_url', 'view_url',
-    'photo', 'photo_url',             # vehicle photo reconstructed from ZIP
-    # CalDAV sync state — specific to this server
-    'calendar_sync', 'sync_conflict',
-    # Computed MIME / processing flags — re-derived from file content on restore
-    'is_image', 'is_pdf', 'ocr_processed', 'file_size_human',
-    # Redundant field aliases — import reads the canonical name instead
-    # NOTE: 'cost' (alias of amount) is intentionally NOT stripped here because
-    # the importer uses `entry_data.get('amount') or entry_data.get('cost')` —
-    # when amount is 0 (falsy), it falls back to cost. Stripping cost would
-    # restore 0-cost entries with amount=None instead of 0.
-    'type',   # SQLAlchemy polymorphic discriminator — not read by importer
-})
-
-
-def _for_backup(d: dict) -> dict:
-    """Return a copy of *d* with all internal/computed server fields removed.
-
-    Applied to every model dict before writing it into a backup archive.
-    The result still contains every field that ``import_backup_data`` reads,
-    so restore is fully lossless across external, internal, and uploaded backups.
-    """
-    return {k: v for k, v in d.items() if k not in _BACKUP_STRIP_FIELDS}
 
 
 def get_schedule_external_destinations(schedule):
@@ -229,27 +205,134 @@ def _run_pg_dump_bytes():
     return gzip.compress(result.stdout)
 
 
-def _restore_pg_dump_file(dump_path):
-    """Restore a gzipped PostgreSQL dump."""
+def _write_pg_dump_file(path, budget):
+    """Stream the rollback snapshot; never buffer the live database in RAM."""
+    config = _database_cli_config()
+    command = ['pg_dump', '--host', config['host'], '--port', config['port'],
+               '--username', config['username'], '--clean', '--if-exists',
+               '--no-owner', '--no-privileges', config['database']]
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                               env=config['env'])
+    try:
+        budget.limit_process(process)
+        with gzip.open(path, 'wb') as target:
+            for chunk in budget.output(process):
+                budget.space(path.parent, len(chunk) + CHUNK)
+                target.write(chunk)
+        if process.returncode:
+            raise RuntimeError('Cannot create the previous database snapshot. Check database access and SYSTEM_RESTORE_MAX_PROCESS_BYTES capacity.')
+        with open(path, 'rb') as snapshot:
+            os.fsync(snapshot.fileno())
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+        process.stdout.close()
+
+
+def _restore_pg_dump_file(dump_path, *, database=None, marker=None, journal=None, budget=None):
+    """Stream a bounded dump and commit marker through one psql transaction."""
+    budget = budget or Budget()  # Recovery gets a fresh deadline, not an expired import's.
     config = _database_cli_config()
     db.session.remove()
     db.engine.dispose()
+    command = ['psql', '--host', config['host'], '--port', config['port'],
+               '--username', config['username'], '--dbname', database or config['database'],
+               '--single-transaction', '-v', 'ON_ERROR_STOP=1', '-f', '-']
+    prefix = f'SELECT pg_advisory_xact_lock({restore_tx.DB_LOCK});\n'.encode()
+    suffix = b''
+    if marker:
+        if not re.fullmatch(r'restore_commit_[0-9a-f]{32}', marker):
+            raise ValueError('Invalid restore commit marker.')
+        suffix = ("\nINSERT INTO public.app_settings (key, value) VALUES ('" + marker + "', 'system');\n").encode()
+    env = config['env']
+    # A killed client must not leave a long-running SQL statement behind.
+    env['PGCONNECT_TIMEOUT'] = str(max(1, int(budget.remaining())))
+    env['PGOPTIONS'] = (env.get('PGOPTIONS', '') +
+        f' -c statement_timeout={max(1, int(budget.remaining() * 1000))}')
+    if journal:
+        env['PGAPPNAME'] = 'gearcargo-restore-' + journal.data['id']
+    # No stdout/stderr capture: SQL output can itself be arbitrarily large and
+    # include private data. Exit status is sufficient for rollback decisions.
+    process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, env=env)
+    try:
+        budget.limit_process(process)
+        if journal:
+            journal.data['process'] = restore_tx.process_identity(process.pid)
+            if journal.data['process'] is None:
+                raise RuntimeError('Could not track the restore SQL process.')
+            journal.save()
+        def chunks():
+            yield prefix
+            yield from budget.sql_chunks(dump_path)
+            yield suffix
+        try:
+            budget.send(process, chunks())
+        except BrokenPipeError:
+            raise RuntimeError('PostgreSQL rejected the restore transaction. Check SQL compatibility and SYSTEM_RESTORE_MAX_PROCESS_BYTES capacity.') from None
+        if process.returncode:
+            raise RuntimeError('PostgreSQL rejected the restore transaction. Check SQL compatibility and SYSTEM_RESTORE_MAX_PROCESS_BYTES capacity.')
+    except BaseException:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+        raise
+    finally:
+        process.stdin.close()
+        if journal:
+            journal.data['process'] = None
+            journal.save()
 
-    command = [
-        'psql',
-        '--host', config['host'],
-        '--port', config['port'],
-        '--username', config['username'],
-        '--dbname', config['database'],
-        '-v', 'ON_ERROR_STOP=1',
-    ]
-    with gzip.open(dump_path, 'rb') as dump_file:
-        dump_bytes = dump_file.read()
 
-    result = subprocess.run(command, input=dump_bytes, capture_output=True, env=config['env'], check=False)
-    if result.returncode != 0:
-        error_output = result.stderr.decode('utf-8', errors='ignore').strip()
-        raise RuntimeError(f'psql restore failed: {error_output or "unknown error"}')
+def _create_restore_database(name, budget=None):
+    config = _database_cli_config()
+    result = subprocess.run(['createdb', '--host', config['host'], '--port', config['port'],
+        '--username', config['username'], '--maintenance-db', 'postgres', '--template', 'template0', name],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=config['env'],
+        timeout=(budget or Budget()).remaining(), check=False)
+    if result.returncode:
+        raise RuntimeError('Cannot create the temporary validation database. Restore has not changed live data.')
+
+
+def _drop_restore_database(name):
+    if not re.fullmatch(r'gc_restore_[0-9a-f]{32}', name):
+        raise ValueError('Invalid temporary database name.')
+    config = _database_cli_config()
+    result = subprocess.run(['dropdb', '--host', config['host'], '--port', config['port'],
+        '--username', config['username'], '--maintenance-db', 'postgres', '--if-exists', name],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=config['env'],
+        timeout=Budget().remaining(), check=False)
+    if result.returncode:
+        raise RuntimeError('Temporary restore database cleanup requires operator attention.')
+
+
+def _validate_restore_database(name, budget=None):
+    budget = budget or Budget()
+    url = make_url(current_app.config['SQLALCHEMY_DATABASE_URI'])
+    options = {'connect_timeout': max(1, int(budget.remaining())),
+               'options': f'-c statement_timeout={max(1, int(budget.remaining() * 1000))}'}
+    original_engine = create_engine(url, connect_args=options)
+    engine = create_engine(url.set(database=name), connect_args=options)
+    try:
+        live, staged = inspect_database(original_engine), inspect_database(engine)
+        if set(live.get_table_names()) != set(staged.get_table_names()):
+            raise ValueError('System backup database schema is incompatible with this installation.')
+        for table in live.get_table_names():
+            budget.remaining()
+            def shape(inspector):
+                return {(c['name'], str(c['type']), c['nullable']) for c in inspector.get_columns(table)}
+            if shape(live) != shape(staged):
+                raise ValueError('System backup database columns are incompatible with this installation.')
+        with original_engine.connect() as original, engine.connect() as restored:
+            if 'alembic_version' in live.get_table_names():
+                query = text('SELECT version_num FROM alembic_version')
+                if set(original.execute(query).scalars()) != set(restored.execute(query).scalars()):
+                    raise ValueError('System backup migration version differs from this installation.')
+        budget.remaining()
+    finally:
+        engine.dispose()
+        original_engine.dispose()
 
 
 def _add_bytes_to_tar(archive, arcname, data, mode=0o640):
@@ -270,8 +353,9 @@ def _add_directory_to_tar(archive, source_dir, archive_root):
     root_info.mtime = int(time.time())
     archive.addfile(root_info)
 
+    checksums = {}
     if not os.path.isdir(source_dir):
-        return
+        return checksums
 
     for dirpath, dirnames, filenames in os.walk(source_dir):
         rel_dir = os.path.relpath(dirpath, source_dir)
@@ -289,7 +373,18 @@ def _add_directory_to_tar(archive, source_dir, archive_root):
             if os.path.islink(filepath):
                 continue
             rel_path = os.path.relpath(filepath, source_dir).replace(os.sep, '/')
-            archive.add(filepath, arcname=f'{archive_root}/{rel_path}', recursive=False)
+            name = f'{archive_root}/{rel_path}'
+            with open(filepath, 'rb') as stream:
+                info = archive.gettarinfo(filepath, arcname=name)
+                checksum = hashlib.sha256()
+                class HashedReader:
+                    def read(self, size):
+                        chunk = stream.read(size)
+                        checksum.update(chunk)
+                        return chunk
+                archive.addfile(info, HashedReader())
+                checksums[name] = checksum.hexdigest()
+    return checksums
 
 
 def _cleanup_system_backups(frequency, keep_last=3):
@@ -301,7 +396,7 @@ def _cleanup_system_backups(frequency, keep_last=3):
     prefix = f'{SYSTEM_BACKUP_PREFIX}_{frequency}_'
     backups = []
     for filename in os.listdir(system_folder):
-        if filename.startswith(prefix) and filename.endswith('.tar.gz'):
+        if filename.startswith(prefix) and filename.endswith(('.tar.gz', '.tar.gz.gcb')):
             filepath = os.path.join(system_folder, filename)
             backups.append((filepath, os.path.getmtime(filepath)))
 
@@ -313,12 +408,14 @@ def _cleanup_system_backups(frequency, keep_last=3):
             current_app.logger.warning('Failed to remove old system backup: %s', filepath)
 
 
-def create_system_backup_archive(admin_user, frequency='manual'):
+def create_system_backup_archive(admin_user, frequency='manual', passphrase=None):
     """Create a full-state backup archive containing DB dump and media."""
     timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
     filename = f'{SYSTEM_BACKUP_PREFIX}_{frequency}_{timestamp}.tar.gz'
     system_folder = get_system_backup_folder()
     os.makedirs(system_folder, exist_ok=True)
+    if passphrase is not None:
+        filename += '.gcb'
     archive_path = os.path.join(system_folder, filename)
 
     database_dump = _run_pg_dump_bytes()
@@ -341,16 +438,16 @@ def create_system_backup_archive(admin_user, frequency='manual'):
         },
     }
 
-    with tarfile.open(archive_path, 'w:gz') as archive:
-        _add_bytes_to_tar(
-            archive,
-            'manifest.json',
-            json.dumps(manifest, indent=2).encode('utf-8'),
-            mode=0o644,
-        )
-        _add_bytes_to_tar(archive, 'database/database.sql.gz', database_dump)
-        _add_directory_to_tar(archive, get_attachment_folder(), 'media/attachments')
-        _add_directory_to_tar(archive, get_uploads_folder(), 'media/uploads')
+    manifest['artifact_protection'] = 'encrypted' if passphrase is not None else 'plaintext'
+    with tempfile.TemporaryFile() as completed:
+        with tarfile.open(fileobj=completed, mode='w:gz') as archive:
+            manifest['sha256'] = {'database/database.sql.gz': calculate_checksum(database_dump)}
+            _add_bytes_to_tar(archive, 'database/database.sql.gz', database_dump)
+            manifest['sha256'].update(_add_directory_to_tar(archive, get_attachment_folder(), 'media/attachments'))
+            manifest['sha256'].update(_add_directory_to_tar(archive, get_uploads_folder(), 'media/uploads'))
+            _add_bytes_to_tar(archive, 'manifest.json', json.dumps(manifest, indent=2).encode('utf-8'), mode=0o644)
+        with backup_crypto.protect_stream(completed, passphrase, 'tar.gz') as artifact:
+            backup_crypto.atomic_write(artifact, archive_path)
 
     return archive_path, filename, os.path.getsize(archive_path), manifest
 
@@ -419,7 +516,7 @@ def _check_zip_budget(zf):
             raise ValueError('Backup archive expands beyond the allowed size')
 
 
-def _extract_member_to_directory(archive, member, archive_prefix, target_root):
+def _extract_member_to_directory(archive, member, archive_prefix, target_root, budget):
     """Extract a tar member to a staging directory with traversal protection."""
     relative_path = member.name[len(archive_prefix):].lstrip('/')
     if not relative_path:
@@ -432,252 +529,173 @@ def _extract_member_to_directory(archive, member, archive_prefix, target_root):
 
     os.makedirs(os.path.dirname(target_path), exist_ok=True)
     with archive.extractfile(member) as source_file, open(target_path, 'wb') as output_file:
-        shutil.copyfileobj(source_file, output_file)
+        while chunk := source_file.read(CHUNK):
+            budget.space(target_root, len(chunk))
+            output_file.write(chunk)
     os.chmod(target_path, 0o640)
 
 
-def _stage_directory_swap(source_dir, destination_dir):
-    """Replace a directory tree using an on-volume staging directory."""
-    os.makedirs(os.path.dirname(destination_dir), exist_ok=True)
-    staging_dir = os.path.join(
-        os.path.dirname(destination_dir),
-        f'.{os.path.basename(destination_dir)}-restore-{uuid.uuid4().hex}'
-    )
-    rollback_dir = None
-
-    os.makedirs(staging_dir, exist_ok=True)
-    if os.path.isdir(source_dir):
-        for entry in os.listdir(source_dir):
-            source_path = os.path.join(source_dir, entry)
-            target_path = os.path.join(staging_dir, entry)
-            if os.path.isdir(source_path):
-                shutil.copytree(source_path, target_path)
+def _stage_system_archive(archive_path, directory, budget=None):
+    """Validate the manifest and complete archive before any live transition."""
+    budget = budget or Budget()
+    budget.space(directory)
+    attachments, uploads = directory / 'attachments', directory / 'uploads'
+    attachments.mkdir(); uploads.mkdir()
+    database_dump = directory / 'incoming.sql.gz'
+    manifest = None
+    hashes = {}
+    with budget.archive(archive_path) as archive:
+        for member in archive:
+            # Stream traversal; do not retain TarInfo objects for every file.
+            archive.members.clear()
+            budget.remaining()
+            if len(member.name) > 4096:
+                raise ValueError('System backup member path is too long.')
+            member.name = _validated_archive_name(member.name)
+            if member.isdir():
+                continue
+            if not member.isfile() or member.name in hashes:
+                raise ValueError('System backup contains duplicate files or unsupported links/types.')
+            if any(part.startswith('.gc-restore-') for part in member.name.split('/')):
+                raise ValueError('System backup contains reserved recovery paths.')
+            budget.space(directory, member.size)
+            if member.name == 'manifest.json':
+                budget.check('MAX_MANIFEST_BYTES', member.size)
+                if manifest is not None:
+                    raise ValueError('Duplicate system manifest.')
+                manifest = json.load(archive.extractfile(member))
+                continue
+            if member.name == 'database/database.sql.gz':
+                with archive.extractfile(member) as source, database_dump.open('xb') as target:
+                    while chunk := source.read(CHUNK):
+                        budget.space(directory, len(chunk))
+                        target.write(chunk)
+            elif member.name.startswith('media/attachments/'):
+                _extract_member_to_directory(archive, member, 'media/attachments/', str(attachments), budget)
+                target_path = attachments / member.name[len('media/attachments/'):]
+            elif member.name.startswith('media/uploads/'):
+                _extract_member_to_directory(archive, member, 'media/uploads/', str(uploads), budget)
+                target_path = uploads / member.name[len('media/uploads/'):]
             else:
-                shutil.copy2(source_path, target_path)
-
-    try:
-        if os.path.exists(destination_dir):
-            rollback_dir = os.path.join(
-                os.path.dirname(destination_dir),
-                f'.{os.path.basename(destination_dir)}-rollback-{uuid.uuid4().hex}'
-            )
-            os.rename(destination_dir, rollback_dir)
-
-        os.rename(staging_dir, destination_dir)
-
-        if rollback_dir and os.path.exists(rollback_dir):
-            shutil.rmtree(rollback_dir, ignore_errors=True)
-    except Exception:
-        if os.path.exists(destination_dir):
-            shutil.rmtree(destination_dir, ignore_errors=True)
-        if rollback_dir and os.path.exists(rollback_dir):
-            os.rename(rollback_dir, destination_dir)
-        if os.path.exists(staging_dir):
-            shutil.rmtree(staging_dir, ignore_errors=True)
-        raise
+                raise ValueError('System backup contains an unsupported archive member.')
+            if member.name == 'database/database.sql.gz':
+                target_path = database_dump
+            hashes[member.name] = budget.digest(target_path)
+    if not isinstance(manifest, dict) or manifest.get('version') not in ('3.0', '3.1'):
+        raise ValueError('Unsupported or missing system backup manifest version.')
+    if (manifest.get('backup_type') or manifest.get('type')) != 'system_full' or \
+            manifest.get('database', {}).get('engine') != 'postgresql':
+        raise ValueError('Unsupported system backup format.')
+    if not database_dump.is_file():
+        raise ValueError('Backup archive is missing database/database.sql.gz')
+    if manifest['version'] == '3.1':
+        if manifest.get('sha256') != hashes:
+            raise ValueError('System backup checksum inventory is incomplete or corrupted.')
+    else:
+        manifest = {**manifest, 'warnings': ['Legacy system archive has no checksum inventory. SQL and schema are validated before cutover.']}
+    budget.validate_sql(database_dump)
+    return manifest, database_dump, attachments, uploads
 
 
-def restore_system_backup_archive(archive_path):
-    """Restore a full-state backup archive into the current deployment."""
-    with tempfile.TemporaryDirectory(prefix='gearcargo-system-restore-') as temp_dir:
-        attachments_stage = os.path.join(temp_dir, 'attachments')
-        uploads_stage = os.path.join(temp_dir, 'uploads')
-        os.makedirs(attachments_stage, exist_ok=True)
-        os.makedirs(uploads_stage, exist_ok=True)
-
+def restore_system_backup_archive(archive_path, budget=None):
+    """Validate in a temporary DB; journal a coordinated DB/media cutover."""
+    budget = budget or Budget()
+    with restore_tx.activity_guard(exclusive=True):
+        journal = restore_tx.Journal.create('system')
         manifest = None
-        database_dump_path = os.path.join(temp_dir, 'database.sql.gz')
-
-        with tarfile.open(archive_path, 'r:gz') as archive:
-            for member in archive.getmembers():
-                member.name = _validated_archive_name(member.name)
-                if member.issym() or member.islnk():
-                    raise ValueError('Backup archive contains unsupported links')
-                if member.isdir():
-                    continue
-
-                if member.name == 'manifest.json':
-                    with archive.extractfile(member) as manifest_file:
-                        manifest = json.loads(manifest_file.read().decode('utf-8'))
-                elif member.name == 'database/database.sql.gz':
-                    with archive.extractfile(member) as database_file, open(database_dump_path, 'wb') as output_file:
-                        shutil.copyfileobj(database_file, output_file)
-                elif member.name.startswith('media/attachments/'):
-                    _extract_member_to_directory(archive, member, 'media/attachments/', attachments_stage)
-                elif member.name.startswith('media/uploads/'):
-                    _extract_member_to_directory(archive, member, 'media/uploads/', uploads_stage)
-
-        if not os.path.exists(database_dump_path):
-            raise ValueError('Backup archive is missing database/database.sql.gz')
-
-        _restore_pg_dump_file(database_dump_path)
-        _stage_directory_swap(attachments_stage, get_attachment_folder())
-        _stage_directory_swap(uploads_stage, get_uploads_folder())
-        db.session.remove()
-        db.engine.dispose()
-
-        return manifest or {}
+        try:
+            manifest, incoming, attachments, uploads = _stage_system_archive(archive_path, journal.directory, budget)
+            # Generated name is journaled before CREATE DATABASE, so even an
+            # interrupted creation can be cleaned up on startup.
+            name = 'gc_restore_' + journal.data['id']
+            journal.data['staging_database'] = name
+            journal.save('validating_database')
+            _create_restore_database(name, budget=budget)
+            _restore_pg_dump_file(incoming, database=name, journal=journal, budget=budget)
+            _validate_restore_database(name, budget=budget)
+            journal.save('snapshotting')
+            previous = journal.directory / 'previous.sql.gz'
+            _write_pg_dump_file(previous, budget)
+            journal.data['previous_database_sha256'] = budget.digest(previous)
+            journal.save()
+            # Reserve the complete additional media copy on each destination.
+            # Sequential staging includes earlier allocations on shared filesystems.
+            for source, destination in ((attachments, get_attachment_folder()), (uploads, get_uploads_folder())):
+                budget.space(destination, sum(p.stat().st_size for p in source.rglob('*') if p.is_file()))
+                journal.stage_directory(source, destination, budget=budget)
+            budget.remaining()
+            journal.publish_directories()
+            journal.data['db_started'] = True
+            journal.save('applying_database')
+            restore_tx.checkpoint('before_db_write', journal)
+            _restore_pg_dump_file(incoming, marker=journal.marker, journal=journal, budget=budget)
+            restore_tx.checkpoint('after_commit', journal)
+            restore_tx.recover(journal)
+        except Exception as exc:
+            current_app.logger.exception('System restore interrupted: %s', journal.data['id'])
+            try:
+                outcome = restore_tx.recover(journal)
+            except Exception:
+                current_app.logger.exception('System restore recovery remains pending: %s', journal.data['id'])
+                raise restore_tx.RestoreFailure(journal.data['id'], 'recovery_required') from None
+            if outcome != 'completed':
+                if isinstance(exc, (ValueError, tarfile.TarError)):
+                    raise
+                raise restore_tx.RestoreFailure(journal.data['id'], 'rolled_back') from None
+        return {**manifest, 'recovery': {'id': journal.data['id'], 'state': 'completed'}}
 
 
 def gather_user_data(user, include_attachments=True):
-    """Gather all user data for backup.
-
-    Every model dict is filtered through ``_for_backup()`` before being added
-    to the export, removing server-internal fields (user_id, created_at, server
-    URLs, computed flags…) that would expose the DB schema if the backup file
-    were leaked. All fields that ``import_backup_data`` actually reads are
-    preserved, so restore remains fully lossless.
-    """
-    export_data = {
-        'version': '2.0',
-        'exported_at': datetime.now(timezone.utc).isoformat(),
-        'user': {
-            'email': user.email,
-            'name': user.display_name,
-            'username': user.username,
-            'preferences': {
-                'theme': user.theme,
-                'language': user.language,
-                'monthly_report_enabled': user.monthly_report_enabled,
-            }
-        },
-        'vehicles': [],
-        'reminders': [],
-        'insurance_policies': [],
-        'todos': [],
-        'attachments': [],
-    }
-
-    # Get all vehicles
-    vehicles = Vehicle.query.filter_by(user_id=user.id).all()
-
-    for vehicle in vehicles:
-        vehicle_data = _for_backup(vehicle.to_dict())
-
-        # include_attachments=False avoids embedding attachment metadata inside
-        # every entry row — attachments are collected in the top-level list below.
-        vehicle_data['fuel_entries'] = [
-            _for_backup(e.to_dict(include_attachments=False))
-            for e in FuelEntry.query.filter_by(vehicle_id=vehicle.id).all()
-        ]
-        vehicle_data['service_entries'] = [
-            _for_backup(e.to_dict(include_attachments=False))
-            for e in ServiceEntry.query.filter_by(vehicle_id=vehicle.id).all()
-        ]
-        vehicle_data['repair_entries'] = [
-            _for_backup(e.to_dict(include_attachments=False))
-            for e in RepairEntry.query.filter_by(vehicle_id=vehicle.id).all()
-        ]
-        vehicle_data['tax_entries'] = [
-            _for_backup(e.to_dict(include_attachments=False))
-            for e in TaxEntry.query.filter_by(vehicle_id=vehicle.id).all()
-        ]
-        vehicle_data['parking_entries'] = [
-            _for_backup(e.to_dict())
-            for e in ParkingEntry.query.filter_by(vehicle_id=vehicle.id).all()
-        ]
-
-        export_data['vehicles'].append(vehicle_data)
-
-    # Get reminders
-    export_data['reminders'] = [
-        _for_backup(r.to_dict())
-        for r in Reminder.query.filter_by(user_id=user.id).all()
-    ]
-
-    # Get insurance policies.
-    # Strip the nested 'attachments' array (embedded for frontend convenience)
-    # — it is not used by the importer and its content is already in the
-    # top-level attachments list if include_attachments is True.
-    export_data['insurance_policies'] = []
-    for p in InsurancePolicy.query.filter_by(user_id=user.id).all():
-        policy_dict = _for_backup(p.to_dict())
-        policy_dict.pop('attachments', None)   # drop frontend-only nested list
-        export_data['insurance_policies'].append(policy_dict)
-
-    # Get todos
-    try:
-        export_data['todos'] = [
-            _for_backup(t.to_dict())
-            for t in Todo.query.filter_by(user_id=user.id).all()
-        ]
-    except Exception:
-        export_data['todos'] = []
-
-    # Get attachments metadata (files added to zip separately)
-    if include_attachments:
-        attachments = Attachment.query.filter_by(user_id=user.id).all()
-        export_data['attachments'] = [_for_backup(a.to_dict()) for a in attachments]
-
-    return export_data
+    """Return the versioned portable-user DTO, never a display serializer."""
+    return export_user_data(user, include_attachments)
 
 
 def create_backup_zip(user, include_attachments=True):
-    """Create a complete backup ZIP file with data and attachments."""
+    """Write each supported record and an explicit inventory of included files."""
     export_data = gather_user_data(user, include_attachments)
-    
-    # Create in-memory ZIP
     zip_buffer = BytesIO()
-    
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-        # Add JSON data
-        data_json = json.dumps(export_data, indent=2, default=str)
+        if include_attachments:
+            media_sources = []
+            for attachment in Attachment.query.filter_by(user_id=user.id).all():
+                filename = _safe_zip_filename(attachment.filename, get_attachment_folder())
+                media_sources.append(('attachments', attachment.id, attachment.filepath,
+                                      f'attachments/{attachment.id}/{filename}'))
+            for vehicle in Vehicle.query.filter_by(user_id=user.id).all():
+                if vehicle.photo:
+                    filename = os.path.basename(urlparse(vehicle.photo).path)
+                    media_sources.append(('vehicles', vehicle.id,
+                        os.path.join(get_uploads_folder(), 'vehicles', filename),
+                        f'uploads/vehicles/{vehicle.id}/{filename}'))
+            for collection, record_id, filepath, member in media_sources:
+                if not filepath or not os.path.isfile(filepath):
+                    raise BackupSchemaError('A referenced file is missing. Restore it or choose a data-only backup.',
+                                            f'{collection}[id={record_id}]')
+                # Read once: the archived bytes and their digest describe the same file.
+                with open(filepath, 'rb') as source:
+                    content = source.read()
+                zf.writestr(member, content)
+                export_data['media'].append({
+                    'collection': collection, 'record_id': record_id, 'member': member,
+                    'sha256': calculate_checksum(content), 'size': len(content),
+                })
+        else:
+            export_data['warnings'].append(warning('media_omitted', 'media',
+                'Data-only backup: attachment metadata is included; receipt and photo files are not.'))
+        # Validate the exported graph too: a bad stored reference is not a complete backup.
+        # Export must preserve historical source values for review/repair.
+        prepare_backup(export_data, validate_domains=False)
+        data_json = json.dumps(export_data, indent=2, allow_nan=False)
         zf.writestr('backup_data.json', data_json)
-        
-        # Add manifest
         manifest = {
-            'version': '2.0',
+            'version': USER_BACKUP_VERSION,
+            'format': 'gearcargo-user',
             'created_at': datetime.now(timezone.utc).isoformat(),
             'app_name': current_app.config.get('APP_NAME', 'GearCargo'),
-            'user_email': user.email,
-            'user_name': user.display_name or user.username or '',
             'include_attachments': include_attachments,
             'checksum': calculate_checksum(data_json),
         }
         zf.writestr('manifest.json', json.dumps(manifest, indent=2))
-        
-        # Add attachments if requested
-        if include_attachments:
-            attachments = Attachment.query.filter_by(user_id=user.id).all()
-            
-            # Track physical files already added to avoid duplicating content
-            added_filepaths = {}  # filepath -> arcname already in ZIP
-            
-            for attachment in attachments:
-                if attachment.filepath and os.path.exists(attachment.filepath):
-                    if attachment.filepath in added_filepaths:
-                        # M4: another attachment already carries this physical file,
-                        # but restore rebuilds one Attachment row PER ZIP MEMBER
-                        # (restore_from_zip iterates zf.namelist()). Without a member
-                        # of its own, THIS record — and any document_attachment_id
-                        # pointing at it — is silently lost on restore. Write the same
-                        # bytes under this attachment's own arcname so every DB record
-                        # round-trips. ZIP_DEFLATED makes the duplicate near-free for
-                        # identical content; simplicity beats a reference scheme here.
-                        with open(attachment.filepath, 'rb') as fh:
-                            zf.writestr(
-                                f'attachments/{attachment.id}/{attachment.filename}',
-                                fh.read(),
-                            )
-                        continue
-                    arcname = f'attachments/{attachment.id}/{attachment.filename}'
-                    zf.write(attachment.filepath, arcname)
-                    added_filepaths[attachment.filepath] = arcname
-            
-            # Add vehicle photos
-            uploads_folder = get_uploads_folder()
-            vehicles = Vehicle.query.filter_by(user_id=user.id).all()
-            
-            for vehicle in vehicles:
-                if vehicle.photo:
-                    # Extract filename from photo path like "/uploads/vehicles/1_abc123.jpg"
-                    photo_filename = os.path.basename(vehicle.photo)
-                    photo_path = os.path.join(uploads_folder, 'vehicles', photo_filename)
-                    
-                    if os.path.exists(photo_path):
-                        arcname = f'uploads/vehicles/{vehicle.id}/{photo_filename}'
-                        zf.write(photo_path, arcname)
-    
     zip_buffer.seek(0)
     return zip_buffer, export_data
 
@@ -696,12 +714,17 @@ def save_backup_to_disk(user, zip_buffer, include_attachments=True):
     safe_app = re.sub(r'[^\w\-]', '_', app_name)
     safe_user = re.sub(r'[^\w\-]', '_', user.display_name or user.username or user.email.split('@')[0])
     timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
-    filename = f'{safe_app}_{safe_user}_{timestamp}.zip'
+    from app.services.scheduler_ownership import active_run
+    scheduled_run = active_run.get()
+    if scheduled_run and scheduled_run.name == 'send_scheduled_backups':
+        timestamp = scheduled_run.occurrence.strftime('%Y%m%d_%H%M%S') + '_scheduled'
+    suffix = '.zip.gcb' if backup_crypto.is_encrypted(zip_buffer) else '.zip'
+    filename = f'{safe_app}_{safe_user}_{timestamp}{suffix}'
     filepath = os.path.join(user_folder, filename)
     
     # Write file
-    with open(filepath, 'wb') as f:
-        f.write(zip_buffer.read())
+    backup_crypto.atomic_write(zip_buffer, filepath,
+                               scheduled_run.lock.check if scheduled_run else None)
     
     # Get file size
     file_size = os.path.getsize(filepath)
@@ -1190,7 +1213,7 @@ def cleanup_old_backups(user_id, max_backups=10, retention_days=90):
     # This mirrors get_backup_status() and the scheduler's cleanup_user_backups().
     files = []
     for f in os.listdir(user_folder):
-        if f.endswith('.zip'):
+        if f.lower().endswith(('.zip', '.gcb')):
             filepath = os.path.join(user_folder, f)
             mtime = os.path.getmtime(filepath)
             files.append((filepath, mtime))
@@ -1254,16 +1277,17 @@ def get_backup_status(current_user):
 
     if os.path.exists(user_folder):
         for f in sorted(os.listdir(user_folder), reverse=True):
-            if f.endswith('.zip'):
+            if f.lower().endswith(('.zip', '.gcb')):
                 filepath = os.path.join(user_folder, f)
                 stat = os.stat(filepath)
-                created = datetime.fromtimestamp(stat.st_mtime)
+                created = datetime.fromtimestamp(stat.st_mtime, timezone.utc)
                 raw_backups.append({
                     'filename': f,
                     'filepath': filepath,
                     'size': stat.st_size,
                     'mtime': stat.st_mtime,
                     'created': created,
+                    **backup_crypto.file_protection(filepath),
                 })
 
     # Deduplicate: if multiple files share the same size AND were created within
@@ -1272,7 +1296,9 @@ def get_backup_status(current_user):
     seen = {}  # key -> kept entry
     duplicates_to_delete = []
     for entry in sorted(raw_backups, key=lambda x: x['mtime']):
-        minute_key = (entry['size'], entry['created'].strftime('%Y%m%d%H%M'))
+        # A damaged envelope must also remain available for recovery/diagnosis.
+        minute_key = (entry['filename'] if entry['encrypted'] or entry['filename'].lower().endswith('.gcb') else
+                      (entry['size'], entry['created'].strftime('%Y%m%d%H%M')))
         if minute_key not in seen:
             seen[minute_key] = entry
         else:
@@ -1292,13 +1318,15 @@ def get_backup_status(current_user):
             'filename': entry['filename'],
             'size': entry['size'],
             'size_human': format_file_size(entry['size']),
-            'created_at': entry['created'].isoformat(),
+            'created_at': isoformat_utc(entry['created']),
             'label': label,
+            'encrypted': entry['encrypted'],
+            'protection': entry['protection'],
         })
 
     return jsonify({
         'schedule': schedule.to_dict() if schedule else None,
-        'last_backup': last_backup.created_at.isoformat() if last_backup else None,
+        'last_backup': isoformat_utc(last_backup.created_at) if last_backup else None,
         'last_backup_details': last_backup.to_dict() if last_backup else None,
         'available_backups': available_backups[:10],  # Limit to 10 most recent
         'total_backup_count': len(available_backups),
@@ -1308,7 +1336,7 @@ def get_backup_status(current_user):
 def _backup_display_label(filename, created_dt):
     """Build a human-readable label for a backup file."""
     # Strip extension
-    name = filename.rsplit('.', 1)[0]
+    name = (filename[:-4] if filename.lower().endswith('.gcb') else filename).rsplit('.', 1)[0]
     # Formats:
     #   AppName_User_YYYYMMDD_HHMMSS          (new)
     #   backup_AppName_User_YYYYMMDD_HHMMSS   (mangled upload)
@@ -1345,6 +1373,9 @@ def export_data(current_user):
     format_type = data.get('format', 'zip')  # json, zip
     include_attachments = data.get('include_attachments', True)
     save_to_storage = data.get('save_to_storage', False)
+    if format_type not in ('json', 'zip'):
+        return jsonify({'error': 'Unsupported export format'}), 400
+    passphrase = backup_crypto.request_passphrase(data)
     
     # Create backup record
     backup = Backup(
@@ -1361,6 +1392,9 @@ def export_data(current_user):
         if format_type == 'json':
             # Simple JSON export
             export_data = gather_user_data(current_user, include_attachments=False)
+            prepare_backup(export_data, validate_domains=False)
+            export_data['warnings'].append(warning('media_omitted', 'media',
+                'Data-only backup: attachment metadata is included; receipt and photo files are not.'))
             
             backup.status = 'completed'
             backup.completed_at = datetime.now(timezone.utc)
@@ -1370,30 +1404,36 @@ def export_data(current_user):
                 len(v.get('service_entries', [])) +
                 len(v.get('repair_entries', [])) +
                 len(v.get('tax_entries', [])) +
-                len(v.get('parking_entries', []))
+                len(v.get('parking_entries', [])) +
+                len(v.get('consumable_entries', []))
                 for v in export_data['vehicles']
             )
             backup.reminders_count = len(export_data['reminders'])
             
-            json_data = json.dumps(export_data, indent=2, default=str)
-            backup.file_size = len(json_data.encode('utf-8'))
-            backup.checksum = calculate_checksum(json_data)
+            json_data = json.dumps(export_data, indent=2, allow_nan=False)
+            buffer = backup_crypto.protect_stream(BytesIO(json_data.encode('utf-8')), passphrase, 'json')
+            backup.encrypted = passphrase is not None
+            buffer.seek(0, 2)
+            backup.file_size = buffer.tell()
+            buffer.seek(0)
+            backup.checksum = None if backup.encrypted else calculate_checksum(json_data)
             db.session.commit()
             
             # Security audit log for data export
             security_audit.data_export(current_user.id, current_user.email, 'json')
             
-            buffer = BytesIO(json_data.encode('utf-8'))
             return send_file(
                 buffer,
-                mimetype='application/json',
+                mimetype='application/octet-stream' if backup.encrypted else 'application/json',
                 as_attachment=True,
-                download_name=f'gearcargo_export_{datetime.now(timezone.utc).strftime("%Y%m%d")}.json'
+                download_name=f'gearcargo_export_{datetime.now(timezone.utc).strftime("%Y%m%d")}.json' + ('.gcb' if backup.encrypted else '')
             )
         
         else:
             # Full ZIP backup with attachments
             zip_buffer, export_data = create_backup_zip(current_user, include_attachments)
+            zip_buffer = backup_crypto.protect_stream(zip_buffer, passphrase)
+            backup.encrypted = passphrase is not None
             
             # Count attachments
             attachments_count = len(export_data.get('attachments', []))
@@ -1406,7 +1446,8 @@ def export_data(current_user):
                 len(v.get('service_entries', [])) +
                 len(v.get('repair_entries', [])) +
                 len(v.get('tax_entries', [])) +
-                len(v.get('parking_entries', []))
+                len(v.get('parking_entries', [])) +
+                len(v.get('consumable_entries', []))
                 for v in export_data['vehicles']
             )
             backup.reminders_count = len(export_data['reminders'])
@@ -1431,11 +1472,17 @@ def export_data(current_user):
             
             return send_file(
                 zip_buffer,
-                mimetype='application/zip',
+                mimetype='application/octet-stream' if backup.encrypted else 'application/zip',
                 as_attachment=True,
-                download_name=f'gearcargo_backup_{datetime.now(timezone.utc).strftime("%Y%m%d")}.zip'
+                download_name=f'gearcargo_backup_{datetime.now(timezone.utc).strftime("%Y%m%d")}.zip' + ('.gcb' if backup.encrypted else '')
             )
     
+    except BackupSchemaError as exc:
+        backup.status = 'failed'
+        backup.error_message = 'Backup incomplete — a record or file could not be exported'
+        backup.completed_at = datetime.now(timezone.utc)
+        db.session.commit()
+        return _schema_error_response(exc)
     except Exception as e:
         backup.status = 'failed'
         # S12: Store a generic sentinel in the DB field — never expose raw exception
@@ -1462,17 +1509,12 @@ def import_data(current_user):
     merge_mode = request.form.get('merge_mode', 'merge')  # merge, replace
     
     try:
-        filename = file.filename.lower()
-        
-        if filename.endswith('.zip'):
-            # ZIP backup with attachments
-            return restore_from_zip(current_user, file, merge_mode)
-        elif filename.endswith('.json'):
-            # JSON-only backup
-            return restore_from_json(current_user, file, merge_mode)
-        else:
-            return jsonify({'error': 'Unsupported file format. Use .json or .zip'}), 400
-    
+        return _restore_user_artifact(current_user, file.stream, file.filename, merge_mode,
+                                      request.form.get('passphrase'))
+    except backup_crypto.BackupEncryptionError as exc:
+        return _encryption_error(exc)
+    except BackupSchemaError as exc:
+        return _schema_error_response(exc)
     except json.JSONDecodeError as e:
         security_audit.data_import(current_user.id, current_user.email, 'unknown', success=False)
         current_app.logger.error(f'Backup import JSON error: {e}')
@@ -1550,8 +1592,16 @@ def import_csv(current_user):
     try:
         # utf-8-sig strips an Excel BOM if present.
         csv_text = file.read().decode('utf-8-sig', errors='replace')
-        summary = import_entries_csv(current_user, entry_type, csv_text, merge_mode)
+        summary = import_entries_csv(current_user, entry_type, csv_text, merge_mode,
+            source_label=request.form.get('source_label'), preview=request.form.get('preview') == 'true',
+            conflict_policy=request.form.get('conflict_policy', 'reject'), preview_token=request.form.get('preview_token'))
+        if 'preview' in summary:
+            return jsonify(summary)
+    except BackupSchemaError as exc:
+        db.session.rollback()
+        return _schema_error_response(exc)
     except ValueError as e:
+        db.session.rollback()
         return jsonify({'error': str(e)}), 400
     except Exception as e:
         db.session.rollback()
@@ -1590,13 +1640,22 @@ def import_lubelog(current_user):
     merge_mode = request.form.get('merge_mode', 'merge')
     distance_unit = request.form.get('distance_unit')
     if distance_unit and distance_unit not in ('km', 'miles'):
-        distance_unit = None
+        return jsonify({'error': 'Invalid distance unit', 'message_key': 'validation.invalidValue',
+                        'field': 'distance_unit'}), 400
 
+    from app.utils.entryparse import InvalidFieldError, invalid_field_response
     try:
         from app.services.lubelog_import import import_lubelog_to_gearcargo
 
         zip_data = BytesIO(file.read())
-        result = import_lubelog_to_gearcargo(current_user, zip_data, merge_mode, distance_unit=distance_unit)
+        result = import_lubelog_to_gearcargo(
+            current_user, zip_data, merge_mode, distance_unit=distance_unit,
+            source_volume_unit=request.form.get('source_volume_unit') or None,
+            source_distance_unit=request.form.get('source_distance_unit') or None,
+            source_label=request.form.get('source_label'), preview=request.form.get('preview') == 'true',
+            conflict_policy=request.form.get('conflict_policy', 'reject'), preview_token=request.form.get('preview_token'))
+        if 'preview' in result:
+            return jsonify(result)
 
         if result.get('error'):
             security_audit.data_import(current_user.id, current_user.email, 'lubelog', success=False)
@@ -1610,7 +1669,14 @@ def import_lubelog(current_user):
             'summary': result.get('summary', {}),
         })
 
+    except InvalidFieldError as exc:
+        db.session.rollback()
+        return invalid_field_response(exc)
+    except BackupSchemaError as exc:
+        db.session.rollback()
+        return _schema_error_response(exc)
     except ValueError as e:
+        db.session.rollback()
         security_audit.data_import(current_user.id, current_user.email, 'lubelog', success=False)
         current_app.logger.error(f'LubeLogger import validation error: {e}')
         # S12: ValueError from lubelog_import is always a safe user-facing validation
@@ -1623,611 +1689,335 @@ def import_lubelog(current_user):
         return jsonify({'error': 'LubeLogger import failed. Please try again later.'}), 500
 
 
+def _schema_error_response(exc):
+    from app.services.import_identity import ImportConflict
+    if isinstance(exc, ImportConflict):
+        return jsonify({'error': str(exc), 'code': 'IMPORT_REVIEW_REQUIRED', 'preview': exc.preview}), 409
+    return jsonify({'error': str(exc), 'issues': [exc.issue]}), 400
+
+
+def _attachment_restore_paths(prepared, media=None):
+    """File destinations belong to this restore; never accept a source disk path."""
+    media = media or {}
+    paths = {}
+    for row in prepared.records['attachments']:
+        name = _safe_zip_filename(row['filename'], get_attachment_folder())
+        descriptor = media.get(('attachments', row['id']))
+        prefix = descriptor['sha256'] if descriptor else f'missing_{uuid.uuid4().hex}'
+        # The original filename remains in metadata. Bound the local name in
+        # bytes so the digest prefix cannot exceed filesystem component limits.
+        local_name = name.encode('utf-8')[:180].decode('utf-8', errors='ignore')
+        paths[row['id']] = f'{prefix}_{local_name}'
+    return paths
+
+
+def _backup_media(zf, data, prepared):
+    """Validate advertised file presence/integrity before importing their records.
+
+    Existing ZIP traversal/budget controls remain in force. Legacy members are
+    adapted by their archive-local IDs; unrecognized members are reported.
+    """
+    names = zf.namelist()
+    if len(names) != len(set(names)):
+        raise BackupSchemaError('Duplicate archive member names.', 'media')
+    known_ids = {kind: {r['id'] for r in prepared.records[kind]} for kind in ('vehicles', 'attachments')}
+    descriptors = []
+    legacy = prepared.version in LEGACY_VERSIONS
+    if legacy:
+        for member in names:
+            if member.endswith('/') or member in ('manifest.json', 'backup_data.json'):
+                continue
+            parts = member.split('/')
+            collection = None
+            record_id = None
+            try:
+                if len(parts) == 3 and parts[0] == 'attachments':
+                    collection, record_id = 'attachments', int(parts[1])
+                elif len(parts) == 4 and parts[:2] == ['uploads', 'vehicles']:
+                    collection, record_id = 'vehicles', int(parts[2])
+            except ValueError:
+                pass
+            if collection and record_id in known_ids[collection]:
+                _safe_zip_filename(parts[-1], get_attachment_folder())
+                content = zf.read(member)
+                descriptors.append(dict(collection=collection, record_id=record_id, member=member,
+                                        sha256=calculate_checksum(content), size=len(content)))
+            else:
+                prepared.warnings.append(warning('unsupported_media', 'media',
+                    'An archive file has no supported record reference and was not restored.'))
+    else:
+        descriptors = data.get('media')
+        if not isinstance(descriptors, list):
+            raise BackupSchemaError('Expected a media inventory.', 'media')
+    media = {}
+    for i, item in enumerate(descriptors):
+        path = f'media[{i}]'
+        if not isinstance(item, dict) or set(item) != {'collection', 'record_id', 'member', 'sha256', 'size'}:
+            raise BackupSchemaError('Invalid media descriptor.', path)
+        collection, record_id, member = item['collection'], item['record_id'], item['member']
+        if not isinstance(collection, str) or collection not in known_ids or type(record_id) is not int or record_id not in known_ids[collection]:
+            raise BackupSchemaError('Media references an unknown record.', path)
+        if not isinstance(member, str):
+            raise BackupSchemaError('Invalid archive member.', path)
+        parts = member.split('/')
+        expected_prefix = f'attachments/{record_id}/' if collection == 'attachments' else f'uploads/vehicles/{record_id}/'
+        if not member.startswith(expected_prefix) or len(parts) != (3 if collection == 'attachments' else 4):
+            raise BackupSchemaError('Invalid archive member path.', path)
+        _safe_zip_filename(parts[-1], get_attachment_folder())
+        if member not in names:
+            raise BackupSchemaError('A file declared in the backup is missing.', path)
+        content = zf.read(member)
+        if item['size'] != len(content) or item['sha256'] != calculate_checksum(content):
+            raise BackupSchemaError('A backup file failed its integrity check.', path)
+        key = (collection, record_id)
+        if key in media:
+            raise BackupSchemaError('Multiple files reference the same record.', path)
+        media[key] = item
+    if not legacy:
+        declared = {item['member'] for item in descriptors}
+        if set(names) - declared - {'manifest.json', 'backup_data.json'}:
+            raise BackupSchemaError('Archive contains files outside its media inventory.', 'media')
+        if not prepared.media_included and media:
+            raise BackupSchemaError('Data-only backup unexpectedly contains media.', 'media')
+        if prepared.media_included:
+            missing = known_ids['attachments'] - {key[1] for key in media if key[0] == 'attachments'}
+            if missing:
+                raise BackupSchemaError('Attachment file inventory is incomplete.', 'attachments')
+    missing = known_ids['attachments'] - {key[1] for key in media if key[0] == 'attachments'}
+    if missing or not prepared.media_included:
+        prepared.warnings.append(warning('media_omitted', 'media',
+            'Some or all file bytes are absent. Metadata is restored, but those files cannot be downloaded.'))
+    return media
+
+
+def _restore_failure_response(exc):
+    return jsonify(error=str(exc), recovery={
+        'id': exc.restore_id, 'state': exc.state,
+        'maintenance': exc.state == 'recovery_required',
+    }), 500
+
+
+def _audit_restore(actor_id, actor_email, kind, success):
+    # Logging failure must not turn a verified, committed restore into a false
+    # failure that invites a duplicate retry. The recovery result is authoritative.
+    try:
+        security_audit.data_import(actor_id, actor_email, kind, success=success)
+    except Exception:
+        current_app.logger.exception('Restore audit logging failed after recovery outcome was determined.')
+
+
+def _fingerprint_media(prepared, media):
+    for kind in ('attachments', 'vehicles'):
+        for row in prepared.records.get(kind, []):
+            descriptor = media.get((kind, row['id']))
+            if descriptor:
+                row['_content_sha256' if kind == 'attachments' else '_photo_sha256'] = descriptor['sha256']
+
+
+def _perform_personal_restore(user, data, prepared, merge_mode, media=None, archive=None):
+    """One transaction owner for JSON and ZIP, including durable media recovery."""
+    if merge_mode not in ('merge', 'replace'):
+        raise BackupSchemaError('Unsupported merge mode.', 'merge_mode')
+    media = media or {}
+    from app.services.import_identity import ImportPlan, lock_imports
+    lock_imports(user.id)
+    plan = ImportPlan(user, prepared)
+    plan.validate_apply(getattr(prepared, 'conflict_policy', 'reject'), getattr(prepared, 'preview_token', None))
+    actor_id, actor_email = user.id, user.email
+    journal = restore_tx.Journal.create('personal')
+    imported = None
+    try:
+        names = _attachment_restore_paths(prepared, media)
+        folder = os.path.join(get_attachment_folder(), str(user.id))
+        photos = {}
+        planned = set()
+        media_paths = {}
+        for (collection, source_id), item in media.items():
+            decision = plan.actions[(collection, source_id)]
+            if decision['action'] == 'conflict':
+                continue  # Explicit keep preserves destination bytes as well as fields.
+            target = decision['target']
+            if collection == 'attachments':
+                if target is not None:
+                    # Replays can fill a previously data-only restore without
+                    # changing the attachment's identity or download location.
+                    if os.path.lexists(target.filepath):
+                        continue
+                    if os.path.dirname(os.path.abspath(target.filepath)) != os.path.abspath(folder):
+                        continue
+                    names[source_id] = _safe_zip_filename(os.path.basename(target.filepath), folder)
+
+                path = os.path.join(folder, names[source_id])
+                if os.path.lexists(path):
+                    if os.path.islink(path) or restore_tx.digest(path) != item['sha256']:
+                        names[source_id] = journal.data['id'] + '_' + names[source_id]
+                        # Keep the extra collision prefix within NAME_MAX too.
+                        names[source_id] = names[source_id].encode()[:250].decode(errors='ignore')
+                        path = os.path.join(folder, names[source_id])
+                    else:
+                        continue  # Identical existing bytes are never overwritten.
+            else:
+                if target is not None and target.photo:
+                    filename = os.path.basename(target.photo)
+                    if os.path.lexists(os.path.join(get_uploads_folder(), 'vehicles', filename)):
+                        continue
+                extension = os.path.splitext(item['member'])[1][:12]
+                filename = f'restore_{journal.data["id"]}_{source_id}{extension}'
+                path = os.path.join(get_uploads_folder(), 'vehicles', filename)
+                photos[source_id] = filename
+            media_paths[(collection, source_id)] = path
+            if path not in planned:
+                journal.stage_file(archive.read(item['member']), path)
+                planned.add(path)
+        journal.data['db_started'] = True
+        journal.save('importing')
+        restore_tx.lock_database_transaction()
+        restore_tx.checkpoint('before_db_write', journal)
+        maps = {}
+        imported, vehicle_map, _ = import_backup_data(user, data, merge_mode,
+            prepared=prepared, id_maps=maps, attachment_names=names)
+        valid_paths = {path for (kind, source_id), path in media_paths.items() if source_id in maps[kind]}
+        journal.data['files'] = [item for item in journal.data['files'] if item['path'] in valid_paths]
+        journal.save()
+        imported['vehicle_photos'] = 0
+        for source_id, filename in photos.items():
+            if source_id not in vehicle_map:
+                continue
+            vehicle = db.session.get(Vehicle, vehicle_map[source_id])
+            vehicle.photo = f'/uploads/vehicles/{filename}'
+            original = next(r for r in prepared.records['vehicles'] if r['id'] == source_id)
+            if 'updated_at' in original:
+                vehicle.updated_at = original['updated_at']
+                flag_modified(vehicle, 'updated_at')
+            imported['vehicle_photos'] += 1
+        journal.mark_transaction()
+        db.session.flush()
+        restore_tx.checkpoint('after_db_write', journal)
+        journal.publish_files()
+        journal.save('committing')
+        restore_tx.checkpoint('before_commit', journal)
+        db.session.commit()
+        restore_tx.checkpoint('after_commit', journal)
+        restore_tx.recover(journal)
+    except Exception as exc:
+        current_app.logger.exception('Personal restore interrupted: %s', journal.data['id'])
+        try:
+            outcome = restore_tx.recover(journal)
+        except Exception:
+            current_app.logger.exception('Restore recovery remains pending: %s', journal.data['id'])
+            raise restore_tx.RestoreFailure(journal.data['id'], 'recovery_required') from None
+        if outcome != 'completed':
+            _audit_restore(actor_id, actor_email, 'zip' if archive else 'json', False)
+            from app.services.attachment_consistency import AttachmentParentError
+            if isinstance(exc, AttachmentParentError):
+                raise BackupSchemaError(exc.error, 'attachments.' + (exc.field or 'parent')) from None
+            if isinstance(exc, BackupSchemaError):
+                # Destination-dependent schema conflicts are discovered during
+                # import. Report them only after recovery confirms rollback.
+                raise
+            raise restore_tx.RestoreFailure(journal.data['id'], 'rolled_back') from None
+    imported['recovery'] = {'id': journal.data['id'], 'state': 'completed'}
+    _audit_restore(actor_id, actor_email, 'zip' if archive else 'json', True)
+    return jsonify({'message': 'Import completed', 'imported': imported})
+
+
+def _personal_import_review(user, prepared):
+    from flask import has_request_context
+    from app.services.import_identity import ImportPlan, namespace_for, digest
+    options = ((request.get_json(silent=True) or {}) if request.is_json else request.form) if has_request_context() else {}
+    source_label = options.get('source_label')
+    if source_label and prepared.namespace.startswith('backup:file:'):
+        prepared.namespace = namespace_for('backup', source_label, prepared.batch_key)
+        for kind, rows in prepared.records.items():
+            for row in rows:
+                if row['id'] < 0:
+                    prepared.source_keys[(kind, row['id'])] = ('backup:file:' + prepared.batch_key, str(row['id']))
+    prepared.batch_key = digest({'file': prepared.batch_key, 'namespace': prepared.namespace,
+        'media': [(kind, row['id'], row.get('_content_sha256'), row.get('_photo_sha256'))
+                  for kind, rows in prepared.records.items() for row in rows
+                  if '_content_sha256' in row or '_photo_sha256' in row]})
+    prepared.conflict_policy = options.get('conflict_policy', 'reject')
+    prepared.preview_token = options.get('preview_token')
+    plan = ImportPlan(user, prepared)
+    if options.get('preview') in ('true', True):
+        return jsonify({'preview': plan.preview})
+    plan.validate_apply(prepared.conflict_policy, prepared.preview_token)
+    return None
+
+
 def restore_from_json(user, file, merge_mode='merge'):
-    """Restore from JSON backup file."""
-    content = file.read().decode('utf-8')
-    backup_data = json.loads(content)
-    
-    imported, _, _ = import_backup_data(user, backup_data, merge_mode)
-    
-    return jsonify({
-        'message': 'Import completed',
-        'imported': imported
-    })
+    """Validate all metadata, then commit under the same recovery protocol as ZIP."""
+    try:
+        with restore_tx.activity_guard(exclusive=True):
+            backup_data = json.loads(file.read().decode('utf-8'))
+            prepared = prepare_backup(backup_data)
+            prepared.media_included = False
+            prepared.warnings.append(warning('media_omitted', 'media',
+                'JSON contains no receipt or photo files. Document metadata and links were restored; file downloads are unavailable.'))
+            preview = _personal_import_review(user, prepared)
+            if preview is not None:
+                return preview
+            return _perform_personal_restore(user, backup_data, prepared, merge_mode)
+    except BackupSchemaError as exc:
+        return _schema_error_response(exc)
+    except restore_tx.RestoreFailure as exc:
+        return _restore_failure_response(exc)
 
 
 def restore_from_zip(user, file, merge_mode='merge'):
-    """Restore from ZIP backup file with attachments."""
-    zip_data = BytesIO(file.read())
-    
-    with zipfile.ZipFile(zip_data, 'r') as zf:
-        # M6: reject a decompression bomb BEFORE any zf.read() materialises a
-        # member. This is the single choke point for the in-app import AND (via
-        # delegation, Step 9) the external- and stored-backup restore paths.
-        try:
+    """Validate the complete archive, stage files, then publish and commit once."""
+    try:
+        with restore_tx.activity_guard(exclusive=True), zipfile.ZipFile(BytesIO(file.read()), 'r') as zf:
             _check_zip_budget(zf)
-        except ValueError as exc:
-            return jsonify({'error': str(exc)}), 400
-
-        # Read manifest
-        if 'manifest.json' in zf.namelist():
-            manifest = json.loads(zf.read('manifest.json').decode('utf-8'))
-            current_app.logger.info(f'Restoring backup version {manifest.get("version", "1.0")}')
-        
-        # Read backup data
-        if 'backup_data.json' not in zf.namelist():
-            return jsonify({'error': 'Invalid backup file: missing backup_data.json'}), 400
-        
-        backup_data = json.loads(zf.read('backup_data.json').decode('utf-8'))
-        
-        # Import data and get vehicle ID mapping and entry ID mapping
-        imported, vehicle_id_map, entry_id_map = import_backup_data(user, backup_data, merge_mode)
-        
-        # Add attachments and vehicle_photos counter
-        imported['attachments'] = 0
-        imported['vehicle_photos'] = 0
-        
-        # Track mapping of old attachment IDs to new attachment IDs
-        attachment_id_map = {}
-        
-        # Restore attachments
-        attachment_folder = get_attachment_folder()
-        user_attachment_folder = os.path.join(attachment_folder, str(user.id))
-        os.makedirs(user_attachment_folder, exist_ok=True)
-        
-        # Build a map of old attachment IDs to their metadata from backup_data
-        attachment_metadata = {}
-        for att in backup_data.get('attachments', []):
-            attachment_metadata[str(att.get('id'))] = att
-        
-        # Restore vehicle photos
-        uploads_folder = get_uploads_folder()
-        vehicle_photo_folder = os.path.join(uploads_folder, 'vehicles')
-        os.makedirs(vehicle_photo_folder, mode=0o750, exist_ok=True)
-        
-        for name in zf.namelist():
-            if name.startswith('uploads/vehicles/'):
-                parts = name.split('/')
-                if len(parts) >= 4:
-                    # Path is: uploads/vehicles/{old_vehicle_id}/{filename}
-                    old_vehicle_id_str = parts[2]
-                    filename = parts[3]
-                    
-                    if not filename:  # Skip directory entries
-                        continue
-                    
-                    try:
-                        old_vehicle_id = int(old_vehicle_id_str)
-                    except ValueError:
-                        continue
-                    
-                    # Get new vehicle ID
-                    new_vehicle_id = vehicle_id_map.get(old_vehicle_id)
-                    if not new_vehicle_id:
-                        continue
-                    
-                    # Extract file
-                    content = zf.read(name)
-                    
-                    # Create new filename with new vehicle ID
-                    # Old filename format: {old_id}_{uuid}.{ext}
-                    # New filename format: {new_id}_{uuid}.{ext}
-                    ext = filename.rsplit('.', 1)[1] if '.' in filename else 'jpg'
-                    import uuid
-                    new_filename = f"{new_vehicle_id}_{uuid.uuid4().hex}.{ext}"
-                    new_filepath = os.path.join(vehicle_photo_folder, new_filename)
-                    
-                    with open(new_filepath, 'wb') as f:
-                        f.write(content)
-                    os.chmod(new_filepath, 0o640)
-                    
-                    # Update vehicle photo field
-                    vehicle = db.session.get(Vehicle, new_vehicle_id)
-                    if vehicle:
-                        vehicle.photo = f"/uploads/vehicles/{new_filename}"
-                        imported['vehicle_photos'] += 1
-            
-            elif name.startswith('attachments/'):
-                parts = name.split('/')
-                if len(parts) >= 3:
-                    # Extract attachment_id and filename from path
-                    old_id = parts[1]
-                    raw_filename = parts[2]
-
-                    if not raw_filename:  # Skip directory entries
-                        continue
-
-                    # Zip Slip protection: strip path components and verify
-                    # the resolved path is confined to the attachment folder.
-                    try:
-                        filename = _safe_zip_filename(raw_filename, user_attachment_folder)
-                    except ValueError as exc:
-                        current_app.logger.warning(
-                            '[Security] Zip Slip attempt blocked during restore '
-                            'for user_id=%s: %s', user.id, exc
-                        )
-                        continue
-
-                    # Build target path
-                    new_filepath = os.path.join(user_attachment_folder, filename)
-                    
-                    # Attachment metadata
-                    att_meta = attachment_metadata.get(old_id, {})
-                    
-                    # Map old vehicle_id to new vehicle_id
-                    old_vehicle_id = att_meta.get('vehicle_id')
-                    new_vehicle_id = vehicle_id_map.get(old_vehicle_id) if old_vehicle_id else None
-                    
-                    # Map old entry_id to new entry_id
-                    old_entry_id = att_meta.get('entry_id')
-                    new_entry_id = entry_id_map.get(old_entry_id) if old_entry_id else None
-                    
-                    # Deduplication: skip if attachment with same filepath+entry already exists
-                    existing_att = Attachment.query.filter_by(
-                        user_id=user.id,
-                        filepath=new_filepath,
-                        entry_id=new_entry_id,
-                    ).first()
-                    if existing_att:
-                        try:
-                            old_id_int = int(old_id)
-                            attachment_id_map[old_id_int] = existing_att.id
-                        except ValueError:
-                            pass
-                        continue
-                    
-                    # Extract and save file to disk
-                    content = zf.read(name)
-                    with open(new_filepath, 'wb') as f:
-                        f.write(content)
-                    os.chmod(new_filepath, 0o640)
-                    
-                    attachment = Attachment(
-                        user_id=user.id,
-                        filename=filename,
-                        original_filename=att_meta.get('original_filename', filename),
-                        filepath=new_filepath,
-                        # S13: Never trust the file_type from ZIP metadata —
-                        # a crafted archive could store 'text/html' / 'image/svg+xml'
-                        # and cause XSS when the file is later served inline.
-                        # Re-derive from the original filename extension using the
-                        # canonical allowlist in attachments.py.
-                        file_type=_safe_mime_from_meta(att_meta.get('original_filename') or filename),
-                        file_size=len(content),
-                        description=att_meta.get('description'),
-                        category=att_meta.get('category'),
-                        tags=att_meta.get('tags'),
-                        vehicle_id=new_vehicle_id,
-                        entry_id=new_entry_id,
-                    )
-                    db.session.add(attachment)
-                    db.session.flush()  # Get the new attachment ID
-                    
-                    # Track old to new attachment ID mapping
-                    try:
-                        old_id_int = int(old_id)
-                        attachment_id_map[old_id_int] = attachment.id
-                    except ValueError:
-                        pass
-                    
-                    imported['attachments'] += 1
-        
-        # Update insurance policies with new document_attachment_id
-        if attachment_id_map:
-            for policy_data in backup_data.get('insurance_policies', []):
-                old_att_id = policy_data.get('document_attachment_id')
-                if old_att_id and old_att_id in attachment_id_map:
-                    # Find the insurance policy we just created (by matching unique fields)
-                    policy = InsurancePolicy.query.filter_by(
-                        user_id=user.id,
-                        policy_number=policy_data.get('policy_number'),
-                        provider=policy_data.get('provider')
-                    ).first()
-                    if policy:
-                        policy.document_attachment_id = attachment_id_map[old_att_id]
-        
-        db.session.commit()
-    
-    # Security audit log for data import
-    security_audit.data_import(user.id, user.email, 'zip', success=True)
-    
-    return jsonify({
-        'message': 'Import completed',
-        'imported': imported
-    })
+            if 'backup_data.json' not in zf.namelist():
+                raise BackupSchemaError('Invalid backup file: missing backup_data.json')
+            raw = zf.read('backup_data.json')
+            data = json.loads(raw.decode('utf-8'))
+            prepared = prepare_backup(data)
+            if prepared.version not in LEGACY_VERSIONS and 'manifest.json' not in zf.namelist():
+                raise BackupSchemaError('Version-4 ZIP is missing its manifest.', 'manifest')
+            if 'manifest.json' in zf.namelist():
+                manifest = json.loads(zf.read('manifest.json').decode('utf-8'))
+                if prepared.version not in LEGACY_VERSIONS:
+                    if not isinstance(manifest, dict) or manifest.get('version') != prepared.version:
+                        raise BackupSchemaError('Manifest and data versions disagree.', 'manifest')
+                    if manifest.get('checksum') != calculate_checksum(raw):
+                        raise BackupSchemaError('Backup data failed its integrity check.', 'manifest.checksum')
+            media = _backup_media(zf, data, prepared)
+            _fingerprint_media(prepared, media)
+            preview = _personal_import_review(user, prepared)
+            if preview is not None:
+                return preview
+            return _perform_personal_restore(user, data, prepared, merge_mode, media, zf)
+    except BackupSchemaError as exc:
+        return _schema_error_response(exc)
+    except restore_tx.RestoreFailure as exc:
+        return _restore_failure_response(exc)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
 
 
-def _entry_exists(model_class, user_id, vehicle_id, entry_date, amount):
-    """Check if an entry with the same (vehicle, date, amount) exists."""
-    from decimal import Decimal
-    q = model_class.query.filter_by(
-        user_id=user_id,
-        vehicle_id=vehicle_id,
-        date=entry_date,
-    )
-    if amount is not None:
-        q = q.filter(model_class.amount == Decimal(str(amount)))
-    else:
-        q = q.filter(model_class.amount.is_(None))
-    return q.first()
+def import_backup_data(user, backup_data, merge_mode='merge', *, prepared=None,
+                       id_maps=None, attachment_names=None):
+    """Import portable records; retain the public three-value return contract.
 
-
-def import_backup_data(user, backup_data, merge_mode='merge'):
-    """Import backup data into database with deduplication."""
-    imported = {
-        'vehicles': 0,
-        'fuel_entries': 0,
-        'service_entries': 0,
-        'repair_entries': 0,
-        'tax_entries': 0,
-        'parking_entries': 0,
-        'reminders': 0,
-        'insurance_policies': 0,
-        'todos': 0,
-        'skipped_duplicates': 0,
-        # A2: policies whose own vehicle isn't in this backup are skipped (never
-        # attached to an arbitrary vehicle), and counted here for transparency.
-        'skipped_unmatched_policies': 0,
-    }
-    
-    # Track mapping of old vehicle IDs to new vehicle IDs
-    vehicle_id_map = {}
-    # Track mapping of old entry IDs to new entry IDs (for attachments)
-    entry_id_map = {}
-    
-    # Import vehicles
-    for vehicle_data in backup_data.get('vehicles', []):
-        old_vehicle_id = vehicle_data.get('id')
-        
-        # Check if vehicle already exists (by VIN or license plate)
-        existing = None
-        if vehicle_data.get('vin'):
-            existing = Vehicle.query.filter_by(
-                user_id=user.id,
-                vin=vehicle_data['vin']
-            ).first()
-        
-        if not existing and vehicle_data.get('license_plate'):
-            existing = Vehicle.query.filter_by(
-                user_id=user.id,
-                license_plate=vehicle_data['license_plate']
-            ).first()
-        
-        if existing:
-            vehicle = existing
-            if merge_mode == 'replace':
-                for key in ['name', 'make', 'model', 'year', 'fuel_type', 'current_mileage', 'archived']:
-                    if key in vehicle_data and vehicle_data[key] is not None:
-                        setattr(vehicle, key, vehicle_data[key])
-                # Handle archived_at separately (datetime parsing)
-                if vehicle_data.get('archived_at'):
-                    try:
-                        vehicle.archived_at = datetime.fromisoformat(vehicle_data['archived_at'].replace('Z', '+00:00'))
-                    except Exception:
-                        pass
-        else:
-            # Parse archived_at datetime if present
-            archived_at = None
-            if vehicle_data.get('archived_at'):
-                try:
-                    archived_at = datetime.fromisoformat(vehicle_data['archived_at'].replace('Z', '+00:00'))
-                except Exception:
-                    pass
-            
-            vehicle = Vehicle(
-                user_id=user.id,
-                name=vehicle_data.get('name', 'Imported Vehicle'),
-                make=vehicle_data.get('make'),
-                model=vehicle_data.get('model'),
-                year=vehicle_data.get('year'),
-                vin=vehicle_data.get('vin'),
-                license_plate=vehicle_data.get('license_plate'),
-                fuel_type=vehicle_data.get('fuel_type'),
-                current_mileage=vehicle_data.get('current_mileage') or vehicle_data.get('initial_mileage', 0),
-                archived=vehicle_data.get('archived', False),
-                archived_at=archived_at,
-            )
-            db.session.add(vehicle)
-            db.session.flush()
-            imported['vehicles'] += 1
-        
-        # Map old vehicle ID to new vehicle ID
-        if old_vehicle_id:
-            vehicle_id_map[old_vehicle_id] = vehicle.id
-        
-        # Import fuel entries
-        for entry_data in vehicle_data.get('fuel_entries', []):
-            old_entry_id = entry_data.get('id')
-            # Parse date - handle both 'date' and 'entry_date' field names for compatibility
-            date_str = entry_data.get('date') or entry_data.get('entry_date')
-            entry_date = datetime.fromisoformat(date_str).date() if date_str else datetime.now(timezone.utc).date()
-            amount = entry_data.get('amount') or entry_data.get('total_price') or entry_data.get('total_cost')
-            
-            # Deduplication: skip if identical entry exists
-            existing = _entry_exists(FuelEntry, user.id, vehicle.id, entry_date, amount)
-            if existing:
-                if old_entry_id:
-                    entry_id_map[old_entry_id] = existing.id
-                imported['skipped_duplicates'] += 1
-                continue
-            
-            entry = FuelEntry(
-                user_id=user.id,
-                vehicle_id=vehicle.id,
-                date=entry_date,
-                odometer=entry_data.get('odometer') or entry_data.get('mileage'),
-                amount=amount,
-                liters=entry_data.get('liters') or entry_data.get('volume'),
-                price_per_liter=entry_data.get('price_per_liter') or entry_data.get('price_per_unit'),
-                total_price=entry_data.get('total_price') or entry_data.get('total_cost'),
-                fuel_type=entry_data.get('fuel_type'),
-                full_tank=entry_data.get('full_tank', entry_data.get('is_full_tank', True)),
-                station=entry_data.get('station'),
-            )
-            db.session.add(entry)
-            db.session.flush()  # Get the new entry ID
-            if old_entry_id:
-                entry_id_map[old_entry_id] = entry.id
-            imported['fuel_entries'] += 1
-        
-        # Import service entries
-        for entry_data in vehicle_data.get('service_entries', []):
-            old_entry_id = entry_data.get('id')
-            date_str = entry_data.get('date') or entry_data.get('entry_date')
-            entry_date = datetime.fromisoformat(date_str).date() if date_str else datetime.now(timezone.utc).date()
-            amount = entry_data.get('amount') or entry_data.get('cost')
-            
-            existing = _entry_exists(ServiceEntry, user.id, vehicle.id, entry_date, amount)
-            if existing:
-                if old_entry_id:
-                    entry_id_map[old_entry_id] = existing.id
-                imported['skipped_duplicates'] += 1
-                continue
-            
-            entry = ServiceEntry(
-                user_id=user.id,
-                vehicle_id=vehicle.id,
-                date=entry_date,
-                odometer=entry_data.get('odometer') or entry_data.get('mileage'),
-                amount=amount,
-                service_type=entry_data.get('service_type'),
-                description=entry_data.get('description'),
-                provider=entry_data.get('provider'),
-                garage_name=entry_data.get('garage_name'),
-            )
-            db.session.add(entry)
-            db.session.flush()  # Get the new entry ID
-            if old_entry_id:
-                entry_id_map[old_entry_id] = entry.id
-            imported['service_entries'] += 1
-        
-        # Import repair entries
-        for entry_data in vehicle_data.get('repair_entries', []):
-            old_entry_id = entry_data.get('id')
-            date_str = entry_data.get('date') or entry_data.get('entry_date')
-            entry_date = datetime.fromisoformat(date_str).date() if date_str else datetime.now(timezone.utc).date()
-            amount = entry_data.get('amount') or entry_data.get('cost')
-            
-            existing = _entry_exists(RepairEntry, user.id, vehicle.id, entry_date, amount)
-            if existing:
-                if old_entry_id:
-                    entry_id_map[old_entry_id] = existing.id
-                imported['skipped_duplicates'] += 1
-                continue
-            
-            entry = RepairEntry(
-                user_id=user.id,
-                vehicle_id=vehicle.id,
-                date=entry_date,
-                odometer=entry_data.get('odometer') or entry_data.get('mileage'),
-                amount=amount,
-                repair_type=entry_data.get('repair_type'),
-                description=entry_data.get('description'),
-                provider=entry_data.get('provider'),
-                garage_name=entry_data.get('garage_name'),
-            )
-            db.session.add(entry)
-            db.session.flush()  # Get the new entry ID
-            if old_entry_id:
-                entry_id_map[old_entry_id] = entry.id
-            imported['repair_entries'] += 1
-        
-        # Import tax entries
-        for entry_data in vehicle_data.get('tax_entries', []):
-            old_entry_id = entry_data.get('id')
-            date_str = entry_data.get('date') or entry_data.get('entry_date')
-            entry_date = datetime.fromisoformat(date_str).date() if date_str else datetime.now(timezone.utc).date()
-            amount = entry_data.get('amount') or entry_data.get('cost')
-            
-            existing = _entry_exists(TaxEntry, user.id, vehicle.id, entry_date, amount)
-            if existing:
-                if old_entry_id:
-                    entry_id_map[old_entry_id] = existing.id
-                imported['skipped_duplicates'] += 1
-                continue
-            
-            # Parse due_date if present
-            due_date = None
-            if entry_data.get('due_date'):
-                due_date = datetime.fromisoformat(entry_data['due_date']).date()
-            
-            # Parse next_due_date if present
-            next_due_date = None
-            if entry_data.get('next_due_date'):
-                next_due_date = datetime.fromisoformat(entry_data['next_due_date']).date()
-            
-            entry = TaxEntry(
-                user_id=user.id,
-                vehicle_id=vehicle.id,
-                date=entry_date,
-                amount=amount,
-                tax_type=entry_data.get('tax_type'),
-                title=entry_data.get('title'),
-                description=entry_data.get('description'),
-                notes=entry_data.get('notes'),
-                tax_year=entry_data.get('tax_year'),
-                tax_period=entry_data.get('tax_period'),
-                status=entry_data.get('status', 'paid'),
-                due_date=due_date,
-                reference_number=entry_data.get('reference_number'),
-                recurring=entry_data.get('recurring', False),
-                recurrence_type=entry_data.get('recurrence_type'),
-                next_due_date=next_due_date,
-                reminder_days=entry_data.get('reminder_days', 30),
-                # Note: insurance_policy_id will be linked separately after all policies are imported
-            )
-            db.session.add(entry)
-            db.session.flush()  # Get the new entry ID
-            if old_entry_id:
-                entry_id_map[old_entry_id] = entry.id
-            imported['tax_entries'] += 1
-        
-        # Import parking entries
-        for entry_data in vehicle_data.get('parking_entries', []):
-            old_entry_id = entry_data.get('id')
-            date_str = entry_data.get('date') or entry_data.get('entry_date')
-            entry_date = datetime.fromisoformat(date_str).date() if date_str else datetime.now(timezone.utc).date()
-            amount = entry_data.get('amount') or entry_data.get('cost')
-            
-            existing = _entry_exists(ParkingEntry, user.id, vehicle.id, entry_date, amount)
-            if existing:
-                if old_entry_id:
-                    entry_id_map[old_entry_id] = existing.id
-                imported['skipped_duplicates'] += 1
-                continue
-            
-            entry = ParkingEntry(
-                user_id=user.id,
-                vehicle_id=vehicle.id,
-                date=entry_date,
-                amount=amount,
-                parking_type=entry_data.get('parking_type'),
-                location=entry_data.get('location'),
-            )
-            db.session.add(entry)
-            db.session.flush()  # Get the new entry ID
-            if old_entry_id:
-                entry_id_map[old_entry_id] = entry.id
-            imported['parking_entries'] += 1
-    
-    # Import reminders
-    for reminder_data in backup_data.get('reminders', []):
-        # Map old vehicle_id to new vehicle_id
-        old_vehicle_id = reminder_data.get('vehicle_id')
-        new_vehicle_id = vehicle_id_map.get(old_vehicle_id) if old_vehicle_id else None
-        
-        # vehicle_id is NOT NULL in DB — skip reminders without a valid vehicle
-        if not new_vehicle_id:
-            continue
-        
-        # Deduplication: check by title + vehicle + type
-        existing = Reminder.query.filter_by(
-            user_id=user.id,
-            vehicle_id=new_vehicle_id,
-            title=reminder_data.get('title'),
-            reminder_type=reminder_data.get('reminder_type', 'custom'),
-        ).first()
-        if existing:
-            imported['skipped_duplicates'] += 1
-            continue
-        
-        reminder = Reminder(
-            user_id=user.id,
-            vehicle_id=new_vehicle_id,
-            title=reminder_data.get('title'),
-            description=reminder_data.get('description'),
-            reminder_type=reminder_data.get('reminder_type', 'custom'),
-            due_date=datetime.fromisoformat(reminder_data['due_date']).date() if reminder_data.get('due_date') else None,
-            priority=reminder_data.get('priority', 'medium'),
-        )
-        db.session.add(reminder)
-        imported['reminders'] += 1
-    
-    # Import insurance policies — A2: ONLY onto the policy's own vehicle.
-    for policy_data in backup_data.get('insurance_policies', []):
-        old_vehicle_id = policy_data.get('vehicle_id')
-        vehicle_id = vehicle_id_map.get(old_vehicle_id) if old_vehicle_id else None
-        if not vehicle_id:
-            # The previous code fell back to next(iter(vehicle_id_map.values())),
-            # attaching an orphaned policy to an ARBITRARY vehicle and corrupting
-            # that vehicle's costs. Skip it instead and record the count.
-            imported['skipped_unmatched_policies'] += 1
-            continue
-
-        # Deduplication: check by provider + start_date + vehicle
-        start_date = datetime.fromisoformat(policy_data['start_date']).date() if policy_data.get('start_date') else None
-        existing = InsurancePolicy.query.filter_by(
-            user_id=user.id,
-            vehicle_id=vehicle_id,
-            provider=policy_data.get('provider'),
-            start_date=start_date,
-        ).first()
-        if existing:
-            imported['skipped_duplicates'] += 1
-            continue
-
-        policy = InsurancePolicy(
-            user_id=user.id,
-            vehicle_id=vehicle_id,
-            policy_number=policy_data.get('policy_number'),
-            provider=policy_data.get('provider'),
-            policy_type=policy_data.get('policy_type') or policy_data.get('coverage_type'),
-            premium=policy_data.get('premium'),
-            payment_frequency=policy_data.get('payment_frequency'),
-            coverage_amount=policy_data.get('coverage_amount'),
-            deductible=policy_data.get('deductible'),
-            start_date=start_date,
-            end_date=datetime.fromisoformat(policy_data['end_date']).date() if policy_data.get('end_date') else None,
-            agent_name=policy_data.get('agent_name'),
-            agent_phone=policy_data.get('agent_phone'),
-            agent_email=policy_data.get('agent_email'),
-            claims_phone=policy_data.get('claims_phone'),
-            status=policy_data.get('status', 'active'),
-            auto_renew=policy_data.get('auto_renew', False),
-            notes=policy_data.get('notes'),
-            currency=policy_data.get('currency'),
-        )
-        db.session.add(policy)
-        imported['insurance_policies'] += 1
-    
-    # Import todos
-    for todo_data in backup_data.get('todos', []):
-        try:
-            # Deduplication: check by title
-            existing = Todo.query.filter_by(
-                user_id=user.id,
-                title=todo_data.get('title'),
-            ).first()
-            if existing:
-                imported['skipped_duplicates'] += 1
-                continue
-            
-            todo = Todo(
-                user_id=user.id,
-                title=todo_data.get('title'),
-                description=todo_data.get('description'),
-                priority=todo_data.get('priority', 'medium'),
-                status=todo_data.get('status', 'pending'),
-            )
-            db.session.add(todo)
-            imported['todos'] += 1
-        except Exception:
-            pass
-    
-    # Recalculate current_mileage for all imported/merged vehicles
-    for new_vehicle_id in vehicle_id_map.values():
-        max_odometer = db.session.query(func.max(Entry.odometer)).filter(
-            Entry.user_id == user.id,
-            Entry.vehicle_id == new_vehicle_id,
-            Entry.odometer.isnot(None)
-        ).scalar()
-        if max_odometer:
-            vehicle = db.session.get(Vehicle, new_vehicle_id)
-            if vehicle and (vehicle.current_mileage or 0) < max_odometer:
-                vehicle.current_mileage = max_odometer
-    
-    db.session.commit()
-    return imported, vehicle_id_map, entry_id_map
+    This helper does not commit. The caller owns transaction completion and
+    coordinates file publication with the durable recovery journal.
+    """
+    prepared = prepared or prepare_backup(backup_data)
+    id_maps = id_maps if id_maps is not None else {}
+    if attachment_names is None:
+        attachment_names = _attachment_restore_paths(prepared)
+        if prepared.media_included:
+            prepared.media_included = False
+            prepared.warnings.append(warning('media_omitted', 'media',
+                'Only record data was supplied; file bytes were not restored.'))
+    folder = os.path.join(get_attachment_folder(), str(user.id))
+    paths = {key: os.path.join(folder, name) for key, name in attachment_names.items()}
+    imported = import_records(user, prepared, merge_mode, id_maps, paths,
+                              conflict_policy=getattr(prepared, 'conflict_policy', 'reject'),
+                              preview_token=getattr(prepared, 'preview_token', None))
+    return imported, id_maps['vehicles'], id_maps['entries']
 
 
 @backup_bp.route('/download/<filename>', methods=['GET'])
@@ -2245,12 +2035,14 @@ def download_stored_backup(current_user, filename):
     if not os.path.exists(filepath):
         return jsonify({'error': 'Backup file not found'}), 404
 
-    return send_file(
+    response = send_file(
         filepath,
         mimetype='application/zip' if filename.endswith('.zip') else 'application/octet-stream',
         as_attachment=True,
         download_name=filename
     )
+    response.headers['X-Backup-Protection'] = backup_crypto.file_protection(filepath)['protection']
+    return response
 
 
 @backup_bp.route('/restore/<filename>', methods=['POST'])
@@ -2272,22 +2064,10 @@ def restore_from_storage(current_user, filename):
     
     try:
         with open(filepath, 'rb') as f:
-            class FileWrapper:
-                def __init__(self, file, name):
-                    self.file = file
-                    self.filename = name
-                def read(self):
-                    return self.file.read()
-            
-            wrapper = FileWrapper(f, filename)
-            
-            if filename.endswith('.zip'):
-                return restore_from_zip(current_user, wrapper, merge_mode)
-            elif filename.endswith('.json'):
-                return restore_from_json(current_user, wrapper, merge_mode)
-            else:
-                return jsonify({'error': 'Unsupported file format'}), 400
-    
+            return _restore_user_artifact(current_user, f, filename, merge_mode,
+                                          (request.get_json(silent=True) or {}).get('passphrase'))
+    except backup_crypto.BackupEncryptionError as exc:
+        return _encryption_error(exc)
     except Exception as e:
         current_app.logger.error(f'Restore from storage failed: {e}')
         return jsonify({'error': 'Restore failed. Please try again later.'}), 500
@@ -2464,6 +2244,8 @@ def update_backup_schedule(current_user):
 
         destinations_payload = normalized_destinations
     
+    backup_crypto.update_schedule_protection(schedule, data)
+
     # Update allowed fields
     allowed = [
         'enabled', 'frequency', 'day_of_week', 'day_of_month', 'hour',
@@ -2503,6 +2285,9 @@ def run_backup_now(current_user):
     data = request.get_json() or {}
     include_attachments = data.get('include_attachments', True)
     send_external = data.get('send_external', False)
+    schedule = BackupSchedule.query.filter_by(user_id=current_user.id).first()
+    passphrase = (backup_crypto.request_passphrase(data) if 'encrypt' in data or 'passphrase' in data
+                  else backup_crypto.schedule_passphrase(schedule))
     
     # Create backup record
     backup = Backup(
@@ -2515,9 +2300,12 @@ def run_backup_now(current_user):
     db.session.add(backup)
     db.session.commit()
     
+    zip_buffer = None
     try:
         # Create backup
         zip_buffer, export_data = create_backup_zip(current_user, include_attachments)
+        zip_buffer = backup_crypto.protect_stream(zip_buffer, passphrase)
+        backup.encrypted = passphrase is not None
         
         # Save to disk
         filename, filepath, file_size = save_backup_to_disk(current_user, zip_buffer, include_attachments)
@@ -2531,7 +2319,8 @@ def run_backup_now(current_user):
             len(v.get('service_entries', [])) +
             len(v.get('repair_entries', [])) +
             len(v.get('tax_entries', [])) +
-            len(v.get('parking_entries', []))
+            len(v.get('parking_entries', [])) +
+            len(v.get('consumable_entries', []))
             for v in export_data['vehicles']
         )
         backup.reminders_count = len(export_data['reminders'])
@@ -2592,6 +2381,9 @@ def run_backup_now(current_user):
             db.session.rollback()
         current_app.logger.error(f'Manual backup failed: {e}', exc_info=True)
         return jsonify({'error': 'Backup failed. Please try again later.'}), 500
+    finally:
+        if zip_buffer is not None:
+            zip_buffer.close()
 
 
 @backup_bp.route('/send-external', methods=['POST'])
@@ -2624,7 +2416,7 @@ def send_latest_to_external(current_user):
         # app/user name prefix varies, so it could pick the wrong (or no) file.
         if not os.path.exists(user_folder):
             return jsonify({'error': 'No stored backups found. Run a backup first.'}), 404
-        files = [f for f in os.listdir(user_folder) if f.endswith('.zip')]
+        files = [f for f in os.listdir(user_folder) if f.lower().endswith(('.zip', '.gcb'))]
         if not files:
             return jsonify({'error': 'No stored backups found. Run a backup first.'}), 404
         files.sort(key=lambda f: os.path.getmtime(os.path.join(user_folder, f)), reverse=True)
@@ -2648,6 +2440,7 @@ def send_latest_to_external(current_user):
             'size': len(backup_data),
             'destinations_succeeded': successes,
             'destinations_failed': errors,
+            **backup_crypto.file_protection(filepath),
         })
     except Exception as e:
         current_app.logger.error(f'Send to external failed: {e}', exc_info=True)
@@ -2848,11 +2641,12 @@ def browse_external_files(current_user):
                 lastmod_elem = resp_elem.find('.//d:getlastmodified', ns)
                 if href is not None:
                     name = unquote(href.text.rstrip('/').split('/')[-1])
-                    if name.endswith('.zip'):
+                    if name.lower().endswith(('.zip', '.gcb')):
                         files.append({
                             'name': name,
                             'size': int(size_elem.text) if size_elem is not None and size_elem.text else 0,
                             'size_human': format_file_size(int(size_elem.text)) if size_elem is not None and size_elem.text else '?',
+                            'protection': 'encrypted_unverified' if name.lower().endswith('.gcb') else 'plaintext',
                             'last_modified': lastmod_elem.text if lastmod_elem is not None else None,
                         })
 
@@ -2879,8 +2673,8 @@ def restore_from_external(current_user):
     if '..' in filename or '/' in filename or '\\' in filename:
         return jsonify({'error': 'Invalid filename'}), 400
 
-    if not filename.endswith('.zip'):
-        return jsonify({'error': 'Only .zip backup files are supported'}), 400
+    if not filename.lower().endswith(('.zip', '.gcb')):
+        return jsonify({'error': 'Use a .zip or .zip.gcb backup file'}), 400
 
     # Get schedule for credentials, or use provided ones
     schedule = BackupSchedule.query.filter_by(user_id=current_user.id).first()
@@ -2925,31 +2719,18 @@ def restore_from_external(current_user):
         file_content = response.content
         merge_mode = data.get('merge_mode', 'merge')
 
-        # Optionally save locally first
-        backup_folder = get_backup_folder()
-        user_folder = os.path.join(backup_folder, str(current_user.id))
-        os.makedirs(user_folder, exist_ok=True)
-        local_path = os.path.join(user_folder, filename)
-        with open(local_path, 'wb') as f:
-            f.write(file_content)
-
-        # M5: delegate to the single, hardened restore path instead of a ~130-line
-        # inline copy that had already DRIFTED from it — the copy lacked the
-        # existing-attachment dedup (so repeated external restores multiplied
-        # attachment rows) and never chmod'd the written attachment files to
-        # 0o640 (leaving them group/other-readable per umask). restore_from_zip
-        # has the Zip Slip guard, the dedup, os.chmod 0o640 AND the S13 MIME
-        # re-derivation in ONE place. The downloaded archive was already saved
-        # locally above; restore_from_zip re-reads it from the wrapper.
-        class _Wrapper:
-            def __init__(self, data, name):
-                self._d, self.filename = data, name
-
-            def read(self):
-                return self._d
-
-        return restore_from_zip(current_user, _Wrapper(file_content, filename), merge_mode)
-
+        # Authenticate before storing, parsing or applying anything. Keep the
+        # encrypted original for local recovery; never persist its plaintext.
+        with backup_crypto.open_backup(BytesIO(file_content), filename, data.get('passphrase')) as (plaintext, inner_format):
+            if inner_format != 'zip':
+                raise backup_crypto.BackupEncryptionError('Use a ZIP backup for external restore.')
+            if data.get('preview') not in (True, 'true'):
+                user_folder = os.path.join(get_backup_folder(), str(current_user.id))
+                os.makedirs(user_folder, exist_ok=True)
+                backup_crypto.atomic_write(BytesIO(file_content), os.path.join(user_folder, filename))
+            return restore_from_zip(current_user, plaintext, merge_mode)
+    except backup_crypto.BackupEncryptionError as exc:
+        return _encryption_error(exc)
     except requests.exceptions.Timeout:
         return jsonify({'error': 'Download timed out. The external server did not respond in time.'}), 504
     except requests.exceptions.RequestException as e:
@@ -2974,18 +2755,19 @@ def upload_backup(current_user):
     if file.filename == '':
         return jsonify({'error': 'No file selected'}), 400
 
-    if not file.filename.lower().endswith('.zip'):
-        return jsonify({'error': 'Only .zip backup files are supported'}), 400
+    if not file.filename.lower().endswith(('.zip', '.gcb')):
+        return jsonify({'error': 'Use a .zip or .zip.gcb backup file'}), 400
 
     try:
         content = file.read()
 
-        # Validate it's a real ZIP with backup_data.json
-        zip_data = BytesIO(content)
-        with zipfile.ZipFile(zip_data, 'r') as zf:
-            _check_zip_budget(zf)  # M6: reject decompression bombs pre-extract
-            if 'backup_data.json' not in zf.namelist():
-                return jsonify({'error': 'Invalid backup file: missing backup_data.json'}), 400
+        with backup_crypto.open_backup(BytesIO(content), file.filename, request.form.get('passphrase')) as (plaintext, inner_format):
+            if inner_format != 'zip':
+                raise backup_crypto.BackupEncryptionError('Use a ZIP backup for stored uploads.')
+            with zipfile.ZipFile(plaintext, 'r') as zf:
+                _check_zip_budget(zf)
+                if 'backup_data.json' not in zf.namelist():
+                    return jsonify({'error': 'Invalid backup file: missing backup_data.json'}), 400
 
         # Save to backup storage
         backup_folder = get_backup_folder()
@@ -2994,22 +2776,25 @@ def upload_backup(current_user):
 
         # Sanitise the original filename — keep it as-is (no forced prefix)
         safe_name = re.sub(r'[^A-Za-z0-9._-]', '_', file.filename)
+        if backup_crypto.is_encrypted(BytesIO(content)) and not safe_name.lower().endswith('.gcb'):
+            safe_name += '.gcb'
         filepath = os.path.join(user_folder, safe_name)
 
         # Don't overwrite existing
         if os.path.exists(filepath):
-            base, ext = os.path.splitext(safe_name)
-            safe_name = f'{base}_{datetime.now(timezone.utc).strftime("%H%M%S")}{ext}'
+            ext = '.zip.gcb' if safe_name.endswith('.zip.gcb') else os.path.splitext(safe_name)[1]
+            base = safe_name[:-len(ext)]
+            safe_name = f'{base}_{uuid.uuid4().hex[:12]}{ext}'
             filepath = os.path.join(user_folder, safe_name)
 
-        with open(filepath, 'wb') as f:
-            f.write(content)
+        backup_crypto.atomic_write(BytesIO(content), filepath)
 
         return jsonify({
             'message': 'Backup uploaded successfully',
             'filename': safe_name,
             'size': len(content),
             'size_human': format_file_size(len(content)),
+            **backup_crypto.file_protection(filepath),
         })
 
     except zipfile.BadZipFile:
@@ -3075,15 +2860,20 @@ def export_system_backup(current_user):
             allowed_frequencies=sorted(valid_frequencies),
         )), 400
 
+    passphrase = backup_crypto.request_passphrase(payload)
+    key_file = current_app.config.get('BACKUP_PASSPHRASE_FILE') or os.environ.get('BACKUP_PASSPHRASE_FILE')
+    if 'encrypt' not in payload and key_file:
+        passphrase = backup_crypto.read_passphrase_file(key_file)
     try:
-        archive_path, filename, file_size, manifest = create_system_backup_archive(current_user, frequency=frequency)
+        archive_path, filename, file_size, manifest = create_system_backup_archive(
+            current_user, frequency=frequency, passphrase=passphrase)
         _cleanup_system_backups(frequency, keep_last=3)
 
         security_audit.data_export(current_user.id, current_user.email, f'system_full:{frequency}')
 
         response = send_file(
             archive_path,
-            mimetype='application/gzip',
+            mimetype='application/octet-stream' if passphrase is not None else 'application/gzip',
             as_attachment=True,
             download_name=filename,
         )
@@ -3110,6 +2900,7 @@ def import_system_backup(current_user):
             'No backup file provided',
         )), 400
 
+    actor_id, actor_email = current_user.id, current_user.email
     uploaded_file = request.files['file']
     if not uploaded_file or not uploaded_file.filename:
         return jsonify(localized_message(
@@ -3118,20 +2909,41 @@ def import_system_backup(current_user):
         )), 400
 
     filename = uploaded_file.filename.lower()
-    if not (filename.endswith('.tar.gz') or filename.endswith('.tgz')):
+    if not filename.endswith(('.tar.gz', '.tgz', '.gcb')):
         return jsonify(localized_message(
             'backup.system_import.invalid_format',
             'Unsupported backup format',
-            allowed_formats=['.tar.gz', '.tgz'],
+            allowed_formats=['.tar.gz', '.tgz', '.tar.gz.gcb'],
         )), 400
 
-    with tempfile.NamedTemporaryFile(prefix='gearcargo-system-import-', suffix='.tar.gz', delete=False) as temp_file:
-        archive_path = temp_file.name
-        uploaded_file.save(temp_file)
-
+    archive_path = None
     try:
-        manifest = restore_system_backup_archive(archive_path)
-        security_audit.data_import(current_user.id, current_user.email, 'system_full', success=True)
+        budget = Budget()
+        temporary_root = tempfile.gettempdir()
+        budget.space(temporary_root)
+        with tempfile.NamedTemporaryFile(prefix='gearcargo-system-import-', suffix='.tar.gz', delete=False) as temp_file:
+            archive_path = temp_file.name
+            while chunk := uploaded_file.stream.read(CHUNK):
+                budget.space(temporary_root, len(chunk))
+                temp_file.write(chunk)
+        # Encrypted imports need authenticated plaintext plus its named staging
+        # copy; check their combined space before envelope authentication.
+        with open(archive_path, 'rb') as source:
+            if backup_crypto.is_encrypted(source) or filename.endswith('.gcb'):
+                budget.space(temporary_root, 2 * os.path.getsize(archive_path))
+            with backup_crypto.open_backup(source, filename, request.form.get('passphrase')) as (plaintext, inner_format):
+                if inner_format != 'tar.gz':
+                    raise backup_crypto.BackupEncryptionError('Use a full system archive here.')
+                if plaintext is source:
+                    manifest = restore_system_backup_archive(archive_path, budget=budget)
+                else:
+                    with tempfile.NamedTemporaryFile(prefix='gearcargo-authenticated-', suffix='.tar.gz') as verified:
+                        while chunk := plaintext.read(CHUNK):
+                            budget.space(temporary_root, len(chunk))
+                            verified.write(chunk)
+                        verified.flush()
+                        manifest = restore_system_backup_archive(verified.name, budget=budget)
+        _audit_restore(actor_id, actor_email, 'system_full', True)
         return jsonify(localized_message(
             'backup.system_import.completed',
             'System backup restored successfully',
@@ -3142,8 +2954,10 @@ def import_system_backup(current_user):
                 'uploads': True,
             },
         ))
+    except restore_tx.RestoreFailure as exc:
+        return _restore_failure_response(exc)
     except (tarfile.TarError, ValueError) as exc:
-        security_audit.data_import(current_user.id, current_user.email, 'system_full', success=False)
+        _audit_restore(actor_id, actor_email, 'system_full', False)
         current_app.logger.error('System backup import validation failed: %s', exc)
         return jsonify(localized_message(
             'backup.system_import.invalid_archive',
@@ -3151,7 +2965,7 @@ def import_system_backup(current_user):
             error=str(exc),
         )), 400
     except RuntimeError as exc:
-        security_audit.data_import(current_user.id, current_user.email, 'system_full', success=False)
+        _audit_restore(actor_id, actor_email, 'system_full', False)
         current_app.logger.error('System backup import failed: %s', exc)
         return jsonify(localized_message(
             'backup.system_import.failed',
@@ -3160,6 +2974,7 @@ def import_system_backup(current_user):
         )), 500
     finally:
         try:
-            os.remove(archive_path)
+            if archive_path:
+                os.remove(archive_path)
         except OSError:
             pass

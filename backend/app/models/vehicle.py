@@ -3,8 +3,9 @@ GearCargo - Vehicle Model
 """
 
 from datetime import datetime
-from app.utils.timeutils import utc_naive_now
+from app.utils.timeutils import utc_naive_now, isoformat_utc
 from app import db
+from app.utils.revisions import next_revision
 
 
 class Vehicle(db.Model):
@@ -13,6 +14,8 @@ class Vehicle(db.Model):
     __tablename__ = 'vehicles'
     
     id = db.Column(db.Integer, primary_key=True)
+    revision = db.Column(db.BigInteger, nullable=False, default=1, server_default="1")
+    __mapper_args__ = {"version_id_col": revision, "version_id_generator": next_revision}
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     
     # Identification
@@ -48,6 +51,7 @@ class Vehicle(db.Model):
     # Financial
     purchase_date = db.Column(db.Date)
     purchase_price = db.Column(db.Numeric(12, 2))
+    purchase_currency = db.Column(db.String(3), nullable=True)
     monthly_budget = db.Column(db.Numeric(10, 2))
     
     # Analytics (computed)
@@ -90,6 +94,10 @@ class Vehicle(db.Model):
     predictions = db.relationship('PredictionAlert', backref='vehicle', lazy='dynamic', cascade='all, delete-orphan')
     attachments = db.relationship('Attachment', backref='vehicle', lazy='dynamic', cascade='all, delete-orphan')
     insurance_policies = db.relationship('InsurancePolicy', backref='vehicle', lazy='dynamic', cascade='all, delete-orphan')
+    consumable_entries = db.relationship('ConsumableEntry', backref='vehicle', lazy='dynamic', cascade='all, delete-orphan')
+    todos = db.relationship('Todo', backref='vehicle', lazy='dynamic', cascade='all, delete-orphan')
+    # Permanent deletion uses services.deletion to cover logs, indirect links
+    # and committed file cleanup; ORM cascades alone cannot remove media safely.
 
     __table_args__ = (
         db.UniqueConstraint('user_id', 'vin', name='uq_vehicle_user_vin'),
@@ -120,6 +128,7 @@ class Vehicle(db.Model):
         """Convert to dictionary."""
         data = {
             'id': self.id,
+            'revision': self.revision,
             'name': self.name,
             'full_name': self.full_name,
             'make': self.make,
@@ -134,6 +143,7 @@ class Vehicle(db.Model):
             'drivetrain': self.drivetrain,
             'color': self.color,
             # Financial (F23) — captured at create, now round-trips for Edit.
+            'purchase_currency': self.purchase_currency,
             'purchase_date': self.purchase_date.isoformat() if self.purchase_date else None,
             'purchase_price': float(self.purchase_price) if self.purchase_price is not None else None,
             # Dimensions (F17) — captured on Add/Edit, now exposed for display.
@@ -147,14 +157,14 @@ class Vehicle(db.Model):
             'photo': self._signed_photo_url(),
             'photo_url': self._signed_photo_url(),
             'archived': self.archived,
-            'archived_at': self.archived_at.isoformat() if self.archived_at else None,
+            'archived_at': isoformat_utc(self.archived_at) if self.archived_at else None,
             # F30 — cached health for the garage chip (null until first Health view).
             'health_score': self.health_score,
-            'health_computed_at': self.health_computed_at.isoformat() if self.health_computed_at else None,
+            'health_computed_at': isoformat_utc(self.health_computed_at) if self.health_computed_at else None,
             # F31 — wear-interval overrides (component -> interval, vehicle's unit).
             'maintenance_intervals': self.maintenance_intervals,
             'display_order': self.display_order or 0,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'created_at': isoformat_utc(self.created_at) if self.created_at else None,
         }
         
         if include_stats:

@@ -1,7 +1,8 @@
+import { notifyPendingCleanup } from '../../utils/deletionFeedback'
 import { useState, useEffect } from 'react'
 import { adminApi } from '../../services/api'
 import { useTranslation } from '../../contexts/LanguageContext'
-import { formatDateShort } from '../../utils/dateFormat'
+import { useDateFormat } from '../../hooks/useDateFormat'
 
 // Icons
 const Icons = {
@@ -81,6 +82,7 @@ const Icons = {
 }
 
 export default function UserManagement() {
+  const { formatDateShort } = useDateFormat()
   const { t } = useTranslation()
   const [users, setUsers] = useState([])
   const [stats, setStats] = useState(null)
@@ -164,7 +166,8 @@ export default function UserManagement() {
     }
     
     try {
-      await adminApi.deleteUser(user.id)
+      const response = await adminApi.deleteUser(user.id)
+      notifyPendingCleanup(response, t)
       fetchUsers()
       fetchStats()
     } catch (error) {

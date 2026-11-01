@@ -30,8 +30,7 @@ compress = Compress()
 csrf = CSRFProtect()
 redis_client = None
 # I15: tracks whether Redis is reachable — checked at startup and exposed in /health.
-# False means rate-limiting runs in-memory (no cross-worker coordination) and token
-# blacklisting is disabled. The app stays up (fail-open) but ops should be alerted.
+# Durable session validity/revocation is independent of this startup cache flag.
 _redis_available = False
 
 # S05: known insecure code defaults (from app/config.py) plus placeholder markers
@@ -82,7 +81,7 @@ def _with_psycopg2_driver(database_url: str) -> str:
     return POSTGRES_PSYCOPG2_URL_PREFIX + database_url[len(POSTGRES_URL_PREFIX):]
 
 
-def create_app(config_class=None):
+def create_app(config_class=None, *, process_role=None):
     """Application factory pattern."""
     global redis_client, _redis_available
     
@@ -95,6 +94,10 @@ def create_app(config_class=None):
     
     # Load configuration
     app.config.from_object(config_class or 'app.config.Config')
+    role = process_role or ('cli' if os.environ.get('FLASK_RUN_FROM_CLI') == 'true' else app.config.get('PROCESS_ROLE', 'web'))
+    if role not in ('web', 'worker', 'cli', 'scheduler'):
+        raise ValueError('Invalid GearCargo process role')
+    app.config['PROCESS_ROLE'] = role
     app.config['SQLALCHEMY_DATABASE_URI'] = _with_psycopg2_driver(app.config['SQLALCHEMY_DATABASE_URI'])
 
     # Configure general application logging: PII redaction + optional JSON
@@ -109,21 +112,9 @@ def create_app(config_class=None):
     bcrypt.init_app(app)
     mail.init_app(app)
     
-    # Initialize CSRF protection
-    # Note: API routes use JWT authentication which is inherently CSRF-safe
-    # JWT tokens in Authorization header are not automatically sent by browsers
-    # Blueprints are exempted in routes/__init__.py
-    if app.config.get('WTF_CSRF_ENABLED', True):
-        csrf.init_app(app)
-        
-        @app.route('/api/csrf-token', methods=['GET'])
-        def get_csrf_token():
-            """Get CSRF token for frontend (if needed for non-JWT endpoints)."""
-            from flask_wtf.csrf import generate_csrf
-            token = generate_csrf()
-            response = jsonify({'csrf_token': token})
-            return response
-    
+    from app.services.cookie_csrf import init_cookie_csrf
+    init_cookie_csrf(app, csrf)
+
     # Configure session with Redis before initializing
     try:
         redis_url = app.config.get('REDIS_URL', 'redis://localhost:6379/0')
@@ -138,6 +129,8 @@ def create_app(config_class=None):
         app.config['SESSION_TYPE'] = 'filesystem'
     
     sess.init_app(app)
+    from app.services.session_availability import guard_redis_sessions
+    guard_redis_sessions(app)
     compress.init_app(app)
     
     # CORS configuration - Security
@@ -243,7 +236,7 @@ def create_app(config_class=None):
             app.logger.warning(
                 'I15: REDIS_URL not set or is memory://. '
                 'Rate limiting is in-memory only (no cross-worker coordination). '
-                'Token blacklisting is disabled.'
+                'Durable session checks remain active; Redis denylist caching is unavailable.'
             )
     except Exception as e:
         _redis_available = False
@@ -252,7 +245,7 @@ def create_app(config_class=None):
             app.logger.warning(
                 f'I15: Redis connection failed: {e}. '
                 'Rate limiting will degrade to in-memory (per-worker) mode. '
-                'Token blacklisting is disabled. '
+                'Durable session checks remain active; Redis denylist caching is unavailable. '
                 'Check REDIS_URL and that the Redis service is healthy.'
             )
         else:
@@ -406,6 +399,11 @@ def create_app(config_class=None):
     from app.routes import register_blueprints
     register_blueprints(app)
 
+    from app.services.restore_transaction import init_restore_coordination, recover_unfinished
+    init_restore_coordination(app)
+    from app.services.deletion import init_deletion_cleanup
+    init_deletion_cleanup(app)
+
     # ------------------------------------------------------------------
     # S11: Per-route upload-size ceilings (early rejection).
     #
@@ -462,6 +460,19 @@ def create_app(config_class=None):
     # the victim's outstanding link. 5/hour is ample for genuine use (a user who
     # missed the first mail resends once or twice). A per-ACCOUNT cooldown in
     # resend_verification_email covers the distributed case this can't.
+    # Passkeys: both public endpoints are unauthenticated. The options call
+    # stores a short-lived challenge in Redis on every request, so an unbounded
+    # caller could grow that keyspace; the sign-in call runs signature
+    # verification. Neither is a credential-guessing surface (a passkey cannot
+    # be brute-forced), so these bound resource use rather than guessing.
+    _rate_limit('auth.passkey_sign_in_options',
+        '60 per hour',
+        error_message='Too many sign-in attempts. Please try again later.')
+
+    _rate_limit('auth.passkey_sign_in',
+        '30 per hour',
+        error_message='Too many sign-in attempts. Please try again later.')
+
     _rate_limit('auth.resend_verification_email',
         '5 per hour',
         error_message='Too many requests. Please try again later.')
@@ -516,7 +527,7 @@ def create_app(config_class=None):
         Returns 'user:<id>' when a valid JWT is present, otherwise falls back
         to the remote IP address so unauthenticated requests are still bounded.
         """
-        import jwt as _jwt  # PyJWT
+        from app.routes.auth import _decode_access_token
 
         token = request.cookies.get('access_token')
         if not token and 'Authorization' in request.headers:
@@ -526,11 +537,7 @@ def create_app(config_class=None):
                 pass
         if token:
             try:
-                data = _jwt.decode(
-                    token,
-                    app.config['JWT_SECRET_KEY'],
-                    algorithms=['HS256'],
-                )
+                data = _decode_access_token(token)
                 return f"user:{data['user_id']}"
             except Exception:
                 pass
@@ -750,29 +757,6 @@ def create_app(config_class=None):
     # STATIC FILE SERVING (React SPA)
     # ================================================================
 
-    @app.route('/health')
-    @limiter.exempt
-    def health_check():
-        """Health check endpoint for Docker/monitoring.
-
-        I15: Reports Redis connectivity. When redis_ok is False the response
-        body still indicates 'healthy' (so the container is not restarted) but
-        the redis_ok flag lets external monitors distinguish between full health
-        and a degraded state where rate limiting is per-worker only and token
-        blacklisting is disabled.
-        """
-        from app import _redis_available
-        # L5: single source of truth for the version — the build manifest that
-        # /api/app-version also serves (cached per-process), so monitoring keyed
-        # on /health no longer drifts from the real release.
-        from app.routes.system import _load_build_info
-        return jsonify({
-            'status': 'healthy',
-            'app': 'GearCargo',
-            'version': _load_build_info().get('version', '0.0.0'),
-            'redis_ok': _redis_available,
-        }), 200
-
     @app.route('/api/config', methods=['GET'])
     @limiter.exempt
     def public_config():
@@ -964,125 +948,31 @@ def create_app(config_class=None):
     def ratelimit_handler(e):
         return jsonify({'error': 'Rate limit exceeded', 'message': str(e.description)}), 429
     
-    # Initialize scheduler for background tasks
-    if not app.config.get('TESTING'):
-        from app.services import init_scheduler
-        init_scheduler(app)
-    
-    # Initialize default admin from environment variables
+    # Recover before schedulers, startup jobs or administrator initialization
+    # can write. A failure keeps the journal and request maintenance gate closed.
     with app.app_context():
-        init_default_admin(app)
+        try:
+            recover_unfinished()
+        except Exception:
+            app.logger.exception('Restore recovery pending; application access remains in maintenance.')
 
-    # Startup Ollama connectivity probe — runs once in a background thread so it
-    # never delays the first request.  Clears a stale ollama:offline_since Redis
-    # key if Ollama is actually reachable (e.g. after a container restart where the
-    # previous run set the key before dying).  Sets the key if Ollama is down so
-    # the banner appears immediately rather than waiting for the first AI request.
-    if not app.config.get('TESTING') and app.config.get('OLLAMA_ENABLED', True):
-        import threading
+    from app.services.calendar_outbox import init_calendar_outbox
+    init_calendar_outbox(app)
 
-        def _startup_ollama_probe():
-            import time
-            time.sleep(5)  # Give the app a moment to finish starting up
-            with app.app_context():
-                try:
-                    from app.services.ollama import (
-                        validate_ollama_url,
-                        ollama_record_success,
-                        ollama_record_failure,
-                    )
-                    import requests as _req
-                    base_url = app.config.get('OLLAMA_BASE_URL', '')
-                    validated = validate_ollama_url(base_url)
-                    # §14.2 — the prompt carries user vehicle data. Warn (once, at
-                    # startup) if it would cross the network in cleartext to a
-                    # PUBLIC IP. http to loopback/LAN/private DNS is fine; a public
-                    # IP over http is a real data-in-transit exposure.
-                    try:
-                        from urllib.parse import urlparse as _urlparse
-                        import ipaddress as _ipaddr
-                        _p = _urlparse(validated)
-                        if _p.scheme == 'http' and _p.hostname:
-                            try:
-                                if _ipaddr.ip_address(_p.hostname).is_global:
-                                    app.logger.warning(
-                                        '§14.2: OLLAMA_BASE_URL uses plain http to a public IP (%s) — '
-                                        'user data crosses the network in cleartext. Use https + a '
-                                        'private network/VPN, or firewall Ollama to the backend only.',
-                                        _p.hostname,
-                                    )
-                            except ValueError:
-                                pass  # hostname (not an IP literal) — can't classify; rely on operator + docs
-                    except Exception:
-                        pass
-                    resp = _req.get(f'{validated.rstrip("/")}/api/tags', timeout=5)
-                    if resp.status_code == 200:
-                        ollama_record_success()
-                        app.logger.info('Startup Ollama probe: reachable — offline marker cleared.')
-                    else:
-                        ollama_record_failure()
-                        app.logger.warning(
-                            f'Startup Ollama probe: HTTP {resp.status_code} — marked offline.'
-                        )
-                except Exception as exc:
-                    try:
-                        ollama_record_failure()
-                    except Exception:
-                        pass
-                    app.logger.warning(f'Startup Ollama probe: unreachable — {exc}')
+    from app.services.scheduler_ownership import register_scheduler_cli
+    register_scheduler_cli(app)
 
-        threading.Thread(target=_startup_ollama_probe, daemon=True, name='ollama-startup-probe').start()
+    # Initialize default admin only while application activity is permitted.
+    from app.services.restore_transaction import guarded_app_context, RestoreBusy
+    try:
+        with guarded_app_context(app):
+            if role == 'web':
+                init_default_admin(app)
+    except RestoreBusy:
+        app.logger.warning('Administrator initialization deferred until restore recovery completes.')
 
-    # Startup OCR backfill — any image attachment that is still unprocessed
-    # after a container restart (daemon threads are killed on container stop)
-    # gets re-queued here so users never see a permanent "Scanning…" state.
-    if not app.config.get('TESTING'):
-        import threading as _threading
-
-        def _startup_ocr_backfill():
-            import time
-            import os as _os
-            # Concurrency is governed by the module-level _OCR_SEMAPHORE in
-            # app.routes.attachments (max 2 concurrent).  No local semaphore
-            # needed here — _throttled_ocr_background handles throttling for
-            # all code paths (upload, retry, backfill) in one place.
-
-            def _run(a):
-                _throttled_ocr_background(app, a.id, a.filepath)
-
-            time.sleep(15)  # Let gunicorn workers start and DB pool warm up
-            with app.app_context():
-                try:
-                    from app.models.attachment import Attachment as _Att
-                    from app.routes.attachments import _throttled_ocr_background
-                    pending = (
-                        _Att.query
-                        .filter_by(ocr_processed=False)
-                        .all()
-                    )
-                    # Filter in Python — is_image is a @property, not a DB column
-                    image_pending = [
-                        a for a in pending
-                        if a.is_image and a.filepath and _os.path.exists(a.filepath)
-                    ]
-                    if image_pending:
-                        app.logger.info(
-                            f'OCR backfill: found {len(image_pending)} unprocessed image(s) — '
-                            f'queuing with max 2 concurrent threads.'
-                        )
-                        for att in image_pending:
-                            _threading.Thread(
-                                target=_run,
-                                args=(att,),
-                                daemon=False,  # non-daemon: survive until OCR is committed
-                                name=f'ocr-backfill-{att.id}',
-                            ).start()
-                    else:
-                        app.logger.info('OCR backfill: no pending images found.')
-                except Exception as exc:
-                    app.logger.warning(f'OCR backfill startup probe failed: {exc}')
-
-        _threading.Thread(target=_startup_ocr_backfill, daemon=True, name='ocr-backfill-probe').start()
+    from app.services.readiness import install_readiness
+    install_readiness(app, _redis_available)
 
     return app
 

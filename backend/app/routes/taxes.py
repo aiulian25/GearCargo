@@ -2,6 +2,9 @@
 GearCargo - Tax Entry Routes
 """
 
+from app.services.vehicle_archive import active_vehicle_condition
+from app.services.mutations import mutation_endpoint, commit_mutation
+
 from datetime import datetime, date, timezone
 from flask import Blueprint, request, jsonify, current_app
 from sqlalchemy import func, extract
@@ -51,6 +54,7 @@ def get_tax_entries(current_user):
 
 @taxes_bp.route('', methods=['POST'])
 @token_required
+@mutation_endpoint(TaxEntry)
 def create_tax_entry(current_user):
     """Create a new tax entry."""
     data = request.get_json()
@@ -151,7 +155,7 @@ def create_tax_entry(current_user):
     )
     
     db.session.add(entry)
-    db.session.commit()
+    commit_mutation()
     
     sync_entry_to_calendar_safe(current_user, 'tax', entry, 'create')
 
@@ -178,6 +182,7 @@ def get_tax_entry(current_user, entry_id):
 
 @taxes_bp.route('/<int:entry_id>', methods=['PUT'])
 @token_required
+@mutation_endpoint(TaxEntry, 'entry_id')
 def update_tax_entry(current_user, entry_id):
     """Update a tax entry."""
     entry = TaxEntry.query.join(Vehicle).filter(
@@ -282,7 +287,7 @@ def update_tax_entry(current_user, entry_id):
         else:
             entry.insurance_policy_id = None
 
-    db.session.commit()
+    commit_mutation()
 
     sync_entry_to_calendar_safe(current_user, 'tax', entry, 'update')
 
@@ -294,6 +299,7 @@ def update_tax_entry(current_user, entry_id):
 
 @taxes_bp.route('/<int:entry_id>/cancel', methods=['POST'])
 @token_required
+@mutation_endpoint(TaxEntry, 'entry_id')
 def cancel_tax_entry(current_user, entry_id):
     """Cancel a recurring tax entry, stopping future auto-generated payments."""
     entry = TaxEntry.query.join(Vehicle).filter(
@@ -309,7 +315,7 @@ def cancel_tax_entry(current_user, entry_id):
 
     entry.recurring = False
     entry.next_due_date = None
-    db.session.commit()
+    commit_mutation()
 
     sync_entry_to_calendar_safe(current_user, 'tax', entry, 'update')
 
@@ -321,6 +327,7 @@ def cancel_tax_entry(current_user, entry_id):
 
 @taxes_bp.route('/<int:entry_id>', methods=['DELETE'])
 @token_required
+@mutation_endpoint(TaxEntry, 'entry_id')
 def delete_tax_entry(current_user, entry_id):
     """Delete a tax entry."""
     entry = TaxEntry.query.join(Vehicle).filter(
@@ -335,7 +342,7 @@ def delete_tax_entry(current_user, entry_id):
     sync_entry_to_calendar_safe(current_user, 'tax', entry, 'delete')
 
     db.session.delete(entry)
-    db.session.commit()
+    commit_mutation()
 
     return jsonify({'message': 'Tax entry deleted'})
 
@@ -350,6 +357,7 @@ def get_expiring_taxes(current_user):
     cutoff = utc_today() + timedelta(days=days)
     
     entries = TaxEntry.query.join(Vehicle).filter(
+        active_vehicle_condition(TaxEntry),
         Vehicle.user_id == current_user.id,
         TaxEntry.due_date.isnot(None),
         TaxEntry.due_date <= cutoff,

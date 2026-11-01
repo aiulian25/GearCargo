@@ -2,6 +2,8 @@
 GearCargo - Repair Entry Routes
 """
 
+from app.services.mutations import mutation_endpoint, commit_mutation
+
 from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, current_app
 from sqlalchemy import func, case
@@ -88,6 +90,7 @@ def get_repair_entries(current_user):
 
 @repairs_bp.route('', methods=['POST'])
 @token_required
+@mutation_endpoint(RepairEntry)
 def create_repair_entry(current_user):
     """Create a new repair entry."""
     data = request.get_json()
@@ -127,7 +130,7 @@ def create_repair_entry(current_user):
         elif data.get('entry_date'):
             entry_date = parse_iso_date(data['entry_date'])
 
-        odometer = parse_optional_int(data.get('mileage') or data.get('odometer'),
+        odometer = parse_optional_int(data.get('mileage', data.get('odometer')),
                                       'Odometer must be a number')
         warranty_months = parse_optional_int(data.get('warranty_months'),
                                              'Warranty months must be a number')
@@ -178,7 +181,7 @@ def create_repair_entry(current_user):
         vehicle.current_mileage = entry.odometer
     
     db.session.add(entry)
-    db.session.commit()
+    commit_mutation()
 
     # Auto-sync to calendar if enabled
     if current_user.calendar_enabled:
@@ -211,6 +214,7 @@ def get_repair_entry(current_user, entry_id):
 
 @repairs_bp.route('/<int:entry_id>', methods=['PUT'])
 @token_required
+@mutation_endpoint(RepairEntry, 'entry_id')
 def update_repair_entry(current_user, entry_id):
     """Update a repair entry."""
     entry = RepairEntry.query.join(Vehicle).filter(
@@ -313,7 +317,7 @@ def update_repair_entry(current_user, entry_id):
     if 'warranty_covered' in data or 'under_warranty' in data:
         entry.under_warranty = bool(data.get('warranty_covered') or data.get('under_warranty'))
 
-    db.session.commit()
+    commit_mutation()
 
     return jsonify({
         'message': 'Repair entry updated',
@@ -323,6 +327,7 @@ def update_repair_entry(current_user, entry_id):
 
 @repairs_bp.route('/<int:entry_id>', methods=['DELETE'])
 @token_required
+@mutation_endpoint(RepairEntry, 'entry_id')
 def delete_repair_entry(current_user, entry_id):
     """Delete a repair entry."""
     entry = RepairEntry.query.join(Vehicle).filter(
@@ -334,7 +339,7 @@ def delete_repair_entry(current_user, entry_id):
         return jsonify({'error': 'Entry not found'}), 404
     
     db.session.delete(entry)
-    db.session.commit()
+    commit_mutation()
     
     return jsonify({'message': 'Repair entry deleted'})
 

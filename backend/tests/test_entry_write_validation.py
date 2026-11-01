@@ -27,8 +27,8 @@ PARKING_URL = '/api/parking'
 # '' is deliberately absent: an empty value means "no change" for the NOT NULL
 # `date` column and "clear it" for the nullable ones — not "malformed".
 BAD_DATES = ['garbage', '2026-13-45', '32/01/2026', 'null', '2026-02-30']
-# Falsy containers are absent too: create's `total_cost or cost or amount or 0`
-# chain treats them as "not provided", which is pre-existing intent.
+# GC-014 validates raw fields before truthiness-based route defaults; the
+# nonfinite/boolean/container boundaries have dedicated domain coverage.
 BAD_AMOUNTS = ['abc', 'ten euros']
 
 
@@ -288,7 +288,6 @@ from app.utils.entryparse import INVALID_NUMBER_KEY, invalid_field_response, par
     ('5000', 5000),          # HTML number inputs submit strings
     (5000, 5000),
     (5000.0, 5000),
-    ('12000.7', 12000),      # truncated, never rounded up past a real reading
     (0, 0),                  # a real value, NOT "empty"
     ('0', 0),
     (-50, -50),              # negative is the caller's business, not the parser's
@@ -303,7 +302,7 @@ def test_parse_optional_int_accepts_the_shapes_clients_send(raw, expected):
     'abc', '12k', '5,000',   # free text and thousands separators
     {}, [], object(),
     True, False,             # a bool is not a reading; int(True) == 1 would be a lie
-    'nan', 'inf', '-inf', '1e400',   # float() accepts these; int() then blows up
+    '12000.7', 12000.7, 'nan', 'inf', '-inf', '1e400',   # float() accepts these; int() then blows up
     '99999999999',           # valid int, but past PostgreSQL INTEGER
     99999999999,
     -99999999999,

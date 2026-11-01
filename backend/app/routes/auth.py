@@ -15,15 +15,19 @@ import requests
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app, g
 from markupsafe import escape  # M10: HTML-escape user-controlled values in f-string email bodies
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 import jwt
 
+from app.utils.timeutils import isoformat_utc
 from app import db, redis_client
 from app.models import User, ActivityLog, BlockedIP, BlockedDevice
 from app.utils.branding import app_mark_path
 from app.utils.security_audit import security_audit
+from app.services.offline_identity import offline_identity, offline_headers_match
+from app.services.session_availability import SessionStoreUnavailable
+from app.services import passkey_service
 from app.utils.entryparse import (
     INVALID_NUMBER_KEY,
     InvalidFieldError,
@@ -766,16 +770,12 @@ def register_device(user_id):
 
 
 # ============================================================
-# DB-BACKED SESSION FALLBACK (S01 — fail CLOSED when Redis is down)
+# DURABLE SESSION AUTHORITY (GC-026)
 # ============================================================
-#
-# Redis is the fast path for all session state. These helpers mirror every
-# session into the `user_sessions` table so that when Redis is unavailable the
-# auth layer validates against a durable store instead of failing OPEN. The
-# previous behaviour accepted any well-signed token whenever Redis was down,
-# silently disabling single-device enforcement, the 48h absolute-expiry wall,
-# and logout/blacklist revocation. This mirrors the existing DB-backed
-# account-lockout fallback pattern (_db_is_account_locked, above).
+# Every authorization checks the database, including while Redis is healthy.
+# Redis stores compatibility/cache data and an additional denylist; its absence
+# never establishes authorization. Upgrade migration invalidates legacy sessions
+# whose old best-effort mirrors could omit a Redis-only revocation.
 
 _REDIS_DEGRADED_LOG_INTERVAL = 300  # seconds — throttle "Redis down" warnings
 _redis_degraded_last_logged = 0.0
@@ -806,111 +806,101 @@ def _warn_redis_degraded(context):
     if now - _redis_degraded_last_logged >= _REDIS_DEGRADED_LOG_INTERVAL:
         _redis_degraded_last_logged = now
         current_app.logger.warning(
-            '[Security] Redis unavailable — using DB session fallback (%s). '
-            'Single-device enforcement, the 48h session wall and logout '
-            'revocation are now served from the user_sessions table.',
+            '[Security] Redis cache unavailable; durable session checks remain active (%s). '
+            'Single-device enforcement, the absolute session wall and logout '
+            'revocation are served from the user_sessions table.',
             context,
         )
 
 
-def _db_create_session(user_id, jti, absolute_expires_at):
-    """Upsert a durable session row. Best-effort — never raises (login must not
-    fail because the mirror write failed)."""
+def _session_unavailable(context, exc):
+    # Do not expose SQL, connection URLs, cache keys or credentials in responses.
+    current_app.logger.error('[Security] Session store unavailable during %s (%s)', context, type(exc).__name__)
+    try:
+        db.session.rollback()
+    except SQLAlchemyError:
+        pass
+    raise SessionStoreUnavailable() from exc
+
+
+def _db_create_session(user_id, jti, absolute_expires_at, *, replace_jti=None, invalidate_existing=False):
+    """Commit issuance and any preceding revocation together, before cache writes."""
     from app.models import UserSession
     try:
-        abs_naive = _to_naive_utc(absolute_expires_at)
-        existing = UserSession.query.filter_by(jti=jti).first()
+        now = _utcnow_naive()
+        if replace_jti:
+            # A conditional write serializes concurrent refreshes on both DBs.
+            changed = UserSession.query.filter_by(user_id=user_id, jti=replace_jti, revoked=False).filter(
+                UserSession.absolute_expires_at > now).update(
+                    {'revoked': True, 'revoked_at': now}, synchronize_session=False)
+            if changed != 1:
+                db.session.rollback()
+                return False
+        elif invalidate_existing:
+            UserSession.query.filter_by(user_id=user_id, revoked=False).update(
+                {'revoked': True, 'revoked_at': now}, synchronize_session=False)
+        existing = UserSession.query.filter_by(jti=jti).populate_existing().first()
         if existing:
-            existing.user_id = user_id
-            existing.absolute_expires_at = abs_naive
-            existing.revoked = False
-            existing.revoked_at = None
+            # Repeated admission must never revive a revoked identity or extend it.
+            if existing.user_id != user_id or existing.revoked or existing.absolute_expires_at <= now:
+                db.session.rollback()
+                return False
         else:
             db.session.add(UserSession(
-                user_id=user_id,
-                jti=jti,
-                absolute_expires_at=abs_naive,
+                user_id=user_id, jti=jti, absolute_expires_at=_to_naive_utc(absolute_expires_at),
                 user_agent=(request.headers.get('User-Agent', 'unknown') or 'unknown')[:255],
                 ip=(request.remote_addr or 'unknown')[:45],
             ))
         db.session.commit()
         _db_prune_user_sessions(user_id)
-    except Exception as e:
-        current_app.logger.error(f'[Security] DB session create failed for user {user_id}: {e}')
-        db.session.rollback()
+        return True
+    except SQLAlchemyError as exc:
+        _session_unavailable('issuance', exc)
 
 
 def _db_validate_session(user_id, jti):
-    """Return True only if a non-revoked, non-expired row exists. Fails CLOSED
-    on a missing row or any DB error — we never accept a session we cannot
-    positively verify."""
-    from app.models import UserSession
-    try:
-        row = UserSession.query.filter_by(user_id=user_id, jti=jti).first()
-        if not row or row.revoked:
-            return False
-        if row.absolute_expires_at and row.absolute_expires_at <= _utcnow_naive():
-            return False
-        return True
-    except Exception as e:
-        current_app.logger.error(f'[Security] DB session validation failed for user {user_id}: {e}')
-        db.session.rollback()
-        return False
+    return _db_get_session_data(user_id, jti) is not None
 
 
 def _db_get_session_data(user_id, jti):
-    """Return a dict mirroring the Redis session payload (or None). Used by the
-    refresh path to read absolute_expires_at when Redis is down."""
+    """Only a live durable row can establish identity or a refresh deadline."""
     from app.models import UserSession
     try:
-        row = UserSession.query.filter_by(user_id=user_id, jti=jti).first()
-        if not row or row.revoked:
+        row = UserSession.query.filter_by(user_id=user_id, jti=jti).populate_existing().first()
+        if not row or row.revoked or not row.absolute_expires_at or row.absolute_expires_at <= _utcnow_naive():
             return None
-        abs_dt = row.absolute_expires_at
-        created = row.created_at
         return {
-            'created_at': created.replace(tzinfo=timezone.utc).isoformat() if created else None,
-            'absolute_expires_at': abs_dt.replace(tzinfo=timezone.utc).isoformat() if abs_dt else None,
-            'user_agent': row.user_agent,
-            'ip': row.ip,
+            'created_at': row.created_at.replace(tzinfo=timezone.utc).isoformat() if row.created_at else None,
+            'absolute_expires_at': row.absolute_expires_at.replace(tzinfo=timezone.utc).isoformat(),
+            'user_agent': row.user_agent, 'ip': row.ip,
         }
-    except Exception as e:
-        current_app.logger.error(f'[Security] DB session fetch failed for user {user_id}: {e}')
-        db.session.rollback()
-        return None
+    except SQLAlchemyError as exc:
+        _session_unavailable('validation', exc)
 
 
 def _db_revoke_session(user_id, jti):
-    """Mark a single session revoked (logout)."""
+    """Acknowledge logout only after durable revocation commits."""
     from app.models import UserSession
     try:
-        row = UserSession.query.filter_by(user_id=user_id, jti=jti).first()
-        if row and not row.revoked:
-            row.revoked = True
-            row.revoked_at = _utcnow_naive()
-            db.session.commit()
-    except Exception as e:
-        current_app.logger.error(f'[Security] DB session revoke failed for user {user_id}: {e}')
-        db.session.rollback()
+        UserSession.query.filter_by(user_id=user_id, jti=jti, revoked=False).update(
+            {'revoked': True, 'revoked_at': _utcnow_naive()}, synchronize_session=False)
+        db.session.commit()
+    except SQLAlchemyError as exc:
+        _session_unavailable('revocation', exc)
 
 
 def _db_revoke_all_sessions(user_id):
-    """Mark every active session for a user revoked (single-device enforcement /
-    forced logout-everywhere)."""
     from app.models import UserSession
     try:
         UserSession.query.filter_by(user_id=user_id, revoked=False).update(
-            {'revoked': True, 'revoked_at': _utcnow_naive()},
-            synchronize_session=False,
-        )
+            {'revoked': True, 'revoked_at': _utcnow_naive()}, synchronize_session=False)
         db.session.commit()
-    except Exception as e:
-        current_app.logger.error(f'[Security] DB bulk session revoke failed for user {user_id}: {e}')
-        db.session.rollback()
+    except SQLAlchemyError as exc:
+        _session_unavailable('bulk revocation', exc)
 
 
 def _db_prune_user_sessions(user_id):
-    """Opportunistically delete this user's expired or revoked rows so the table
+    """Opportunistically delete this user's expired rows so the table
     stays bounded even if the daily cleanup job is not running. Best-effort;
     absence of a row is treated as 'invalid' by _db_validate_session, so deleting
     revoked rows does not weaken logout revocation."""
@@ -918,10 +908,7 @@ def _db_prune_user_sessions(user_id):
     try:
         UserSession.query.filter(
             UserSession.user_id == user_id,
-            db.or_(
-                UserSession.absolute_expires_at <= _utcnow_naive(),
-                UserSession.revoked.is_(True),
-            ),
+            UserSession.absolute_expires_at <= _utcnow_naive(),
         ).delete(synchronize_session=False)
         db.session.commit()
     except Exception:
@@ -934,8 +921,8 @@ def _db_prune_user_sessions(user_id):
 SESSION_SCAN_BATCH = 100
 
 
-def invalidate_user_sessions(user_id):
-    """Invalidate all sessions for a user (Redis + durable DB mirror)."""
+def _clear_cached_sessions(user_id):
+    """Best-effort cache cleanup; durable revocation always precedes it."""
     if redis_client:
         try:
             # R4-25: SCAN in bounded batches, never KEYS. KEYS walks the whole
@@ -958,29 +945,42 @@ def invalidate_user_sessions(user_id):
         except Exception as e:
             current_app.logger.error(f"Failed to invalidate sessions: {e}")
 
-    # S01: always revoke the durable DB mirror so single-device enforcement and
-    # logout hold even if Redis is down now or goes down later.
+
+
+def invalidate_user_sessions(user_id):
+    """Commit revocation before best-effort cache invalidation."""
     _db_revoke_all_sessions(user_id)
+    _clear_cached_sessions(user_id)
 
 
-def create_session(user_id, token_jti, absolute_expires_at=None):
-    """Create a new session in Redis and the durable DB mirror (S01).
+def create_session(user_id, token_jti, absolute_expires_at=None, *, replace_jti=None, invalidate_existing=False):
+    """Create a durable session, then publish its optional Redis cache.
 
     absolute_expires_at: timezone-aware UTC datetime for the hard session wall
-    (48 h from initial login, non-sliding).  When None (initial login) it
-    defaults to 48 hours from now.  The Redis TTL is set to the remaining
-    seconds until that wall so the key self-destructs at the right moment.
+    (non-sliding). When None (initial login), use the configured refresh
+    lifetime, with a 48-hour fallback if that setting is not a timedelta. The
+    Redis TTL is set to the remaining seconds until that wall.
     """
     now = datetime.now(timezone.utc)
     if absolute_expires_at is None:
-        # Initial login — derive from config TTL (default 48 h)
+        # Initial login — derive from the configured refresh lifetime.
         refresh_expires = current_app.config.get('JWT_REFRESH_TOKEN_EXPIRES')
         if isinstance(refresh_expires, timedelta):
             absolute_expires_at = now + refresh_expires
         else:
             absolute_expires_at = now + timedelta(hours=48)
 
-    # Redis fast path.
+    if not _db_create_session(user_id, token_jti, absolute_expires_at,
+                              replace_jti=replace_jti, invalidate_existing=invalidate_existing):
+        raise jwt.InvalidTokenError('Session no longer active')
+    if invalidate_existing:
+        _clear_cached_sessions(user_id)
+    if replace_jti and redis_client:
+        try:
+            redis_client.delete(f'session:{user_id}:{replace_jti}')
+        except Exception:
+            _warn_redis_degraded('refresh cache cleanup')
+
     if redis_client:
         try:
             # TTL = remaining seconds until the absolute wall
@@ -1001,76 +1001,26 @@ def create_session(user_id, token_jti, absolute_expires_at=None):
         except Exception as e:
             current_app.logger.error(f"Failed to create session in Redis: {e}")
 
-    # S01: durable DB mirror — written unconditionally so the fallback path can
-    # validate this exact session (and enforce its 48h wall) if Redis is, or
-    # later becomes, unavailable.
-    _db_create_session(user_id, token_jti, absolute_expires_at)
     return True
 
 
-def validate_session(user_id, token_jti):
-    """Validate that a session exists and is active.
-
-    S01: Redis is the fast path. When Redis is reachable its answer is
-    authoritative — a missing key means the session expired or was revoked, so
-    we reject. When Redis is unavailable or errors we no longer fail OPEN
-    (the old behaviour returned True); instead we consult the durable
-    user_sessions table and fail CLOSED if no valid, non-revoked, non-expired
-    row exists.
-    """
-    if redis_client:
+def validate_session(user_id, token_jti, token=None):
+    """Shared access/media/refresh policy; Redis can deny but never authorize."""
+    if token and redis_client:
         try:
-            session_key = f'session:{user_id}:{token_jti}'
-            exists = bool(redis_client.exists(session_key))
-            if not exists:
-                # Redis is healthy and the key is gone → genuinely expired/revoked.
-                current_app.logger.warning(f"Session {token_jti} not found for user {user_id}")
-            return exists
-        except Exception as e:
-            current_app.logger.error(f"Redis session validation failed: {e}")
-            _warn_redis_degraded('validate_session')
-            return _db_validate_session(user_id, token_jti)
-
-    # No Redis client at all → durable DB fallback (fail closed).
-    _warn_redis_degraded('validate_session (no redis_client)')
+            revoked = bool(redis_client.get(f'blacklist:{token}'))
+        except Exception:
+            _warn_redis_degraded('token denylist')
+        else:
+            if revoked:
+                _db_revoke_session(user_id, token_jti)
+                return False
     return _db_validate_session(user_id, token_jti)
 
 
 def get_session_data(user_id, token_jti):
-    """Retrieve and parse session data from Redis. Returns dict or None.
-
-    Sessions are stored as JSON (see the ``json.dumps`` write path). Any value
-    that is not valid JSON is treated as corrupt/untrusted and ignored — control
-    falls through to the durable DB session mirror below, so a bad blob forces a
-    safe re-login rather than being trusted.
-    """
-    if redis_client:
-        try:
-            session_key = f'session:{user_id}:{token_jti}'
-            raw = redis_client.get(session_key)
-            if raw:
-                if isinstance(raw, bytes):
-                    raw = raw.decode('utf-8', errors='replace')
-                try:
-                    return json.loads(raw)
-                except (json.JSONDecodeError, ValueError):
-                    # SEC-04: never eval Redis contents. Legacy Python-dict-string
-                    # sessions (pre-JSON) are long expired (TTL + 48h absolute
-                    # wall), so a non-JSON value is corrupt — ignore it and fall
-                    # through to the DB mirror below (→ re-login if none found).
-                    current_app.logger.warning(
-                        "Ignoring non-JSON session blob for jti %s; using DB mirror.",
-                        token_jti,
-                    )
-            # Key missing while Redis is healthy — fall through to the DB mirror.
-            # In practice validate_session has already rejected this case before
-            # we get here, so this only matters during a Redis outage.
-        except Exception as e:
-            current_app.logger.error(f"Failed to get session data for {token_jti}: {e}")
-            _warn_redis_degraded('get_session_data')
-
-    # S01: DB fallback so the 48h absolute-expiry wall is still enforced on
-    # refresh when Redis is unavailable.
+    # Cached JSON, including malformed/legacy payloads, is never trusted for the
+    # non-sliding deadline. A cache miss is not evidence of authorization either.
     return _db_get_session_data(user_id, token_jti)
 
 
@@ -1091,8 +1041,7 @@ def _auth_cookie_settings():
     return dict(
         httponly=True,
         secure=bool(current_app.config.get('JWT_COOKIE_SECURE', False)),
-        # SameSite=Strict: cookie never sent on cross-site requests — strongest
-        # CSRF protection for a private PWA with no cross-site form submissions.
+        # SameSite=Strict complements the origin and session-token CSRF boundary.
         samesite='Strict',
     )
 
@@ -1104,6 +1053,8 @@ def _set_auth_cookies(response, access_token, refresh_token):
     refresh_token — long-lived; scoped to /api/auth/refresh only, so it is
                     never accidentally sent on regular API calls.
     """
+    from app.services.cookie_csrf import rotate_csrf_token
+    rotate_csrf_token()
     settings = _auth_cookie_settings()
 
     access_expires = current_app.config.get('JWT_ACCESS_TOKEN_EXPIRES')
@@ -1120,6 +1071,8 @@ def _set_auth_cookies(response, access_token, refresh_token):
 
 def _clear_auth_cookies(response):
     """Expire both auth cookies (used on logout)."""
+    from app.services.cookie_csrf import rotate_csrf_token
+    rotate_csrf_token()
     settings = _auth_cookie_settings()
     response.set_cookie('access_token', '', max_age=0, path='/', **settings)
     response.set_cookie('refresh_token', '', max_age=0, path='/api/auth/refresh', **settings)
@@ -1219,6 +1172,18 @@ def _set_email_otp_secret(user, plaintext_secret: str) -> None:
     user.email_otp_secret = encrypt_field(plaintext_secret)
 
 
+def _decode_access_token(token):
+    """Verify an access credential; legacy or other-purpose JWTs fail closed."""
+    payload = jwt.decode(
+        token,
+        current_app.config['JWT_SECRET_KEY'],
+        algorithms=['HS256'],
+    )
+    if payload.get('type') != 'access':
+        raise jwt.InvalidTokenError('Invalid token type')
+    return payload
+
+
 def token_required(f):
     """Decorator to require a valid JWT access token.
 
@@ -1244,16 +1209,9 @@ def token_required(f):
         if not token:
             return jsonify({'error': 'Token is missing'}), 401
 
-        # Check if token is blacklisted
-        if redis_client and redis_client.get(f'blacklist:{token}'):
-            return jsonify({'error': 'Token has been revoked'}), 401
         
         try:
-            data = jwt.decode(
-                token,
-                current_app.config['JWT_SECRET_KEY'],
-                algorithms=['HS256']
-            )
+            data = _decode_access_token(token)
             current_user = db.session.get(User, data['user_id'])
             
             if not current_user:
@@ -1268,14 +1226,20 @@ def token_required(f):
                 # Old tokens without jti must re-login for security
                 return jsonify({'error': 'Session invalid. Please login again.', 'code': 'SESSION_INVALID'}), 401
             
-            if not validate_session(current_user.id, token_jti):
+            if not validate_session(current_user.id, token_jti, token):
                 return jsonify({'error': 'Session expired. You may have logged in from another device.', 'code': 'SESSION_EXPIRED'}), 401
             
             # Enforce domain policy on every request
             domain_policy_error = _enforce_login_domain_policy(current_user)
             if domain_policy_error:
                 return domain_policy_error
+            g.offline_identity = offline_identity(current_user, data)
+            if request.method in {'POST', 'PUT', 'PATCH', 'DELETE'} and not offline_headers_match(request.headers, g.offline_identity):
+                return jsonify({'error': 'This offline change belongs to another sign-in session.',
+                                'code': 'OFFLINE_IDENTITY_MISMATCH'}), 409
                 
+        except SQLAlchemyError as exc:
+            _session_unavailable('user lookup', exc)
         except jwt.ExpiredSignatureError:
             return jsonify({'error': 'Token has expired'}), 401
         except jwt.InvalidTokenError:
@@ -1283,6 +1247,7 @@ def token_required(f):
         
         return f(current_user, *args, **kwargs)
     
+    decorated._csrf_auth = 'bearer-or-cookie'
     return decorated
 
 
@@ -1333,16 +1298,9 @@ def token_required_query_param(f):
         if not token:
             return jsonify({'error': 'Token is missing'}), 401
         
-        # Check if token is blacklisted
-        if redis_client and redis_client.get(f'blacklist:{token}'):
-            return jsonify({'error': 'Token has been revoked'}), 401
         
         try:
-            data = jwt.decode(
-                token,
-                current_app.config['JWT_SECRET_KEY'],
-                algorithms=['HS256']
-            )
+            data = _decode_access_token(token)
             current_user = db.session.get(User, data['user_id'])
             
             if not current_user:
@@ -1356,7 +1314,7 @@ def token_required_query_param(f):
             if not token_jti:
                 return jsonify({'error': 'Session invalid. Please login again.', 'code': 'SESSION_INVALID'}), 401
             
-            if not validate_session(current_user.id, token_jti):
+            if not validate_session(current_user.id, token_jti, token):
                 return jsonify({'error': 'Session expired. You may have logged in from another device.', 'code': 'SESSION_EXPIRED'}), 401
             
             # Enforce domain policy on every request
@@ -1364,6 +1322,8 @@ def token_required_query_param(f):
             if domain_policy_error:
                 return domain_policy_error
                 
+        except SQLAlchemyError as exc:
+            _session_unavailable('user lookup', exc)
         except jwt.ExpiredSignatureError:
             return jsonify({'error': 'Token has expired'}), 401
         except jwt.InvalidTokenError:
@@ -1394,19 +1354,18 @@ def admin_required(f):
     return decorated
 
 
-def generate_tokens(user, invalidate_existing=True, absolute_expires_at=None):
+def generate_tokens(user, invalidate_existing=True, absolute_expires_at=None, offline_generation=None, replace_jti=None):
     """Generate access and refresh tokens with session tracking.
 
     absolute_expires_at: when provided (refresh path) the new session inherits
-    the original login's absolute wall so it cannot be refreshed past 48 h.
+    the original login's absolute wall so refresh cannot extend its lifetime.
     """
     # Generate unique session ID (JTI - JWT ID)
     token_jti = secrets.token_urlsafe(16)
+    offline_generation = offline_generation or secrets.token_hex(32)
     
     # Invalidate existing sessions if max_sessions is 1 (default)
     max_sessions = getattr(user, 'max_sessions', 1) or 1
-    if invalidate_existing and max_sessions == 1:
-        invalidate_user_sessions(user.id)
     
     # Get token expiry from config (already timedelta objects)
     access_expires = current_app.config.get('JWT_ACCESS_TOKEN_EXPIRES')
@@ -1424,9 +1383,11 @@ def generate_tokens(user, invalidate_existing=True, absolute_expires_at=None):
     access_token = jwt.encode(
         {
             'user_id': user.id,
+            'type': 'access',
             'email': user.email,
             'is_admin': user.is_admin,
             'jti': token_jti,  # Session identifier
+            'offline_generation': offline_generation,
             'exp': access_exp
         },
         current_app.config['JWT_SECRET_KEY'],
@@ -1438,15 +1399,16 @@ def generate_tokens(user, invalidate_existing=True, absolute_expires_at=None):
             'user_id': user.id,
             'type': 'refresh',
             'jti': token_jti,  # Same session identifier
+            'offline_generation': offline_generation,
             'exp': refresh_exp
         },
         current_app.config['JWT_SECRET_KEY'],
         algorithm='HS256'
     )
     
-    # Create session in Redis, propagating the absolute expiry from the
-    # original login (non-sliding 48 h enforcement).
-    create_session(user.id, token_jti, absolute_expires_at=absolute_expires_at)
+    # Commit the durable session, propagating the original non-sliding deadline.
+    create_session(user.id, token_jti, absolute_expires_at=absolute_expires_at,
+                   replace_jti=replace_jti, invalidate_existing=invalidate_existing and max_sessions == 1)
     
     return access_token, refresh_token
 
@@ -2082,54 +2044,36 @@ def refresh_token():
         if not token_jti:
             return jsonify({'error': 'Session invalid. Please login again.', 'code': 'SESSION_INVALID'}), 401
         
-        if not validate_session(user.id, token_jti):
+        if not validate_session(user.id, token_jti, refresh):
             return jsonify({'error': 'Session expired. Please login again.', 'code': 'SESSION_EXPIRED'}), 401
 
-        # Enforce the absolute 48-hour session wall.
+        # Enforce the configured absolute session wall.
         # Read the original session's absolute_expires_at so it is propagated
         # into the new session (the window does NOT slide on each refresh).
-        absolute_expires_at = None
         session_data = get_session_data(user.id, token_jti)
-        if session_data and session_data.get('absolute_expires_at'):
-            try:
-                absolute_expires_at = datetime.fromisoformat(session_data['absolute_expires_at'])
-                if absolute_expires_at <= datetime.now(timezone.utc):
-                    return jsonify({
-                        'error': 'Session expired after 48 hours. Please login again.',
-                        'code': 'SESSION_EXPIRED'
-                    }), 401
-            except (ValueError, TypeError):
-                # Old session without absolute_expires_at — allow it this once;
-                # the new session will set the wall going forward.
-                absolute_expires_at = None
+        if not session_data:
+            return jsonify({'error': 'Session expired. Please login again.', 'code': 'SESSION_EXPIRED'}), 401
+        absolute_expires_at = datetime.fromisoformat(session_data['absolute_expires_at'])
 
-        # H4: rotate the session. Mint a NEW session (new jti), then REVOKE the
+        # H4: atomically mint a NEW session (new jti) and revoke the
         # one presented on this refresh so the previous refresh+access token pair
         # cannot be replayed after rotation. The new session inherits the same
-        # 48h absolute wall (absolute_expires_at above), so rotation never slides
+        # absolute wall (absolute_expires_at above), so rotation never slides
         # the window. invalidate_existing=False so only THIS jti is revoked, not
         # every other device the user is signed in on.
         old_jti = token_jti
-        access_token, new_refresh = generate_tokens(user, invalidate_existing=False, absolute_expires_at=absolute_expires_at)
-
-        # Revoke the old session AFTER the new one exists, so a failure here can
-        # never leave the user with zero valid sessions. Redis fast path + the
-        # durable DB mirror (so revocation holds even if Redis is/goes down);
-        # both are idempotent. A concurrent double-refresh is de-duplicated on
-        # the client (single-flight refresh in services/api.js) so the 2nd..Nth
-        # request never presents this just-revoked token (A4).
-        if redis_client:
-            try:
-                redis_client.delete(f'session:{user.id}:{old_jti}')
-            except Exception:
-                pass
-        _db_revoke_session(user.id, old_jti)
+        access_token, new_refresh = generate_tokens(
+            user, invalidate_existing=False, absolute_expires_at=absolute_expires_at,
+            offline_generation=offline_identity(user, payload)['generation'], replace_jti=old_jti,
+        )
 
         # Deliver via cookies only (S05); non-browser clients read Set-Cookie.
         resp = jsonify({'message': 'Token refreshed'})
         _set_auth_cookies(resp, access_token, new_refresh)
         return resp
         
+    except SQLAlchemyError as exc:
+        _session_unavailable('refresh lookup', exc)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Refresh token expired'}), 401
     except jwt.InvalidTokenError:
@@ -2161,6 +2105,9 @@ def logout(current_user):
     except Exception:
         pass
 
+    if token_jti:
+        _db_revoke_session(current_user.id, token_jti)
+
     if redis_client:
         try:
             # Blacklist token for its remaining lifetime (skip if already expired).
@@ -2174,12 +2121,6 @@ def logout(current_user):
         except Exception:
             pass
 
-    # S01: revoke the durable DB session so logout holds even if Redis is down
-    # now or goes down later — the DB-fallback validation path rejects revoked
-    # (or pruned/absent) rows.
-    if token_jti:
-        _db_revoke_session(current_user.id, token_jti)
-    
     # Log logout
     ActivityLog.log(
         event_type='logout',
@@ -2200,6 +2141,14 @@ def logout(current_user):
 def get_current_user(current_user):
     """Get current user profile."""
     return jsonify(current_user.to_dict())
+
+
+@auth_bp.route('/offline-identity', methods=['GET'])
+@token_required
+def get_offline_identity(current_user):
+    response = jsonify(g.offline_identity)
+    response.headers['Cache-Control'] = 'no-store'
+    return response
 
 
 @auth_bp.route('/me', methods=['PUT'])
@@ -2931,9 +2880,8 @@ def verify_reset_token():
     user.set_password(new_password)
     user.password_reset_token = None
     user.password_reset_expires = None
-    db.session.commit()
 
-    # Invalidate all existing sessions after a password reset (defence in depth).
+    # Commit the password change and revocation together.
     invalidate_user_sessions(user.id)
 
     return jsonify({'message': 'Password reset successfully'})
@@ -3785,7 +3733,7 @@ def get_user_security_questions(current_user):
     return jsonify({
         'configured': True,
         'questions': current_user.get_security_questions(),
-        'set_at': current_user.security_questions_set_at.isoformat() if current_user.security_questions_set_at else None
+        'set_at': isoformat_utc(current_user.security_questions_set_at) if current_user.security_questions_set_at else None
     })
 
 
@@ -4130,9 +4078,7 @@ def reset_password_with_token():
     user.password_reset_token = None
     user.password_reset_expires = None
     user.must_change_password = False
-    db.session.commit()
-    
-    # Invalidate all existing sessions for security
+    # Commit the password change and revocation together.
     invalidate_user_sessions(user.id)
     
     # Log password reset
@@ -4157,3 +4103,191 @@ def reset_password_with_token():
         'message': 'Password reset successfully. Please login with your new password.',
         'strength': strength
     })
+
+
+# ---------------------------------------------------------------------------
+# Passkeys (WebAuthn)
+#
+# A passkey replaces the password and the code in one step: enrolment and
+# sign-in both require user verification, so the device has already proven who
+# is present. Sign-in therefore issues tokens directly instead of returning
+# 'requires_2fa'.
+# ---------------------------------------------------------------------------
+
+def _passkey_refusal(error):
+    """A refused ceremony, carrying the key the client translates."""
+    return jsonify({'error': 'Passkey refused', 'message_key': error.message_key}), 400
+
+
+@auth_bp.route('/passkeys', methods=['GET'])
+@token_required
+def list_user_passkeys(current_user):
+    """The caller's passkeys, and whether this deployment can use any."""
+    return jsonify({
+        'available': passkey_service.passkeys_available(),
+        'passkeys': passkey_service.list_passkeys(current_user.id),
+    })
+
+
+@auth_bp.route('/passkeys/options', methods=['POST'])
+@token_required
+def passkey_enrolment_options(current_user):
+    """Challenge for adding a passkey to the signed-in account."""
+    try:
+        return jsonify(passkey_service.registration_options(current_user))
+    except passkey_service.PasskeyError as error:
+        return _passkey_refusal(error)
+
+
+@auth_bp.route('/passkeys', methods=['POST'])
+@token_required
+def add_user_passkey(current_user):
+    """Store a passkey the browser just created."""
+    data = request.get_json(silent=True) or {}
+    credential = data.get('credential')
+    if not isinstance(credential, dict):
+        return jsonify({'error': 'Invalid request body'}), 400
+
+    try:
+        passkey = passkey_service.verify_registration(
+            current_user, credential, data.get('name'))
+    except passkey_service.PasskeyError as error:
+        return _passkey_refusal(error)
+
+    security_audit.log(
+        'passkey_added',
+        user_id=current_user.id,
+        user_email=current_user.email,
+        details={'name': passkey.name},
+        severity='WARNING',
+    )
+    ActivityLog.log(
+        event_type='passkey_added',
+        event_category='auth',
+        user_id=current_user.id,
+        description=f'Passkey added: {passkey.name}',
+        success=True,
+    )
+    return jsonify({'message': 'Passkey added', 'passkey': passkey.to_dict(
+        passkey.relying_party_id)}), 201
+
+
+@auth_bp.route('/passkeys/<int:passkey_id>', methods=['DELETE'])
+@token_required
+def remove_user_passkey(current_user, passkey_id):
+    """Forget one of the caller's passkeys."""
+    try:
+        name = passkey_service.delete_passkey(current_user.id, passkey_id)
+    except passkey_service.PasskeyError as error:
+        return jsonify({'error': 'Passkey not found',
+                        'message_key': error.message_key}), 404
+
+    security_audit.log(
+        'passkey_removed',
+        user_id=current_user.id,
+        user_email=current_user.email,
+        details={'name': name},
+        severity='WARNING',
+    )
+    ActivityLog.log(
+        event_type='passkey_removed',
+        event_category='auth',
+        user_id=current_user.id,
+        description=f'Passkey removed: {name}',
+        success=True,
+    )
+    return jsonify({'message': 'Passkey removed'})
+
+
+@auth_bp.route('/passkeys/available', methods=['GET'])
+def passkeys_offered_here():
+    """Whether this deployment can host a passkey at all.
+
+    The sign-in page has no session yet, so it cannot ask through the
+    authenticated list. This discloses nothing the hostname does not: browsers
+    only keep passkeys for a site reached by name.
+    """
+    return jsonify({'available': passkey_service.passkeys_available()})
+
+
+@auth_bp.route('/passkeys/login/options', methods=['POST'])
+def passkey_sign_in_options():
+    """Challenge for signing in. Names no account: passkeys here are discoverable."""
+    try:
+        return jsonify(passkey_service.authentication_options())
+    except passkey_service.PasskeyError as error:
+        return _passkey_refusal(error)
+
+
+@auth_bp.route('/passkeys/login', methods=['POST'])
+def passkey_sign_in():
+    """Sign in with a passkey, which satisfies both steps on its own."""
+    data = request.get_json(silent=True) or {}
+    credential = data.get('credential')
+    if not isinstance(credential, dict):
+        return jsonify({'error': 'Invalid request body'}), 400
+
+    ip_address = get_real_client_ip()
+    try:
+        passkey = passkey_service.verify_authentication(credential)
+    except passkey_service.PasskeyError as error:
+        ActivityLog.log(
+            event_type='login_failed',
+            event_category='auth',
+            description='Passkey sign-in refused',
+            success=False,
+            extra_data={'method': 'passkey', 'ip_address': ip_address},
+        )
+        return jsonify({'error': 'Passkey refused',
+                        'message_key': error.message_key}), 401
+
+    user = db.session.get(User, passkey.user_id)
+    if user is None or not user.is_active:
+        db.session.rollback()
+        return jsonify({'error': 'Passkey refused',
+                        'message_key': passkey_service.MESSAGE_REFUSED}), 401
+
+    domain_policy_error = _enforce_login_domain_policy(user)
+    if domain_policy_error:
+        db.session.rollback()
+        return domain_policy_error
+
+    new_device, device_info = is_new_device(user.id)
+    user.last_login = datetime.now(timezone.utc)
+    db.session.commit()
+
+    access_token, refresh_token = generate_tokens(user)
+
+    if user.login_alerts_enabled:
+        register_device(user.id)
+        if new_device and current_app.config.get('MAIL_ENABLED'):
+            try:
+                from app.services.email_service import send_new_login_alert
+                send_new_login_alert(user, device_info)
+            except Exception as exc:
+                current_app.logger.warning(f'Failed to send new device login alert: {exc}')
+
+    ActivityLog.log(
+        event_type='login_success',
+        event_category='auth',
+        user_id=user.id,
+        description=f'Successful passkey login for: {user.email}',
+        success=True,
+        extra_data={
+            'method': 'passkey',
+            'passkey': passkey.name,
+            'used_2fa': True,
+            'new_device': new_device,
+            'ip_address': ip_address,
+        },
+    )
+    security_audit.login_success(user.id, user.email, new_device, None)
+
+    resp = jsonify({
+        'message': 'Login successful',
+        'user': user.to_dict(),
+        'new_device': new_device,
+        'suspicious_location': False,
+    })
+    _set_auth_cookies(resp, access_token, refresh_token)
+    return resp

@@ -1,8 +1,10 @@
-const KM_PER_MILE = 1.609344
+export const KM_PER_MILE = 1.609344
+export const LITERS_PER_GALLON_UK = 4.54609
+export const LITERS_PER_GALLON_US = 3.785411784
 // L/100km → MPG conversion factors. US and Imperial (UK) gallons differ, so a
 // miles user's MPG must use the right one or the figure is ~20% off (F16).
-const MPG_US = 235.215   // US gallon (3.785 L)
-const MPG_UK = 282.481   // Imperial gallon (4.546 L)
+const MPG_US = 100 * LITERS_PER_GALLON_US / KM_PER_MILE
+const MPG_UK = 100 * LITERS_PER_GALLON_UK / KM_PER_MILE
 
 export function normalizeDistanceUnit(unit) {
   const normalized = String(unit || '').trim().toLowerCase()
@@ -15,13 +17,14 @@ export function normalizeDistanceUnit(unit) {
 /**
  * Resolve which gallon system a user is on: 'us' or 'uk'.
  *
- * The US is the exception — everyone else on miles (the UK and other Imperial
- * regions) uses Imperial MPG. Signals are checked in order of reliability:
+ * Explicit US/imperial volume choice wins. For legacy preferences, signals are:
  * explicit country_preference, then currency (USD→us / GBP→uk). Falls back to
  * 'uk' (the app's default region: default currency GBP, £), so a miles user is
  * only ever shown US MPG when there's a positive US signal.
  */
-export function resolveFuelSystem({ country, currency } = {}) {
+export function resolveFuelSystem({ country, currency, volumeUnit } = {}) {
+  if (volumeUnit === 'gallons_us') return 'us'
+  if (volumeUnit === 'gallons_uk') return 'uk'
   const c = String(country || '').toUpperCase()
   if (c === 'US' || c === 'USA') return 'us'
   if (c === 'GB' || c === 'UK') return 'uk'
@@ -85,20 +88,19 @@ export function formatFuelEconomy(valueLPer100Km, distanceUnit, decimals = 1, op
 }
 
 // ── Volume unit (F27) ────────────────────────────────────────────────────────
-// Storage is ALWAYS litres (single canonical unit, like km for distance).
+// Storage is ALWAYS litres; distances retain each vehicle's declared unit.
 // These helpers convert at the display/input boundary when the user's
-// volume_unit preference is 'gallons'; the gallon system (UK 4.54609 L vs
-// US 3.78541 L) follows the same resolveFuelSystem signals as MPG (F16).
+// volume_unit preference is gallons_us/gallons_uk. Legacy 'gallons' retains
+// the existing regional fallback; no stored quantities are converted.
 
-export const LITERS_PER_GALLON_UK = 4.54609
-export const LITERS_PER_GALLON_US = 3.78541
 
 export function usesGallons(user) {
-  return user?.volume_unit === 'gallons'
+  return ['gallons', 'gallons_us', 'gallons_uk'].includes(user?.volume_unit)
 }
 
 function gallonFactor(user) {
   const system = resolveFuelSystem({
+    volumeUnit: user?.volume_unit,
     country: user?.country_preference,
     currency: user?.currency,
   })
@@ -133,9 +135,42 @@ export function displayPriceToPerLiter(price, user) {
   return usesGallons(user) ? v / gallonFactor(user) : v
 }
 
-/** Localized short unit label: 'L' or 'gal'. */
+/** Localized volume label, including the gallon standard. */
 export function volumeUnitLabel(user, t) {
-  return usesGallons(user)
-    ? ((t && t('units.gallons')) || 'gal')
-    : ((t && t('units.liters')) || 'L')
+  if (!usesGallons(user)) return (t && t('units.liters')) || 'L'
+  const system = resolveFuelSystem({ volumeUnit: user?.volume_unit, country: user?.country_preference, currency: user?.currency })
+  return system === 'us' ? ((t && t('units.gallonsUs')) || 'US gal') : ((t && t('units.gallonsUk')) || 'imp gal')
+}
+
+const sameInput = (left, right) => {
+  if (left == null || left === '' || right == null || right === '') return String(left ?? '') === String(right ?? '')
+  return Number.isFinite(Number(left)) && Number.isFinite(Number(right))
+    ? Number(left) === Number(right) : left === right
+}
+
+/** Build an edit patch without converting unchanged rounded display values. */
+export function fuelFormPayload(data, user, initialValues = null) {
+  const payload = { ...data }
+  if (initialValues) {
+    for (const key of Object.keys(payload)) {
+      const numeric = ['liters', 'price_per_liter', 'total_cost', 'mileage'].includes(key)
+      if (numeric ? sameInput(data[key], initialValues[key]) : data[key] === initialValues[key]) delete payload[key]
+    }
+  }
+  if ('liters' in payload) payload.liters = data.liters === '' ? null : displayVolumeToLiters(data.liters, user)
+  if ('price_per_liter' in payload) payload.price_per_liter = data.price_per_liter === '' ? null : displayPriceToPerLiter(data.price_per_liter, user)
+  if ('total_cost' in payload) payload.total_cost = data.total_cost === '' ? null : Number(data.total_cost)
+  if ('mileage' in payload) payload.mileage = data.mileage === '' ? null : Number(data.mileage)
+  return payload
+}
+
+/** Quantity edits recalculate from unchanged canonical quantities where possible. */
+export function editedFuelTotal(data, user, initialValues, originalEntry) {
+  const volumeChanged = !initialValues || !sameInput(data.liters, initialValues.liters)
+  const priceChanged = !initialValues || !sameInput(data.price_per_liter, initialValues.price_per_liter)
+  if (!volumeChanged && !priceChanged) return null
+  const liters = volumeChanged ? displayVolumeToLiters(data.liters, user) : originalEntry?.liters
+  const price = priceChanged ? displayPriceToPerLiter(data.price_per_liter, user) : originalEntry?.price_per_liter
+  if (data.liters === '' || data.price_per_liter === '' || liters == null || price == null) return null
+  return (Number(Number(liters).toFixed(2)) * Number(Number(price).toFixed(3))).toFixed(2)
 }

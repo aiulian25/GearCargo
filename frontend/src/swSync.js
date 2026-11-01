@@ -1,47 +1,21 @@
-/**
- * GearCargo - Background-sync replay helper
- *
- * Extracted from sw.js `onSync` (Step 6 / H3) so the per-entry replay decision
- * can be unit-tested with a mocked fetch. Behaviour is preserved EXACTLY:
- *
- *   - response.ok             → notify SYNC_SUCCESS, return {status:'success'}
- *   - 5xx or 429 (transient)  → THROW, so the caller re-queues the entry (ONE
- *                               unshift) and the browser retries the whole sync
- *                               later. Do NOT unshift here as well.
- *   - other 4xx (permanent)   → notify SYNC_REJECTED (so the UI is not falsely
- *                               told it synced) and return {status:'rejected'};
- *                               the entry is already shifted out, i.e. dropped.
- *
- * fetch() only rejects on a NETWORK failure — an HTTP error status still
- * RESOLVES, which is why the explicit `response.ok` check exists.
- *
- * Dependencies are injected so this stays pure and testable:
- *   fetchFn(request)        performs the network call (self.fetch in the SW)
- *   notifyClients(message)  posts a message to all controlled clients
- */
-export async function replayQueuedRequest(entry, { fetchFn, notifyClients }) {
+// Classify a replay without deleting data or announcing a save. The caller
+// persists this result before notifying pages; transport exceptions stay queued.
+export async function replayQueuedRequest(entry, { fetchFn, now = Date.now }) {
   const response = await fetchFn(entry.request.clone())
-
-  if (!response.ok) {
-    if (response.status >= 500 || response.status === 429) {
-      // Transient — signal failure; the caller re-queues and the browser retries.
-      throw new Error(`Replay failed with HTTP ${response.status}`)
-    }
-    // Permanent 4xx (401 session gone, 422 validation, …) — drop it, but tell
-    // the app so the user is NOT falsely told the write synced.
-    await notifyClients({
-      type: 'SYNC_REJECTED',
-      url: entry.request.url,
-      method: entry.request.method,
-      status: response.status,
-    })
-    return { status: 'rejected', httpStatus: response.status }
+  if (response.ok) return { status: 'success', data: await response.clone().json().catch(() => null) }
+  const parsed = await response.clone().json().catch(() => null)
+  const body = parsed && typeof parsed === 'object' ? parsed : {}
+  const code = ['OFFLINE_IDENTITY_MISMATCH', 'REVISION_CONFLICT', 'OPERATION_KEY_REUSED'].includes(body.code) ? body.code : null
+  const error = { httpStatus: response.status, code }
+  if ([401, 403].includes(response.status) || code === 'OFFLINE_IDENTITY_MISMATCH') {
+    return { status: 'sign_in_required', error }
   }
-
-  await notifyClients({
-    type: 'SYNC_SUCCESS',
-    url: entry.request.url,
-    method: entry.request.method,
-  })
-  return { status: 'success' }
+  if (response.status === 429 || response.status >= 500 || response.status === 408) {
+    const after = response.headers.get('Retry-After')
+    const delay = after && /^\d+$/.test(after) ? Number(after) * 1000 : Date.parse(after) - now()
+    return { status: 'retry', error, retryAt: now() + Math.max(30000, Number.isFinite(delay) ? Math.min(delay, 86400000) : 30000) }
+  }
+  if (response.status === 409) return { status: 'mutation_conflict', error,
+    current: code === 'REVISION_CONFLICT' ? body.current : null }
+  return { status: [400, 422].includes(response.status) ? 'validation_failed' : 'rejected', error }
 }

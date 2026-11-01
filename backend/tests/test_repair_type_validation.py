@@ -3,8 +3,8 @@ just create.
 
 PUT previously accepted arbitrary `repair_types` that POST rejects, corrupting
 by_type stats and the health endpoint's REPAIR_TYPE_TO_COMPONENTS matching.
-`update_repair_entry` now filters against the module-level VALID_REPAIR_TYPES and
-returns 400 when a selection is sent but nothing valid remains.
+GC-014 rejects any invalid enum member before persistence, preserving the
+original record instead of silently discarding part of the submitted selection.
 """
 
 from datetime import date
@@ -51,16 +51,15 @@ def test_update_all_invalid_types_rejected(app, client, auth_headers):
     assert _types(app, eid) == (["brakes"], "brakes")  # unchanged
 
 
-def test_update_filters_invalid_keeps_valid(app, client, auth_headers):
+def test_update_mixed_invalid_and_valid_types_rejects_entire_write(app, client, auth_headers):
     with app.app_context():
         uid, eid = _seed()
 
     resp = client.put(f"/api/repairs/{eid}", json={"repair_types": ["suspension", "bogus"]},
                       headers=auth_headers(uid))
-    assert resp.status_code == 200, resp.get_json()
-    types, primary = _types(app, eid)
-    assert types == ["suspension"]        # 'bogus' dropped
-    assert primary == "suspension"
+    assert resp.status_code == 400, resp.get_json()
+    assert resp.json["field"] == "repair_types"
+    assert _types(app, eid) == (["brakes"], "brakes")
 
 
 def test_update_multiple_valid_types_saved(app, client, auth_headers):

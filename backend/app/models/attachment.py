@@ -3,16 +3,24 @@ GearCargo - Attachment Model
 """
 
 from datetime import datetime
-from app.utils.timeutils import utc_naive_now
+from app.utils.timeutils import utc_naive_now, isoformat_utc
 from app import db
+from app.utils.revisions import next_revision
 
 
 class Attachment(db.Model):
-    """Attachment model for file uploads."""
+    """An unbound upload, vehicle document, or receipt owned with its parent.
+
+    Entry-linked receipts have the entry's owner and vehicle. Policy documents
+    have the policy's owner and vehicle. attachment_consistency enforces this
+    across ORM writes and parent moves before commit; no legacy links are guessed.
+    """
     
     __tablename__ = 'attachments'
     
     id = db.Column(db.Integer, primary_key=True)
+    revision = db.Column(db.BigInteger, nullable=False, default=1, server_default="1")
+    __mapper_args__ = {"version_id_col": revision, "version_id_generator": next_revision}
     
     # File info
     filename = db.Column(db.String(255), nullable=False)
@@ -29,6 +37,14 @@ class Attachment(db.Model):
     # OCR
     ocr_text = db.Column(db.Text)
     ocr_processed = db.Column(db.Boolean, default=False)
+    # NULL means legacy/unadmitted work; completed legacy text is never replayed.
+    ocr_state = db.Column(db.String(16), index=True)
+    ocr_attempts = db.Column(db.Integer, nullable=False, default=0, server_default='0')
+    ocr_generation = db.Column(db.Integer, nullable=False, default=0, server_default='0')
+    ocr_owner = db.Column(db.String(36))
+    ocr_lease_until = db.Column(db.DateTime)
+    ocr_next_attempt_at = db.Column(db.DateTime)
+    ocr_error = db.Column(db.String(40))
     vin_extracted = db.Column(db.String(17))  # If VIN found in document
     
     # Expiry tracking
@@ -80,6 +96,7 @@ class Attachment(db.Model):
         """Convert to dictionary."""
         return {
             'id': self.id,
+            'revision': self.revision,
             'filename': self.filename,
             'original_filename': self.original_filename,
             'file_type': self.file_type,
@@ -91,13 +108,34 @@ class Attachment(db.Model):
             'is_image': self.is_image,
             'is_pdf': self.is_pdf,
             'ocr_processed': self.ocr_processed,
+            **self.ocr_status(),
             'has_text': bool(self.ocr_text and self.ocr_text.strip()),
             'expires_at': self.expires_at.isoformat() if self.expires_at else None,
             'entry_id': self.entry_id,
             'vehicle_id': self.vehicle_id,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'created_at': isoformat_utc(self.created_at) if self.created_at else None,
             # URLs for viewing/downloading
             'url': f'/api/attachments/{self.id}/view',
             'download_url': f'/api/attachments/{self.id}/download',
             'view_url': f'/api/attachments/{self.id}/view',
         }
+
+    def ocr_status(self):
+        state = self.ocr_state or ('done' if self.ocr_processed else 'pending')
+        return {'ocr_state': state, 'ocr_attempts': self.ocr_attempts or 0,
+                'ocr_error': self.ocr_error,
+                'ocr_next_attempt_at': isoformat_utc(self.ocr_next_attempt_at) if self.ocr_next_attempt_at else None}
+
+
+class OcrSlot(db.Model):
+    """Three fixed coordination rows: admission (0) and processing slots (1/2)."""
+    __tablename__ = 'ocr_slots'
+    id = db.Column(db.Integer, primary_key=True)
+    revision = db.Column(db.BigInteger, nullable=False, default=0)
+    owner = db.Column(db.String(36))
+    # Operational identity, deliberately not an FK: deletion must never wait for OCR.
+    attachment_id = db.Column(db.Integer)
+    lease_until = db.Column(db.DateTime)
+    last_seen_at = db.Column(db.DateTime)
+    # Only queue consumers write this; synchronous web decoders do not.
+    consumer_seen_at = db.Column(db.DateTime)

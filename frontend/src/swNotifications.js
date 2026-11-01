@@ -27,6 +27,17 @@ export function parsePushData(eventData) {
   }
 }
 
+// Current producers nest the target in data; older notifications used url.
+// Only app-local navigation is supported, including already delivered links.
+export function notificationTarget(payload, origin) {
+  const raw = payload?.data?.url || payload?.url || '/'
+  try {
+    const url = new URL(raw, origin)
+    return url.origin === origin && ['http:', 'https:'].includes(url.protocol)
+      ? `${url.pathname}${url.search}${url.hash}` : '/'
+  } catch { return '/' }
+}
+
 /**
  * Find an already-open window showing `urlToOpen`, or null.
  *

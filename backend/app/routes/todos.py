@@ -2,6 +2,9 @@
 GearCargo - Todo Routes
 """
 
+from app.services.vehicle_archive import active_vehicle_condition
+from app.services.mutations import mutation_endpoint, commit_mutation
+
 from datetime import datetime
 from flask import Blueprint, request, jsonify
 
@@ -23,6 +26,8 @@ def get_todos(current_user):
     per_page = max(1, min(request.args.get('per_page', 20, type=int), 100))
     
     query = Todo.query.filter_by(user_id=current_user.id)
+    if status in ('pending',):
+        query = query.filter(active_vehicle_condition(Todo))
     
     if vehicle_id:
         query = query.filter(Todo.vehicle_id == vehicle_id)
@@ -47,6 +52,7 @@ def get_todos(current_user):
 
 @todos_bp.route('', methods=['POST'])
 @token_required
+@mutation_endpoint(Todo)
 def create_todo(current_user):
     """Create a new todo."""
     data = request.get_json()
@@ -95,7 +101,7 @@ def create_todo(current_user):
     )
     
     db.session.add(todo)
-    db.session.commit()
+    commit_mutation()
     
     return jsonify({
         'message': 'Todo created',
@@ -120,6 +126,7 @@ def get_todo(current_user, todo_id):
 
 @todos_bp.route('/<int:todo_id>', methods=['PUT'])
 @token_required
+@mutation_endpoint(Todo, 'todo_id')
 def update_todo(current_user, todo_id):
     """Update a todo."""
     todo = Todo.query.filter_by(
@@ -163,7 +170,7 @@ def update_todo(current_user, todo_id):
         else:
             todo.mark_incomplete()
     
-    db.session.commit()
+    commit_mutation()
     
     return jsonify({
         'message': 'Todo updated',
@@ -173,6 +180,7 @@ def update_todo(current_user, todo_id):
 
 @todos_bp.route('/<int:todo_id>', methods=['DELETE'])
 @token_required
+@mutation_endpoint(Todo, 'todo_id')
 def delete_todo(current_user, todo_id):
     """Delete a todo."""
     todo = Todo.query.filter_by(
@@ -184,13 +192,14 @@ def delete_todo(current_user, todo_id):
         return jsonify({'error': 'Todo not found'}), 404
     
     db.session.delete(todo)
-    db.session.commit()
+    commit_mutation()
     
     return jsonify({'message': 'Todo deleted'})
 
 
 @todos_bp.route('/<int:todo_id>/complete', methods=['POST'])
 @token_required
+@mutation_endpoint(Todo, 'todo_id')
 def complete_todo(current_user, todo_id):
     """Mark a todo as complete."""
     todo = Todo.query.filter_by(
@@ -201,13 +210,22 @@ def complete_todo(current_user, todo_id):
     if not todo:
         return jsonify({'error': 'Todo not found'}), 404
     
+    if not todo.completed and todo.recurring and todo.vehicle and todo.vehicle.archived:
+        return jsonify({'error': 'Restore the vehicle before completing a recurring task.', 'code': 'VEHICLE_ARCHIVED'}), 409
+
+    if todo.completed:
+        result = {'message': 'Todo completed', 'todo': todo.to_dict()}
+        successor = Todo.query.filter_by(completed_from_id=todo.id).first()
+        if successor is not None:
+            result['next_todo'] = successor.to_dict()
+        return jsonify(result)
     todo.mark_complete()
 
     # F15: a recurring todo spawns its next occurrence on completion (parity with
     # reminders). Needs a due_date + frequency to advance from; otherwise it just
     # completes terminally. Mirrors reminders.complete_reminder.
     next_todo = None
-    if todo.recurring and todo.frequency and todo.due_date:
+    if todo.recurring and todo.frequency and todo.due_date and not Todo.query.filter_by(completed_from_id=todo.id).first():
         from dateutil.relativedelta import relativedelta
         freq_value = todo.frequency_value or 1
         steps = {
@@ -219,6 +237,7 @@ def complete_todo(current_user, todo_id):
         step = steps.get(todo.frequency)
         if step:
             next_todo = Todo(
+                completed_from_id=todo.id,
                 user_id=todo.user_id,
                 vehicle_id=todo.vehicle_id,
                 title=todo.title,
@@ -232,7 +251,7 @@ def complete_todo(current_user, todo_id):
             )
             db.session.add(next_todo)
 
-    db.session.commit()
+    commit_mutation()
 
     resp = {'message': 'Todo completed', 'todo': todo.to_dict()}
     if next_todo is not None:
@@ -242,6 +261,7 @@ def complete_todo(current_user, todo_id):
 
 @todos_bp.route('/<int:todo_id>/incomplete', methods=['POST'])
 @token_required
+@mutation_endpoint(Todo, 'todo_id')
 def incomplete_todo(current_user, todo_id):
     """Mark a todo as incomplete."""
     todo = Todo.query.filter_by(
@@ -253,7 +273,7 @@ def incomplete_todo(current_user, todo_id):
         return jsonify({'error': 'Todo not found'}), 404
     
     todo.mark_incomplete()
-    db.session.commit()
+    commit_mutation()
     
     return jsonify({
         'message': 'Todo marked incomplete',

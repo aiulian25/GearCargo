@@ -2,9 +2,11 @@
 GearCargo - Attachments Routes
 """
 
+from app.services.vehicle_archive import active_vehicle_condition
+from app.services.mutations import mutation_endpoint, commit_mutation, defer_after_commit, after_rollback
+
 import os
 import uuid
-import threading
 import json as _json
 import re as _re
 import requests as _requests
@@ -23,6 +25,7 @@ from app.utils.entryparse import (
 )
 from app.routes.auth import token_required, token_required_query_param
 from app.utils.timeutils import utc_today
+from app.services.decoder_slots import DecoderBusy
 
 attachments_bp = Blueprint('attachments', __name__)
 
@@ -58,21 +61,6 @@ ALLOWED_EXTENSIONS = {
     'odt', 'ods', 'odp',
 }
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
-
-# Global concurrency limit for OCR (pytesseract is CPU-bound).
-# All code paths — upload, retry, startup backfill, admin backfill — share this
-# single semaphore so the ceiling is always respected, regardless of how many
-# threads are started from different call sites.
-#
-# S12: configurable via OCR_MAX_CONCURRENCY (default 2) so operators on small
-# boxes can lower it to 1 to keep CPU available for request handling, or raise it
-# on bigger hosts. (A dedicated task queue remains
-# the longer-term fix to fully isolate this CPU-heavy work from the web workers.)
-try:
-    _OCR_CONCURRENCY = max(1, int(os.environ.get('OCR_MAX_CONCURRENCY', '2')))
-except (TypeError, ValueError):
-    _OCR_CONCURRENCY = 2
-_OCR_SEMAPHORE = threading.Semaphore(_OCR_CONCURRENCY)
 
 # S13: Canonical extension → MIME mapping for every extension in ALLOWED_EXTENSIONS.
 # This replaces mimetypes.guess_type() (OS-dependent, could be manipulated) with a
@@ -222,15 +210,18 @@ def _transcode_heic_to_jpeg(src_path, dest_folder):
     path (mirroring the upload's write-then-activate flow), or ``None`` on
     failure. EXIF orientation is applied so a photo taken sideways is upright.
     """
-    from PIL import Image, ImageOps
+    from app.services.image_decoder import transcode_jpeg
     unique = f"{uuid.uuid4().hex}.jpg"
     temp = os.path.join(dest_folder, unique + '.tmp')
     try:
-        with Image.open(src_path) as im:
-            im = ImageOps.exif_transpose(im)   # honour iPhone rotation metadata
-            im = im.convert('RGB')             # drop alpha/ICC for a clean JPEG
-            im.save(temp, format='JPEG', quality=90, optimize=True)
+        transcode_jpeg(src_path, temp)
         os.chmod(temp, 0o640)
+    except DecoderBusy:
+        try:
+            os.remove(temp)
+        except OSError:
+            pass
+        raise
     except Exception as e:
         current_app.logger.warning(f"HEIC→JPEG transcode failed: {e}")
         try:
@@ -309,6 +300,7 @@ def get_attachments(current_user):
 
 @attachments_bp.route('', methods=['POST'])
 @token_required
+@mutation_endpoint(Attachment)
 def upload_attachment(current_user):
     """Upload a new attachment."""
     if 'file' not in request.files:
@@ -335,8 +327,13 @@ def upload_attachment(current_user):
     if not _validate_file_magic(file, ext):
         return jsonify({'error': 'File content does not match the declared file type'}), 400
 
-    # Validate vehicle if provided
-    vehicle_id = request.form.get('vehicle_id', type=int)
+    # Parse supplied IDs before resolving either parent or creating file bytes.
+    from app.services.domain_validation import validate_field
+    try:
+        vehicle_id = validate_field(Attachment, 'vehicle_id', request.form.get('vehicle_id') or None)
+        entry_id = validate_field(Attachment, 'entry_id', request.form.get('entry_id') or None)
+    except InvalidFieldError as invalid:
+        return invalid_field_response(invalid)
     if vehicle_id:
         vehicle = Vehicle.query.filter_by(
             id=vehicle_id,
@@ -346,7 +343,6 @@ def upload_attachment(current_user):
             return jsonify({'error': 'Vehicle not found'}), 404
     
     # Validate entry if provided (but skip for insurance documents which use InsurancePolicy not Entry)
-    entry_id = request.form.get('entry_id', type=int)
     # R4-33: the same allow-list the PUT applies — otherwise an arbitrary
     # category simply comes in through upload instead of edit.
     category = request.form.get('category', 'document')
@@ -357,17 +353,28 @@ def upload_attachment(current_user):
             'field': 'category',
         }), 400
     
+    parent = None
     if entry_id and category != 'insurance_document':
-        entry = Entry.query.filter_by(id=entry_id, user_id=current_user.id).first()
+        entry = Entry.query.filter_by(id=entry_id, user_id=current_user.id).with_for_update().first()
+        parent = entry
         if not entry:
             return jsonify({'error': 'Entry not found'}), 404
     elif entry_id and category == 'insurance_document':
         # Validate insurance policy exists
         from app.models.insurance import InsurancePolicy
-        policy = InsurancePolicy.query.filter_by(id=entry_id, user_id=current_user.id).first()
+        policy = InsurancePolicy.query.filter_by(id=entry_id, user_id=current_user.id).with_for_update().first()
+        parent = policy
         if not policy:
             return jsonify({'error': 'Insurance policy not found'}), 404
     
+    # GC-010: new receipt work must preserve its parent/vehicle tuple.
+    if parent is not None:
+        if vehicle_id is not None and vehicle_id != parent.vehicle_id:
+            return jsonify({'error': 'Receipt vehicle does not match its parent.', 'code': 'RECEIPT_PARENT_MISMATCH'}), 409
+        vehicle_id = parent.vehicle_id
+        if not Vehicle.query.filter_by(id=vehicle_id, user_id=current_user.id).first():
+            return jsonify({'error': 'Receipt parent has inconsistent vehicle ownership.', 'code': 'RECEIPT_PARENT_MISMATCH'}), 409
+
     # Generate unique filename
     original_filename = secure_filename(file.filename)
     ext = original_filename.rsplit('.', 1)[1].lower() if '.' in original_filename else ''
@@ -400,7 +407,11 @@ def upload_attachment(current_user):
     # supported format. The stored file (filename/filepath/type/size) becomes the
     # JPEG; original_filename keeps the user's .heic name for display/download.
     if ext in ('heic', 'heif'):
-        transcoded = _transcode_heic_to_jpeg(temp_path, user_folder)
+        try:
+            transcoded = _transcode_heic_to_jpeg(temp_path, user_folder)
+        except DecoderBusy as exc:
+            os.remove(temp_path)
+            return jsonify({'error': str(exc), 'code': 'IMAGE_PROCESSING_BUSY'}), 503
         try:
             os.remove(temp_path)  # drop the original HEIC temp either way
         except OSError:
@@ -414,6 +425,20 @@ def upload_attachment(current_user):
             size = os.path.getsize(temp_path)
         except OSError:
             pass
+    elif ext in {'png', 'jpg', 'jpeg', 'gif', 'webp'}:
+        from app.services.image_decoder import ImageDecodeError, validate_image
+        try:
+            validate_image(temp_path)
+        except (ImageDecodeError, DecoderBusy, OSError) as exc:
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+            message = str(exc) if isinstance(exc, (ImageDecodeError, DecoderBusy)) else 'Image processing unavailable. Please retry.'
+            return jsonify({'error': message}), 503 if isinstance(exc, DecoderBusy) else 400
+
+    from pathlib import Path
+    after_rollback(lambda: Path(temp_path).unlink(missing_ok=True))
 
     # Build DB record in memory (file not yet at its permanent path)
     attachment = Attachment(
@@ -452,9 +477,12 @@ def upload_attachment(current_user):
         if policy:
             policy.document_attachment_id = attachment.id
 
+    from app.services.ocr_queue import enqueue_attachment
+    enqueue_attachment(attachment)
+
     # Commit — on failure clean up the temp file and leave disk state unchanged
     try:
-        db.session.commit()
+        commit_mutation()
     except Exception as e:
         db.session.rollback()
         try:
@@ -466,348 +494,62 @@ def upload_attachment(current_user):
         )
         return jsonify({'error': 'Failed to save attachment'}), 500
 
-    # DB committed — atomically activate the file at its permanent path
-    try:
-        os.rename(temp_path, filepath)
-    except OSError:
-        import shutil
+    def activate_upload():
+        # DB committed — atomically activate the file at its permanent path
         try:
-            shutil.move(temp_path, filepath)
-        except OSError as e2:
-            current_app.logger.error(
-                f"Attachment file activation failed after successful DB commit "
-                f"for user {current_user.id}, attachment {attachment.id}: {e2}. "
-                f"Temp file left at {temp_path}"
-            )
+            os.rename(temp_path, filepath)
+        except OSError:
+            import shutil
+            try:
+                shutil.move(temp_path, filepath)
+            except OSError as e2:
+                current_app.logger.error(
+                    f"Attachment file activation failed after successful DB commit "
+                    f"for user {current_user.id}, attachment {attachment.id}: {e2}. "
+                    f"Temp file left at {temp_path}"
+                )
 
-    # Start background OCR for images (fire-and-forget, non-blocking).
-    # Routed through the task queue (thread backend by default; RQ when enabled).
-    # The global _OCR_SEMAPHORE (max 2 concurrent) still bounds CPU regardless of
-    # backend, so simultaneous uploads don't saturate tesseract.
-    if attachment.is_image:
-        from app.services.task_queue import enqueue_task
-        enqueue_task(run_ocr_task, attachment.id, filepath, description=f'ocr:{attachment.id}')
-    elif _is_pdf_attachment(attachment):
-        # F32 — PDFs get their embedded text layer extracted into the same
-        # ocr_text field, so search and AI parse work exactly like for images.
-        from app.services.task_queue import enqueue_task
-        enqueue_task(run_pdf_text_task, attachment.id, filepath, description=f'pdftext:{attachment.id}')
+
+    defer_after_commit(activate_upload)
 
     return jsonify({
         'message': 'File uploaded successfully',
         'attachment': attachment.to_dict(),
-        'ocr_status': 'pending' if (attachment.is_image or _is_pdf_attachment(attachment)) else None,
+        'ocr_status': ('pending' if attachment.ocr_state in ('queued', 'running', 'retry') else attachment.ocr_state),
     }), 201
 
 
-def _run_ocr_background(app, attachment_id: int, filepath: str) -> None:
-    """Run pytesseract on *filepath* and persist result for *attachment_id*.
+def _is_pdf_attachment(attachment):
+    return attachment.is_pdf or (attachment.filename or attachment.filepath or '').lower().endswith('.pdf')
 
-    Security:
-    - OCR text is capped at OCR_TEXT_MAX_CHARS to prevent huge DB entries.
-    - Null bytes and control characters (except newlines/tabs) are stripped.
-    - ocr_processed is set True even on failure so we never retry forever.
 
-    Quality pipeline:
-    1. EXIF transpose          — corrects phone camera orientation metadata.
-    2. Grayscale               — removes colour noise.
-    3. Upscale                 — brings short side to 1 500 px for ~300 DPI.
-    4. Local illumination fix  — divides each pixel by a heavily-blurred
-                                 background estimate; cancels shadows, uneven
-                                 flash, and paper gradients on receipts.
-    5. Auto-contrast stretch   — spreads the normalised histogram to 0–255.
-    6. Median denoise          — removes camera sensor salt-and-pepper noise.
-    7. Unsharp mask            — sharpens character edges without amplifying
-                                 noise.
-    8. Histogram binarisation  — converts to pure B/W; threshold chosen at
-                                 the 55th percentile so light receipt paper
-                                 maps to white and dark text maps to black.
-    9. OSD rotation            — tesseract detects and corrects orientation.
-   10. Confidence-filtered OCR — runs PSM 4 (single-column receipts) then
-                                 falls back to PSM 6; words below 40%
-                                 confidence are discarded so camera-noise
-                                 artefacts never reach the stored text.
-    """
-    OCR_TEXT_MAX_CHARS = 10_000
-    MIN_OCR_CONFIDENCE = 40   # discard tesseract words below this threshold
-    _CONTROL_CHARS = dict.fromkeys(range(32), None)
-    _CONTROL_CHARS.pop(9)   # keep tab
-    _CONTROL_CHARS.pop(10)  # keep newline
-    _CONTROL_CHARS.pop(13)  # keep carriage return
-    _STRIP_TABLE = str.maketrans(_CONTROL_CHARS)
-
-    ocr_text = None
+def _extract_pdf_text(filepath):
+    """Compatibility helper; production extraction runs in the bounded worker."""
+    from app.services.ocr_compute import extract_pdf_text
     try:
-        from PIL import Image, ImageOps, ImageFilter
-        import pytesseract
-        import numpy as np
-
-        img = Image.open(filepath)
-
-        # 1. Apply EXIF orientation — phone cameras store rotation in metadata;
-        #    without this, portrait photos are processed sideways or upside-down.
-        img = ImageOps.exif_transpose(img)
-
-        # 2. Normalise colour mode
-        if img.mode not in ('RGB', 'L'):
-            img = img.convert('RGB')
-
-        # 3. Convert to grayscale
-        gray = img.convert('L')
-
-        # 4. Upscale very small images — tesseract needs ~300 DPI equivalent.
-        #    1 500 px on the short side gives good accuracy for phone shots.
-        MIN_SHORT_SIDE = 1500
-        w, h = gray.size
-        if min(w, h) < MIN_SHORT_SIDE:
-            scale = MIN_SHORT_SIDE / min(w, h)
-            gray = gray.resize(
-                (int(w * scale), int(h * scale)),
-                Image.LANCZOS,
-            )
-
-        # 5. Local illumination normalisation — the most impactful step for
-        #    phone photos of receipts.  A heavy Gaussian blur (radius 25) gives
-        #    a smooth background-illumination estimate; dividing each pixel by
-        #    that estimate then scaling to 128 cancels shadows, flash gradients,
-        #    and paper curvature so the text contrast is equalised across the
-        #    whole image.
-        gray_arr = np.array(gray, dtype=np.float32)
-        bg_arr = np.array(
-            gray.filter(ImageFilter.GaussianBlur(radius=25)),
-            dtype=np.float32,
-        )
-        normalized_arr = np.clip(
-            gray_arr / (bg_arr + 1.0) * 128.0, 0, 255
-        ).astype(np.uint8)
-        gray = Image.fromarray(normalized_arr)
-
-        # 6. Auto-contrast stretch — spreads the normalised pixel values to
-        #    the full 0–255 range; 1% clip discards extreme outliers.
-        gray = ImageOps.autocontrast(gray, cutoff=1)
-
-        # 7. Median filter — removes salt-and-pepper noise without blurring
-        #    the character strokes.
-        gray = gray.filter(ImageFilter.MedianFilter(size=3))
-
-        # 8. Unsharp mask — make character edges crisp before binarisation.
-        gray = gray.filter(ImageFilter.UnsharpMask(radius=1.5, percent=200, threshold=3))
-
-        # 9. Histogram-based binarisation — compute the 55th-percentile
-        #    brightness value and use it as the black/white threshold.
-        #    The majority of a receipt is bright paper (white) and the
-        #    minority is dark text (black) so this percentile separates them
-        #    cleanly while clamped to [80, 220] for safety.
-        hist = gray.histogram()  # 256-bucket frequency list
-        total = sum(hist)
-        target = total * 0.55
-        cumsum, threshold = 0, 128
-        for i, count in enumerate(hist):
-            cumsum += count
-            if cumsum >= target:
-                threshold = i
-                break
-        threshold = max(80, min(220, threshold))
-        binary = gray.point(lambda p: 255 if p > threshold else 0)
-
-        # 10. OSD rotation — detect and correct text orientation.
-        #     Run on the binarised image for better OSD accuracy.
-        #     OSD can fail on low-text or highly-stylised images; ignore errors.
-        try:
-            osd = pytesseract.image_to_osd(
-                binary,
-                output_type=pytesseract.Output.DICT,
-                config='--psm 0',
-            )
-            rotate_angle = osd.get('rotate', 0)
-            if rotate_angle:
-                binary = binary.rotate(rotate_angle, expand=True)
-                app.logger.debug(
-                    'OCR attachment %s: rotated %d° to correct orientation',
-                    attachment_id, rotate_angle,
-                )
-        except Exception:
-            pass  # OSD unavailable or too little text — continue without rotation
-
-        # 11. Confidence-filtered OCR via image_to_data.
-        #     image_to_data returns per-word bounding boxes and confidence
-        #     scores (0–100).  We drop any word with confidence < MIN_OCR_CONFIDENCE
-        #     to eliminate camera-noise artefacts, then re-assemble the output
-        #     line-by-line preserving the original block/paragraph/line structure.
-        def _ocr_filtered(image, psm):
-            data = pytesseract.image_to_data(
-                image,
-                lang='eng+ron+spa',
-                config=f'--oem 1 --psm {psm} --dpi 300',
-                output_type=pytesseract.Output.DICT,
-            )
-            lines: dict = {}
-            for i in range(len(data['text'])):
-                word = (data['text'][i] or '').strip()
-                conf = int(data['conf'][i])
-                if not word or conf < 0:
-                    continue
-                key = (data['block_num'][i], data['par_num'][i], data['line_num'][i])
-                if key not in lines:
-                    lines[key] = []
-                if conf >= MIN_OCR_CONFIDENCE:
-                    lines[key].append(word)
-                # Low-confidence words are silently discarded
-            text_lines = [
-                ' '.join(words)
-                for key in sorted(lines)
-                for words in [lines[key]]
-                if words
-            ]
-            return '\n'.join(text_lines)
-
-        # PSM 4 = single column of variable-size text — ideal for receipts.
-        # Fall back to PSM 6 (uniform block) if PSM 4 yields very little.
-        raw = _ocr_filtered(binary, psm=4)
-        if len(raw.split()) < 5:
-            raw = _ocr_filtered(binary, psm=6)
-
-        cleaned = raw.strip().translate(_STRIP_TABLE)
-        # Collapse 3+ consecutive blank lines into a single blank line
-        cleaned = _re.sub(r'\n{3,}', '\n\n', cleaned)
-        ocr_text = cleaned[:OCR_TEXT_MAX_CHARS] or None
-
-    except Exception:
-        app.logger.warning(
-            'OCR failed for attachment %s', attachment_id, exc_info=True
-        )
-
-    with app.app_context():
-        try:
-            attachment = db.session.get(Attachment, attachment_id)
-            if attachment:
-                attachment.ocr_text = ocr_text
-                attachment.ocr_processed = True
-                db.session.commit()
-        except Exception:
-            db.session.rollback()
-            app.logger.error(
-                'OCR DB update failed for attachment %s', attachment_id, exc_info=True
-            )
-        finally:
-            # Always release the scoped session back to the pool when the
-            # background thread is done — prevents connection leaks.
-            db.session.remove()
-
-
-def _throttled_ocr_background(app, attachment_id: int, filepath: str) -> None:
-    """Acquire the global OCR semaphore, then delegate to _run_ocr_background.
-
-    Ensures at most _OCR_CONCURRENCY (2) scans run simultaneously across all
-    code paths (upload, retry, startup backfill, admin backfill).  Once a slot
-    is released, the next queued thread proceeds automatically — giving the
-    "2 at a time, then the next 2, …" rolling-window behaviour.
-    """
-    with _OCR_SEMAPHORE:
-        _run_ocr_background(app, attachment_id, filepath)
-
-
-def run_ocr_task(attachment_id: int, filepath: str) -> None:
-    """Backend-agnostic OCR entry point for the task queue (thread or RQ).
-
-    Picklable, import-by-reference (module-level) and primitive args, so RQ can
-    enqueue it. Runs inside an app context regardless of backend: the thread
-    backend pushes one before calling; the RQ worker pushes one for its
-    lifetime. As a safety net it creates a short-lived app if none is active.
-    """
-    from flask import current_app, has_app_context
-
-    if has_app_context():
-        _throttled_ocr_background(current_app._get_current_object(), attachment_id, filepath)
-    else:
-        from app import create_app
-        app = create_app()
-        with app.app_context():
-            _throttled_ocr_background(app, attachment_id, filepath)
-
-
-# ── PDF text extraction (F32) ────────────────────────────────────────────────
-
-def _is_pdf_attachment(attachment) -> bool:
-    """True when the stored file is a PDF (by stored filename/filepath)."""
-    name = (attachment.filename or attachment.filepath or '').lower()
-    return name.endswith('.pdf')
-
-
-def _extract_pdf_text(filepath: str):
-    """Extract the embedded text layer from a PDF (first 10 pages).
-
-    Returns cleaned text capped at 10 000 chars, or None when the PDF has no
-    text layer (scanned image-only PDFs) or cannot be parsed. Never raises.
-    """
-    OCR_TEXT_MAX_CHARS = 10_000
-    _CONTROL_CHARS = dict.fromkeys(range(32), None)
-    _CONTROL_CHARS.pop(9)
-    _CONTROL_CHARS.pop(10)
-    _CONTROL_CHARS.pop(13)
-    _STRIP_TABLE = str.maketrans(_CONTROL_CHARS)
-
-    try:
-        import re as _re
-        from pypdf import PdfReader
-
-        reader = PdfReader(filepath)
-        parts = []
-        for page in reader.pages[:10]:
-            try:
-                parts.append(page.extract_text() or '')
-            except Exception:
-                continue  # one bad page must not kill the rest
-        text = '\n'.join(p for p in parts if p).strip()
-        if not text:
-            return None
-        text = text.translate(_STRIP_TABLE)
-        text = _re.sub(r'[ \t]{2,}', ' ', text)
-        text = _re.sub(r'\n{3,}', '\n\n', text)
-        return text[:OCR_TEXT_MAX_CHARS] or None
+        return extract_pdf_text(filepath)
     except Exception:
         return None
 
 
-def _run_pdf_text_background(app, attachment_id: int, filepath: str) -> None:
-    """Extract a PDF's text layer and persist it exactly like image OCR does
-    (same ocr_text/ocr_processed fields, so search and AI parse work unchanged).
-    """
-    text = _extract_pdf_text(filepath)
-    if text is None:
-        app.logger.warning('PDF text extraction found no text for attachment %s', attachment_id)
-
-    with app.app_context():
-        try:
-            attachment = db.session.get(Attachment, attachment_id)
-            if attachment:
-                attachment.ocr_text = text
-                attachment.ocr_processed = True
-                db.session.commit()
-        except Exception:
-            db.session.rollback()
-            app.logger.error(
-                'PDF text DB update failed for attachment %s', attachment_id, exc_info=True
-            )
-        finally:
-            db.session.remove()
-
-
-def run_pdf_text_task(attachment_id: int, filepath: str) -> None:
-    """Backend-agnostic PDF-text entry point for the task queue (thread or RQ).
-
-    Mirrors run_ocr_task (module-level, primitive args → picklable for RQ).
-    pypdf is lightweight, so it doesn't take an OCR semaphore slot.
-    """
-    from flask import current_app, has_app_context
-
+def run_ocr_task(attachment_id, filepath):
+    """Drain legacy RQ messages into the durable queue; never run OCR in RQ/web."""
+    from flask import has_app_context
+    from app.services.ocr_queue import enqueue_attachment
+    from app.services.restore_transaction import guarded_app_context
     if has_app_context():
-        _run_pdf_text_background(current_app._get_current_object(), attachment_id, filepath)
+        app = current_app._get_current_object()
     else:
         from app import create_app
-        app = create_app()
-        with app.app_context():
-            _run_pdf_text_background(app, attachment_id, filepath)
+        app = create_app(process_role='worker')
+    with guarded_app_context(app):
+        attachment = db.session.get(Attachment, attachment_id)
+        if attachment and attachment.filepath == filepath:
+            enqueue_attachment(attachment)
+            db.session.commit()
+
+
+run_pdf_text_task = run_ocr_task
 
 
 @attachments_bp.route('/<int:attachment_id>', methods=['GET'])
@@ -846,6 +588,7 @@ def get_ocr_text(current_user, attachment_id):
 
     return jsonify({
         'ocr_processed': bool(attachment.ocr_processed),
+        **attachment.ocr_status(),
         'has_text': bool(attachment.ocr_text),
         'ocr_text': attachment.ocr_text or '',
     })
@@ -854,18 +597,10 @@ def get_ocr_text(current_user, attachment_id):
 @attachments_bp.route('/<int:attachment_id>/ocr/retry', methods=['POST'])
 @token_required
 def retry_ocr(current_user, attachment_id):
-    """Re-queue OCR scanning for an image attachment.
+    """Owner-only, rate-limited retry through bounded durable admission.
 
-    Security:
-    - Owner-only access (user_id filter).
-    - Image-only guard; non-images are rejected with 400.
-    - Resets ocr_processed=False and ocr_text=None so the background worker
-      re-runs from a clean state.
-    - Rate-limited to 10/hour/user via Flask-Limiter (registered in __init__.py).
-      This prevents a user from hammering tesseract with repeated retries.
-
-    Returns 202 Accepted immediately; the background thread runs asynchronously.
-    The caller should poll GET /api/attachments/<id>/ocr until ocr_processed=true.
+    Active work is reused. Terminal work gets a new generation; a failed/full
+    admission preserves the uploaded file and any previously completed text.
     """
     attachment = Attachment.query.filter_by(
         id=attachment_id,
@@ -881,28 +616,13 @@ def retry_ocr(current_user, attachment_id):
     if not attachment.filepath or not os.path.exists(attachment.filepath):
         return jsonify({'error': 'Attachment file not found on server'}), 404
 
-    # Reset OCR state so the background worker re-runs
-    attachment.ocr_processed = False
-    attachment.ocr_text = None
-    try:
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
-        current_app.logger.error('OCR retry: DB reset failed for attachment %s', attachment_id, exc_info=True)
-        return jsonify({'error': 'Failed to reset OCR state. Please try again.'}), 500
-
-    # Re-enqueue the right background task (fire-and-forget, non-blocking).
-    # Images go through the OCR semaphore as before; PDFs use the lightweight
-    # text-layer extractor (F32).
-    from app.services.task_queue import enqueue_task
-    if _is_pdf_attachment(attachment):
-        enqueue_task(run_pdf_text_task, attachment.id, attachment.filepath,
-                     description=f'pdftext-retry:{attachment.id}')
-    else:
-        enqueue_task(run_ocr_task, attachment.id, attachment.filepath,
-                     description=f'ocr-retry:{attachment.id}')
-
-    return jsonify({'message': 'OCR re-scan started', 'ocr_status': 'pending'}), 202
+    from app.services.ocr_queue import enqueue_attachment
+    state = enqueue_attachment(attachment, force=True)
+    db.session.commit()
+    status = 503 if state == 'unavailable' else 429 if attachment.ocr_error == 'queue_full' else 202
+    return jsonify({'message': 'Scan queued' if status == 202 else 'File saved; scanning is unavailable. Retry later.',
+                    'ocr_status': 'pending' if status == 202 else state,
+                    **attachment.ocr_status()}), status
 
 
 @attachments_bp.route('/<int:attachment_id>/ocr/parse', methods=['POST'])
@@ -1154,6 +874,7 @@ def view_attachment(current_user, attachment_id):
 
 @attachments_bp.route('/<int:attachment_id>', methods=['PUT'])
 @token_required
+@mutation_endpoint(Attachment, 'attachment_id')
 def update_attachment(current_user, attachment_id):
     """Update attachment metadata."""
     attachment = Attachment.query.filter_by(
@@ -1166,60 +887,84 @@ def update_attachment(current_user, attachment_id):
     
     data = request.get_json()
     
-    allowed = ['description', 'category', 'tags', 'expires_at', 'entry_id']
+    # Resolve the entire proposed tuple before mutating metadata or policy links.
+    from app.models.insurance import InsurancePolicy
+    if data.get('entry_id') is not None and data.get('insurance_id') is not None:
+        return jsonify({'error': 'Choose one receipt parent.'}), 400
+    vehicle_id = data.get('vehicle_id', attachment.vehicle_id)
+    if vehicle_id is not None and not Vehicle.query.filter_by(id=vehicle_id, user_id=current_user.id).first():
+        return jsonify({'error': 'Vehicle not found'}), 404
+    linked_policies = InsurancePolicy.query.filter_by(document_attachment_id=attachment.id).with_for_update().all()
+    unlink_policies = 'insurance_id' in data and data['insurance_id'] is None
+    if any(item.user_id != current_user.id for item in linked_policies):
+        return jsonify({'error': 'This document has inconsistent ownership. Review its links.', 'code': 'RECEIPT_PARENT_MISMATCH'}), 409
+    retained_policies = [] if unlink_policies else linked_policies
+    parent = policy = None
+    entry_id = data.get('entry_id', attachment.entry_id)
+    parent_key = 'insurance_id' if data.get('insurance_id') is not None else 'entry_id'
+    parent_id = data.get('insurance_id') if parent_key == 'insurance_id' else entry_id
+    if parent_id is not None:
+        try:
+            if isinstance(parent_id, bool) or int(parent_id) <= 0 or str(int(parent_id)) != str(parent_id):
+                raise ValueError()
+            parent_id = int(parent_id)
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Invalid receipt parent.'}), 400
+        model = InsurancePolicy if parent_key == 'insurance_id' else Entry
+        parent = model.query.filter_by(id=parent_id, user_id=current_user.id).with_for_update().first()
+        if parent is None:
+            return jsonify({'error': 'Receipt parent not found.'}), 404
+        if vehicle_id is not None and vehicle_id != parent.vehicle_id:
+            return jsonify({'error': 'Receipt vehicle does not match its parent.', 'code': 'RECEIPT_PARENT_MISMATCH'}), 409
+        vehicle_id = parent.vehicle_id
+        if parent_key == 'insurance_id':
+            if entry_id is not None or any(item.id != parent.id for item in retained_policies):
+                return jsonify({'error': 'This receipt already has another parent.', 'code': 'RECEIPT_PARENT_MISMATCH'}), 409
+            policy = parent
+        elif data.get('entry_id') is not None and (retained_policies or data.get('category', attachment.category) == 'insurance_document'):
+            return jsonify({'error': 'An insurance document cannot be linked as an expense receipt.', 'code': 'RECEIPT_PARENT_MISMATCH'}), 409
+    for linked in retained_policies:
+        if vehicle_id is None:
+            vehicle_id = linked.vehicle_id
+        if vehicle_id != linked.vehicle_id:
+            return jsonify({'error': 'Document vehicle does not match its policy.', 'code': 'RECEIPT_PARENT_MISMATCH'}), 409
 
-    for field in allowed:
-        if field in data:
-            if field == 'expires_at':
-                # F42 — set or CLEAR the expiry (null clears it); either way,
-                # re-arm the once-only push sentinel so a new/changed date can
-                # notify again. R4-33: parsed, not fromisoformat'd raw — a
-                # malformed date used to escape the handler as a 500.
-                try:
-                    attachment.expires_at = parse_optional_date(data['expires_at'])
-                except InvalidFieldError as invalid:
-                    payload, status = invalid_field_response(invalid)
-                    return jsonify(payload), status
-                attachment.expiry_notified = False
-            elif field == 'category':
-                # R4-33: the column is String(50) and the value was written
-                # verbatim, so an over-long or arbitrary category reached it.
-                category = data['category']
-                if category and category not in ATTACHMENT_CATEGORIES:
-                    return jsonify({
-                        'error': 'Invalid category',
-                        'message_key': 'validation.invalidValue',
-                        'field': 'category',
-                    }), 400
-                attachment.category = category or None
-            elif field == 'entry_id':
-                entry_id_val = data['entry_id']
-                if entry_id_val is None:
-                    attachment.entry_id = None
-                else:
-                    try:
-                        entry_id_int = int(entry_id_val)
-                        if entry_id_int <= 0:
-                            raise ValueError()
-                    except (TypeError, ValueError):
-                        return jsonify({'error': 'Invalid entry_id'}), 400
-                    entry = Entry.query.filter_by(id=entry_id_int, user_id=current_user.id).first()
-                    if not entry:
-                        return jsonify({'error': 'Entry not found'}), 404
-                    attachment.entry_id = entry.id
-            else:
-                setattr(attachment, field, data[field])
+    updates = {'vehicle_id': vehicle_id, 'entry_id': entry_id}
+    for field in ('description', 'category', 'tags', 'expires_at'):
+        if field not in data:
+            continue
+        value = data[field]
+        if field == 'expires_at':
+            try:
+                value = parse_optional_date(value)
+            except InvalidFieldError as invalid:
+                return invalid_field_response(invalid)
+            updates['expiry_notified'] = False
+        elif field == 'category':
+            if value and value not in ATTACHMENT_CATEGORIES:
+                return jsonify({'error': 'Invalid category', 'message_key': 'validation.invalidValue', 'field': 'category'}), 400
+            value = value or None
+        updates[field] = value
+    for field, value in updates.items():
+        setattr(attachment, field, value)
+    if unlink_policies:
+        for linked in linked_policies:
+            linked.document_attachment_id = None
+    if policy is not None:
+        attachment.category = 'insurance_document'
+        policy.document_attachment_id = attachment.id
+
+    commit_mutation()
     
-    db.session.commit()
-    
-    return jsonify({
-        'message': 'Attachment updated',
-        'attachment': attachment.to_dict()
-    })
+    result = {'message': 'Attachment updated', 'attachment': attachment.to_dict()}
+    if policy is not None:
+        result['insurance_id'] = policy.id
+    return jsonify(result)
 
 
 @attachments_bp.route('/<int:attachment_id>', methods=['DELETE'])
 @token_required
+@mutation_endpoint(Attachment, 'attachment_id')
 def delete_attachment(current_user, attachment_id):
     """Delete an attachment."""
     attachment = Attachment.query.filter_by(
@@ -1230,13 +975,13 @@ def delete_attachment(current_user, attachment_id):
     if not attachment:
         return jsonify({'error': 'Attachment not found'}), 404
     
-    # Delete file from disk
-    if os.path.exists(attachment.filepath):
-        os.remove(attachment.filepath)
-    
+    from app.services.deletion import queue_file, finish_cleanup
+    operation_id = uuid.uuid4().hex
+    queue_file(operation_id, 'attachments', attachment.filepath, set())
     db.session.delete(attachment)
-    db.session.commit()
-    
+    commit_mutation()
+    defer_after_commit(lambda: finish_cleanup(operation_id))
+
     return jsonify({'message': 'Attachment deleted'})
 
 
@@ -1253,6 +998,7 @@ def get_expiring_attachments(current_user):
     
     # Get expiring soon (within X days but not yet expired)
     expiring_soon = Attachment.query.filter(
+        active_vehicle_condition(Attachment),
         Attachment.user_id == current_user.id,
         Attachment.expires_at.isnot(None),
         Attachment.expires_at <= cutoff,
@@ -1263,6 +1009,7 @@ def get_expiring_attachments(current_user):
     expired = []
     if include_expired:
         expired = Attachment.query.filter(
+            active_vehicle_condition(Attachment),
             Attachment.user_id == current_user.id,
             Attachment.expires_at.isnot(None),
             Attachment.expires_at < today

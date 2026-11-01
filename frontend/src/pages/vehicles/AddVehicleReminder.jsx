@@ -1,5 +1,8 @@
-import { useState, useEffect } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import ReminderDeliveryFields from '../../components/ReminderDeliveryFields'
+import useExpenseNavigation from '../../hooks/useExpenseNavigation'
+import { useMutationIntent } from '../../hooks/useMutationIntent'
+import { useState, useEffect, useRef } from 'react'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
 import { useForm } from 'react-hook-form'
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
@@ -28,11 +31,13 @@ const Icons = {
 }
 
 export default function AddVehicleReminder() {
+  const mutation = useMutationIntent()
+  const savedEntry = useRef(null)
   const { id: vehicleId } = useParams()
   const [searchParams] = useSearchParams()
   const editId = searchParams.get('edit')
   const isEditMode = !!editId
-  const navigate = useNavigate()
+  const navigate = useExpenseNavigation(vehicleId)
   const { t } = useTranslation()
   
   const [vehicle, setVehicle] = useState(null)
@@ -42,7 +47,7 @@ export default function AddVehicleReminder() {
   const [receiptFile, setReceiptFile] = useState(null)
   const [existingAttachments, setExistingAttachments] = useState([])
   
-  const { register, handleSubmit, watch, formState: { errors, isDirty }, reset } = useForm({
+  const { register, handleSubmit, watch, formState: { errors, isDirty }, reset, setValue } = useForm({
     defaultValues: {
       title: '',
       reminder_type: '',
@@ -50,11 +55,17 @@ export default function AddVehicleReminder() {
       due_mileage: '',
       repeat_interval: '',
       repeat_mileage: '',
+      notify_days_before: 7,
+      notify_push: true,
+      notify_email: true,
       notes: '',
     }
   })
   
   const reminderType = watch('reminder_type')
+  const presetType = searchParams.get('type')
+  const presetMileage = searchParams.get('due_mileage')
+  const rotationTitle = t('reminderTypes.tireRotation')
   
   useEffect(() => {
     const fetchData = async () => {
@@ -66,17 +77,26 @@ export default function AddVehicleReminder() {
         if (isEditMode) {
           const entryRes = await reminderApi.get(editId)
           const entry = entryRes.data
+          mutation.capture(entry)
           
           reset({
             title: entry.title || '',
             reminder_type: entry.reminder_type || '',
             due_date: entry.due_date ? entry.due_date.split('T')[0] : '',
-            due_mileage: entry.due_mileage || '',
+            due_mileage: entry.due_mileage ?? '',
             repeat_interval: entry.repeat_interval || '',
-            repeat_mileage: entry.repeat_mileage || '',
+            repeat_mileage: entry.repeat_mileage ?? '',
+            notify_days_before: entry.notify_days_before ?? 7,
+            notify_push: entry.notify_push ?? true,
+            notify_email: entry.notify_email ?? true,
             notes: entry.notes || entry.description || '',
           })
           
+        } else if (presetType === 'tire_rotation') {
+          setValue('reminder_type', 'tire_rotation')
+          setValue('title', rotationTitle)
+          const threshold = presetMileage
+          if (threshold && /^\d+$/.test(threshold)) setValue('due_mileage', threshold)
         }
       } catch (error) {
         console.error('Failed to fetch data:', error)
@@ -87,9 +107,9 @@ export default function AddVehicleReminder() {
     }
     
     fetchData()
-  }, [vehicleId, editId, isEditMode, navigate, reset])
+  }, [vehicleId, editId, isEditMode, navigate, reset, mutation, presetType, presetMileage, rotationTitle, setValue])
   
-  useUnsavedChanges(isDirty)
+  const markSaved = useUnsavedChanges(isDirty || receiptFile)
 
   const onSubmit = async (data) => {
     setIsSubmitting(true)
@@ -117,35 +137,44 @@ export default function AddVehicleReminder() {
         ...data,
         title,
         vehicle_id: parseInt(vehicleId),
-        due_mileage: data.due_mileage ? parseInt(data.due_mileage) : null,
+        due_mileage: data.due_mileage === '' || data.due_mileage == null ? null : Number(data.due_mileage),
         repeat_mileage: data.repeat_mileage ? parseInt(data.repeat_mileage) : null,
       }
       
+      const targetId = editId || savedEntry.current?.id
       let response
-      if (isEditMode) {
-        response = await reminderApi.update(editId, payload)
+      if (targetId) {
+        response = await reminderApi.update(targetId, payload, mutation.options())
       } else {
-        response = await reminderApi.create(payload)
+        response = await reminderApi.create(payload, mutation.options())
       }
       
+      // A document failure keeps the form open; retry against this saved parent.
+      if (response.data?.reminder) {
+        savedEntry.current = response.data.reminder
+        mutation.capture(savedEntry.current)
+      }
+
       // Upload document if selected (only for new entries or if new file selected)
-      const entryId = isEditMode ? editId : response.data?.reminder?.id
+      const entryId = targetId || savedEntry.current?.id
       if (receiptFile && entryId) {
-        try {
-          await attachmentApi.upload(receiptFile, {
-            vehicleId: parseInt(vehicleId),
-            entryId: entryId,
-            category: 'document',
-          })
-        } catch (uploadErr) {
-          console.error('Failed to upload document:', uploadErr)
-        }
+        await attachmentApi.upload(receiptFile, {
+          vehicleId: parseInt(vehicleId),
+          entryId: entryId,
+          category: 'document',
+        })
       }
       
+      if (!markSaved()) return
       navigate(`/vehicles/${vehicleId}`)
     } catch (err) {
       if (isOfflineWriteError(err)) {
         announceOfflineSaved(t)
+        if (receiptFile) {
+          setError(t('unsavedChanges.fileNotSaved'))
+          return
+        }
+        if (!markSaved()) return
         navigate(`/vehicles/${vehicleId}`)
         return
       }
@@ -176,6 +205,7 @@ export default function AddVehicleReminder() {
   
   const repeatIntervals = [
     { value: '', label: t('addReminder.noRepeat') || 'Does not repeat' },
+    { value: '1_week', label: t('reminders.weekly') },
     { value: '1_month', label: t('addReminder.everyMonth') || 'Every month' },
     { value: '3_months', label: t('addReminder.every3Months') || 'Every 3 months' },
     { value: '6_months', label: t('addReminder.every6Months') || 'Every 6 months' },
@@ -324,7 +354,7 @@ export default function AddVehicleReminder() {
               <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addReminder.repeatInterval') || 'Repeat Interval'}
               </label>
-              <select {...register('repeat_interval')} className="input">
+              <select {...register('repeat_interval', { onChange: event => { if (!event.target.value) setValue('repeat_mileage', '') } })} className="input">
                 {repeatIntervals.map(interval => (
                   <option key={interval.value} value={interval.value}>{interval.label}</option>
                 ))}
@@ -337,7 +367,8 @@ export default function AddVehicleReminder() {
               </label>
               <input
                 type="number" inputMode="decimal"
-                {...register('repeat_mileage')}
+                {...register('repeat_mileage', { min: { value: 1, message: t('validation.invalidNumber') },
+                  validate: value => !value || (watch('repeat_interval') && watch('due_mileage') !== '') || t('reminderDelivery.intervalRequired') })}
                 className="input"
                 placeholder={t('addReminder.everyXKm') || 'e.g., 10000'}
               />
@@ -345,6 +376,10 @@ export default function AddVehicleReminder() {
           </div>
         </div>
         
+        {errors.repeat_mileage && <p role="alert" className="text-sm text-red-500">{errors.repeat_mileage.message}</p>}
+        <p className="text-xs text-(--color-text-muted)">{t('reminderDelivery.mileageHint')}</p>
+        <ReminderDeliveryFields register={register} errors={errors} />
+
         {/* Notes */}
         <div className="card space-y-4">
           <div>

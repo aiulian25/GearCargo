@@ -1,14 +1,19 @@
+import { reminderReturnPath } from '../../utils/reminderRoutes'
 import { useState, useRef, useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { useAuth } from '../../contexts/AuthContext'
 import { useLanguage } from '../../contexts/LanguageContext'
 import toast from 'react-hot-toast'
+import api from '../../services/api'
 
 export default function Login() {
-  const { login } = useAuth()
+  const { login, loginWithPasskey } = useAuth()
+  const [passkeyOffered, setPasskeyOffered] = useState(false)
+  const [passkeyBusy, setPasskeyBusy] = useState(false)
   const { t } = useLanguage()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [isLoading, setIsLoading] = useState(false)
   const [requires2FA, setRequires2FA] = useState(false)
   const [credentials, setCredentials] = useState(null)
@@ -21,6 +26,41 @@ export default function Login() {
   const codeInputRef = useRef(null)
   
   const { register, handleSubmit, formState: { errors } } = useForm()
+  // Only offer a passkey where one can actually work: the browser has to
+  // support WebAuthn and the deployment has to be reached by name.
+  useEffect(() => {
+    let cancelled = false
+    const probe = async () => {
+      const { browserSupportsWebAuthn } = await import('@simplewebauthn/browser')
+      if (!browserSupportsWebAuthn()) return
+      try {
+        const { data } = await api.get('/auth/passkeys/available')
+        if (!cancelled) setPasskeyOffered(Boolean(data?.available))
+      } catch {
+        // Leave the option hidden rather than offering one that cannot work.
+      }
+    }
+    probe()
+    return () => { cancelled = true }
+  }, [])
+
+  const signInWithPasskey = async () => {
+    setPasskeyBusy(true)
+    try {
+      await loginWithPasskey()
+      navigate(reminderReturnPath(searchParams.toString()), { replace: true })
+    } catch (error) {
+      // Dismissing the browser prompt is a choice, not a failure.
+      if (error?.name !== 'NotAllowedError' && error?.name !== 'AbortError') {
+        const body = error?.response?.data
+        toast.error((body?.message_key && t(body.message_key)) || body?.error
+                    || t('passkeys.errorRefused'))
+      }
+    } finally {
+      setPasskeyBusy(false)
+    }
+  }
+
   const { handleSubmit: handleSubmit2FA, setValue: setValue2FA } = useForm()
   
   // Auto-focus username field on mount
@@ -75,7 +115,7 @@ export default function Login() {
       }
       
       toast.success(t('auth.welcomeBack'))
-      navigate('/')
+      navigate(reminderReturnPath(searchParams.toString()), { replace: true })
     } catch (error) {
       toast.error(error.response?.data?.error || t('auth.loginFailed'))
     } finally {
@@ -93,7 +133,7 @@ export default function Login() {
         await login(credentials.email, credentials.password, data.code, rememberPassword)
       }
       toast.success(t('auth.welcomeBack'))
-      navigate('/')
+      navigate(reminderReturnPath(searchParams.toString()), { replace: true })
     } catch (error) {
       toast.error(error.response?.data?.error || t('auth.invalidCode'))
     } finally {
@@ -189,6 +229,7 @@ export default function Login() {
       <h1 className="text-2xl font-bold text-gray-800 mb-8">
         {t('auth.loginHere')}
       </h1>
+      {searchParams.get('share') === 'sign-in-required' && <p role="status" className="mb-4 text-sm text-gray-600">{t('shareTarget.signInAgain')}</p>}
       
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         {/* Username/Email Field */}
@@ -303,6 +344,19 @@ export default function Login() {
           </button>
         </div>
         
+        {passkeyOffered && (
+          <div className="text-center pt-2">
+            <button
+              type="button"
+              onClick={signInWithPasskey}
+              disabled={passkeyBusy}
+              className="text-sm text-teal-600 hover:text-teal-700 transition-colors disabled:opacity-60"
+            >
+              {passkeyBusy ? t('passkeys.signingIn') : t('passkeys.signIn')}
+            </button>
+          </div>
+        )}
+
         {/* Forgot Password Link */}
         <div className="text-center pt-2">
           <Link to="/forgot-password" className="text-sm text-teal-600 hover:text-teal-700 transition-colors">

@@ -130,13 +130,13 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 - Interactive expense chart with drill-down
 - Fuel efficiency trends
 - Cost per kilometer/mile analysis
-- **Shareable report links** — generate a read-only report link to share with a garage or family member; links are signed, expiring, and revocable (no account required to view)
+- **Shareable report links** — generate a read-only report link to share with a garage or family member; links carry opaque bearer tokens, expire, and can be revoked (anyone with the link can view it; downloaded copies cannot be revoked)
 
 ### AI-Powered Features (Optional, via Ollama)
-- **Vehicle Assistant (chat)** — a per-vehicle conversational assistant that answers grounded questions about *your* data: spending totals, fuel/service/repair history ("when did I last change the brake pads, what did it cost, where?"), upcoming reminders, and cross-vehicle comparisons ("which car costs most"). Strictly scoped to vehicles and maintenance with a layered safety design — input/output guardrails and an on-topic classifier — and **fully data-isolated** (answers only ever use the signed-in owner's own data; no tools, no retrieval, no stored history). Gracefully reports when the AI service is unavailable
+- **Vehicle Assistant (chat)** — a per-vehicle conversational assistant that answers grounded questions about *your* data: spending totals, fuel/service/repair history ("when did I last change the brake pads, what did it cost, where?"), upcoming reminders, and cross-vehicle comparisons ("which car costs most"). Server queries scope vehicle context to the signed-in owner. Input/output checks and an optional topic classifier constrain model responses; they do not guarantee correct or safe answers. Prompts and selected vehicle/receipt context go to the configured Ollama server, whose operator controls its logging. See [AI and network boundaries](docs/SECURITY_AND_PRIVACY.md#network-and-proxy-boundaries)
 - **Automatic nightly maintenance predictions** — nightly scheduler analyses each vehicle's fuel, service, and repair history and generates multilingual prediction alerts (EN/RO/ES)
 - **Manual prediction trigger** — request an immediate AI analysis for any vehicle via the API
-- **OCR receipt scanning** — photos of receipts are automatically scanned (pytesseract) using an 11-step quality pipeline (local illumination normalisation, adaptive binarisation, confidence-filtered word extraction) and parsed by Ollama into structured data (date, amount, vendor, line items) to pre-fill expense forms; max 2 concurrent scans to protect server CPU
+- **OCR receipt scanning** — photos of receipts are automatically scanned (pytesseract) using an 11-step quality pipeline (local illumination normalisation, adaptive binarisation, confidence-filtered word extraction) and parsed by Ollama into structured data (date, amount, vendor, line items) to pre-fill expense forms; up to two shared processing slots under the [supported OCR deployment conditions](docs/OCR_QUEUE.md#capacity-and-recovery)
 - **Fuel anomaly detection** — after each fuel entry, Ollama checks the last 20 entries for suspicious consumption spikes or data-entry errors
 - **AI reminder suggestions** — request 3 AI-generated service reminder suggestions per vehicle based on its history
 - **Per-task model configuration** — assign different Ollama models to different tasks (`OLLAMA_MODEL_PREDICT`, `OLLAMA_MODEL_OCR`, `OLLAMA_MODEL_ANOMALY`, `OLLAMA_MODEL_REMINDER`) for optimal speed/quality trade-offs
@@ -152,45 +152,58 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 - **AI data extraction** — send OCR text to Ollama to parse structured fields and pre-fill the parent expense form with one tap
 - **OCR badge on thumbnails** — attachment cards display a badge when text has been successfully extracted
 - **Re-scan button** — retry OCR for blurry or rotated images via the attachment viewer
-- **OCR concurrency limit** — at most 2 OCR scans run simultaneously (upload, retry, startup backfill, and admin backfill all share one global semaphore); additional scans queue and run automatically when a slot frees up
+- **OCR concurrency limit** — image decoding, OCR and PDF text extraction share up to two slots; the durable OCR queue defaults to at most 100 active attachments. This limit requires the shared database/media and supported locking configuration described in [OCR capacity and recovery](docs/OCR_QUEUE.md#capacity-and-recovery). Queued scans recover after restart; exhausted retries and queue overflow show a saved-file status with a manual retry. See [OCR operations](docs/OCR_QUEUE.md).
 
 ### To-Do Lists
 - Vehicle-specific task lists
 - Priority levels and due dates
 - Completion tracking
 
-### Security Features
-- **Two-Factor Authentication (2FA)** - TOTP with backup codes
-- **Signed Upload URLs** - HMAC-SHA256 signed URLs for all uploaded files (photos, avatars)
-- **Account Lockout Protection** - Auto-locks after 5 failed attempts
-- **IP Blocking** - Auto-blocks IPs after 3 failed attempts
-- **Device Blocking** - Auto-blocks suspicious devices
-- **Session Management** - Single device enforcement option
-- **New Device/Location Alerts** - Email notifications
-- **Have I Been Pwned Integration** - Rejects breached passwords
-- **bcrypt Password Hashing** - Industry-standard security
-- **JWT with Blacklisting** - Secure token management
-- **Rate Limiting** - API abuse prevention
-- **CSRF Protection** - Cross-site request forgery prevention
-- **Security Headers** - HSTS, CSP, X-Frame-Options via Flask-Talisman
-- **Encrypted Backups** - AES encryption for backup files
-- **Activity Logging** - Comprehensive audit trail
-- **SSRF Protection** - Private/internal IP blocking on CalDAV and Ollama URLs
-- **AI Chat Guardrails** - Layered prompt hardening, input/output validation, an on-topic classifier, and strict per-user data isolation for the Vehicle Assistant
-- **Absolute Session Expiry** - Sessions expire 48h after sign-in regardless of activity
-- **Signed, Expiring Share Links** - Shareable report links use signed, time-limited, revocable tokens
-- **Startup Secret Validation** - Refuses to start in production with default/insecure secrets
-- **Calendar Feed Token Expiry** - 90-day expiration on CalDAV feed tokens
-- **Read-only Root Filesystem** - Container runs with read-only rootfs
-- **GDPR Notification Email** - Separate notification email with full GDPR compliance:
-  - AES-256 field-level encryption (Fernet) for PII at rest
-  - SHA-256 hashing for duplicate lookups without decryption
-  - Double opt-in verification with expiring tokens
-  - Explicit consent capture with IP and timestamp
-  - Immutable consent audit ledger (append-only log)
-  - RFC 8058 one-click unsubscribe (no auth required)
-  - Automatic bounce tracking — disables email after 5 failures
-  - Rate limiting on verification emails (3/hour)
+### Security and Privacy
+
+These controls describe this source tree, not a security certification or a
+promise about every deployed image. See the [implementation, tests and limits](docs/SECURITY_AND_PRIVACY.md)
+for each area, including the [upgrade boundary](docs/SECURITY_AND_PRIVACY.md#upgrade-boundary).
+
+- **Account protection** — bcrypt password hashes, optional TOTP/backup codes,
+  failed-login lockouts and IP/device rules that lift themselves after an hour.
+  Password-breach checks send a hash prefix to Have I Been Pwned and fail open
+  if that service is unavailable.
+- **Passkeys** — optional WebAuthn sign-in using the device's own lock. A passkey
+  must verify the person, so one satisfies both steps and no code is asked
+  afterwards. Only public keys are stored, each bound to the hostname it was
+  created for. Browsers keep passkeys per hostname, so a deployment reached by a
+  bare IP address cannot offer them and says so.
+- **Sessions and browser requests** — access/refresh token purpose checks,
+  durable session revocation, optional single-device enforcement, rate limits
+  and cookie-request CSRF checks. Session expiry follows the configured refresh
+  lifetime; 48 hours is only the fallback for an invalid lifetime setting.
+- **Transport and headers** — configure HTTPS at the reverse proxy, exact trusted
+  browser origins and the actual proxy depth. Talisman headers do not encrypt a
+  directly exposed HTTP port. See [network and proxy boundaries](docs/SECURITY_AND_PRIVACY.md#network-and-proxy-boundaries).
+- **Links and media** — report shares use hashed opaque bearer tokens; calendar
+  feeds use purpose-checked JWTs with 90-day expiry and revocation. Signed media
+  URLs and public links can be used by anyone who obtains an unexpired valid URL.
+- **Field and backup protection** — selected sensitive fields use Fernet
+  (AES-128-CBC plus HMAC-SHA256). This does not encrypt the whole database or
+  uploads. Backup artifact encryption is optional; JSON/ZIP/tar.gz files
+  are unencrypted by default, and CSV exports remain unencrypted. See [backup protection](docs/BACKUP_ENCRYPTION.md).
+- **Outbound services** — LAN/loopback Ollama and CalDAV endpoints are deliberately
+  allowed. URL checks reject certain dangerous literals/metadata destinations;
+  they are not a private-network firewall or a complete DNS-rebinding defense.
+- **Container boundary** — the bundled Compose root filesystem is writable.
+  The supervisor starts as root and drops service privileges; capability
+  restrictions and temporary storage do not make this a read-only deployment.
+- **Notification email** — optional custom addresses require consent and
+  verification. Consent records, an unsubscribe link and synchronous send-failure
+  counters are provided; they do not establish legal compliance, immutable
+  storage or confirmed delivery/bounce handling. See [email controls and limits](docs/SECURITY_AND_PRIVACY.md#notification-email).
+- **Storage and deletion** — administrators can access deployment data. Browser
+  offline storage, external services, logs and historical backups have separate
+  retention boundaries. See [privacy and retention](docs/SECURITY_AND_PRIVACY.md#data-storage-access-and-retention).
+- **Logs** — access logs omit capability values, while security-audit logs retain
+  selected PII. Apply the [logging policy](#capability-safe-http-logs) at every proxy
+  and collector, with restricted access and explicit retention.
 
 ### Data Management
 - Automatic scheduled backups
@@ -258,8 +271,8 @@ sh gearcargo-install.sh          # writes docker-compose.yml, .env.example, setu
 it generates all secrets **inside the image** — including a valid Fernet
 `ENCRYPTION_KEY` and VAPID push keys — so the host needs nothing but Docker.
 
-Only the app port is published; PostgreSQL and Redis bind to `127.0.0.1` **inside**
-the container and are never network-exposed. Put a reverse proxy in front for HTTPS
+In the bundled configuration, only the app port is published; PostgreSQL and
+Redis listen on `127.0.0.1` **inside** the container. Put a reverse proxy in front for HTTPS
 (say "yes" to the proxy prompt to loopback-bind the port).
 
 > **Prefer to do it by hand?** `cp .env.example .env`, fill the `REQUIRED` block
@@ -295,11 +308,85 @@ That's the whole app.
 
 The single container runs PostgreSQL 16 + Redis 7 + gunicorn + scheduled backups
 under [s6-overlay](https://github.com/just-containers/s6-overlay); only the app
-port is published and the datastores bind to `127.0.0.1` **inside** the container.
-Clean PostgreSQL shutdown on `docker stop` (no WAL recovery on next boot).
+port is published and the embedded datastores bind to `127.0.0.1` **inside** the container.
+Service scripts request a graceful database shutdown. Crashes or an expired stop
+timeout can still require recovery; graceful shutdown is not a backup.
 **~2 GB RAM recommended.**
 
-- Every environment variable is documented in **`examples/.env.reference`**.
+- Deployment settings are listed in **`examples/.env.reference`**.
+- [Deployment evidence and limits](docs/SECURITY_AND_PRIVACY.md#container-and-processing-boundaries) links both Compose files and service scripts. No read-only-root deployment is provided or validated.
+
+### Capability-safe HTTP logs
+
+The bundled Gunicorn configuration logs the HTTP method, Flask route template,
+status, response bytes, duration in microseconds and a server-generated request
+ID. Flask returns that ID in `X-Request-ID`; incoming IDs are ignored. Requests
+that fail before routing use `/[unmatched]`. Raw paths, queries, referrers, user
+agents and arbitrary headers are excluded, including with legacy access-format
+atoms. Keep `gearcargo_gunicorn_logger.CapabilitySafeLogger` enabled when
+customizing Gunicorn; replacing the logger bypasses this protection.
+
+General application and Gunicorn errors redact report/feed/upload URL paths,
+URL queries/fragments and sensitive header values, including formatted
+tracebacks. Gunicorn suppresses raw request targets in debug messages and raw
+HTTP-parser error details. `LOG_FORMAT=json` still produces valid application
+JSON; `LOG_REDACT_PII=false` disables optional email/IP masking but **does not
+disable capability redaction**. Traceback locations and exception types remain
+available. This is URL/header sanitation, not a guarantee that arbitrary code
+can safely log a bare secret: do not log credentials, request bodies or tokens.
+The separate restricted `security_audit` log retains its existing PII policy.
+
+**Reverse proxies need their own policy.** GearCargo cannot sanitize logs already
+written by a proxy, CDN or monitoring agent. Use static route labels and
+server-generated IDs at every upstream hop. For Nginx, the following goes in
+the `http` context; apply `access_log ... gearcargo_safe` to the GearCargo server
+and replace every inherited, secondary or location-specific raw access log:
+
+```nginx
+map $uri $gc_log_route {
+    default "/[unmatched]";
+    ~^/api/reports/shared/[^/]+/pdf$ "/api/reports/shared/<token>/pdf";
+    ~^/api/reports/shared/ "/api/reports/shared/<token>";
+    ~^/shared/report/ "/shared/report/<token>";
+    ~^/api/calendar/feed/ "/api/calendar/feed/<token>";
+    ~^/api/attachments/[0-9]+/view$ "/api/attachments/<id>/view";
+    ~^/uploads/ "/uploads/<filename>";
+}
+map $request_method $gc_log_method {
+    default "INVALID";
+    GET GET; HEAD HEAD; POST POST; PUT PUT; PATCH PATCH;
+    DELETE DELETE; OPTIONS OPTIONS; CONNECT CONNECT; TRACE TRACE;
+}
+log_format gearcargo_safe escape=json
+    '{"time":"$time_iso8601","method":"$gc_log_method",'
+    '"route":"$gc_log_route","status":$status,'
+    '"duration_s":$request_time,"request_id":"$request_id"}';
+# In the GearCargo server block:
+# access_log /var/log/nginx/gearcargo-access.log gearcargo_safe;
+```
+
+Do not add `$request`, `$request_uri`, `$args`, raw `$uri`, referrer or other
+client-controlled headers to that format. Nginx's ID is independent of the
+application's ID. **Error logs are separate:** they can include raw URLs even
+when access logs are safe. On a dedicated proxy, suppress raw error output with
+`error_log /dev/null;` in the main context and remove overriding error sinks at
+every level, or arrange redaction before any error text is persisted or
+forwarded. Suppression sacrifices proxy error diagnostics; retain sanitized
+status/timing monitoring. A stricter log level alone does not sanitize errors.
+See the Nginx [access log documentation](https://nginx.org/en/docs/http/ngx_http_log_module.html)
+and [error log documentation](https://nginx.org/en/docs/ngx_core_module.html#error_log).
+Validate the effective configuration and synthetic canary requests at each hop
+before relying on it. No external proxy is reconfigured by this application.
+
+**Access and retention:** restrict log files, container logs, collector indexes
+and exports to operators who need them. The bundled Compose rotation caps
+container output at three 10 MB files; this is a size bound, not an age limit.
+Set an explicit shortest-useful age limit in your log collector/rotation policy
+and apply it to archives and backups too. Review historical access/error logs as
+potentially containing reusable capabilities; assess exposure and revoke or
+rotate long-lived report shares/calendar feeds where appropriate. New redaction
+does not scrub old logs or revoke existing links. This change performs neither
+historical log deletion nor token rotation automatically.
 
 ---
 
@@ -309,7 +396,7 @@ Clean PostgreSQL shutdown on `docker stop` (no WAL recovery on next boot).
 
 GearCargo requires several cryptographic secrets. **Never use default values in production!**
 
-#### 1. SECRET_KEY (Flask session encryption)
+#### 1. SECRET_KEY (Flask/session signing)
 
 ```bash
 # Using Python
@@ -337,7 +424,7 @@ python3 -c "import secrets; print(secrets.token_hex(32))"
 openssl rand -hex 32
 ```
 
-#### 4. ENCRYPTION_KEY (Data encryption at rest)
+#### 4. ENCRYPTION_KEY (Selected field encryption)
 
 ```bash
 python3 -c "import secrets; print(secrets.token_hex(32))"
@@ -345,19 +432,22 @@ python3 -c "import secrets; print(secrets.token_hex(32))"
 openssl rand -hex 32
 ```
 
-> **Startup enforcement.** In any non-development environment (i.e. `FLASK_ENV`
-> is not `development`), GearCargo **refuses to start** if `SECRET_KEY`,
-> `JWT_SECRET_KEY`, `WTF_CSRF_SECRET_KEY` or `ENCRYPTION_KEY` is missing or still a
-> placeholder. This check is independent of `DEBUG`, so a stray `DEBUG=true` can
-> never bypass it. For local development only, set `FLASK_ENV=development`.
+> **Startup enforcement.** Outside explicit development/testing modes,
+> GearCargo **refuses to start** if `SECRET_KEY`,
+> `JWT_SECRET_KEY`, `WTF_CSRF_SECRET_KEY` or `ENCRYPTION_KEY` is missing or still
+> a recognized placeholder. `DEBUG=true` alone does not bypass the check. Short
+> non-placeholder values and reused signing keys only warn. See the
+> [implementation and limits](docs/SECURITY_AND_PRIVACY.md#account-and-browser-controls).
+> For local development only, set `FLASK_ENV=development`.
 
-> **Rotating the encryption key (S06).** `ENCRYPTION_KEY` derives the key for all
-> at-rest PII (2FA/email-OTP secrets, notification email, CalDAV credentials) via
-> HKDF, and ciphertext is versioned, so the key can be rotated without data loss:
+> **Rotating the encryption key (S06).** `ENCRYPTION_KEY` derives keys for selected
+> fields (2FA/email-OTP secrets, notification email, CalDAV credentials and saved
+> backup passphrases) via HKDF. Preserve recovery copies of the old keys and
+> verify re-encryption before removing them:
 > 1. Generate a new key (command above).
 > 2. Redeploy with the new value in `ENCRYPTION_KEY` and the **old** value in
 >    `ENCRYPTION_KEYS_OLD` (comma-separated for multiple). New data is written
->    under the new key; old data still decrypts under the old key — no downtime.
+>    under the new key; retained old keys allow older ciphertext to decrypt.
 > 3. Re-encrypt all existing rows under the new key:
 >    `docker compose exec gearcargo python scripts/reencrypt_pii.py --execute`
 >    (run without `--execute` first for a dry run).
@@ -457,7 +547,7 @@ CORS_ORIGINS=https://gearcargo.yourdomain.com
 # Admin User (Optional - see Admin User Setup section)
 ADMIN_EMAIL=admin@yourdomain.com
 ADMIN_USERNAME=admin
-ADMIN_PASSWORD=your-temporary-admin-password-min-8-chars
+ADMIN_PASSWORD=your-temporary-admin-password-min-12-chars
 
 # Email (for password reset, notifications)
 MAIL_ENABLED=true
@@ -582,13 +672,14 @@ The admin user can:
 | `SECRET_KEY` | Yes | Flask secret key (64 hex chars) | - |
 | `JWT_SECRET_KEY` | Yes | JWT signing key (64 hex chars) | - |
 | `DB_PASSWORD` | Yes | PostgreSQL password | - |
-| `REDIS_PASSWORD` | Yes | Redis password | `changeme` |
+| `REDIS_PASSWORD` | Yes | Set a strong Redis password | No usable production default |
 | `APP_URL` | Yes | Public URL of your app | `http://localhost:5000` |
 | `ADMIN_DOMAIN` | Optional | Domain reserved for admin logins | empty |
 | `USER_DOMAIN` | Optional | Domain reserved for non-admin logins | empty |
 | `CORS_ORIGINS` | Yes | Allowed origins (comma-separated) | `http://localhost:5000` |
-| `WTF_CSRF_SECRET_KEY` | Recommended | CSRF secret | Falls back to SECRET_KEY |
-| `ENCRYPTION_KEY` | Recommended | Data encryption key | - |
+| `WTF_CSRF_SECRET_KEY` | Yes in production | Distinct random CSRF secret | No production fallback |
+| `CSRF_TRUSTED_ORIGINS` | Optional | Exact browser origins allowed to make cookie-authenticated changes; see [CSRF deployment and client contract](docs/COOKIE_CSRF.md) | `APP_URL` |
+| `ENCRYPTION_KEY` | Yes in production | Stable high-entropy seed for selected field encryption | - |
 | `ADMIN_EMAIL` | Optional | Auto-create admin email | - |
 | `ADMIN_PASSWORD` | Optional | Auto-create admin password | - |
 | `MAIL_ENABLED` | Optional | Enable email features | `false` |
@@ -600,6 +691,9 @@ The admin user can:
 | `GEOIP_DB_PATH` | Optional | Container path to GeoLite2-City.mmdb for login country detection | empty |
 | `WIDGET_CORS_ORIGINS` | Optional | CORS origin allowlist for widget API endpoints | `*` |
 | `BACKUP_KEEP_LAST` | Optional | Number of daily/weekly backup archives to retain | `7` |
+| `BACKUP_ENABLED` | Optional | Enable daily/weekly system archives | `true` |
+| `SYSTEM_RESTORE_*` | Optional | Finite system restore size, memory, disk reserve and time budgets; see [restore sizing](docs/RESTORE_RECOVERY.md#system-restore-resource-budgets) | See linked table |
+| `SCHEDULER_ENABLED` | Optional | Enable this instance's dedicated scheduler service; see [Scheduled jobs](docs/SCHEDULER.md) | `true` |
 
 ### Ollama AI Variables
 
@@ -622,6 +716,12 @@ The admin user can:
 
 ### JWT Token Expiration
 
+Access and refresh JWTs have distinct enforced purposes. Existing untyped access tokens must be renewed or replaced at sign-in; see [token purpose and upgrade behavior](docs/TOKEN_PURPOSE.md).
+
+Business-record writes enforce finite numbers, field limits and recognized currencies. See [data validation and the read-only repair report](docs/DATA_VALIDATION.md) for the client contract and upgrade checks.
+
+Distances retain each vehicle's declared unit; fuel is stored in litres and consumption in L/100km. See [unit semantics and the derived-metric preview/apply workflow](docs/UNITS.md) before repairing existing fuel history.
+
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `JWT_ACCESS_TOKEN_EXPIRES` | Access token lifetime (seconds) | `3600` (1 hour) |
@@ -637,6 +737,52 @@ The admin user can:
 ---
 
 ## Backup & Restore
+
+JSON/ZIP/tar.gz files are **unencrypted by default**. Enable optional passphrase
+encryption to create `.gcb` artifacts; keep the passphrase separately. See
+[backup protection, system configuration and recovery](docs/BACKUP_ENCRYPTION.md).
+
+System restores enforce archive/member counts and sizes, nested SQL expansion,
+SQL-tool memory, disk reserve and a processing deadline before live cutover. For
+large fleets, provision staging and database capacity and configure finite limits
+using [system restore sizing](docs/RESTORE_RECOVERY.md#system-restore-resource-budgets).
+
+### Tire sets and seasonal tracking
+
+Open **Vehicle → Consumables → Tire sets** to record four tire identities,
+installations/removals, rotation positions and dated tread readings in mm or
+32nds of an inch. Storage pauses distance accumulation. Link an existing purchase
+and receipt once, choose your own rotation/tread thresholds, and create a
+maintenance reminder. Tread readings support the account-bound offline queue.
+See [tire lifecycle, units and backup compatibility](docs/TIRES.md).
+
+### Workshop visits
+
+Open **Vehicle → Alerts → Plan workshop visit**, or select a vehicle in Calendar.
+Track manual requests/confirmations, preparation checklists, drop-off and pick-up,
+and link completed service/repair expenses and receipts once. Named time zones
+and daylight-saving choices preserve the intended appointment time. GearCargo
+sends no bookings to workshops. See [workshop workflow and recovery](docs/WORKSHOP_VISITS.md).
+
+### Passkey sign-in
+
+Open **Settings → Passkeys** to add one, then use **Sign in with a passkey** on
+the login page. The device's own lock — fingerprint, face or PIN — replaces the
+password and the code in a single step. Only the public key is kept; the private
+half never leaves the authenticator.
+
+Each passkey belongs to the hostname it was created for, so one made for a
+previous address is listed as unusable rather than failing silently. Passkeys
+need the app to be reached by name: a deployment served from a bare IP address
+reports them unavailable, because browsers do not store passkeys for an address.
+Password and TOTP sign-in continue to work unchanged.
+
+### Statement reconciliation
+
+Import a fuel-card or bank CSV under **Reconciliation** to match statement lines
+against recorded expenses. Matches are explicit and signed, so a statement is
+never silently merged into your records. See
+[statement reconciliation](docs/STATEMENT_RECONCILIATION.md).
 
 ### Automatic Backups
 
@@ -654,7 +800,7 @@ Configure automatic backups in Settings > Backup:
 ```bash
 # Runs the same archive builder the scheduler uses, against the embedded database.
 docker compose exec gearcargo /etc/gearcargo/scripts/run-backup.sh manual
-# Creates: ./volumes/backups/system/manual/gearcargo_manual_YYYYMMDD_HHMMSS.tar.gz
+# Creates .tar.gz (plaintext), or .tar.gz.gcb with BACKUP_PASSPHRASE_FILE configured.
 ```
 
 **Using the web interface:**
@@ -671,13 +817,15 @@ Send `external_destinations` in `PUT /api/backup/schedule` as a list of objects:
 - `external_api_key` (supports `username:app-password`)
 - `external_path` (destination folder path)
 
-When multiple destinations are configured, manual and scheduled backups upload to all enabled targets and return per-destination success/error details.
+When multiple destinations are configured, backups upload to all enabled targets.
+Manual uploads return per-destination results. Scheduled uploads use a durable
+delivery queue; inspect its status and retries in [Scheduled jobs](docs/SCHEDULER.md).
 
 Destination order is significant: the first enabled destination is treated as primary for legacy compatibility fields (`external_url`, `external_path`) while all enabled destinations are used for backup uploads.
 
 **Admin full-state export/import:**
 1. POST `/api/backup/system/export` to download a portable archive containing a PostgreSQL logical dump plus `volumes/attachments` and `volumes/uploads`
-2. POST `/api/backup/system/import` with the `.tar.gz` archive to restore the entire deployment elsewhere
+2. POST `/api/backup/system/import` with the `.tar.gz` archive (or `.tar.gz.gcb` plus `passphrase`) to restore the entire deployment elsewhere
 3. API responses include stable `message_key` values for frontend localization
 
 ### Restore from Backup
@@ -715,6 +863,7 @@ pytest tests/test_backup_external_destinations.py -q
 | **Server** | Gunicorn | Production WSGI server |
 | **Auth** | JWT + bcrypt | Authentication |
 | **2FA** | PyOTP | TOTP authentication |
+| **Passkeys** | py_webauthn + SimpleWebAuthn | WebAuthn registration and assertion |
 | **Email** | Flask-Mail | Transactional emails |
 | **PDF** | ReportLab | Report generation |
 | **Security** | Flask-Talisman | Security headers |
@@ -875,12 +1024,47 @@ docker compose -f docker-compose.dev.yml up -d --build
 
 ## Troubleshooting
 
+### Upgrade stopped by a migration error
+
+The container waits for the database, recovers interrupted restores, and runs
+`flask db upgrade` before starting Gunicorn or the dedicated scheduler. A failure
+in any required step now stops startup. If `DB_SCHEMA_SYNC=true` is explicitly
+enabled, a schema-sync failure also stops startup; it does not bypass a failed
+migration. Readiness polling still tolerates a database that is starting or
+finishing crash recovery.
+
+For the current single-container Compose deployment:
+
+```bash
+docker compose logs --tail=200 gearcargo
+docker compose stop gearcargo
+```
+
+Find the first migration/recovery error above the `[migrate] ERROR` message.
+Correct the reported connection, permission, storage or schema/data problem
+before restarting. Keep the database and media volumes intact and preserve a
+verified backup. Do not delete the volumes, stamp Alembic past the failed
+revision, or enable schema sync merely to make the container start.
+
+After the cause is fixed, retry with `docker compose up -d gearcargo` and check
+the logs for `[migrate] Database setup complete.` followed by the web and scheduler
+services starting. Compose's restart policy can otherwise repeat the same
+failure; stopping the service first prevents that loop during investigation.
+
+A migration may have applied earlier revisions or nontransactional changes
+before failing. There is no automatic downgrade. If repair is not appropriate,
+restore the verified pre-upgrade database **and matching media** with a compatible
+application image using the [restore recovery procedure](docs/RESTORE_RECOVERY.md).
+Preserve any interrupted-restore journal until recovery succeeds. Review the
+failed revision before choosing a rollback; simply selecting an older image
+does not undo schema changes.
+
 ### Container won't start
 ```bash
 # Check logs
 docker compose logs backend
 
-# Check health
+# Check web-process liveness (restart-oriented)
 docker compose ps
 
 # Restart all services
@@ -896,7 +1080,20 @@ docker compose exec db pg_isready -U gearcargo
 docker compose logs db
 ```
 
+### Monitoring and deployment readiness
+
+Use `/health/live` for restart checks and `/health/ready` for traffic/deployment gates.
+Readiness checks current database/schema, required Redis stores and background consumers;
+HTTP 200 may report `degraded` when background work is unavailable. The legacy `/health`
+Redis field remains a startup snapshot. See [health policy, bounds and upgrade steps](docs/HEALTH_CHECKS.md).
+
 ### Redis connection errors
+
+JWT validity and revocation are checked in the database even during Redis outages.
+Browser CSRF-store and Redis-backed limiter failures return a controlled 503.
+The GC-026 upgrade requires one fresh sign-in for existing sessions; see
+[session availability and upgrade steps](docs/SESSION_AVAILABILITY.md).
+
 ```bash
 # Test Redis connection
 docker compose exec redis redis-cli -a \$REDIS_PASSWORD ping

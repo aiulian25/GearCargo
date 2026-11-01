@@ -10,6 +10,9 @@ from app.routes.repairs import repairs_bp
 from app.routes.taxes import taxes_bp
 from app.routes.parking import parking_bp
 from app.routes.consumables import consumables_bp
+from app.routes.reconciliation import reconciliation_bp
+from app.routes.appointments import appointments_bp
+from app.routes.tires import tires_bp
 from app.routes.reminders import reminders_bp
 from app.routes.predictions import predictions_bp
 from app.routes.attachments import attachments_bp
@@ -33,7 +36,7 @@ __all__ = [
     'repairs_bp',
     'taxes_bp',
     'parking_bp',
-    'consumables_bp',
+    'consumables_bp', 'tires_bp', 'appointments_bp', 'reconciliation_bp',
     'reminders_bp',
     'predictions_bp',
     'attachments_bp',
@@ -52,8 +55,6 @@ __all__ = [
 
 def register_blueprints(app):
     """Register all blueprints with the app."""
-    from app import csrf
-    
     # List of all API blueprints
     blueprints = [
         (auth_bp, '/api/auth'),
@@ -64,6 +65,9 @@ def register_blueprints(app):
         (taxes_bp, '/api/taxes'),
         (parking_bp, '/api/parking'),
         (consumables_bp, '/api/consumables'),
+        (tires_bp, '/api/tire-sets'),
+        (reconciliation_bp, '/api/reconciliation'),
+        (appointments_bp, '/api/appointments'),
         (reminders_bp, '/api/reminders'),
         (predictions_bp, '/api/predictions'),
         (attachments_bp, '/api/attachments'),
@@ -82,5 +86,3 @@ def register_blueprints(app):
     
     for bp, prefix in blueprints:
         app.register_blueprint(bp, url_prefix=prefix)
-        # Exempt from CSRF - API routes use JWT authentication which is CSRF-safe
-        csrf.exempt(bp)

@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { serviceApi, vehicleApi } from '../../services/api'
 import { useTranslation } from '../../contexts/LanguageContext'
-import { formatDate } from '../../utils/dateFormat'
+import { useDateFormat } from '../../hooks/useDateFormat'
 import EmptyState from '../../components/ui/EmptyState'
 
 export default function Services() {
+  const { formatDate } = useDateFormat()
   const { t } = useTranslation()
   const [searchParams] = useSearchParams()
   const vehicleId = searchParams.get('vehicle')

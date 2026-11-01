@@ -1,5 +1,11 @@
+import { reminderAuthPath, reminderIdFromPath } from '../utils/reminderRoutes'
 import axios from 'axios'
 import toast from 'react-hot-toast'
+import { getBoundIdentity, requireCurrentIdentity, beginIdentityTransition } from '../utils/offlineIdentity'
+import { isOfflineWrite, identityHeaders } from '../utils/offlinePolicy'
+import { mutationOptions, mutationTarget } from '../utils/mutationProtocol'
+import { getQueueState } from '../db/mutationQueue'
+import { getCsrfToken, needsCsrf } from '../utils/csrf'
 
 const api = axios.create({
   baseURL: '/api',
@@ -12,9 +18,42 @@ const api = axios.create({
   withCredentials: true,
 })
 
-// No request interceptor needed — the browser attaches the httpOnly
-// access_token cookie automatically on every request.  Manual Authorization
-// header injection from localStorage is removed (S05).
+// Capture the form's tab-local identity before transport. Retrying an old
+// request must never relabel its contents with another tab's newer identity.
+api.interceptors.request.use(async config => {
+  const url = new URL(`${config.baseURL || '/api'}${config.url}`, window.location.origin)
+  const target = mutationTarget(url, config.method.toUpperCase(), window.location.origin)
+  if (target) {
+    config.headers.set('Idempotency-Key', config.headers.get('Idempotency-Key') || crypto.randomUUID())
+    config.headers.set('X-GearCargo-Mutation-Version', '1')
+    if (target.id && !config.headers.get('If-Match')) {
+      const error = new Error('Reload this record before saving. Its revision is unavailable.')
+      error.response = { status: 428, data: { code: 'REVISION_REQUIRED', error: error.message } }
+      throw error
+    }
+  }
+  if (isOfflineWrite(url, config.method.toUpperCase(), window.location.origin) || config._receiptIdentity) {
+    const identity = config._offlineIdentity || config._receiptIdentity || getBoundIdentity()
+    await requireCurrentIdentity(identity)
+    config._offlineIdentity = identity
+    Object.assign(config.headers, identityHeaders(identity))
+  }
+  const revision = (await getQueueState()).revision
+  if (config._privateRevision && config._privateRevision !== revision) throw new Error('Sign-in changed during this request.')
+  config._privateRevision = revision
+  if (needsCsrf(config.method)) {
+    try {
+      config.headers.set('X-CSRF-Token', await getCsrfToken())
+    } catch (error) {
+      // Let the worker durably save eligible writes during a network outage.
+      // HTTP rejections and malformed token responses must still fail closed.
+      if (!(error instanceof TypeError || error.name === 'TimeoutError') || !isOfflineWrite(url, config.method.toUpperCase(), window.location.origin)) throw error
+      config.headers.delete('X-CSRF-Token')
+    }
+    if (revision !== (await getQueueState()).revision) throw new Error('Sign-in changed during this request.')
+  }
+  return config
+})
 
 // Single-flight token refresh (H4 companion). The server now ROTATES and
 // REVOKES the previous session on every /auth/refresh, so the old refresh token
@@ -27,12 +66,19 @@ const api = axios.create({
 // (also: one network round-trip instead of N).
 let refreshPromise = null
 
-function refreshSession() {
+function refreshSession(expectedRevision) {
   if (!refreshPromise) {
-    // withCredentials sends the httpOnly refresh_token cookie automatically.
-    refreshPromise = axios
-      .post('/api/auth/refresh', {}, { withCredentials: true })
-      .finally(() => { refreshPromise = null })
+    refreshPromise = (async () => {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const token = await getCsrfToken()
+        if (expectedRevision && expectedRevision !== (await getQueueState()).revision) throw Object.assign(new Error('Sign-in changed during this request.'), { code: 'AUTH_CONTEXT_CHANGED' })
+        try {
+          return await axios.post('/api/auth/refresh', {}, { withCredentials: true, headers: { 'X-CSRF-Token': token } })
+        } catch (error) {
+          if (attempt || error.response?.status !== 403 || error.response?.data?.code !== 'CSRF_INVALID') throw error
+        }
+      }
+    })().finally(() => { refreshPromise = null })
   }
   return refreshPromise
 }
@@ -52,17 +98,19 @@ const SESSION_ENDED_CODES = new Set(['SESSION_EXPIRED', 'SESSION_INVALID'])
 export async function handleAuthError(error, deps) {
   const { getPath, clearAuth, notifyExpired, redirectSoon, redirectNow, refresh, retry } = deps
   const originalRequest = error.config
-  const isAuthPage = AUTH_PAGES.has(getPath())
+  const path = getPath()
+  const isAuthPage = AUTH_PAGES.has(path)
+  const loginPath = reminderAuthPath('/login', reminderIdFromPath(path))
 
   // Session definitively expired / invalid — no point refreshing.
   const errorCode = error.response?.data?.code
   if (SESSION_ENDED_CODES.has(errorCode)) {
     // Clear the local auth flag so ThemeContext / LanguageContext stop
     // attempting background sync (they check this flag, not the cookie).
-    clearAuth()
+    await clearAuth()
     if (!isAuthPage) {
       notifyExpired(error.response?.data?.error || 'Your session has expired. Please login again.')
-      redirectSoon('/login')
+      redirectSoon(loginPath)
     }
     return Promise.reject(error)
   }
@@ -71,6 +119,7 @@ export async function handleAuthError(error, deps) {
   // cookie automatically because withCredentials: true is set.
   if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
     if (isAuthPage) {
+      if (originalRequest.url === '/auth/me') await clearAuth()
       return Promise.reject(error)
     }
 
@@ -86,40 +135,60 @@ export async function handleAuthError(error, deps) {
       return retry(originalRequest)
     } catch (refreshError) {
       const refreshErrorCode = refreshError.response?.data?.code
+      if (refreshError.code === 'AUTH_CONTEXT_CHANGED' || refreshErrorCode?.startsWith('CSRF_')) return Promise.reject(refreshError)
       if (SESSION_ENDED_CODES.has(refreshErrorCode)) {
-        clearAuth()
+        await clearAuth()
         if (!isAuthPage) {
           notifyExpired(refreshError.response?.data?.error || 'Your session has expired. Please login again.')
-          redirectSoon('/login')
+          redirectSoon(loginPath)
         }
         return Promise.reject(refreshError)
       }
 
       // Refresh failed for any other reason — send user to login.
-      clearAuth()
+      await clearAuth()
       if (!isAuthPage) {
-        redirectNow('/login')
+        redirectNow(loginPath)
       }
       return Promise.reject(refreshError)
     }
   }
 
+  if (error.response?.status === 401 && originalRequest?._retry) await clearAuth()
   return Promise.reject(error)
 }
 
 // Response interceptor — transparent token refresh via cookie. Wires the real
 // browser/axios dependencies into the testable handleAuthError above.
 api.interceptors.response.use(
-  (response) => response,
-  (error) => handleAuthError(error, {
-    getPath: () => window.location.pathname,
-    clearAuth: () => localStorage.removeItem('auth_session'),
-    notifyExpired: (message) => toast.error(message, { duration: 4000, id: 'session-expired' }),
-    redirectSoon: (url) => { setTimeout(() => { window.location.href = url }, 2000) },
-    redirectNow: (url) => { window.location.href = url },
-    refresh: refreshSession,
-    retry: (config) => api(config),
-  })
+  async (response) => {
+    if (response.config?._privateRevision && response.config._privateRevision !== (await getQueueState()).revision) throw new Error('Sign-in changed before the response arrived.')
+    if (response.status === 202 && response.headers?.['x-gearcargo-queued'] === '1' && response.data?.code === 'OFFLINE_QUEUED') {
+      return Promise.reject(Object.assign(new Error('Saved on this device; waiting to sync.'), { code: 'OFFLINE_QUEUED', response, config: response.config }))
+    }
+    return response
+  },
+  async (error) => {
+    if (error.config?._privateRevision && error.config._privateRevision !== (await getQueueState()).revision) throw new Error('Sign-in changed before the response arrived.')
+    if (error.response?.status === 403 && error.response?.data?.code === 'CSRF_INVALID' && error.config && !error.config._csrfRetry) {
+      error.config._csrfRetry = true
+      return api(error.config)
+    }
+    if (['REVISION_CONFLICT', 'OPERATION_KEY_REUSED'].includes(error.response?.data?.code)) {
+      toast.error(error.response.data.error, { duration: 8000, id: 'mutation-conflict' })
+    }
+    return handleAuthError(error, {
+      getPath: () => window.location.pathname,
+      clearAuth: async () => {
+        await beginIdentityTransition({ logout: true, expectedRevision: error.config?._privateRevision })
+      },
+      notifyExpired: (message) => toast.error(message, { duration: 4000, id: 'session-expired' }),
+      redirectSoon: (url) => { setTimeout(() => { window.location.href = url }, 2000) },
+      redirectNow: (url) => { window.location.href = url },
+      refresh: () => refreshSession(error.config?._privateRevision),
+      retry: (config) => api(config),
+    })
+  }
 )
 
 export default api
@@ -130,14 +199,16 @@ export const vehicleApi = {
   getArchived: () => api.get('/vehicles/archived'),
   get: (id) => api.get(`/vehicles/${id}`),
   getById: (id) => api.get(`/vehicles/${id}`),
-  create: (data) => api.post('/vehicles', data),
-  update: (id, data) => api.put(`/vehicles/${id}`, data),
-  delete: (id) => api.delete(`/vehicles/${id}`),
+  create: (data, config) => api.post('/vehicles', data, config),
+  update: (id, data, config) => api.put(`/vehicles/${id}`, data, config),
+  delete: (id, config) => api.delete(`/vehicles/${id}`, config),
   hardDelete: (id) => api.delete(`/vehicles/${id}?hard=true`),
-  archive: (id) => api.post(`/vehicles/${id}/archive`),
-  unarchive: (id) => api.post(`/vehicles/${id}/unarchive`),
+  archive: (id, config) => api.post(`/vehicles/${id}/archive`, {}, config),
+  unarchive: (id, config) => api.post(`/vehicles/${id}/unarchive`, {}, config),
   getStats: (id) => api.get(`/vehicles/${id}/stats`),
   getCostAnalytics: (id) => api.get(`/vehicles/${id}/cost-analytics`),
+  getExpenseSummary: (id, filters) => api.get(`/vehicles/${id}/expenses-summary`, { params: filters }),
+  getExpenseRecords: (id, filters) => api.get(`/vehicles/${id}/expense-records`, { params: filters }),
   // F11 — 12-month forward cost forecast (recurring + predictions vs budget)
   getForecast: (id, months = 12) => api.get(`/vehicles/${id}/forecast?months=${months}`),
   // F06 — natural-language vehicle chat (single-turn, AI/Ollama)
@@ -153,7 +224,7 @@ export const vehicleApi = {
   // Fleet-wide feed of the most recent cost-bearing transactions across all vehicles.
   getRecentTransactions: (limit = 5) => api.get(`/vehicles/recent-transactions?limit=${limit}`),
   reorder: (order) => api.post('/vehicles/reorder', { order }),
-  updateMileage: (id, mileage) => api.post(`/vehicles/${id}/mileage`, { mileage }),
+  updateMileage: (id, mileage, config) => api.post(`/vehicles/${id}/mileage`, { mileage }, config),
   uploadPhoto: (id, file) => {
     const formData = new FormData()
     formData.append('photo', file)
@@ -176,9 +247,9 @@ export const fuelApi = {
   // F26 — per-station price insights from the user's own fills.
   getStations: (vehicleId) => api.get(vehicleId ? `/fuel/stations?vehicle_id=${vehicleId}` : '/fuel/stations'),
   get: (id) => api.get(`/fuel/${id}`),
-  create: (data) => api.post('/fuel', data),
-  update: (id, data) => api.put(`/fuel/${id}`, data),
-  delete: (id) => api.delete(`/fuel/${id}`),
+  create: (data, config) => api.post('/fuel', data, config),
+  update: (id, data, config) => api.put(`/fuel/${id}`, data, config),
+  delete: (id, config) => api.delete(`/fuel/${id}`, config),
   getStats: (vehicleId = null) => {
     const params = vehicleId ? `?vehicle_id=${vehicleId}` : ''
     return api.get(`/fuel/stats${params}`)
@@ -193,9 +264,9 @@ export const serviceApi = {
   },
   getByVehicle: (vehicleId, page = 1) => api.get(`/services?vehicle_id=${vehicleId}&page=${page}`),
   get: (id) => api.get(`/services/${id}`),
-  create: (data) => api.post('/services', data),
-  update: (id, data) => api.put(`/services/${id}`, data),
-  delete: (id) => api.delete(`/services/${id}`),
+  create: (data, config) => api.post('/services', data, config),
+  update: (id, data, config) => api.put(`/services/${id}`, data, config),
+  delete: (id, config) => api.delete(`/services/${id}`, config),
 }
 
 export const repairApi = {
@@ -206,18 +277,51 @@ export const repairApi = {
   },
   getByVehicle: (vehicleId, page = 1) => api.get(`/repairs?vehicle_id=${vehicleId}&page=${page}`),
   get: (id) => api.get(`/repairs/${id}`),
-  create: (data) => api.post('/repairs', data),
-  update: (id, data) => api.put(`/repairs/${id}`, data),
-  delete: (id) => api.delete(`/repairs/${id}`),
+  create: (data, config) => api.post('/repairs', data, config),
+  update: (id, data, config) => api.put(`/repairs/${id}`, data, config),
+  delete: (id, config) => api.delete(`/repairs/${id}`, config),
+}
+
+export const reconciliationApi = {
+  list: (page = 1) => api.get(`/reconciliation?page=${page}`),
+  preview: data => api.post('/reconciliation/preview', data),
+  create: (data, options) => api.post('/reconciliation', data, options),
+  get: id => api.get(`/reconciliation/${id}`),
+  candidates: (id, row, page, search) => api.get(`/reconciliation/${id}/rows/${row}/candidates`, { params: { page, search } }),
+  match: (id, row, data, options) => api.put(`/reconciliation/${id}/rows/${row}`, data, options),
+  complete: (id, options) => api.post(`/reconciliation/${id}/complete`, {}, options),
+  delete: (id, options) => api.delete(`/reconciliation/${id}`, options),
+  summary: id => api.get(`/reconciliation/${id}/summary.csv`, { responseType: 'blob' }),
+}
+
+export const appointmentApi = {
+  list: vehicleId => api.get(`/appointments?vehicle_id=${vehicleId}`),
+  work: vehicleId => api.get(`/appointments/work?vehicle_id=${vehicleId}`),
+  create: (data, options) => api.post('/appointments', data, options),
+  update: (id, data, options) => api.put(`/appointments/${id}`, data, options),
+  action: (id, action, data, options) => api.post(`/appointments/${id}/${action}`, data, options),
+}
+
+export const tireApi = {
+  list: (vehicleId) => api.get(`/tire-sets?vehicle_id=${vehicleId}`),
+  get: (id) => api.get(`/tire-sets/${id}`),
+  create: (data, config) => api.post('/tire-sets', data, config),
+  update: (id, data, config) => api.put(`/tire-sets/${id}`, data, config),
+  delete: (id, config) => api.delete(`/tire-sets/${id}`, config),
+  event: (id, data, config) => api.post(`/tire-sets/${id}/events`, data, config),
+  correctEvent: (id, eventId, data, config) => api.put(`/tire-sets/${id}/events/${eventId}`, data, config),
+  undoEvent: (id, eventId, config) => api.delete(`/tire-sets/${id}/events/${eventId}`, config),
+  reading: (id, data, config) => api.post(`/tire-sets/${id}/readings`, data, config),
+  deleteReading: (id, readingId, config) => api.delete(`/tire-sets/${id}/readings/${readingId}`, config),
 }
 
 export const consumableApi = {
   getByVehicle: (vehicleId, page = 1) => api.get(`/consumables?vehicle_id=${vehicleId}&page=${page}`),
   getDue: () => api.get('/consumables/due'),
   get: (id) => api.get(`/consumables/${id}`),
-  create: (data) => api.post('/consumables', data),
-  update: (id, data) => api.put(`/consumables/${id}`, data),
-  delete: (id) => api.delete(`/consumables/${id}`),
+  create: (data, config) => api.post('/consumables', data, config),
+  update: (id, data, config) => api.put(`/consumables/${id}`, data, config),
+  delete: (id, config) => api.delete(`/consumables/${id}`, config),
 }
 
 export const reminderApi = {
@@ -229,11 +333,12 @@ export const reminderApi = {
     return api.get(`/reminders?${params}`)
   },
   get: (id) => api.get(`/reminders/${id}`),
-  create: (data) => api.post('/reminders', data),
-  update: (id, data) => api.put(`/reminders/${id}`, data),
-  delete: (id) => api.delete(`/reminders/${id}`),
-  complete: (id, mileage = null) => api.post(`/reminders/${id}/complete`, { mileage }),
-  snooze: (id, days) => api.post(`/reminders/${id}/snooze`, { days }),
+  create: (data, config) => api.post('/reminders', data, config),
+  update: (id, data, config) => api.put(`/reminders/${id}`, data, config),
+  delete: (id, config) => api.delete(`/reminders/${id}`, config),
+  complete: (id, mileage = null, config) => api.post(`/reminders/${id}/complete`,
+    mileage !== null && typeof mileage === 'object' ? mileage : { mileage }, config),
+  snooze: (id, days, config) => api.post(`/reminders/${id}/snooze`, { days }, config),
   getOverdue: () => api.get('/reminders/overdue'),
   getStats: () => api.get('/reminders/stats'),
 }
@@ -256,9 +361,9 @@ export const forecastApi = {
 
 export const parkingApi = {
   getByVehicle: (vehicleId, page = 1) => api.get(`/parking?vehicle_id=${vehicleId}&page=${page}`),
-  update: (id, data) => api.put(`/parking/${id}`, data),
+  update: (id, data, config) => api.put(`/parking/${id}`, data, config),
   // F34 — stop a recurring permit/subscription series (mirrors taxApi.cancel).
-  cancel: (id) => api.post(`/parking/${id}/cancel`),
+  cancel: (id, config) => api.post(`/parking/${id}/cancel`, {}, config),
   // F14 — outstanding parking fines (+ total_owed). status: pending|contested|paid, or omit for all outstanding.
   getFines: (status) => api.get(status ? `/parking/fines?status=${status}` : '/parking/fines'),
 }
@@ -340,6 +445,7 @@ export const widgetApi = {
 }
 
 export const backupApi = {
+  getRecoveryStatus: () => api.get('/backup/recovery-status'),
   // Get backup status and available backups
   getStatus: () => api.get('/backup/status'),
   
@@ -350,9 +456,9 @@ export const backupApi = {
   getHistory: (page = 1, perPage = 20) => api.get(`/backup/history?page=${page}&per_page=${perPage}`),
   
   // Export data (download)
-  export: (format = 'zip', includeAttachments = true, saveToStorage = false) => 
-    api.post('/backup/export', { format, include_attachments: includeAttachments, save_to_storage: saveToStorage }, {
-      responseType: format === 'zip' ? 'blob' : 'json'
+  export: (format = 'zip', includeAttachments = true, saveToStorage = false, protection = {}) =>
+    api.post('/backup/export', { format, include_attachments: includeAttachments, save_to_storage: saveToStorage, ...protection }, {
+      responseType: format === 'zip' || protection.encrypt ? 'blob' : 'json'
     }),
   
   // Import data from file
@@ -373,8 +479,8 @@ export const backupApi = {
   }),
   
   // Restore from stored backup
-  restoreFromStorage: (filename, mergeMode = 'merge') => 
-    api.post(`/backup/restore/${filename}`, { merge_mode: mergeMode }),
+  restoreFromStorage: (filename, mergeMode = 'merge', options = {}) =>
+    api.post(`/backup/restore/${filename}`, { merge_mode: mergeMode, ...options }),
   
   // Download stored backup
   downloadStored: (filename) => api.get(`/backup/download/${filename}`, { responseType: 'blob' }),
@@ -389,8 +495,8 @@ export const backupApi = {
   updateSchedule: (data) => api.put('/backup/schedule', data),
   
   // Run backup now
-  runNow: (includeAttachments = true, sendExternal = false) => 
-    api.post('/backup/run-now', { include_attachments: includeAttachments, send_external: sendExternal }),
+  runNow: (includeAttachments = true, sendExternal = false, protection = {}) =>
+    api.post('/backup/run-now', { include_attachments: includeAttachments, send_external: sendExternal, ...protection }),
 
   // Send latest (or specific) backup to external server
   sendToExternal: (filename = null) =>
@@ -409,8 +515,8 @@ export const backupApi = {
     api.post('/backup/external/files', { url, api_key: apiKey, path }),
 
   // Restore from external server file
-  restoreFromExternal: (filename, url = null, apiKey = null, path = null, mergeMode = 'merge') =>
-    api.post('/backup/external/restore', { filename, url, api_key: apiKey, path, merge_mode: mergeMode }),
+  restoreFromExternal: (filename, url = null, apiKey = null, path = null, mergeMode = 'merge', options = {}) =>
+    api.post('/backup/external/restore', { filename, url, api_key: apiKey, path, merge_mode: mergeMode, ...options }),
 
   // Upload a backup .zip file to stored backups
   uploadBackup: (formData) => api.post('/backup/upload', formData, {
@@ -430,10 +536,10 @@ export const taxApi = {
     return api.get(`/taxes?${params}`)
   },
   get: (id) => api.get(`/taxes/${id}`),
-  create: (data) => api.post('/taxes', data),
-  update: (id, data) => api.put(`/taxes/${id}`, data),
-  delete: (id) => api.delete(`/taxes/${id}`),
-  cancel: (id) => api.post(`/taxes/${id}/cancel`),
+  create: (data, config) => api.post('/taxes', data, config),
+  update: (id, data, config) => api.put(`/taxes/${id}`, data, config),
+  delete: (id, config) => api.delete(`/taxes/${id}`, config),
+  cancel: (id, config) => api.post(`/taxes/${id}/cancel`, {}, config),
 }
 
 export const insuranceApi = {
@@ -443,10 +549,10 @@ export const insuranceApi = {
     return api.get(`/insurance?${params}`)
   },
   get: (id) => api.get(`/insurance/${id}`),
-  create: (data) => api.post('/insurance', data),
-  update: (id, data) => api.put(`/insurance/${id}`, data),
-  delete: (id) => api.delete(`/insurance/${id}`),
-  cancel: (id) => api.post(`/insurance/${id}/cancel`),
+  create: (data, config) => api.post('/insurance', data, config),
+  update: (id, data, config) => api.put(`/insurance/${id}`, data, config),
+  delete: (id, config) => api.delete(`/insurance/${id}`, config),
+  cancel: (id, config) => api.post(`/insurance/${id}/cancel`, {}, config),
   getActive: () => api.get('/insurance/active'),
   getExpiring: (days = 30) => api.get(`/insurance/expiring?days=${days}`),
 }
@@ -504,7 +610,14 @@ export const externalApi = {
 }
 
 // Attachment/Receipt API
+const uploadIntents = new WeakMap()
 export const attachmentApi = {
+  // Linking a newly created entry is a separate system operation; metadata
+  // editors must instead pass the revision they displayed to update().
+  link: async (id, data) => {
+    const current = await api.get(`/attachments/${id}`)
+    return api.put(`/attachments/${id}`, data, mutationOptions(current.data))
+  },
   getAll: (params = {}) => {
     const searchParams = new URLSearchParams()
     if (params.vehicleId) searchParams.append('vehicle_id', params.vehicleId)
@@ -523,12 +636,14 @@ export const attachmentApi = {
     if (data.entryId) formData.append('entry_id', data.entryId)
     if (data.category) formData.append('category', data.category)
     if (data.description) formData.append('description', data.description)
+    if (!uploadIntents.has(file)) uploadIntents.set(file, crypto.randomUUID())
     return api.post('/attachments', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
+      _receiptIdentity: data.identity,
+      headers: { 'Content-Type': 'multipart/form-data', ...mutationOptions(null, data.operationKey || uploadIntents.get(file)).headers }
+    }).then(response => { uploadIntents.delete(file); return response })
   },
-  update: (id, data) => api.put(`/attachments/${id}`, data),
-  delete: (id) => api.delete(`/attachments/${id}`),
+  update: (id, data, config) => api.put(`/attachments/${id}`, data, config),
+  delete: (id, config) => api.delete(`/attachments/${id}`, config),
   download: (id) => api.get(`/attachments/${id}/download`, { responseType: 'blob' }),
   // S20: returns the plain view URL — the browser sends the httpOnly session
   // cookie automatically for same-origin <img>/<iframe> requests.
@@ -583,6 +698,7 @@ export const calendarApi = {
   },
   syncAllEntries: () => api.post('/calendar/sync'),
   getSyncJobStatus: () => api.get('/calendar/sync/job-status'),
+  retrySync: (sourceId) => api.post('/calendar/sync/retry', { source_id: sourceId }),
   syncEntry: (type, id, action = 'create') => api.post('/calendar/sync/entry', { type, id, action }),
 }
 

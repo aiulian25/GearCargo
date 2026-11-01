@@ -111,6 +111,7 @@ def _capture_created_event(monkeypatch):
         return True, kwargs.get('uid', 'ok')
 
     monkeypatch.setattr(CalendarService, 'create_event', _create_event)
+    monkeypatch.setattr(CalendarService, 'update_event', lambda self, uid, **kwargs: _create_event(self, uid=uid, **kwargs))
     return captured
 
 
@@ -130,6 +131,9 @@ def test_sync_labels_the_event_with_the_vehicle_name(app, monkeypatch):
         db.session.commit()
 
         success, message = sync_entry_to_calendar(user, 'service', entry)
+        db.session.commit()
+        from app.services.calendar_outbox import process_calendar_outbox
+        process_calendar_outbox(app)
 
     assert success, message
     assert 'nickname' not in message
@@ -152,6 +156,9 @@ def test_sync_never_renders_none_in_the_vehicle_label(app, monkeypatch):
         db.session.commit()
 
         assert sync_entry_to_calendar(user, 'service', entry)[0]
+        db.session.commit()
+        from app.services.calendar_outbox import process_calendar_outbox
+        process_calendar_outbox(app)
 
     assert 'None' not in captured['title']
     assert 'Ford' in captured['title']

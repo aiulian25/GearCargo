@@ -1,3 +1,6 @@
+import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
+import { localDate } from '../../utils/dateFormat'
+import { useMutationIntent } from '../../hooks/useMutationIntent'
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
@@ -8,6 +11,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { normalizeDistanceUnit } from '../../utils/fuelEconomy'
 
 export default function AddService() {
+  const mutation = useMutationIntent()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const preselectedVehicle = searchParams.get('vehicle')
@@ -22,7 +26,7 @@ export default function AddService() {
   const { register, handleSubmit, setValue, watch, formState: { errors, isDirty } } = useForm({
     defaultValues: {
       vehicle_id: preselectedVehicle || '',
-      date: new Date().toISOString().split('T')[0],
+      date: localDate(),
       mileage: '',
       description: '',
       shop_name: '',
@@ -51,7 +55,7 @@ export default function AddService() {
     fetchVehicles()
   }, [preselectedVehicle, setValue])
   
-  useUnsavedChanges(isDirty)
+  const markSaved = useUnsavedChanges(isDirty || selectedServiceTypes.length > 0)
 
   const onSubmit = async (data) => {
     setIsSubmitting(true)
@@ -75,10 +79,17 @@ export default function AddService() {
         parts_cost: data.parts_cost ? parseFloat(data.parts_cost) : 0,
         total_cost: data.total_cost ? parseFloat(data.total_cost) : 
           (parseFloat(data.labor_cost || 0) + parseFloat(data.parts_cost || 0)),
-      })
+      }, mutation.options())
       
+      if (!markSaved()) return
       navigate(-1)
     } catch (err) {
+      if (isOfflineWriteError(err)) {
+        announceOfflineSaved(t)
+        if (!markSaved()) return
+        navigate(-1)
+        return
+      }
       // Prefer the server's message_key so the reason (malformed date,
       // non-numeric mileage or cost) is shown in the user's own language.
       const data = err.response?.data

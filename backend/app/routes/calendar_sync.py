@@ -2,25 +2,22 @@
 GearCargo - Calendar Sync Routes
 """
 
+from app.utils.timeutils import isoformat_utc
+from app.services.vehicle_archive import active_vehicle_condition
 from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify, current_app
 from icalendar import Calendar, Event
 from io import BytesIO
 from sqlalchemy import and_, or_
 
-import json
 import secrets
 
-from app import db, redis_client
+from app import db
 from app.models import (
     Reminder, Vehicle, FuelEntry, ServiceEntry, RepairEntry,
-    TaxEntry, ParkingEntry, InsurancePolicy, Todo, User, ActivityLog
+    TaxEntry, ParkingEntry, InsurancePolicy, Todo, User, ActivityLog, Appointment
 )
 from app.routes.auth import token_required
-import logging
-
-logger = logging.getLogger(__name__)
-
 calendar_bp = Blueprint('calendar', __name__)
 
 
@@ -47,10 +44,9 @@ def get_calendar_entries(current_user):
         else:
             # Default to end of current month + next month
             today = datetime.now(timezone.utc)
-            if today.month == 12:
-                end_date = today.replace(year=today.year + 1, month=2, day=1).date() - timedelta(days=1)
-            else:
-                end_date = today.replace(month=today.month + 2, day=1).date() - timedelta(days=1)
+            year_offset, month_index = divmod(today.month + 1, 12)
+            end_date = today.replace(year=today.year + year_offset, month=month_index + 1,
+                                     day=1).date() - timedelta(days=1)
     except ValueError:
         return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
     
@@ -64,7 +60,7 @@ def get_calendar_entries(current_user):
     
     # Base filter for vehicle
     def vehicle_filter(model):
-        base = model.user_id == current_user.id
+        base = and_(model.user_id == current_user.id, active_vehicle_condition(model))
         if vehicle_id:
             return and_(base, model.vehicle_id == vehicle_id)
         return base
@@ -243,6 +239,7 @@ def get_calendar_entries(current_user):
     
     # 7. Reminders (due dates)
     reminders = Reminder.query.filter(
+        active_vehicle_condition(Reminder),
         Reminder.user_id == current_user.id,
         Reminder.due_date >= start_date,
         Reminder.due_date <= end_date
@@ -252,6 +249,7 @@ def get_calendar_entries(current_user):
     reminders = reminders.all()
     
     for entry in reminders:
+        if entry.reminder_type == 'workshop_preparation': continue
         # Determine status from completed/dismissed fields
         if entry.completed:
             status = 'completed'
@@ -282,6 +280,7 @@ def get_calendar_entries(current_user):
     
     # 8. Todos (due dates)
     todos = Todo.query.filter(
+        active_vehicle_condition(Todo),
         Todo.user_id == current_user.id,
         Todo.due_date.isnot(None),
         Todo.due_date >= start_date,
@@ -308,6 +307,17 @@ def get_calendar_entries(current_user):
             }
         })
     
+    # Appointment days use the appointment's named timezone, not UTC truncation.
+    from zoneinfo import ZoneInfo
+    for appointment in Appointment.query.filter(vehicle_filter(Appointment)):
+        local = appointment.start_at.replace(tzinfo=timezone.utc).astimezone(ZoneInfo(appointment.time_zone))
+        if start_date <= local.date() <= end_date:
+            entries.append({'id': f'appointment-{appointment.id}', 'type': 'appointment',
+                'date': local.date().isoformat(), 'title': appointment.title, 'vehicle_id': appointment.vehicle_id,
+                'vehicle_name': vehicles_dict.get(appointment.vehicle_id), 'cost': 0, 'status': appointment.status,
+                'details': {'start_at': isoformat_utc(appointment.start_at), 'time_zone': appointment.time_zone,
+                            'status': appointment.status}, 'link': f'/vehicles/{appointment.vehicle_id}/appointments'})
+
     # Sort entries by date
     entries.sort(key=lambda x: x['date'])
     
@@ -337,6 +347,7 @@ def export_calendar(current_user):
     # R4-03: Reminder has no `status` column — "pending" is the pair of flags
     # every other surface uses (due feed, digest, notification job).
     query = Reminder.query.filter(
+        active_vehicle_condition(Reminder),
         Reminder.user_id == current_user.id,
         Reminder.completed == False,   # noqa: E712
         Reminder.dismissed == False,   # noqa: E712
@@ -444,6 +455,7 @@ def calendar_feed(token):
     
     # Get reminders
     reminders = Reminder.query.filter(
+        active_vehicle_condition(Reminder),
         Reminder.user_id == user.id,
         Reminder.calendar_sync == True,
         Reminder.completed == False,
@@ -560,10 +572,11 @@ def get_sync_status(current_user):
 def sync_all_reminders(current_user):
     """Enable calendar sync for all pending reminders."""
     updated = Reminder.query.filter(
+        active_vehicle_condition(Reminder),
         Reminder.user_id == current_user.id,
         Reminder.completed == False,
         Reminder.due_date.isnot(None)
-    ).update({'calendar_sync': True})
+    ).update({'calendar_sync': True, 'revision': Reminder.revision + 1})
     
     db.session.commit()
     
@@ -614,7 +627,7 @@ def get_calendar_settings(current_user):
         'calendar_id': primary.get('calendar_id') if primary else current_user.calendar_id,
         'configured': bool(primary and primary.get('provider') and primary.get('url') and primary.get('username')),
         'sources': sources,
-        'last_sync': current_user.calendar_last_sync.isoformat() if current_user.calendar_last_sync else None,
+        'last_sync': isoformat_utc(current_user.calendar_last_sync) if current_user.calendar_last_sync else None,
     })
 
 
@@ -702,6 +715,11 @@ def update_calendar_settings(current_user):
     set_user_calendar_sources(current_user, new_sources)
     if 'enabled' in data:
         current_user.calendar_enabled = bool(data.get('enabled'))
+    from app.services.calendar_outbox import cancel_removed_sources, enqueue_all, retry_pending
+    cancel_removed_sources(current_user)
+    if current_user.calendar_enabled:
+        enqueue_all(current_user)
+        retry_pending(current_user)
     
     db.session.commit()
     
@@ -812,90 +830,34 @@ def get_available_calendars(current_user):
     return jsonify({'calendars': calendars, 'source_id': source.get('id')})
 
 
-def _sync_job_key(user_id: int) -> str:
-    return f"cal_sync_job:{user_id}"
-
-
-def _set_sync_job(user_id: int, payload: dict, ttl: int = 600) -> None:
-    """Write sync job state to Redis. Silently no-ops if Redis is unavailable."""
-    if redis_client:
-        try:
-            redis_client.setex(_sync_job_key(user_id), ttl, json.dumps(payload))
-        except Exception:
-            pass
-
-
 @calendar_bp.route('/sync', methods=['POST'])
 @token_required
 def sync_all_entries(current_user):
-    """Kick off a background CalDAV sync and return 202 immediately.
-
-    The sync can take many seconds (network round-trips to Nextcloud for
-    every entry).  Running it synchronously blocks a Gunicorn worker for
-    the full duration, which causes 504 Gateway Timeout errors when a
-    reverse proxy sits in front.  We fire the work in a daemon thread so
-    the HTTP response is returned before any proxy timeout fires.
-    """
-    import threading
+    """Persist reconciliation intents and return without contacting CalDAV."""
     from app.services.calendar_service import sync_all_entries_for_user
-
     if not current_user.calendar_enabled:
         return jsonify({'error': 'Calendar sync is disabled', 'message_key': 'calendar.sync.disabled'}), 400
-
-    user_id = current_user.id
-    app = current_app._get_current_object()
-
-    _set_sync_job(user_id, {
-        'status': 'running',
-        'started': datetime.now(timezone.utc).isoformat(),
-    })
-
-    def _run_sync():
-        with app.app_context():
-            from app.models import User
-            try:
-                user = db.session.get(User, user_id)
-                if user:
-                    results = sync_all_entries_for_user(user)
-                    user.calendar_last_sync = datetime.now(timezone.utc)
-                    db.session.commit()
-                    _set_sync_job(user_id, {
-                        'status': 'done',
-                        'synced': results.get('synced', 0),
-                        'failed': results.get('failed', 0),
-                        'errors': results.get('errors', [])[:10],
-                    })
-                else:
-                    _set_sync_job(user_id, {'status': 'failed', 'error': 'User not found'})
-            except Exception as exc:
-                db.session.rollback()
-                logger.exception("Background calendar sync failed for user %s", user_id)
-                _set_sync_job(user_id, {'status': 'failed', 'error': str(exc)})
-            finally:
-                db.session.remove()
-
-    threading.Thread(target=_run_sync, daemon=True).start()
-
-    return jsonify({
-        'message_key': 'calendar.sync.started',
-        'queued': True,
-        'synced': 0,
-    }), 202
+    results = sync_all_entries_for_user(current_user)
+    db.session.commit()
+    return jsonify({'message_key': 'calendar.sync.started', 'queued': True,
+                    'pending': results['queued'], 'synced': 0}), 202
 
 
 @calendar_bp.route('/sync/job-status', methods=['GET'])
 @token_required
 def get_sync_job_status(current_user):
-    """Return the status of the most recent background sync job for this user."""
-    if not redis_client:
-        return jsonify({'status': 'unavailable'})
-    try:
-        raw = redis_client.get(_sync_job_key(current_user.id))
-    except Exception:
-        return jsonify({'status': 'unavailable'})
-    if not raw:
-        return jsonify({'status': 'idle'})
-    return jsonify(json.loads(raw))
+    from app.services.calendar_outbox import sync_status
+    return jsonify(sync_status(current_user))
+
+
+@calendar_bp.route('/sync/retry', methods=['POST'])
+@token_required
+def retry_calendar_sync(current_user):
+    from app.services.calendar_outbox import retry_pending
+    payload = request.get_json(silent=True) or {}
+    count = retry_pending(current_user, payload.get('source_id'))
+    db.session.commit()
+    return jsonify({'queued': True, 'pending': count}), 202
 
 
 @calendar_bp.route('/sync/entry', methods=['POST'])
@@ -912,6 +874,8 @@ def sync_single_entry(current_user):
     entry_type = data.get('type')
     entry_id = data.get('id')
     action = data.get('action', 'create')
+    if action not in ('create', 'update', 'delete'):
+        return jsonify({'error': 'Invalid calendar action'}), 400
     
     if not entry_type or not entry_id:
         return jsonify({'error': 'Missing type or id', 'message_key': 'calendar.sync.missing_type_or_id'}), 400
@@ -940,9 +904,11 @@ def sync_single_entry(current_user):
         return jsonify({'error': 'Entry not found', 'message_key': 'calendar.sync.entry_not_found'}), 404
     
     success, message = sync_entry_to_calendar(current_user, entry_type, entry, action)
+    db.session.commit()
     
     return jsonify({
         'success': success,
+        'queued': success,
         'message': message,
         'message_key': 'calendar.sync.entry_success' if success else 'calendar.sync.entry_failed'
     })

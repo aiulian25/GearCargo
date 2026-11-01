@@ -5,6 +5,7 @@ Generates comprehensive vehicle expense reports in PDF format.
 
 import io
 import os
+import threading
 from datetime import datetime, timedelta, timezone
 from dateutil.relativedelta import relativedelta
 from reportlab.lib import colors
@@ -33,6 +34,7 @@ TEXT_MUTED = colors.HexColor('#6B7280')
 SUCCESS_COLOR = colors.HexColor('#10B981')
 WARNING_COLOR = colors.HexColor('#F59E0B')
 DANGER_COLOR = colors.HexColor('#EF4444')
+_SHARED_FONT_LOCK = threading.Lock()
 
 
 def vehicle_label(vehicle):
@@ -117,185 +119,41 @@ def get_period_dates(period, year=None, month=None):
 
 
 def get_vehicle_entries(vehicle, start_date, end_date, currency='EUR', rates=None):
-    """
-    Get all entries for a vehicle within the date range.
-
-    Returns dict with categorized entries and totals. When ``rates`` (an
-    EUR-based dict from get_live_eur_rates) is supplied, every per-entry amount
-    is converted from its own currency into ``currency`` before being summed, so
-    a report never adds mixed currencies as if identical (F1). The original
-    amount+currency is kept in the row detail when a conversion happened. When
-    ``rates`` is None the behaviour is unchanged (no conversion) — backward safe.
-    """
-    from app.services.currency import to_display
-
-    entries = {
-        'fuel': [],
-        'service': [],
-        'repair': [],
-        'tax': [],
-        'parking': [],
-        'insurance': [],
-        'totals': {
-            'fuel': 0,
-            'service': 0,
-            'repair': 0,
-            'tax': 0,
-            'parking': 0,
-            'insurance': 0,
-            'grand_total': 0,
-            # F1 flags: converted=False if a rate was unavailable; fx_applied=True
-            # if any amount was logged in a currency other than the report one.
-            'converted': True,
-            'fx_applied': False,
-        }
-    }
-
-    report_ccy = (currency or 'EUR').upper()
-    # R4-09: the odometer column hardcoded "km"; a miles vehicle was reported in
-    # the wrong unit on what is a maintenance/expense record.
-    distance_unit = vehicle.distance_unit or 'km'
-
-    def _odometer(value):
-        return f"{value:,} {distance_unit}" if value else '-'
-
-    def convert(amount, entry_ccy):
-        """Convert one amount into the report currency, updating the flags, and
-        return (converted_amount, original_suffix). ``original_suffix`` is a
-        non-empty string like ' (120.00 EUR)' only when a real conversion
-        happened, so it can be appended to the row detail."""
-        amt = float(amount or 0)
-        src = (entry_ccy or 'EUR').upper()
-        if rates is None or src == report_ccy or amt == 0:
-            return amt, ''
-        conv, ok = to_display(amt, src, report_ccy, rates)
-        entries['totals']['fx_applied'] = True
-        if not ok:
-            entries['totals']['converted'] = False
-            return amt, f' ({amt:.2f} {src}, rate n/a)'
-        return conv, f' ({amt:.2f} {src})'
-
-    # Fuel entries
-    fuel_entries = FuelEntry.query.filter(
-        FuelEntry.vehicle_id == vehicle.id,
-        FuelEntry.date >= start_date,
-        FuelEntry.date <= end_date
-    ).order_by(FuelEntry.date).all()
-
-    for entry in fuel_entries:
-        amount, suffix = convert(entry.total_price, entry.currency)
-        # Price-per-litre is quoted in the entry's OWN currency, not the report's.
-        unit_ccy = (entry.currency or report_ccy)
-        # R4-09: liters and price_per_liter are both nullable (the fuel PUT can
-        # clear them, the LubeLog importer writes them empty), and formatting
-        # None with :.2f raises — one such row 500'd the whole report.
-        liters_text = f"{float(entry.liters):.2f}L" if entry.liters is not None else ''
-        price_text = (f" @ {float(entry.price_per_liter):.2f} {unit_ccy}/L"
-                      if entry.price_per_liter is not None else '')
-        entries['fuel'].append({
-            'date': entry.date.strftime('%d/%m/%Y'),
-            'description': f"{liters_text}{price_text}{suffix}".strip() or '-',
-            'odometer': _odometer(entry.odometer),
-            'amount': amount
-        })
-        entries['totals']['fuel'] += amount
-
-    # Service entries
-    service_entries = ServiceEntry.query.filter(
-        ServiceEntry.vehicle_id == vehicle.id,
-        ServiceEntry.date >= start_date,
-        ServiceEntry.date <= end_date
-    ).order_by(ServiceEntry.date).all()
-
-    for entry in service_entries:
-        amount, suffix = convert(entry.amount, entry.currency)
-        entries['service'].append({
-            'date': entry.date.strftime('%d/%m/%Y'),
-            'description': (entry.service_type or 'Service') + suffix,
-            'odometer': _odometer(entry.odometer),
-            'amount': amount
-        })
-        entries['totals']['service'] += amount
-
-    # Repair entries
-    repair_entries = RepairEntry.query.filter(
-        RepairEntry.vehicle_id == vehicle.id,
-        RepairEntry.date >= start_date,
-        RepairEntry.date <= end_date
-    ).order_by(RepairEntry.date).all()
-
-    for entry in repair_entries:
-        amount, suffix = convert(entry.amount, entry.currency)
-        entries['repair'].append({
-            'date': entry.date.strftime('%d/%m/%Y'),
-            'description': (entry.description or 'Repair') + suffix,
-            'odometer': _odometer(entry.odometer),
-            'amount': amount
-        })
-        entries['totals']['repair'] += amount
-
-    # Tax entries
-    tax_entries = TaxEntry.query.filter(
-        TaxEntry.vehicle_id == vehicle.id,
-        TaxEntry.date >= start_date,
-        TaxEntry.date <= end_date
-    ).order_by(TaxEntry.date).all()
-
-    for entry in tax_entries:
-        amount, suffix = convert(entry.amount, entry.currency)
-        entries['tax'].append({
-            'date': entry.date.strftime('%d/%m/%Y') if entry.date else '-',
-            'description': (entry.tax_type or 'Road Tax') + suffix,
-            'odometer': '-',
-            'amount': amount
-        })
-        entries['totals']['tax'] += amount
-
-    # Parking entries
-    parking_entries = ParkingEntry.query.filter(
-        ParkingEntry.vehicle_id == vehicle.id,
-        ParkingEntry.date >= start_date,
-        ParkingEntry.date <= end_date
-    ).order_by(ParkingEntry.date).all()
-
-    for entry in parking_entries:
-        amount, suffix = convert(entry.amount, entry.currency)
-        entries['parking'].append({
-            'date': entry.date.strftime('%d/%m/%Y'),
-            'description': (entry.location or 'Parking') + suffix,
-            'odometer': '-',
-            'amount': amount
-        })
-        entries['totals']['parking'] += amount
-
-    # Insurance entries (by start date within period)
-    insurance_entries = InsurancePolicy.query.filter(
-        InsurancePolicy.vehicle_id == vehicle.id,
-        InsurancePolicy.start_date >= start_date,
-        InsurancePolicy.start_date <= end_date
-    ).order_by(InsurancePolicy.start_date).all()
-
-    for entry in insurance_entries:
-        amount, suffix = convert(entry.premium, entry.currency)
-        entries['insurance'].append({
-            'date': entry.start_date.strftime('%d/%m/%Y'),
-            'description': f"{entry.provider or 'Insurance'} - {entry.policy_type or 'Policy'}{suffix}",
-            'odometer': '-',
-            'amount': amount
-        })
-        entries['totals']['insurance'] += amount
-
-    # Calculate grand total
-    entries['totals']['grand_total'] = sum([
-        entries['totals']['fuel'],
-        entries['totals']['service'],
-        entries['totals']['repair'],
-        entries['totals']['tax'],
-        entries['totals']['parking'],
-        entries['totals']['insurance']
-    ])
-
-    return entries
+    """Detailed private rows from the same dated ledger used by JSON totals."""
+    from app.services.expense_ledger import CATEGORIES, load_expenses, aggregate, convert
+    rows = load_expenses([vehicle.id], start_date, end_date)
+    ledger = aggregate(rows, currency, rates or {}, start_date, end_date)
+    result = {key: [] for key in CATEGORIES}
+    result['totals'] = {**ledger['totals'], 'converted': ledger['converted'],
+                        'fx_applied': ledger['fx_applied']}
+    result['ledger'] = ledger
+    for row in rows:
+        entry = row.source
+        amount = convert(row.amount, row.currency, currency, rates or {})
+        if row.category == 'fuel':
+            parts = []
+            if entry.liters is not None:
+                parts.append(f'{entry.liters:.2f}L')
+            if entry.price_per_liter is not None:
+                parts.append(f'{entry.price_per_liter:.2f} {entry.currency or currency}/L')
+            description = ' @ '.join(parts) or '-'
+        elif row.category == 'insurance':
+            description = f'{entry.provider} - {entry.policy_type or "Policy"} (scheduled estimate)'
+        else:
+            description = (getattr(entry, 'service_type', None) or
+                getattr(entry, 'tax_type', None) or getattr(entry, 'location', None) or
+                entry.description or entry.title or row.category)
+            if row.category in ('service', 'tax'):
+                description = description.replace('_', ' ')
+        if amount is None:
+            description += f' ({row.amount:.2f} {row.currency or "unknown currency"}; rate unavailable)'
+        elif row.currency != currency and row.amount:
+            description += f' ({row.amount:.2f} {row.currency})'
+        odometer = getattr(entry, 'odometer', None)
+        result[row.category].append({'date': row.date.strftime('%d/%m/%Y'),
+            'description': description, 'amount': float(amount) if amount is not None else None,
+            'odometer': f'{odometer:,} {vehicle.distance_unit or "km"}' if odometer else '-'})
+    return result
 
 
 def create_header_footer(canvas, doc, report_data):
@@ -334,11 +192,11 @@ def generate_pdf_report(user, vehicles, period, year=None, month=None, language=
     start_date, end_date, period_label = get_period_dates(period, year, month)
     
     # Get currency from user preferences or default
-    currency = getattr(user, 'currency', 'EUR') or 'EUR'
+    currency = (getattr(user, 'currency', None) or 'GBP').upper()
 
     # F1: fetch EUR-based rates once so every entry amount is converted into the
     # report currency before it is summed. Guarded so PDF generation never fails
-    # just because rates are unavailable (amounts then pass through unconverted).
+    # just because rates are unavailable (affected amounts are excluded and flagged).
     rates = None
     try:
         from flask import current_app
@@ -389,7 +247,8 @@ def generate_pdf_report(user, vehicles, period, year=None, month=None, language=
         textColor=BRAND_COLOR,
         spaceBefore=20,
         spaceAfter=10,
-        borderPadding=5
+        borderPadding=5,
+        keepWithNext=True
     )
     
     vehicle_title_style = ParagraphStyle(
@@ -502,6 +361,11 @@ def generate_pdf_report(user, vehicles, period, year=None, month=None, language=
     elements.append(info_table)
     elements.append(Spacer(1, 0.3*inch))
     
+    from app.services.expense_ledger import BASIS_LABEL
+    from app.utils.timeutils import utc_today
+    elements.append(Paragraph(BASIS_LABEL, normal_style))
+    elements.append(Paragraph(f'As of {utc_today().isoformat()}. Current exchange rates are used.', normal_style))
+
     # ===== VEHICLE SECTIONS =====
     grand_totals = {
         'fuel': 0,
@@ -510,6 +374,7 @@ def generate_pdf_report(user, vehicles, period, year=None, month=None, language=
         'tax': 0,
         'parking': 0,
         'insurance': 0,
+        'consumable': 0,
         'grand_total': 0
     }
     
@@ -521,23 +386,27 @@ def generate_pdf_report(user, vehicles, period, year=None, month=None, language=
         if vehicle.license_plate:
             vehicle_name += f" - {vehicle.license_plate}"
         
-        elements.append(Paragraph(f"🚗 {vehicle_name}", vehicle_title_style))
+        elements.append(Paragraph(f"{vehicle_name}", vehicle_title_style))
         
         # Get entries for this vehicle
         entries = get_vehicle_entries(vehicle, start_date, end_date, currency, rates)
         
+        if not entries['totals']['converted']:
+            elements.append(Paragraph('Partial totals: amounts with unknown currency or unavailable exchange rates are excluded.', normal_style))
+
         # Add to grand totals
         for key in grand_totals:
             grand_totals[key] += entries['totals'][key]
         
         # Categories to display
         categories = [
-            ('fuel', '⛽ Fuel Entries', ['Date', 'Description', 'Odometer', 'Amount']),
-            ('service', '🔧 Service & Maintenance', ['Date', 'Service Type', 'Odometer', 'Cost']),
-            ('repair', '🛠️ Repairs', ['Date', 'Description', 'Odometer', 'Cost']),
-            ('tax', '📋 Road Tax', ['Date', 'Tax Type', '-', 'Amount']),
-            ('parking', '🅿️ Parking', ['Date', 'Location', '-', 'Cost']),
-            ('insurance', '🛡️ Insurance', ['Date', 'Provider / Policy', '-', 'Premium']),
+            ('fuel', 'Fuel Entries', ['Date', 'Description', 'Odometer', 'Amount']),
+            ('service', 'Service & Maintenance', ['Date', 'Service Type', 'Odometer', 'Cost']),
+            ('repair', 'Repairs', ['Date', 'Description', 'Odometer', 'Cost']),
+            ('tax', 'Road Tax', ['Date', 'Tax Type', '-', 'Amount']),
+            ('parking', 'Parking', ['Date', 'Location', '-', 'Cost']),
+            ('consumable', 'Consumables', ['Date', 'Description', 'Odometer', 'Cost']),
+            ('insurance', 'Insurance (scheduled estimates)', ['Date', 'Provider / Policy', '-', 'Premium']),
         ]
         
         has_entries = False
@@ -554,14 +423,14 @@ def generate_pdf_report(user, vehicles, period, year=None, month=None, language=
                         entry['date'],
                         entry['description'][:40] + '...' if len(entry['description']) > 40 else entry['description'],
                         entry['odometer'],
-                        f"{entry['amount']:,.2f}"
+                        f"{entry['amount']:,.2f}" if entry['amount'] is not None else "Excluded (FX)"
                     ])
                 
                 # Category subtotal
                 table_data.append(['', '', 'Subtotal:', f"{entries['totals'][cat_key]:,.2f}"])
                 
                 # Create table
-                cat_table = Table(table_data, colWidths=[1.1*inch, 3*inch, 1*inch, 1.1*inch])
+                cat_table = Table(table_data, colWidths=[1.1*inch, 3*inch, 1*inch, 1.1*inch], repeatRows=1)
                 cat_table.setStyle(TableStyle([
                     # Header row
                     ('BACKGROUND', (0, 0), (-1, 0), BRAND_COLOR),
@@ -636,16 +505,17 @@ def generate_pdf_report(user, vehicles, period, year=None, month=None, language=
             spaceAfter=20
         ))
         
-        elements.append(Paragraph("📊 Summary - All Vehicles", vehicle_title_style))
+        elements.append(Paragraph("Summary - All Vehicles", vehicle_title_style))
         
         summary_data = [
             ['Category', f'Total ({currency})'],
-            ['⛽ Fuel', f"{grand_totals['fuel']:,.2f}"],
-            ['🔧 Service & Maintenance', f"{grand_totals['service']:,.2f}"],
-            ['🛠️ Repairs', f"{grand_totals['repair']:,.2f}"],
-            ['📋 Road Tax', f"{grand_totals['tax']:,.2f}"],
-            ['🅿️ Parking', f"{grand_totals['parking']:,.2f}"],
-            ['🛡️ Insurance', f"{grand_totals['insurance']:,.2f}"],
+            ['Fuel', f"{grand_totals['fuel']:,.2f}"],
+            ['Service & Maintenance', f"{grand_totals['service']:,.2f}"],
+            ['Repairs', f"{grand_totals['repair']:,.2f}"],
+            ['Road Tax', f"{grand_totals['tax']:,.2f}"],
+            ['Parking', f"{grand_totals['parking']:,.2f}"],
+            ['Consumables', f"{grand_totals['consumable']:,.2f}"],
+            ['Insurance (scheduled estimates)', f"{grand_totals['insurance']:,.2f}"],
             ['GRAND TOTAL', f"{grand_totals['grand_total']:,.2f}"],
         ]
         
@@ -710,7 +580,8 @@ def generate_pdf_report(user, vehicles, period, year=None, month=None, language=
     ))
     
     # Build PDF
-    doc.build(elements)
+    doc.build(elements, onFirstPage=lambda canvas, doc: create_header_footer(canvas, doc, None),
+              onLaterPages=lambda canvas, doc: create_header_footer(canvas, doc, None))
     
     # Reset buffer position
     buffer.seek(0)
@@ -734,3 +605,119 @@ def get_report_filename(vehicles, period, year=None, month=None):
         period_part += f"_{month:02d}"
     
     return f"GearCargo_Report_{vehicle_part}_{period_part}_{timestamp}.pdf"
+
+
+def get_shared_report_filename(report):
+    """Public filenames contain dates only, never labels, identities or tokens."""
+    from app.services.shared_report import SharedReport
+    if not isinstance(report, SharedReport):
+        raise TypeError('Public PDF requires a SharedReport')
+    return f'GearCargo_Shared_Report_{report.start_date}_{report.end_date}.pdf'
+
+
+def generate_shared_pdf_report(report):
+    """Render only the same allowlisted values returned by public JSON.
+
+    Intentionally separate from generate_pdf_report: no user/vehicle ORM object,
+    entry accessor, private header, attachment or owner filename is available.
+    """
+    from pathlib import Path
+    from xml.sax.saxutils import escape
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from app.services.shared_report import SharedReport, SHARED_CATEGORIES
+
+    if not isinstance(report, SharedReport):
+        raise TypeError('Public PDF requires a SharedReport')
+
+    # Existing Linux runtime fonts cover the supported EN/RO/ES text. Keep the
+    # private export's typography and behavior independent of this renderer.
+    font, bold = 'Helvetica', 'Helvetica-Bold'
+    directory = Path('/usr/share/fonts/truetype/dejavu')
+    if (directory / 'DejaVuSans.ttf').is_file() and (directory / 'DejaVuSans-Bold.ttf').is_file():
+        font, bold = 'SharedSans', 'SharedSansBold'
+        with _SHARED_FONT_LOCK:
+            if font not in pdfmetrics.getRegisteredFontNames():
+                pdfmetrics.registerFont(TTFont(font, str(directory / 'DejaVuSans.ttf')))
+            if bold not in pdfmetrics.getRegisteredFontNames():
+                pdfmetrics.registerFont(TTFont(bold, str(directory / 'DejaVuSans-Bold.ttf')))
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=48, rightMargin=48,
+                            topMargin=44, bottomMargin=52,
+                            title='Shared Expense Report', author='GearCargo',
+                            subject='Aggregate vehicle expense summary',
+                            creator='GearCargo public report renderer', keywords='')
+    styles = getSampleStyleSheet()
+    body = ParagraphStyle('SharedBody', parent=styles['BodyText'], fontName=font,
+                          fontSize=9, leading=14, textColor=TEXT_COLOR,
+                          splitLongWords=True)
+    title = ParagraphStyle('SharedTitle', parent=body, fontName=bold,
+                           fontSize=22, leading=28, textColor=HEADER_BG, spaceAfter=12)
+    heading = ParagraphStyle('SharedHeading', parent=body, fontName=bold,
+                             fontSize=12, leading=17, spaceBefore=14, spaceAfter=8)
+    small = ParagraphStyle('SharedSmall', parent=body, fontSize=8, leading=12,
+                           textColor=TEXT_MUTED)
+
+    def paragraph(value, style=body):
+        # Labels/names are deliberately public free text, never ReportLab XML.
+        return Paragraph(escape('' if value is None else str(value)), style)
+
+    def table(rows, widths):
+        result = Table(rows, colWidths=widths, repeatRows=1, hAlign='LEFT')
+        result.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), BRAND_COLOR_LIGHT),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LINEBELOW', (0, 0), (-1, 0), .6, BRAND_COLOR),
+            ('LINEBELOW', (0, 1), (-1, -1), .3, colors.HexColor('#E5E7EB')),
+            ('LEFTPADDING', (0, 0), (-1, -1), 9),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 9),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        return result
+
+    elements = [paragraph(report.app_name, small), paragraph(report.label or 'Expense Report', title),
+                paragraph('Read-only shared report', small),
+                HRFlowable(width='100%', thickness=1.5, color=BRAND_COLOR, spaceBefore=10, spaceAfter=12),
+                paragraph(report.period_label),
+                paragraph(f'{report.start_date} - {report.end_date}', small),
+                paragraph(f'{report.entry_counts["total"]} entries | {len(report.vehicles)} vehicle(s)', small),
+                paragraph(report.basis_label, small),
+                paragraph(f'As of {report.as_of}. Current exchange rates are used.', small),
+                paragraph('Expense totals', heading)]
+    category_titles = {'fuel': 'Fuel', 'service': 'Service', 'repair': 'Repairs',
+                       'tax': 'Tax', 'parking': 'Parking', 'consumable': 'Consumables', 'insurance': 'Insurance (estimate)'}
+    rows = [[paragraph('Category'), paragraph('Entries'), paragraph(f'Amount ({report.currency})')]]
+    for key in SHARED_CATEGORIES:
+        rows.append([paragraph(category_titles[key]), paragraph(report.entry_counts[key]),
+                     paragraph(f'{report.totals[key]:,.2f}')])
+    rows.append([paragraph('Grand total'), paragraph(report.entry_counts['total']),
+                 paragraph(f'{report.totals["grand_total"]:,.2f}')])
+    elements.append(table(rows, [doc.width * .47, doc.width * .18, doc.width * .35]))
+    if not report.converted:
+        elements.append(paragraph('Partial totals: amounts with unknown currency or unavailable exchange rates are excluded.', small))
+    elif report.fx_applied:
+        elements.append(paragraph(f'Amounts converted to {report.currency}.', small))
+    elements.append(paragraph('Vehicles', heading))
+    rows = [[paragraph('Name'), paragraph('Make'), paragraph('Model')]]
+    rows.extend([[paragraph(v.name), paragraph(v.make or '-'), paragraph(v.model or '-')]
+                 for v in report.vehicles])
+    elements.append(table(rows, [doc.width * .5, doc.width * .25, doc.width * .25]))
+    elements += [Spacer(1, 16),
+                 paragraph('This page and PDF share only vehicle names, makes/models, report dates, category totals and counts. Owner identity, plates, VINs, notes and attachments are excluded.', small),
+                 paragraph('Names and report labels are shared as written. Downloaded copies cannot be recalled by revoking the link.', small)]
+    if report.expires_at:
+        elements.append(paragraph(f'Link expires: {report.expires_at}', small))
+
+    def footer(canvas, document):
+        canvas.saveState()
+        canvas.setFont(font, 8)
+        canvas.setFillColor(TEXT_MUTED)
+        canvas.drawString(document.leftMargin, 28, 'Read-only shared report')
+        canvas.drawRightString(A4[0] - document.rightMargin, 28, f'Page {canvas.getPageNumber()}')
+        canvas.restoreState()
+
+    doc.build(elements, onFirstPage=footer, onLaterPages=footer)
+    buffer.seek(0)
+    return buffer

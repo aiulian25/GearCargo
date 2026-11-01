@@ -1,22 +1,17 @@
-/**
- * GearCargo - Sync Indicator Component
- * Surfaces online/offline state, the number of writes still queued in the
- * Workbox background-sync queue (the SW replays them on reconnect), the last
- * sync time, and any manual-sync error (with a retry action).
- *
- * The former Dexie offline-queue "failed writes" list and conflict-resolution
- * UI were removed with the producer-less offline stack (Step 20 / L6) — the
- * Workbox queue is the single source of truth for unsynced writes.
- */
-
 import React from 'react'
+import ReceiptDraftReview from './ReceiptDraftReview'
 import { useBackgroundSync } from '../../hooks/useBackgroundSync'
 import { useTranslation } from '../../contexts/LanguageContext'
+import OfflineQueueReview from './OfflineQueueReview'
 
 export function SyncIndicator({ variant = 'badge' }) {
   const { t, language } = useTranslation()
 
   const {
+    receiptVersion,
+    receiptCount,
+    reviewReceipts,
+    statusAvailable,
     isOnline,
     pendingSyncCount,
     hasPendingSync,
@@ -24,6 +19,9 @@ export function SyncIndicator({ variant = 'badge' }) {
     isSyncing,
     syncError,
     triggerSync,
+    pausedCount,
+    legacyCount,
+    reviewPaused,
   } = useBackgroundSync()
 
   // Locale-aware, absolute timestamp. Falls back to a plain string if the
@@ -62,6 +60,7 @@ export function SyncIndicator({ variant = 'badge' }) {
           {isOnline ? t('pwa.sync.online') : t('pwa.sync.offline')}
         </div>
 
+        {(pausedCount > 0 || legacyCount > 0 || receiptCount > 0) && <a href="/settings#offline-changes" className="text-xs text-amber-700 dark:text-amber-400 underline">{t('pwa.sync.pausedBadge')}</a>}
         {/* Pending sync indicator */}
         {hasPendingSync && (
           <button
@@ -100,7 +99,7 @@ export function SyncIndicator({ variant = 'badge' }) {
   // ── Card variant — detailed status panel ──────────────────────────────────
   if (variant === 'card') {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4">
+      <div id="offline-changes" className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4">
         <div className="flex items-center justify-between mb-3 gap-2">
           <h3 className="text-sm font-medium text-gray-900 dark:text-white">
             {t('pwa.sync.syncStatus')}
@@ -126,6 +125,8 @@ export function SyncIndicator({ variant = 'badge' }) {
           </div>
         )}
 
+        {!statusAvailable && <p className="mb-3 text-sm">{t('pwa.sync.recovery.unavailable')}</p>}
+
         {/* Pending writes */}
         {hasPendingSync && (
           <div className="mb-3 flex items-center justify-between text-sm gap-2">
@@ -139,7 +140,7 @@ export function SyncIndicator({ variant = 'badge' }) {
         )}
 
         {/* Up-to-date state */}
-        {!hasPendingSync && (
+        {statusAvailable && !hasPendingSync && !pausedCount && !legacyCount && !receiptCount && (
           <div className="mb-3 flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
             <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -147,6 +148,10 @@ export function SyncIndicator({ variant = 'badge' }) {
             {t('pwa.sync.upToDate')}
           </div>
         )}
+
+        <OfflineQueueReview pendingSyncCount={pendingSyncCount} pausedCount={pausedCount} legacyCount={legacyCount} reviewPaused={reviewPaused} />
+
+        <ReceiptDraftReview version={receiptVersion} count={receiptCount} reviewReceipts={reviewReceipts} triggerSync={triggerSync} />
 
         {/* Last sync time */}
         <div className="mb-3 flex items-center justify-between text-sm gap-2">
@@ -164,7 +169,7 @@ export function SyncIndicator({ variant = 'badge' }) {
         )}
 
         {/* Sync action */}
-        {hasPendingSync && isOnline && (
+        {(hasPendingSync || receiptCount > 0) && isOnline && (
           <button
             type="button"
             onClick={triggerSync}

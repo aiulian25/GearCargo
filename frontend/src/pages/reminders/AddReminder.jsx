@@ -1,3 +1,6 @@
+import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
+import ReminderDeliveryFields from '../../components/ReminderDeliveryFields'
+import { useMutationIntent } from '../../hooks/useMutationIntent'
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
@@ -7,6 +10,7 @@ import { addDays, addMonths, format } from 'date-fns'
 import { useTranslation } from '../../contexts/LanguageContext'
 
 export default function AddReminder() {
+  const mutation = useMutationIntent()
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -29,6 +33,9 @@ export default function AddReminder() {
       due_mileage: '',
       repeat_interval: '',
       repeat_mileage: '',
+      notify_days_before: 7,
+      notify_push: true,
+      notify_email: true,
       notes: '',
       priority: 'medium',
     }
@@ -61,13 +68,13 @@ export default function AddReminder() {
   }
 
   const applyAiSuggestion = (s) => {
-    setValue('title', s.title)
-    setValue('type', s.reminder_type)
-    if (s.due_date) setValue('due_date', s.due_date)
-    if (s.due_mileage) setValue('due_mileage', s.due_mileage)
-    if (s.priority) setValue('priority', s.priority)
-    if (s.repeat_interval) setValue('repeat_interval', s.repeat_interval)
-    if (s.notes) setValue('notes', s.notes)
+    setValue('title', s.title, { shouldDirty: true })
+    setValue('type', s.reminder_type, { shouldDirty: true })
+    if (s.due_date) setValue('due_date', s.due_date, { shouldDirty: true })
+    if (s.due_mileage) setValue('due_mileage', s.due_mileage, { shouldDirty: true })
+    if (s.priority) setValue('priority', s.priority, { shouldDirty: true })
+    if (s.repeat_interval) setValue('repeat_interval', s.repeat_interval, { shouldDirty: true })
+    if (s.notes) setValue('notes', s.notes, { shouldDirty: true })
     setAiSuggestions([]) // collapse panel after selection
   }
   
@@ -106,7 +113,7 @@ export default function AddReminder() {
     }
   }, [reminderType, setValue, watch])
   
-  useUnsavedChanges(isDirty)
+  const markSaved = useUnsavedChanges(isDirty)
 
   const onSubmit = async (data) => {
     setIsSubmitting(true)
@@ -132,13 +139,20 @@ export default function AddReminder() {
         ...data,
         title,
         vehicle_id: parseInt(data.vehicle_id),
-        due_mileage: data.due_mileage ? parseInt(data.due_mileage) : null,
+        due_mileage: data.due_mileage === '' || data.due_mileage == null ? null : Number(data.due_mileage),
         repeat_interval: data.repeat_interval || null,
         repeat_mileage: data.repeat_mileage ? parseInt(data.repeat_mileage) : null,
-      })
+      }, mutation.options())
       
+      if (!markSaved()) return
       navigate(-1)
     } catch (err) {
+      if (isOfflineWriteError(err)) {
+        announceOfflineSaved(t)
+        if (!markSaved()) return
+        navigate(-1)
+        return
+      }
       // Prefer the server's message_key so the reason (missing or malformed
       // due date, non-numeric mileage) is shown in the user's own language.
       const data = err.response?.data
@@ -371,7 +385,7 @@ export default function AddReminder() {
                 <button
                   key={qd.label}
                   type="button"
-                  onClick={() => setValue('due_date', qd.date)}
+                  onClick={() => setValue('due_date', qd.date, { shouldDirty: true })}
                   className="px-2 py-1 text-2xs bg-(--color-bg-tertiary) rounded-md hover:bg-(--color-accent)/10 hover:text-(--color-accent)"
                 >
                   {qd.label}
@@ -405,7 +419,7 @@ export default function AddReminder() {
               <label className="block text-xs text-(--color-text-muted) mb-1">
                 {t('reminders.interval')}
               </label>
-              <select {...register('repeat_interval')} className="input">
+              <select {...register('repeat_interval', { onChange: event => { if (!event.target.value) setValue('repeat_mileage', '') } })} className="input">
                 <option value="">{t('reminders.dontRepeat')}</option>
                 <option value="weekly">{t('reminders.weekly')}</option>
                 <option value="monthly">{t('reminders.monthly')}</option>
@@ -421,7 +435,8 @@ export default function AddReminder() {
               </label>
               <input
                 type="number" inputMode="decimal"
-                {...register('repeat_mileage')}
+                {...register('repeat_mileage', { min: { value: 1, message: t('validation.invalidNumber') },
+                  validate: value => !value || (watch('repeat_interval') && watch('due_mileage') !== '') || t('reminderDelivery.intervalRequired') })}
                 className="input"
                 placeholder="e.g., 15000"
               />
@@ -429,6 +444,10 @@ export default function AddReminder() {
           </div>
         </div>
         
+        {errors.repeat_mileage && <p role="alert" className="text-sm text-red-500">{errors.repeat_mileage.message}</p>}
+        <p className="text-xs text-(--color-text-muted)">{t('reminderDelivery.mileageHint')}</p>
+        <ReminderDeliveryFields register={register} errors={errors} />
+
         {/* Priority & Notes */}
         <div className="card space-y-4">
           <div>

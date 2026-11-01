@@ -1,151 +1,95 @@
-/**
- * Unit tests for useBackgroundSync's triggerSync (R4-16).
- *
- * The hook runs in the WINDOW, where `self === window` and `self.registration`
- * is undefined — so `'sync' in self.registration` threw
- * `TypeError: Cannot use 'in' operator`, which the catch turned into a
- * syncError and a `false` return. The FORCE_SYNC fallback below it was
- * unreachable, so neither the manual "Sync now" button nor the `online`
- * handler ever asked the service worker to replay a queued offline write.
- *
- * These lock both branches: a browser with Background Sync registers the
- * Workbox tag; one without it falls back to the FORCE_SYNC message.
- */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-
 import { useBackgroundSync } from '../hooks/useBackgroundSync'
-
-vi.mock('../contexts/LanguageContext', () => ({
-  useTranslation: () => ({ t: (key) => key }),
-}))
-
-vi.mock('../utils/pwaSync', () => ({
-  registerPeriodicReminderSync: vi.fn().mockResolvedValue(false),
-}))
-
-vi.mock('react-hot-toast', () => ({
-  default: { error: vi.fn(), success: vi.fn() },
-}))
-
-const SYNC_TAG = 'workbox-background-sync:gearcargo-sync-queue'
-
-/** A MessageChannel whose port1 immediately answers whatever the SW is asked. */
-function stubMessageChannel(reply = { count: 0 }) {
-  vi.stubGlobal('MessageChannel', class {
-    constructor() {
-      this.port1 = {}
-      this.port2 = {}
-      queueMicrotask(() => this.port1.onmessage?.({ data: reply }))
-    }
-  })
-}
-
-function stubServiceWorker({ registration, controller = {} } = {}) {
-  const postMessage = vi.fn()
-  Object.defineProperty(navigator, 'serviceWorker', {
-    configurable: true,
-    value: {
-      controller: controller && { ...controller, postMessage },
-      ready: Promise.resolve(registration),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    },
-  })
-  return postMessage
-}
-
+vi.mock('../utils/pwaSync', () => ({ registerPeriodicReminderSync: vi.fn().mockResolvedValue(false) }))
+const replies = {}
+let postMessage, close
+const state = { count: 0, pausedCount: 0, legacyCount: 0, available: true, lastSyncTime: null }
 beforeEach(() => {
-  stubMessageChannel()
-  vi.spyOn(console, 'error').mockImplementation(() => {})
+  replies.GET_PENDING_SYNC_COUNT = state
+  replies.FORCE_SYNC = { ...state, success: true, committedCount: 0 }
+  close = vi.fn()
+  vi.stubGlobal('MessageChannel', class {
+    constructor() { this.port1 = { close }; this.port2 = { peer: this.port1 } }
+  })
+  postMessage = vi.fn((message, [port]) => { if (replies[message.type]) queueMicrotask(() => port.peer.onmessage({ data: replies[message.type] })) })
+  Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: {
+    controller: { postMessage }, ready: Promise.resolve({}), addEventListener: vi.fn(), removeEventListener: vi.fn(),
+  } })
 })
-
-afterEach(() => {
-  vi.unstubAllGlobals()
-  vi.restoreAllMocks()
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); delete navigator.serviceWorker })
+it('replays directly with no SyncManager, and empty success does not invent a timestamp', async () => {
+  const { result } = renderHook(() => useBackgroundSync())
+  let saved
+  await act(async () => { saved = await result.current.triggerSync() })
+  expect(saved).toBe(true)
+  expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'FORCE_SYNC' }), expect.any(Array))
+  expect(result.current.lastSyncTime).toBeNull()
+  expect(close).toHaveBeenCalled()
+})
+it('also replays directly when SyncManager exists', async () => {
+  const register = vi.fn()
+  navigator.serviceWorker.ready = Promise.resolve({ sync: { register } })
+  const { result } = renderHook(() => useBackgroundSync())
+  await act(async () => { await result.current.triggerSync() })
+  expect(register).not.toHaveBeenCalled()
+  expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'FORCE_SYNC' }), expect.any(Array))
+})
+it('refuses an unsuccessful acknowledgement and retains recovery counts', async () => {
+  replies.FORCE_SYNC = { success: false }
+  replies.GET_PENDING_SYNC_COUNT = { ...state, pausedCount: 1 }
+  const { result } = renderHook(() => useBackgroundSync())
+  let saved
+  await act(async () => { saved = await result.current.triggerSync() })
+  expect(saved).toBe(false)
+  expect(result.current.pausedCount).toBe(1)
+  expect(result.current.lastSyncTime).toBeNull()
+  expect(result.current.syncError).toContain('Review unsent')
+})
+it('does not claim success without a worker', async () => {
   delete navigator.serviceWorker
+  const { result } = renderHook(() => useBackgroundSync())
+  let saved
+  await act(async () => { saved = await result.current.triggerSync() })
+  expect(saved).toBe(false)
+  expect(result.current.statusAvailable).toBe(false)
+})
+it('uses only a persisted commit timestamp, including after remount', async () => {
+  replies.GET_PENDING_SYNC_COUNT = { ...state, lastSyncTime: 1700000000000 }
+  const first = renderHook(() => useBackgroundSync())
+  await act(async () => {})
+  expect(first.result.current.lastSyncTime.getTime()).toBe(1700000000000)
+  first.unmount()
+  const next = renderHook(() => useBackgroundSync())
+  await act(async () => {})
+  expect(next.result.current.lastSyncTime.getTime()).toBe(1700000000000)
+})
+it('online event uses current connectivity even before React updates', async () => {
+  let online = false
+  vi.spyOn(navigator, 'onLine', 'get').mockImplementation(() => online)
+  const { result } = renderHook(() => useBackgroundSync())
+  await act(async () => { expect(await result.current.triggerSync()).toBe(false) })
+  online = true
+  await act(async () => window.dispatchEvent(new Event('online')))
+  expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'FORCE_SYNC' }), expect.any(Array))
+  expect(result.current.isOnline).toBe(true)
+})
+it('times out a missing acknowledgement and closes the message port', async () => {
+  vi.useFakeTimers()
+  replies.FORCE_SYNC = null
+  const { result } = renderHook(() => useBackgroundSync())
+  let work
+  await act(async () => { work = result.current.triggerSync() })
+  await act(async () => { await vi.advanceTimersByTimeAsync(15001) })
+  expect(await work).toBe(false)
+  expect(result.current.syncError).toContain('acknowledge')
+  expect(close).toHaveBeenCalled()
 })
 
-describe('useBackgroundSync().triggerSync', () => {
-  it('registers the Workbox sync tag on the ready registration', async () => {
-    const register = vi.fn().mockResolvedValue(undefined)
-    stubServiceWorker({ registration: { sync: { register } } })
-
-    const { result } = renderHook(() => useBackgroundSync())
-
-    let resolved
-    await act(async () => {
-      resolved = await result.current.triggerSync()
-    })
-
-    expect(resolved).toBe(true)              // was: false, via a TypeError
-    expect(register).toHaveBeenCalledTimes(1)
-    expect(register).toHaveBeenCalledWith(SYNC_TAG)
-    expect(result.current.syncError).toBeNull()
-    expect(result.current.lastSyncTime).toBeInstanceOf(Date)
-  })
-
-  it('falls back to the FORCE_SYNC message when Background Sync is unavailable', async () => {
-    // Safari and Firefox: a registration with no `sync`.
-    const postMessage = stubServiceWorker({ registration: {} })
-
-    const { result } = renderHook(() => useBackgroundSync())
-
-    let resolved
-    await act(async () => {
-      resolved = await result.current.triggerSync()
-    })
-
-    expect(resolved).toBe(true)
-    expect(result.current.syncError).toBeNull()
-    expect(postMessage).toHaveBeenCalledWith(
-      { type: 'FORCE_SYNC' },
-      expect.any(Array)
-    )
-  })
-
-  it('still succeeds when the browser exposes no service worker at all', async () => {
-    delete navigator.serviceWorker
-
-    const { result } = renderHook(() => useBackgroundSync())
-
-    let resolved
-    await act(async () => {
-      resolved = await result.current.triggerSync()
-    })
-
-    expect(resolved).toBe(true)
-    expect(result.current.syncError).toBeNull()
-  })
-
-  it('reports a failing registration instead of claiming success', async () => {
-    const register = vi.fn().mockRejectedValue(new Error('sync registration blocked'))
-    stubServiceWorker({ registration: { sync: { register } } })
-
-    const { result } = renderHook(() => useBackgroundSync())
-
-    let resolved
-    await act(async () => {
-      resolved = await result.current.triggerSync()
-    })
-
-    expect(resolved).toBe(false)
-    expect(result.current.syncError).toBe('sync registration blocked')
-  })
-
-  it('does nothing while offline', async () => {
-    const register = vi.fn()
-    stubServiceWorker({ registration: { sync: { register } } })
-    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
-
-    const { result } = renderHook(() => useBackgroundSync())
-
-    let resolved
-    await act(async () => {
-      resolved = await result.current.triggerSync()
-    })
-
-    expect(resolved).toBe(false)
-    expect(register).not.toHaveBeenCalled()
-  })
+it('refreshes persisted status as soon as the local sign-in is restored', async () => {
+  const { result } = renderHook(() => useBackgroundSync())
+  await act(async () => {})
+  replies.GET_PENDING_SYNC_COUNT = { ...state, pausedCount: 2 }
+  await act(async () => window.dispatchEvent(new Event('offline-identity-changed')))
+  expect(result.current.pausedCount).toBe(2)
 })

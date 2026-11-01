@@ -1,9 +1,15 @@
+import { localDate } from '../../utils/dateFormat'
+import useExpenseNavigation from '../../hooks/useExpenseNavigation'
+import { readPrivateNavigationState } from '../../utils/privateNavigation'
+import toast from 'react-hot-toast'
+import { saveExpenseWithReceipt } from '../../utils/receiptExpense'
+import { useMutationIntent } from '../../hooks/useMutationIntent'
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom'
+import { useParams, useSearchParams, useLocation } from 'react-router-dom'
 import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
 import { useForm, useWatch } from 'react-hook-form'
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
-import { serviceApi, vehicleApi, attachmentApi } from '../../services/api'
+import { serviceApi, vehicleApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { normalizeDistanceUnit } from '../../utils/fuelEconomy'
@@ -31,11 +37,12 @@ const Icons = {
 }
 
 export default function AddVehicleService() {
+  const mutation = useMutationIntent()
   const { id: vehicleId } = useParams()
   const [searchParams] = useSearchParams()
   const editId = searchParams.get('edit')
   const isEditMode = !!editId
-  const navigate = useNavigate()
+  const navigate = useExpenseNavigation(vehicleId)
   const { t } = useTranslation()
   const { currency } = useCurrency()
   const { user } = useAuth()
@@ -51,9 +58,9 @@ export default function AddVehicleService() {
   const [ocrTypeHint, setOcrTypeHint] = useState(false)
   const _ocrTypeTimerRef = useRef(null)
   
-  const { register, handleSubmit, control, setValue, reset, formState: { isDirty } } = useForm({
+  const { register, getValues, handleSubmit, control, setValue, reset, formState: { isDirty } } = useForm({
     defaultValues: {
-      date: new Date().toISOString().split('T')[0],
+      date: localDate(),
       mileage: '',
       description: '',
       parts_cost: '',
@@ -95,9 +102,10 @@ export default function AddVehicleService() {
         if (isEditMode) {
           const entryRes = await serviceApi.get(editId)
           const entry = entryRes.data
+          mutation.capture(entry)
           
           reset({
-            date: entry.date ? entry.date.split('T')[0] : new Date().toISOString().split('T')[0],
+            date: entry.date ? entry.date.split('T')[0] : localDate(),
             mileage: entry.odometer || '',
             description: entry.description || '',
             parts_cost: entry.parts_cost || '',
@@ -131,26 +139,28 @@ export default function AddVehicleService() {
     }
     
     fetchData()
-  }, [vehicleId, editId, isEditMode, navigate, reset])
+  }, [vehicleId, editId, isEditMode, navigate, reset, mutation])
 
   // F33 — receipt routed from ShareTarget: apply the AI-parsed fields and
   // adopt the already-uploaded attachment (linked to the entry after create).
   const location = useLocation()
   useEffect(() => {
-    const st = location.state
+    const st = readPrivateNavigationState(location.state)
     if (!st || isEditMode) return
     const d = st.prefill || {}
-    if (d.date) setValue('date', d.date)
-    if (d.amount != null) setValue('total_cost', String(d.amount))
-    if (d.vendor) setValue('shop_name', d.vendor)
+    if (d.date) setValue('date', d.date, { shouldDirty: true })
+    if (d.currency) setValue('currency', d.currency, { shouldDirty: true })
+    if (d.amount != null) setValue('total_cost', String(d.amount), { shouldDirty: true })
+    if (d.vendor) setValue('shop_name', d.vendor, { shouldDirty: true })
     if (d.line_items?.length) {
-      setValue('notes', d.line_items.map(i => i.description).filter(Boolean).join(', '))
+      setValue('notes', d.line_items.map(i => i.description).filter(Boolean).join(', '), { shouldDirty: true })
     }
     if (st.attachmentId) setUploadedAttachmentId(st.attachmentId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  useUnsavedChanges(isDirty)
+  const [typesDirty, setTypesDirty] = useState(false)
+  const markSaved = useUnsavedChanges(isDirty || receiptFile || uploadedAttachmentId || typesDirty)
 
   const onSubmit = async (data) => {
     setIsSubmitting(true)
@@ -181,37 +191,22 @@ export default function AddVehicleService() {
         warranty_expires: data.warranty_expires || null,
       }
       
-      let response
-      if (isEditMode) {
-        response = await serviceApi.update(editId, payload)
+      if (receiptFile || uploadedAttachmentId) {
+        const result = await saveExpenseWithReceipt({ resource: 'services', editId,
+          payload, config: mutation.options(), file: receiptFile, attachmentId: uploadedAttachmentId })
+        if (result.receiptPending) toast(t('pwa.sync.receipts.savedPending'), { duration: 8000 })
+      } else if (isEditMode) {
+        await serviceApi.update(editId, payload, mutation.options())
       } else {
-        response = await serviceApi.create(payload)
+        await serviceApi.create(payload, mutation.options())
       }
-      
-      // Link or upload receipt attachment
-      const entryId = isEditMode ? editId : response.data?.entry?.id
-      if (uploadedAttachmentId && entryId) {
-        try {
-          await attachmentApi.update(uploadedAttachmentId, { entry_id: entryId })
-        } catch (linkErr) {
-          console.error('Failed to link attachment:', linkErr)
-        }
-      } else if (receiptFile && entryId) {
-        try {
-          await attachmentApi.upload(receiptFile, {
-            vehicleId: parseInt(vehicleId),
-            entryId: entryId,
-            category: 'receipt',
-          })
-        } catch (uploadErr) {
-          console.error('Failed to upload receipt:', uploadErr)
-        }
-      }
-      
+
+      if (!markSaved()) return
       navigate(`/vehicles/${vehicleId}`)
     } catch (err) {
       if (isOfflineWriteError(err)) {
         announceOfflineSaved(t)
+        if (!markSaved()) return
         navigate(`/vehicles/${vehicleId}`)
         return
       }
@@ -220,6 +215,7 @@ export default function AddVehicleService() {
       const data = err.response?.data
       setError((data?.message_key && t(data.message_key))
         || data?.error
+        || err.message
         || t('addService.error')
         || 'Failed to add service entry')
     } finally {
@@ -338,6 +334,7 @@ export default function AddVehicleService() {
                     key={type.value}
                     type="button"
                     onClick={() => {
+                      setTypesDirty(true)
                       setSelectedServiceTypes(prev =>
                         prev.includes(type.value)
                           ? prev.filter(v => v !== type.value)
@@ -449,7 +446,7 @@ export default function AddVehicleService() {
                 placeholder="0.00"
               />
             </div>
-            <CurrencySelect register={register} className="w-28 shrink-0" />
+            <CurrencySelect extraCurrency={readPrivateNavigationState(location.state)?.prefill?.currency || getValues('currency')} register={register} className="w-28 shrink-0" />
           </div>
 
           {/* F56 — structured workshop fields (previously only fit in notes) */}
@@ -561,6 +558,7 @@ export default function AddVehicleService() {
         {/* Receipt Upload + OCR Scan Banner */}
         <div className="card">
           <ReceiptUpload
+            durableDraft
             selectedFile={receiptFile}
             onFileSelect={(f) => { setReceiptFile(f); setUploadedAttachmentId(null) }}
             onFileRemove={() => { setReceiptFile(null); setUploadedAttachmentId(null) }}

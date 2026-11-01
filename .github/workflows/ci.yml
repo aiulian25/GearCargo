@@ -114,7 +114,9 @@ jobs:
           # Reachable without auth; tolerate 404 when CSRF endpoint is disabled.
           resp = client.get('/api/csrf-token')
           assert resp.status_code in (200, 404), resp.status_code
-          print(f"App booted OK with {len(rules)} routes; csrf-token -> {resp.status_code}")
+          ready = client.get('/health/ready')
+          assert ready.status_code == 200 and ready.json['ready'], ready.json
+          print(f"App booted OK with {len(rules)} routes; csrf-token -> {resp.status_code}; readiness -> {ready.json['status']}")
           PY
 
       - name: Run unit tests (SQLite)

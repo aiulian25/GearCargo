@@ -1,9 +1,15 @@
+import { localDate } from '../../utils/dateFormat'
+import useExpenseNavigation from '../../hooks/useExpenseNavigation'
+import { readPrivateNavigationState } from '../../utils/privateNavigation'
+import toast from 'react-hot-toast'
+import { saveExpenseWithReceipt } from '../../utils/receiptExpense'
+import { useMutationIntent } from '../../hooks/useMutationIntent'
 import { useState, useEffect } from 'react'
-import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom'
+import { useParams, useSearchParams, useLocation } from 'react-router-dom'
 import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
 import { useForm, useWatch } from 'react-hook-form'
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
-import { vehicleApi, attachmentApi } from '../../services/api'
+import { vehicleApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { useAuth } from '../../contexts/AuthContext'
 import api from '../../services/api'
@@ -39,17 +45,18 @@ const Icons = {
 
 // Parking API (may need to be added to the backend)
 const parkingApi = {
-  create: (data) => api.post('/parking', data),
+  create: (data, config) => api.post('/parking', data, config),
   get: (id) => api.get(`/parking/${id}`),
-  update: (id, data) => api.put(`/parking/${id}`, data),
+  update: (id, data, config) => api.put(`/parking/${id}`, data, config),
 }
 
 export default function AddVehicleParking() {
+  const mutation = useMutationIntent()
   const { id: vehicleId } = useParams()
   const [searchParams] = useSearchParams()
   const editId = searchParams.get('edit')
   const isEditMode = !!editId
-  const navigate = useNavigate()
+  const navigate = useExpenseNavigation(vehicleId)
   const { t } = useTranslation()
   const { currency } = useCurrency()
   const { user } = useAuth()
@@ -61,9 +68,9 @@ export default function AddVehicleParking() {
   const [receiptFile, setReceiptFile] = useState(null)
   const [existingAttachments, setExistingAttachments] = useState([])
   
-  const { register, handleSubmit, formState: { errors, isDirty }, control, reset, setValue } = useForm({
+  const { register, getValues, handleSubmit, formState: { errors, isDirty }, control, reset, setValue } = useForm({
     defaultValues: {
-      date: new Date().toISOString().split('T')[0],
+      date: localDate(),
       parking_type: '',
       location: '',
       amount: '',
@@ -96,9 +103,10 @@ export default function AddVehicleParking() {
         if (isEditMode) {
           const entryRes = await parkingApi.get(editId)
           const entry = entryRes.data
+          mutation.capture(entry)
           
           reset({
-            date: entry.date ? entry.date.split('T')[0] : new Date().toISOString().split('T')[0],
+            date: entry.date ? entry.date.split('T')[0] : localDate(),
             parking_type: entry.parking_type || '',
             location: entry.location || '',
             amount: entry.amount || '',
@@ -128,22 +136,23 @@ export default function AddVehicleParking() {
     }
     
     fetchData()
-  }, [vehicleId, editId, isEditMode, navigate, reset])
+  }, [vehicleId, editId, isEditMode, navigate, reset, mutation])
 
   // F33 — receipt routed from ShareTarget: apply the AI-parsed fields; the
   // already-uploaded attachment is linked to the entry after create.
   const location = useLocation()
-  const sharedAttachmentId = !isEditMode ? location.state?.attachmentId : null
+  const sharedAttachmentId = !isEditMode ? readPrivateNavigationState(location.state)?.attachmentId : null
   useEffect(() => {
-    const d = location.state?.prefill
+    const d = readPrivateNavigationState(location.state)?.prefill
     if (!d || isEditMode) return
-    if (d.date) setValue('date', d.date)
-    if (d.amount != null) setValue('amount', String(d.amount))
-    if (d.vendor) setValue('location', d.vendor)
+    if (d.date) setValue('date', d.date, { shouldDirty: true })
+    if (d.currency) setValue('currency', d.currency, { shouldDirty: true })
+    if (d.amount != null) setValue('amount', String(d.amount), { shouldDirty: true })
+    if (d.vendor) setValue('location', d.vendor, { shouldDirty: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  useUnsavedChanges(isDirty)
+  const markSaved = useUnsavedChanges(isDirty || receiptFile || sharedAttachmentId)
 
   const onSubmit = async (data) => {
     setIsSubmitting(true)
@@ -161,42 +170,26 @@ export default function AddVehicleParking() {
         recurring: isFineEntry ? false : data.recurring,
       }
       
-      let response
-      if (isEditMode) {
-        response = await parkingApi.update(editId, payload)
+      if (receiptFile || sharedAttachmentId) {
+        const result = await saveExpenseWithReceipt({ resource: 'parking', editId,
+          payload, config: mutation.options(), file: receiptFile, attachmentId: sharedAttachmentId })
+        if (result.receiptPending) toast(t('pwa.sync.receipts.savedPending'), { duration: 8000 })
+      } else if (isEditMode) {
+        await parkingApi.update(editId, payload, mutation.options())
       } else {
-        response = await parkingApi.create(payload)
-      }
-      
-      // Upload receipt if selected (only for new entries or if new file selected)
-      const entryId = isEditMode ? editId : response.data?.entry?.id
-      if (sharedAttachmentId && entryId) {
-        // F33 — attachment already uploaded via ShareTarget; just link it.
-        try {
-          await attachmentApi.update(sharedAttachmentId, { entry_id: entryId })
-        } catch (linkErr) {
-          console.error('Failed to link attachment:', linkErr)
-        }
-      } else if (receiptFile && entryId) {
-        try {
-          await attachmentApi.upload(receiptFile, {
-            vehicleId: parseInt(vehicleId),
-            entryId: entryId,
-            category: 'receipt',
-          })
-        } catch (uploadErr) {
-          console.error('Failed to upload receipt:', uploadErr)
-        }
+        await parkingApi.create(payload, mutation.options())
       }
 
+      if (!markSaved()) return
       navigate(`/vehicles/${vehicleId}`)
     } catch (err) {
       if (isOfflineWriteError(err)) {
         announceOfflineSaved(t)
+        if (!markSaved()) return
         navigate(`/vehicles/${vehicleId}`)
         return
       }
-      setError(err.response?.data?.error || t('addParking.error') || 'Failed to add parking entry')
+      setError(err.response?.data?.error || err.message || t('addParking.error') || 'Failed to add parking entry')
     } finally {
       setIsSubmitting(false)
     }
@@ -307,7 +300,7 @@ export default function AddVehicleParking() {
                 step="0.01"
                 {...register('amount', {
                   required: t('addParking.amountRequired') || 'Amount is required',
-                  min: { value: 0.01, message: t('addParking.invalidAmount') || 'Invalid amount' }
+                  min: { value: Number(readPrivateNavigationState(location.state)?.prefill?.amount) < 0 ? -99999999.99 : 0.01, message: t('addParking.invalidAmount') || 'Invalid amount' }
                 })}
                 className="input"
                 placeholder="0.00"
@@ -316,7 +309,7 @@ export default function AddVehicleParking() {
                 <p className="text-xs text-red-500 mt-1">{errors.amount.message}</p>
               )}
               </div>
-              <CurrencySelect register={register} className="w-28 shrink-0" />
+              <CurrencySelect extraCurrency={readPrivateNavigationState(location.state)?.prefill?.currency || getValues('currency')} register={register} className="w-28 shrink-0" />
             </div>
           </div>
           
@@ -514,6 +507,7 @@ export default function AddVehicleParking() {
         {/* Receipt Upload */}
         <div className="card">
           <ReceiptUpload
+            durableDraft
             selectedFile={receiptFile}
             onFileSelect={setReceiptFile}
             onFileRemove={() => setReceiptFile(null)}

@@ -1,3 +1,4 @@
+import { privateNavigationState } from '../utils/privateNavigation'
 /**
  * ShareTarget — Web Share Target landing page.
  *
@@ -14,8 +15,7 @@ import { vehicleApi } from '../services/api'
 import { useTranslation } from '../contexts/LanguageContext'
 import ScanReceiptBanner from '../components/ui/ScanReceiptBanner'
 
-const SHARE_TARGET_CACHE = 'share-target-cache'
-const SHARED_FILE_KEY = '/__shared_receipt'
+import { workerMessage } from '../utils/offlineIdentity'
 
 export default function ShareTarget() {
   const { t } = useTranslation()
@@ -45,18 +45,12 @@ export default function ShareTarget() {
     let cancelled = false
     ;(async () => {
       try {
-        if (typeof caches === 'undefined') return
-        const cache = await caches.open(SHARE_TARGET_CACHE)
-        const res = await cache.match(SHARED_FILE_KEY)
-        if (res) {
-          const blob = await res.blob()
-          if (!cancelled && blob.size > 0) {
-            const name = decodeURIComponent(res.headers.get('x-shared-filename') || 'receipt.jpg')
-            setFile(new File([blob], name, { type: blob.type || 'image/jpeg' }))
-            objectUrl = URL.createObjectURL(blob)
-            setPreviewUrl(objectUrl)
-          }
-          await cache.delete(SHARED_FILE_KEY)
+        const result = await workerMessage('TAKE_SHARED_RECEIPT')
+        const receipt = result?.receipt
+        if (!cancelled && receipt?.blob?.size) {
+          setFile(new File([receipt.blob], receipt.name, { type: receipt.blob.type || 'image/jpeg' }))
+          objectUrl = URL.createObjectURL(receipt.blob)
+          setPreviewUrl(objectUrl)
         }
       } catch {
         // Ignore — empty state is shown when no file is available.
@@ -184,7 +178,7 @@ export default function ShareTarget() {
                 <button
                   type="button"
                   onClick={() => navigate(`/vehicles/${vehicleId}/${continueRoute}`, {
-                    state: { prefill: parsed, attachmentId: uploadedId },
+                    state: privateNavigationState({ prefill: parsed, attachmentId: uploadedId }),
                   })}
                   className="btn btn-primary w-full"
                 >
