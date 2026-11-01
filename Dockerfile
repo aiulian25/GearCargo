@@ -38,7 +38,7 @@ RUN npm run build
 # Pinned to bookworm so PostgreSQL 16 (from PGDG) is available on both
 # amd64 and arm64 — the migration is a 16→16 logical restore.
 # ============================================================
-FROM python:3.12-slim-bookworm
+FROM python:3.15-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
