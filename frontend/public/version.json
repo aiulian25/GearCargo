@@ -1,41 +1,101 @@
 {
-  "version": "1.7.1",
-  "date": "2026-10-13",
+  "version": "1.8.0",
+  "date": "2026-11-01",
   "notes": {
     "en": [
       {
-        "type": "fix",
-        "title": "A renewed styling foundation",
-        "desc": "The styling engine the whole interface is built on moved up to its next major version. Nothing changes on screen — every page looks and behaves exactly as before."
+        "type": "new",
+        "title": "Sign in with a passkey",
+        "desc": "Use your device's own lock — fingerprint, face or PIN — instead of your password and a code. Add one under Settings, then tap 'Sign in with a passkey'. Only the public key is stored, and your password still works as before."
+      },
+      {
+        "type": "new",
+        "title": "Tire sets and seasonal tracking",
+        "desc": "Record four tire identities, fittings and removals, rotation positions and dated tread readings. Storage pauses distance counting, and you can link the purchase and receipt once."
+      },
+      {
+        "type": "new",
+        "title": "Workshop visits",
+        "desc": "Plan a garage visit from a vehicle's alerts or the calendar: preparation checklist, drop-off and pick-up, and the finished service or repair linked to the visit."
+      },
+      {
+        "type": "new",
+        "title": "Match a fuel card or bank statement",
+        "desc": "Import a statement and match its lines against what you already recorded. Every match is explicit, so nothing is merged into your records behind your back."
       },
       {
         "type": "fix",
-        "title": "The logo can no longer go missing",
-        "desc": "The mark printed on exported PDF reports and shown inside your two-factor QR code now travels with the server itself, so it is always found."
+        "title": "A blocked address unblocks itself",
+        "desc": "Too many failed sign-ins used to block an address until an administrator cleared it by hand. The block now lifts after an hour and forgets the earlier attempts, so one later mistake cannot block you again straight away."
+      },
+      {
+        "type": "security",
+        "title": "Image handling brought up to date",
+        "desc": "The library that reads uploaded receipt photos was updated to a release that closes a long list of reported problems with malformed images."
       }
     ],
     "ro": [
       {
-        "type": "fix",
-        "title": "O fundație de stil reînnoită",
-        "desc": "Motorul de stil pe care este construită întreaga interfață a trecut la următoarea versiune majoră. Pe ecran nu se schimbă nimic — fiecare pagină arată și funcționează exact ca înainte."
+        "type": "new",
+        "title": "Autentificare cu o cheie de acces",
+        "desc": "Folosește blocarea propriului dispozitiv — amprentă, față sau PIN — în locul parolei și al codului. Adaugă una din Setări, apoi apasă „Autentificare cu o cheie de acces”. Se păstrează doar cheia publică, iar parola funcționează ca înainte."
+      },
+      {
+        "type": "new",
+        "title": "Seturi de anvelope și urmărire sezonieră",
+        "desc": "Înregistrează patru anvelope, montările și demontările, pozițiile de rotație și măsurătorile de profil cu dată. Depozitarea oprește contorizarea distanței, iar achiziția și bonul se pot lega o singură dată."
+      },
+      {
+        "type": "new",
+        "title": "Vizite la service",
+        "desc": "Planifică o vizită din alertele vehiculului sau din calendar: listă de pregătire, predare și ridicare, plus serviciul sau reparația finalizată legată de vizită."
+      },
+      {
+        "type": "new",
+        "title": "Potrivirea unui extras de card sau de bancă",
+        "desc": "Importă un extras și potrivește liniile lui cu ce ai înregistrat deja. Fiecare potrivire este explicită, așa că nimic nu se adaugă în evidențe pe la spatele tău."
       },
       {
         "type": "fix",
-        "title": "Sigla nu mai poate lipsi",
-        "desc": "Sigla tipărită pe rapoartele PDF exportate și afișată în codul QR pentru autentificarea în doi pași călătorește acum împreună cu serverul, așa că este găsită întotdeauna."
+        "title": "O adresă blocată se deblochează singură",
+        "desc": "Prea multe autentificări eșuate blocau o adresă până când un administrator o elibera manual. Blocarea expiră acum după o oră și uită încercările anterioare, așa că o greșeală ulterioară nu te mai blochează imediat."
+      },
+      {
+        "type": "security",
+        "title": "Prelucrarea imaginilor, actualizată",
+        "desc": "Biblioteca ce citește pozele de bonuri încărcate a fost actualizată la o versiune care rezolvă o listă lungă de probleme raportate la imagini deteriorate."
       }
     ],
     "es": [
       {
-        "type": "fix",
-        "title": "Una base de estilos renovada",
-        "desc": "El motor de estilos sobre el que se construye toda la interfaz ha pasado a su siguiente versión principal. En pantalla no cambia nada — cada página se ve y funciona exactamente igual que antes."
+        "type": "new",
+        "title": "Inicia sesión con una llave de acceso",
+        "desc": "Usa el bloqueo de tu propio dispositivo — huella, cara o PIN — en lugar de tu contraseña y un código. Añade una en Ajustes y luego pulsa «Iniciar sesión con una llave de acceso». Solo se guarda la clave pública y tu contraseña sigue funcionando."
+      },
+      {
+        "type": "new",
+        "title": "Juegos de neumáticos y seguimiento por temporada",
+        "desc": "Registra cuatro neumáticos, montajes y desmontajes, posiciones de rotación y medidas de dibujo con fecha. El almacenaje pausa el conteo de distancia y puedes enlazar la compra y el recibo una sola vez."
+      },
+      {
+        "type": "new",
+        "title": "Visitas al taller",
+        "desc": "Planifica una visita desde las alertas del vehículo o el calendario: lista de preparación, entrega y recogida, y el servicio o la reparación terminada enlazada a la visita."
+      },
+      {
+        "type": "new",
+        "title": "Concilia un extracto de tarjeta o banco",
+        "desc": "Importa un extracto y concilia sus líneas con lo que ya tienes registrado. Cada coincidencia es explícita, así que nada se añade a tus registros a tus espaldas."
       },
       {
         "type": "fix",
-        "title": "El logotipo ya no puede faltar",
-        "desc": "La marca impresa en los informes PDF exportados y mostrada dentro de tu código QR de doble factor viaja ahora con el propio servidor, así que siempre se encuentra."
+        "title": "Una dirección bloqueada se desbloquea sola",
+        "desc": "Demasiados inicios de sesión fallidos bloqueaban una dirección hasta que un administrador la liberaba a mano. El bloqueo ahora caduca en una hora y olvida los intentos previos, así que un error posterior no vuelve a bloquearte al instante."
+      },
+      {
+        "type": "security",
+        "title": "Tratamiento de imágenes al día",
+        "desc": "La biblioteca que lee las fotos de recibos subidas se actualizó a una versión que corrige una larga lista de problemas notificados con imágenes mal formadas."
       }
     ]
   }
