@@ -1,101 +1,161 @@
 {
-  "version": "1.8.0",
-  "date": "2026-11-01",
+  "version": "1.9.0",
+  "date": "2026-11-09",
   "notes": {
     "en": [
       {
         "type": "new",
-        "title": "Sign in with a passkey",
-        "desc": "Use your device's own lock — fingerprint, face or PIN — instead of your password and a code. Add one under Settings, then tap 'Sign in with a passkey'. Only the public key is stored, and your password still works as before."
-      },
-      {
-        "type": "new",
-        "title": "Tire sets and seasonal tracking",
-        "desc": "Record four tire identities, fittings and removals, rotation positions and dated tread readings. Storage pauses distance counting, and you can link the purchase and receipt once."
-      },
-      {
-        "type": "new",
-        "title": "Workshop visits",
-        "desc": "Plan a garage visit from a vehicle's alerts or the calendar: preparation checklist, drop-off and pick-up, and the finished service or repair linked to the visit."
-      },
-      {
-        "type": "new",
-        "title": "Match a fuel card or bank statement",
-        "desc": "Import a statement and match its lines against what you already recorded. Every match is explicit, so nothing is merged into your records behind your back."
-      },
-      {
-        "type": "fix",
-        "title": "A blocked address unblocks itself",
-        "desc": "Too many failed sign-ins used to block an address until an administrator cleared it by hand. The block now lifts after an hour and forgets the earlier attempts, so one later mistake cannot block you again straight away."
+        "title": "Your devices and your account",
+        "desc": "Profile → Security now lists the devices signed in to your account. Sign one out, or every other device at once. You can also delete your account and everything in it there, after confirming your password and, when two-factor authentication is on, a code."
       },
       {
         "type": "security",
-        "title": "Image handling brought up to date",
-        "desc": "The library that reads uploaded receipt photos was updated to a release that closes a long list of reported problems with malformed images."
+        "title": "Your location, only when you agree",
+        "desc": "The home screen now asks before it reads this device's position, and says that this server looks up the place name with OpenStreetMap's Nominatim service. Your browser no longer contacts a map service itself, and the Privacy Policy names each outside service the app uses and what it receives."
+      },
+      {
+        "type": "security",
+        "title": "Forwarded addresses only from your own proxy",
+        "desc": "A client address forwarded by a proxy is now accepted only when that proxy connects from this machine, a Docker network, your LAN or Tailscale, so someone reaching the app port directly can no longer choose the address used for sign-in blocks, rate limits and the security log. If you manage this server: TRUSTED_PROXY_COUNT now defaults to auto. Behind a CDN, a public-address proxy or a chain of proxies, set it to the number of proxies. A docker-compose.yml from an earlier release still defaults to 1, so set the value in .env or refresh that file. Earlier images do not accept auto: before rolling back to one, set 1 behind a proxy or 0 without one."
+      },
+      {
+        "type": "new",
+        "title": "Amounts in each currency's own format",
+        "desc": "Amounts now follow your language's number format, with each currency's own symbol and decimals: for example £1,234.50 in English and 1.234,50 RON in Romanian. Yen and forint amounts no longer show decimals. Each expense is shown in the currency it was recorded in, rather than your location's currency. Currencies that need three decimal places, such as KWD and BHD, can no longer be used for new amounts, because amounts are stored with two decimals. Existing records in them are kept unchanged."
+      },
+      {
+        "type": "fix",
+        "title": "Fuel fills explain their consumption",
+        "desc": "Every fuel fill now says why it has, or lacks, a consumption figure. An odometer reading lower than the vehicle's last one is flagged as soon as you leave the field and again after saving, and it never blocks the save."
+      },
+      {
+        "type": "new",
+        "title": "A shorter Add Vehicle form",
+        "desc": "Add Vehicle opens with just the essentials: name, make, model, year, fuel type and current mileage. Everything else waits under More details, so nothing is saved with a default you never saw."
+      },
+      {
+        "type": "fix",
+        "title": "Password-reset links open properly",
+        "desc": "Opening a password-reset, e-mail verification or shared-report link while signed out no longer sends you to the sign-in page and loses the link."
+      },
+      {
+        "type": "fix",
+        "title": "Unsaved Profile changes are protected",
+        "desc": "Leaving Profile with unsaved changes now asks first, as the other forms already did."
+      },
+      {
+        "type": "fix",
+        "title": "Easier with a screen reader",
+        "desc": "Every icon button and form field now has a name that screen readers announce."
+      },
+      {
+        "type": "fix",
+        "title": "The Register page in dark mode",
+        "desc": "The Register page no longer mixes light and dark colours when your device uses dark mode. The sign-in pages stay light in every theme."
       }
     ],
     "ro": [
       {
         "type": "new",
-        "title": "Autentificare cu o cheie de acces",
-        "desc": "Folosește blocarea propriului dispozitiv — amprentă, față sau PIN — în locul parolei și al codului. Adaugă una din Setări, apoi apasă „Autentificare cu o cheie de acces”. Se păstrează doar cheia publică, iar parola funcționează ca înainte."
-      },
-      {
-        "type": "new",
-        "title": "Seturi de anvelope și urmărire sezonieră",
-        "desc": "Înregistrează patru anvelope, montările și demontările, pozițiile de rotație și măsurătorile de profil cu dată. Depozitarea oprește contorizarea distanței, iar achiziția și bonul se pot lega o singură dată."
-      },
-      {
-        "type": "new",
-        "title": "Vizite la service",
-        "desc": "Planifică o vizită din alertele vehiculului sau din calendar: listă de pregătire, predare și ridicare, plus serviciul sau reparația finalizată legată de vizită."
-      },
-      {
-        "type": "new",
-        "title": "Potrivirea unui extras de card sau de bancă",
-        "desc": "Importă un extras și potrivește liniile lui cu ce ai înregistrat deja. Fiecare potrivire este explicită, așa că nimic nu se adaugă în evidențe pe la spatele tău."
-      },
-      {
-        "type": "fix",
-        "title": "O adresă blocată se deblochează singură",
-        "desc": "Prea multe autentificări eșuate blocau o adresă până când un administrator o elibera manual. Blocarea expiră acum după o oră și uită încercările anterioare, așa că o greșeală ulterioară nu te mai blochează imediat."
+        "title": "Dispozitivele și contul tău",
+        "desc": "Profil → Securitate afișează acum dispozitivele conectate la contul tău. Deconectează unul anume sau toate celelalte dispozitive deodată. Tot de acolo îți poți șterge contul și tot ce conține, după ce confirmi parola și, dacă autentificarea în doi pași este activă, un cod."
       },
       {
         "type": "security",
-        "title": "Prelucrarea imaginilor, actualizată",
-        "desc": "Biblioteca ce citește pozele de bonuri încărcate a fost actualizată la o versiune care rezolvă o listă lungă de probleme raportate la imagini deteriorate."
+        "title": "Locația ta, doar cu acordul tău",
+        "desc": "Ecranul Acasă te întreabă acum înainte de a citi poziția acestui dispozitiv și îți spune că serverul află numele locului prin serviciul Nominatim al OpenStreetMap. Browserul nu mai contactează singur niciun serviciu de hărți, iar Politica de Confidențialitate numește fiecare serviciu extern folosit de aplicație și ce primește acesta."
+      },
+      {
+        "type": "security",
+        "title": "Adrese transmise doar de propriul proxy",
+        "desc": "Adresa unui client transmisă de un proxy este acceptată acum doar când proxy-ul se conectează de pe acest server, dintr-o rețea Docker, din rețeaua locală sau din Tailscale, așa că cine accesează direct portul aplicației nu mai poate alege adresa folosită pentru blocarea autentificărilor, limitele de cereri și jurnalul de securitate. Dacă gestionezi acest server: valoarea implicită a TRUSTED_PROXY_COUNT este acum auto. În spatele unui CDN, al unui proxy cu adresă publică sau al unui lanț de proxy-uri, setează TRUSTED_PROXY_COUNT la numărul de proxy-uri. Un docker-compose.yml dintr-o versiune anterioară are încă valoarea implicită 1, așa că setează valoarea în .env sau actualizează fișierul. Imaginile anterioare nu acceptă auto: înainte de a reveni la una dintre ele, setează 1 în spatele unui proxy sau 0 fără proxy."
+      },
+      {
+        "type": "new",
+        "title": "Sume în formatul fiecărei monede",
+        "desc": "Sumele urmează acum formatul numerelor din limba ta, cu simbolul și zecimalele fiecărei monede: de exemplu 1.234,50 RON în română și £1,234.50 în engleză. Sumele în yeni și forinți nu mai au zecimale. Fiecare cheltuială apare în moneda în care a fost înregistrată, nu în moneda locației tale. Monedele care au nevoie de trei zecimale, cum ar fi KWD și BHD, nu mai pot fi folosite pentru sume noi, deoarece sumele se salvează cu două zecimale. Înregistrările existente în aceste monede rămân neschimbate."
+      },
+      {
+        "type": "fix",
+        "title": "Alimentările își explică consumul",
+        "desc": "Fiecare alimentare spune acum de ce are sau nu are o valoare de consum. Un kilometraj mai mic decât ultimul înregistrat pentru vehicul este semnalat imediat ce părăsești câmpul și din nou după salvare, fără să blocheze salvarea."
+      },
+      {
+        "type": "new",
+        "title": "Un formular Adaugă Vehicul mai scurt",
+        "desc": "Adaugă Vehicul se deschide doar cu ce este esențial: nume, marcă, model, an, tip de combustibil și kilometrajul actual. Restul așteaptă la Mai multe detalii, așa că nimic nu se salvează cu o valoare implicită pe care nu ai văzut-o."
+      },
+      {
+        "type": "fix",
+        "title": "Linkurile de resetare a parolei se deschid corect",
+        "desc": "Când deschizi fără să fii autentificat un link de resetare a parolei, de verificare a e-mailului sau de raport partajat, nu mai ajungi la pagina de autentificare și linkul nu se mai pierde."
+      },
+      {
+        "type": "fix",
+        "title": "Modificările nesalvate din Profil sunt protejate",
+        "desc": "Dacă părăsești Profilul cu modificări nesalvate, aplicația te întreabă acum mai întâi, la fel ca celelalte formulare."
+      },
+      {
+        "type": "fix",
+        "title": "Mai ușor de folosit cu un cititor de ecran",
+        "desc": "Fiecare buton cu pictogramă și fiecare câmp de formular are acum un nume pe care cititoarele de ecran îl anunță."
+      },
+      {
+        "type": "fix",
+        "title": "Pagina de înregistrare în modul întunecat",
+        "desc": "Pagina de înregistrare nu mai amestecă culori deschise și închise când dispozitivul folosește modul întunecat. Paginile de autentificare rămân luminoase în orice temă."
       }
     ],
     "es": [
       {
         "type": "new",
-        "title": "Inicia sesión con una llave de acceso",
-        "desc": "Usa el bloqueo de tu propio dispositivo — huella, cara o PIN — en lugar de tu contraseña y un código. Añade una en Ajustes y luego pulsa «Iniciar sesión con una llave de acceso». Solo se guarda la clave pública y tu contraseña sigue funcionando."
-      },
-      {
-        "type": "new",
-        "title": "Juegos de neumáticos y seguimiento por temporada",
-        "desc": "Registra cuatro neumáticos, montajes y desmontajes, posiciones de rotación y medidas de dibujo con fecha. El almacenaje pausa el conteo de distancia y puedes enlazar la compra y el recibo una sola vez."
-      },
-      {
-        "type": "new",
-        "title": "Visitas al taller",
-        "desc": "Planifica una visita desde las alertas del vehículo o el calendario: lista de preparación, entrega y recogida, y el servicio o la reparación terminada enlazada a la visita."
-      },
-      {
-        "type": "new",
-        "title": "Concilia un extracto de tarjeta o banco",
-        "desc": "Importa un extracto y concilia sus líneas con lo que ya tienes registrado. Cada coincidencia es explícita, así que nada se añade a tus registros a tus espaldas."
-      },
-      {
-        "type": "fix",
-        "title": "Una dirección bloqueada se desbloquea sola",
-        "desc": "Demasiados inicios de sesión fallidos bloqueaban una dirección hasta que un administrador la liberaba a mano. El bloqueo ahora caduca en una hora y olvida los intentos previos, así que un error posterior no vuelve a bloquearte al instante."
+        "title": "Tus dispositivos y tu cuenta",
+        "desc": "Perfil → Seguridad muestra ahora los dispositivos con sesión iniciada en tu cuenta. Cierra la sesión de uno o de todos los demás a la vez. También puedes eliminar ahí tu cuenta y todo su contenido, tras confirmar tu contraseña y, si la autenticación de dos factores está activada, un código."
       },
       {
         "type": "security",
-        "title": "Tratamiento de imágenes al día",
-        "desc": "La biblioteca que lee las fotos de recibos subidas se actualizó a una versión que corrige una larga lista de problemas notificados con imágenes mal formadas."
+        "title": "Tu ubicación, solo si aceptas",
+        "desc": "La pantalla de Inicio ahora pregunta antes de leer la posición de este dispositivo y explica que este servidor obtiene el nombre del lugar con el servicio Nominatim de OpenStreetMap. Tu navegador ya no contacta por sí mismo con ningún servicio de mapas, y la Política de Privacidad indica cada servicio externo que usa la aplicación y lo que recibe."
+      },
+      {
+        "type": "security",
+        "title": "Direcciones reenviadas solo desde tu propio proxy",
+        "desc": "La dirección del cliente reenviada por un proxy ahora solo se acepta cuando ese proxy se conecta desde este equipo, una red de Docker, tu red local o Tailscale, así que quien acceda directamente al puerto de la aplicación ya no puede elegir la dirección usada para los bloqueos de inicio de sesión, los límites de peticiones y el registro de seguridad. Si gestionas este servidor: el valor predeterminado de TRUSTED_PROXY_COUNT ahora es auto. Detrás de una CDN, un proxy con dirección pública o una cadena de proxies, configura TRUSTED_PROXY_COUNT con el número de proxies. Un docker-compose.yml de una versión anterior sigue usando 1 como valor predeterminado, así que define el valor en .env o actualiza ese archivo. Las imágenes anteriores no aceptan auto: antes de volver a una de ellas, configura 1 detrás de un proxy o 0 sin proxy."
+      },
+      {
+        "type": "new",
+        "title": "Importes en el formato de cada moneda",
+        "desc": "Los importes siguen ahora el formato numérico de tu idioma, con el símbolo y los decimales de cada moneda: por ejemplo 1234,50 € en español y £1,234.50 en inglés. Los importes en yenes y forintos ya no muestran decimales. Cada gasto aparece en la moneda en que se registró, no en la de tu ubicación. Las monedas que necesitan tres decimales, como KWD y BHD, ya no se pueden usar para importes nuevos, porque los importes se guardan con dos decimales. Los registros existentes en esas monedas se conservan sin cambios."
+      },
+      {
+        "type": "fix",
+        "title": "Los repostajes explican su consumo",
+        "desc": "Cada repostaje indica ahora por qué tiene o no una cifra de consumo. Una lectura del odómetro inferior a la última del vehículo se señala en cuanto sales del campo y otra vez al guardar, y nunca impide guardar."
+      },
+      {
+        "type": "new",
+        "title": "Un formulario Añadir Vehículo más corto",
+        "desc": "Añadir Vehículo se abre solo con lo esencial: nombre, marca, modelo, año, tipo de combustible y kilometraje actual. Lo demás espera en Más detalles, así que nada se guarda con un valor predeterminado que no hayas visto."
+      },
+      {
+        "type": "fix",
+        "title": "Los enlaces para restablecer la contraseña se abren bien",
+        "desc": "Al abrir sin sesión iniciada un enlace para restablecer la contraseña, verificar el correo o ver un informe compartido, ya no acabas en la página de inicio de sesión ni se pierde el enlace."
+      },
+      {
+        "type": "fix",
+        "title": "Los cambios sin guardar del Perfil están protegidos",
+        "desc": "Al salir del Perfil con cambios sin guardar, ahora se te pregunta antes, como ya hacían los demás formularios."
+      },
+      {
+        "type": "fix",
+        "title": "Más fácil con un lector de pantalla",
+        "desc": "Cada botón con icono y cada campo de formulario tiene ahora un nombre que los lectores de pantalla anuncian."
+      },
+      {
+        "type": "fix",
+        "title": "La página de registro en modo oscuro",
+        "desc": "La página de registro ya no mezcla colores claros y oscuros cuando tu dispositivo usa el modo oscuro. Las páginas de inicio de sesión siguen claras en cualquier tema."
       }
     ]
   }
