@@ -2,8 +2,7 @@ name: Publish image
 
 # Build the single all-in-one image and push it to GitHub Container Registry
 # (GHCR) so end users PULL a ready image (Synology/PC/mini-PC/server) — they
-# never build. Multi-arch (amd64 + arm64) so the same `:latest` tag works on any
-# hardware; Docker auto-selects the right arch from the manifest.
+# never build. linux/amd64 only: 1.9.0 is the last release with an arm64 image.
 #
 # Triggers: every push to main (publishes :latest + the commit SHA),
 # version tags v* (semver tags), manual dispatch, and a weekly schedule.
@@ -42,10 +41,11 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
+      CI_WAIT_SECONDS: 7200   # 2 h; the SQLite and Postgres passes take about an hour
     steps:
       - name: Wait for CI on this commit and require success
         run: |
-          deadline=$((SECONDS + 2700))   # 45 min; the suite takes about 25
+          deadline=$((SECONDS + CI_WAIT_SECONDS))
           while :; do
             result=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow CI \
                        --commit "$GITHUB_SHA" --limit 1 \
@@ -61,16 +61,13 @@ jobs:
           done
 
   publish:
-    name: Build & push single image (amd64 + arm64)
+    name: Build & push single image (amd64)
     needs: verify-ci
     # Runs when the gate passed, or when it was skipped (schedule / dispatch).
     if: always() && (needs.verify-ci.result == 'success' || needs.verify-ci.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-
-      # QEMU enables the arm64 cross-build on the amd64 runner.
-      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
@@ -109,7 +106,7 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

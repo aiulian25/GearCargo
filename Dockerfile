@@ -9,7 +9,8 @@
 # Dual-mode: when DATABASE_URL / REDIS_URL point off-box the matching embedded
 # server is skipped, so the SAME image also works with an external DB/Redis.
 #
-# Published to GHCR as ghcr.io/aiulian25/gearcargo:latest (multi-arch).
+# Published to GHCR as ghcr.io/aiulian25/gearcargo:latest (linux/amd64; 1.9.0 is
+# the last release published for arm64, which can still be built from this file).
 
 # ============================================================
 # STAGE 1: Build Frontend (React PWA)

@@ -724,8 +724,9 @@ automatically (no PUID/PGID juggling), and it carries no hard resource limits
 
 ### Oracle Cloud (Free Tier / ARM)
 
-The image is built for **linux/amd64**. If running on ARM (Ampere A1):
-- You may need to build from source, or
+The image is built for **linux/amd64**; `1.9.0` is the last release published for arm64. If running on ARM (Ampere A1):
+- Pin `ghcr.io/aiulian25/gearcargo:1.9.0` (it gets no later updates),
+- Build from source, or
 - Use QEMU emulation: `docker run --platform linux/amd64 ...` (slow)
 
 For AMD64 instances (VM.Standard.E2.1.Micro — free tier), the image works natively.
@@ -743,7 +744,7 @@ sudo netfilter-persistent save
 ### Raspberry Pi
 
 - Use a **Pi 4 with 2GB+ RAM** minimum
-- The image is amd64 — you'll need to build from the Dockerfile for ARM:
+- The image is amd64 (`1.9.0` is the last release published for arm64) — to run a newer version on ARM, build from the Dockerfile:
   ```bash
   git clone https://github.com/aiulian25/gearcargo.git
   cd gearcargo
