@@ -50,8 +50,8 @@ export function parseInstant(value) {
   return Number.isNaN(date.getTime()) ? null : date
 }
 
-function locale(preferences) {
-  return LOCALES[preferences.language] || LOCALES.en
+export function localeFor(language) {
+  return LOCALES[language] || LOCALES.en
 }
 
 function timeZone(preferences) {
@@ -74,7 +74,7 @@ function displayDate(value, preferences) {
 
 function namedDate(value, preferences, options) {
   const parsed = displayDate(value, preferences)
-  return parsed ? new Intl.DateTimeFormat(locale(preferences), { ...options, timeZone: parsed.timeZone }).format(parsed.date) : '-'
+  return parsed ? new Intl.DateTimeFormat(localeFor(preferences.language), { ...options, timeZone: parsed.timeZone }).format(parsed.date) : '-'
 }
 
 export function formatDate(value, preferences = {}) {
@@ -109,7 +109,7 @@ export function formatDateTime(value, preferences = {}) {
   if (typeof value === 'string' && DATE_ONLY.test(value)) return formatDate(value, preferences)
   const date = parseInstant(value)
   if (!date) return '-'
-  const time = new Intl.DateTimeFormat(locale(preferences), {
+  const time = new Intl.DateTimeFormat(localeFor(preferences.language), {
     timeZone: timeZone(preferences), hour: '2-digit', minute: '2-digit', second: '2-digit',
   }).format(date)
   return `${formatDate(date, preferences)}, ${time}`

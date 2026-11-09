@@ -300,6 +300,7 @@ export default function VehicleAlerts() {
       <div className="sticky top-0 z-10 bg-(--color-bg-primary) border-b border-(--color-border)">
         <div className="flex items-center gap-3 p-4">
           <button 
+            aria-label={t('common.back')}
             onClick={() => navigate(`/vehicles/${id}`)}
             className="p-2 -ml-2 rounded-lg hover:bg-(--color-bg-tertiary) transition-colors"
           >

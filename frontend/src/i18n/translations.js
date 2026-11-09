@@ -843,6 +843,7 @@ export const translations = {
       treesNeeded: 'Plant',
       treesToOffset: 'trees to offset yearly emissions',
       orOffset: 'Or purchase carbon credits for',
+      perYear: '/year',
       fuelEfficiencyTips: 'Fuel Efficiency Tips',
       componentStatus: 'Component Status',
       showingTopComponents: 'Showing top priority components',
@@ -962,6 +963,7 @@ export const translations = {
       notes: 'Notes',
       optionalNotes: 'Optional notes...',
       error: 'Failed to add fuel entry',
+      odometerBelowLatest: 'Lower than the latest reading of {reading} — fine if this fill is older; otherwise check for a typo.',
     },
     
     // Add Service Form
@@ -1146,6 +1148,9 @@ export const translations = {
       annual: 'Annual (yearly)',
       oneTime: 'One-Time Payment',
       annualCost: 'Annual Cost',
+      monthlyBreakdown: '{amount}/month × 12',
+      quarterlyBreakdown: '{amount}/quarter × 4',
+      semiAnnualBreakdown: '{amount}/6 months × 2',
       coverageAmount: 'Coverage Amount',
       deductible: 'Deductible',
       policyPeriod: 'Policy Period',
@@ -1535,7 +1540,17 @@ export const translations = {
       updatedJustNow: 'Updated just now',
       updatedAgo: 'Updated {n} min ago',
     },
-    
+
+    // Location consent (dashboard fuel prices)
+    locationConsent: {
+      title: 'Use your location for fuel prices?',
+      description: 'To show prices for the country you are in, this GearCargo server sends your device’s position to OpenStreetMap’s Nominatim service, which returns the country and place name.',
+      note: 'If your browser has not been given permission yet, it will ask you next. You can switch auto-detect off at any time in Profile → Location Settings.',
+      allow: 'Use my location',
+      enterManually: 'Enter my location manually',
+      unavailable: 'Your browser did not share a location. Allow it in the site settings or set one in Profile.',
+    },
+
     // Vehicles
     vehicles: {
       removePhoto: 'Remove vehicle photo',
@@ -1575,6 +1590,8 @@ export const translations = {
       dimensions: 'Dimensions',
       dimensionsOptional: 'Dimensions (Optional)',
       dimensionsHelp: 'These details help with smart recommendations for parking, ferries, and more.',
+      moreDetails: 'More details',
+      moreDetailsHint: 'Optional — you can add these now or later.',
       // F17 — unit-free labels for the read-only Dimensions block on the detail page
       dimHeight: 'Height',
       dimWidth: 'Width',
@@ -1640,6 +1657,19 @@ export const translations = {
       anomalyPriceOutlier: 'Price Outlier',
       anomalyDataQuality: 'Data Quality Issue',
       anomalyAnalyzing: 'Analysing fill-up for anomalies…',
+      // Why a fill has no consumption figure (GC-105); keys are the API's measurement_status values.
+      measurementStatus: {
+        partial: 'Partial fill — consumption is only measured between two full tanks',
+        first_full_fill: 'Starting point — the next full tank is measured from this reading',
+        odometer_regression: "Odometer is not above the previous full tank, so consumption can't be measured. The next full tank will be measured from this reading — edit it if it was a typo.",
+        odometer_missing: 'No odometer reading — consumption is only measured between two full tanks with readings',
+        odometer_invalid: "Odometer reading is invalid — consumption can't be measured",
+        volume_invalid: "Fuel amount is missing or invalid — consumption can't be measured",
+        distance_unit_unknown: "The vehicle's distance unit is unknown — consumption can't be calculated",
+      },
+      warningTypes: {
+        odometer_regression: "Saved. The odometer is not above the previous full tank ({previous}), so this fill's consumption can't be measured. The next full tank will be measured from this reading — edit it if it was a typo.",
+      },
     },
     
     // Reminders/Alerts
@@ -1950,6 +1980,7 @@ export const translations = {
     
     // Admin Panel
     admin: {
+      aiSettingsLoadFailed: 'Failed to load the AI settings',
       title: 'Admin Panel',
       description: 'Manage users and system settings',
       totalUsers: 'Total Users',
@@ -2090,7 +2121,6 @@ export const translations = {
         failed24h: 'Failed (24h)',
         failed7d: 'Failed (7d)',
       },
-      invalidFileType: 'Please select a JSON file',
       ai: 'AI',
     },
     
@@ -2103,12 +2133,12 @@ export const translations = {
       email: 'Email',
       username: 'username',
       password: 'password',
+      showPassword: 'Show password',
       confirmPassword: 'Confirm Password',
       name: 'Name',
       forgotPassword: 'Forgot Password?',
       noAccount: "Don't have an account?",
       hasAccount: 'Already have an account?',
-      rememberPassword: 'Remember Password',
       createAccountHere: 'Create your account',
       here: 'here!',
       backToLogin: 'Back to Login',
@@ -2187,6 +2217,9 @@ export const translations = {
     
     // Security Questions
     securityQuestions: {
+      welcomeDescription: 'Set up security questions to help recover your account if you ever forget your password.',
+      allSet: "You're All Set!",
+      successMessage: 'Your security questions have been saved. You can use them to recover your account if needed.',
       title: 'Security Questions',
       subtitle: 'Set up security questions for account recovery',
       description: 'Security questions provide a backup way to verify your identity if you lose access to your account.',
@@ -2326,11 +2359,36 @@ export const translations = {
       considerRegenerating: 'Consider regenerating your backup codes',
       activeSessions: 'Active Sessions',
       currentDevice: 'Current Device',
-      lastActive: 'Last active',
-      logoutAllDevices: 'Logout All Devices',
+      lastActive: 'Last active {date}',
+      sessionEnds: 'Session ends {date}',
+      unknownDevice: 'Unknown device',
+      signOutSession: 'Sign Out',
+      signOutDevice: 'Sign out {device}',
+      signOutSessionTitle: 'Sign out {device}?',
+      signOutSessionConfirm: 'That device will have to sign in again.',
+      sessionSignedOut: 'That device has been signed out.',
+      sessionChanged: "That device's sign-in changed, so the list was refreshed. Try again.",
+      logoutOtherDevices: 'Sign Out Other Devices',
+      logoutOtherDevicesTitle: 'Sign out other devices?',
+      logoutOtherDevicesConfirm: 'Every other device will have to sign in again. You stay signed in on this one.',
+      otherDevicesSignedOut: 'Every other device has been signed out.',
+      noOtherSessions: 'No other devices are signed in.',
       dangerZone: 'Danger Zone',
       deleteAccount: 'Delete Account',
       cannotBeUndone: 'This action cannot be undone',
+      deleteAccountDescription: 'This permanently deletes your account, vehicles, records, receipts, backups and settings, and signs out every device. Download a backup first if you want to keep a copy.',
+      deleteAccountUnsentDrafts: 'This device still has unsent changes or receipt drafts. Deleting your account does not remove them from this device, so sync or discard them first.',
+      deleteAccountConfirm: 'Delete My Account',
+      deletingAccount: 'Deleting...',
+      accountDeleted: 'Your account has been deleted.',
+      deleteAccountPasswordInvalid: 'That password is not correct.',
+      deleteAccountCodeInvalid: 'Enter a valid authentication code or backup code.',
+      deleteAccountLastAdmin: 'You are the only active administrator. Make another account an administrator before deleting yours.',
+      deleteAccountUnconfirmed: 'Account deletion could not be confirmed. Refresh the page before trying again; your files are kept unless the deletion went through.',
+      deleteAccountConflict: 'Some of your records need an administrator to repair them before this account can be deleted.',
+      deleteAccountMayHaveCompleted: 'The server could not confirm whether your account was deleted. Refresh the page: if it was deleted, you will be signed out; if not, try again.',
+      deleteAccountTooManyAttempts: 'Too many attempts. Try again later.',
+      deleteAccountBusy: 'The server is busy right now. Try again in a few seconds.',
       language: 'Language',
       currency: 'Currency',
       distance: 'Distance',
@@ -2370,12 +2428,12 @@ export const translations = {
       locationSettings: 'Location Settings',
       locationDescription: 'Set your location for accurate fuel prices on the dashboard.',
       autoDetectLocation: 'Auto-detect Location',
-      autoDetectDescription: 'Use your device GPS for precise location',
+      autoDetectDescription: 'Asks on each device first, then uses its approximate position for fuel prices',
       locationName: 'Location Name',
       locationPlaceholder: 'e.g., Brighton, United Kingdom',
       latitude: 'Latitude',
       longitude: 'Longitude',
-      locationTip: 'Tip: You can find coordinates by right-clicking on Google Maps.',
+      locationTip: 'Fuel prices need both the latitude and the longitude. Tip: you can find them by right-clicking on Google Maps.',
     },
 
     // Two-Factor Authentication
@@ -2485,6 +2543,7 @@ export const translations = {
       passwordMatch: 'Passwords must match',
       invalidValue: 'That value is not one of the allowed options',
       invalidCurrency: 'Enter a recognized currency code (e.g. GBP)',
+      unsupportedCurrencyPrecision: 'This currency needs more than two decimal places, which cannot be stored',
       invalidText: 'Enter text within the allowed field length',
       invalidNumber: 'Please enter a valid number',
       positiveNumber: 'Must be a positive number',
@@ -2501,7 +2560,7 @@ export const translations = {
     privacy: {
       title: "Privacy and Data Use",
       lastUpdated: "Last updated",
-      updatedDate: "1 November 2026",
+      updatedDate: "9 November 2026",
       intro: "GearCargo is self-hosted software. The administrator of this instance controls its servers, enabled services and retention policies. This notice describes the built-in features; ask the administrator for the privacy terms that apply to this installation.",
       dataCollectionTitle: "Data stored by the application",
       dataCollectionDesc: "Depending on the features you use, the server and your browser store:",
@@ -2519,13 +2578,21 @@ export const translations = {
       noThirdPartyHighlight: "Enabled integrations can send data outside this server.",
       noThirdPartyDesc: "Which providers receive data depends on this installation and the features you use:",
       noThirdPartyItem1: "Email and browser push services receive delivery data. CalDAV receives calendar events; Ollama can receive selected vehicle context, questions and receipt text; external backup destinations receive exports.",
-      noThirdPartyItem2: "Password-breach checks send a short password-hash prefix to Have I Been Pwned. Other enabled services, such as fuel-price and currency lookups, make external requests.",
+      noThirdPartyItem2: "Some built-in features also contact the public services listed under “Third-party services” below.",
       noThirdPartyItem3: "Anyone with a valid report, calendar-feed or signed media link may access its permitted content. Revoking a link does not erase copies already downloaded.",
+      thirdPartyTitle: "Third-party services",
+      thirdPartyDesc: "Unless an item says otherwise, this server contacts these public services itself, so they see the server’s network address rather than yours:",
+      thirdPartyLocation: "OpenStreetMap Nominatim: when the dashboard loads or refreshes fuel prices, the server sends the coordinates in use (this device’s position, only after you allow it on this device, or your saved location) and the app language, and receives the country and place name.",
+      thirdPartyFuelPrices: "Fuel prices: every Monday, on a manual refresh and whenever no recent copy is stored, the server downloads the national average prices published by GOV.UK (weekly road fuel prices) and the European Commission (Weekly Oil Bulletin). No personal data is sent.",
+      thirdPartyExchangeRates: "Exchange rates: about once a day, the server downloads European Central Bank reference rates through the Frankfurter service (api.frankfurter.app). No personal data is sent.",
+      thirdPartyPasswordCheck: "Have I Been Pwned: when you choose, set or change a password, the server sends only the first five characters of the password’s SHA-1 hash (k-anonymity). The password itself is never sent.",
+      thirdPartyManuals: "Owner’s manuals: when you look up a vehicle’s manual, the server checks manufacturer websites and a manual archive using the vehicle’s make, model and year.",
+      thirdPartyFonts: "Google Fonts: your browser loads the app’s text and icon fonts directly from Google, which receives your IP address and browser details.",
       dataAccessTitle: "Access and exports",
       dataAccessDesc: "Use the available account, vehicle and backup controls, or contact this instance’s administrator:",
       dataAccessItem1: "View and edit supported profile and vehicle records in the app.",
       dataAccessItem2: "Personal JSON/ZIP backups export the supported vehicle data. They are not a complete export of account credentials, security history or every server record.",
-      dataAccessItem3: "Administrators manage accounts and can request account deletion. This app does not provide a self-service account deletion button in settings.",
+      dataAccessItem3: "You can delete your own account in Profile → Security after re-entering your password, plus a code when two-factor authentication is on. This does not remove unsent changes or receipt drafts already stored on your device. Administrators can also delete accounts, but the last active administrator cannot delete their own.",
       notificationTitle: "Notification email choices",
       notificationDesc: "An optional custom notification email requires consent and address verification.",
       notificationItem1: "You can remove that address in settings. With notifications still enabled, delivery can fall back to your account email; removing the custom address alone is not a notification opt-out.",
@@ -2614,6 +2681,7 @@ export const translations = {
 
     // Common
     common: {
+      change: 'Change',
       deletionCleanupPending: 'Deleted. Some files or sign-in data still need cleanup. Cleanup will retry automatically.',
       save: 'Save',
       cancel: 'Cancel',
@@ -2629,6 +2697,7 @@ export const translations = {
       close: 'Close',
       back: 'Back',
       next: 'Next',
+      previous: 'Previous',
       continue: 'Continue',
       submit: 'Submit',
       reset: 'Reset',
@@ -2695,7 +2764,6 @@ export const translations = {
       off: 'Off',
       enabled: 'Enabled',
       disabled: 'Disabled',
-      active: 'Active',
       inactive: 'Inactive',
       blocked: 'Blocked',
       configured: 'Configured',
@@ -2761,6 +2829,7 @@ export const translations = {
       formats: 'JPG, PNG, GIF, WebP, iPhone (HEIC), PDF up to 10MB',
       browse: 'Browse Files',
       camera: 'Use Camera',
+      remove: 'Remove file',
       invalidType: 'Invalid file type. Please select an image or PDF.',
       tooLarge: 'File is too large. Maximum size is 10MB.',
       scanBanner: 'Receipt scanned — extract data to pre-fill form',
@@ -2965,6 +3034,7 @@ export const translations = {
       gethomepage: 'Gethomepage',
       gethomepageDesc: 'Add to your Gethomepage services.yaml:',
       endpoints: 'Available endpoints:',
+      copyConfig: 'Copy configuration',
     },
     
     // Backup System
@@ -3506,7 +3576,6 @@ export const translations = {
 
     // Vehicle Detail Page
     vehicleDetail: {
-      backToDashboard: 'Înapoi la Panou',
       editVehicle: 'Editează Vehicul',
       archive: 'Arhivează',
       delete: 'Șterge',
@@ -3852,7 +3921,6 @@ export const translations = {
 
     // AI Predictions (notificări push și stare)
     aiPredictions: {
-      pushTitle: 'Alertă Nouă de Mentenanță AI',
       pushBody: 'O predicție critică de mentenanță a fost generată pentru vehiculul tău.',
       viewPredictions: 'Vezi Predicții',
       generating: 'Se generează predicții AI…',
@@ -4023,6 +4091,7 @@ export const translations = {
       treesNeeded: 'Plantează',
       treesToOffset: 'copaci pentru a compensa emisiile anuale',
       orOffset: 'Sau cumpără credite de carbon pentru',
+      perYear: '/an',
       fuelEfficiencyTips: 'Sfaturi Eficiență Combustibil',
       componentStatus: 'Stare Componente',
       showingTopComponents: 'Se afișează componentele prioritare',
@@ -4142,6 +4211,7 @@ export const translations = {
       notes: 'Notițe',
       optionalNotes: 'Notițe opționale...',
       error: 'Eroare la adăugarea combustibilului',
+      odometerBelowLatest: 'Kilometrajul introdus e mai mic decât ultimul înregistrat ({reading}) — e în regulă dacă alimentarea e mai veche; altfel, verifică dacă nu e o greșeală de tastare.',
     },
     
     // Add Service Form
@@ -4326,6 +4396,9 @@ export const translations = {
       annual: 'Anual',
       oneTime: 'Plată Unică',
       annualCost: 'Cost Anual',
+      monthlyBreakdown: '{amount}/lună × 12',
+      quarterlyBreakdown: '{amount}/trimestru × 4',
+      semiAnnualBreakdown: '{amount}/6 luni × 2',
       coverageAmount: 'Sumă Asigurată',
       deductible: 'Franciză',
       policyPeriod: 'Perioadă Poliță',
@@ -4715,7 +4788,17 @@ export const translations = {
       updatedJustNow: 'Actualizat acum',
       updatedAgo: 'Actualizat acum {n} min',
     },
-    
+
+    // Location consent (dashboard fuel prices)
+    locationConsent: {
+      title: 'Folosești locația pentru prețurile carburanților?',
+      description: 'Pentru a afișa prețurile din țara în care te afli, acest server GearCargo trimite poziția dispozitivului tău către serviciul Nominatim al OpenStreetMap, care returnează țara și numele localității.',
+      note: 'Dacă browserul nu are încă permisiunea, ți-o va cere imediat după. Poți dezactiva oricând detectarea automată din Profil → Setări Locație.',
+      allow: 'Folosește locația mea',
+      enterManually: 'Introdu manual locația',
+      unavailable: 'Browserul nu a transmis locația. Permite accesul din setările site-ului sau setează o locație în Profil.',
+    },
+
     // Vehicles
     vehicles: {
       removePhoto: 'Elimină fotografia vehiculului',
@@ -4755,6 +4838,8 @@ export const translations = {
       dimensions: 'Dimensiuni',
       dimensionsOptional: 'Dimensiuni (Opțional)',
       dimensionsHelp: 'Aceste detalii ajută la recomandări inteligente pentru parcări, feriboturi și altele.',
+      moreDetails: 'Mai multe detalii',
+      moreDetailsHint: 'Opționale — le poți adăuga acum sau mai târziu.',
       // F17 — etichete fără unități pentru blocul Dimensiuni (pagina de detalii)
       dimHeight: 'Înălțime',
       dimWidth: 'Lățime',
@@ -4820,6 +4905,18 @@ export const translations = {
       anomalyPriceOutlier: 'Preț Neobișnuit',
       anomalyDataQuality: 'Problemă Calitate Date',
       anomalyAnalyzing: 'Se analizează alimentarea…',
+      measurementStatus: {
+        partial: 'Alimentare parțială — consumul se măsoară doar între două plinuri',
+        first_full_fill: 'Punct de pornire — următorul plin se măsoară de la acest kilometraj',
+        odometer_regression: 'Kilometrajul nu depășește valoarea de la plinul anterior, deci consumul nu poate fi măsurat. Următorul plin va fi măsurat de la această valoare — corecteaz-o dacă a fost o greșeală de tastare.',
+        odometer_missing: 'Fără kilometraj — consumul se măsoară doar între două plinuri cu kilometraj',
+        odometer_invalid: 'Kilometrajul este invalid — consumul nu poate fi măsurat',
+        volume_invalid: 'Cantitatea de combustibil lipsește sau este invalidă — consumul nu poate fi măsurat',
+        distance_unit_unknown: 'Unitatea de distanță a vehiculului este necunoscută — consumul nu poate fi calculat',
+      },
+      warningTypes: {
+        odometer_regression: 'Salvat. Kilometrajul nu depășește valoarea de la plinul anterior ({previous}), deci consumul acestei alimentări nu poate fi măsurat. Următorul plin va fi măsurat de la această valoare — corecteaz-o dacă a fost o greșeală de tastare.',
+      },
     },
 
     // Reminders/Alerts
@@ -5041,22 +5138,7 @@ export const translations = {
       selectYear: 'Selectează Anul',
       selectMonth: 'Selectează Luna',
       previewReport: 'Previzualizare Raport',
-      generateReport: 'Descarcă PDF',
-      loadingPreview: 'Se încarcă previzualizarea...',
-      generatingReport: 'Se generează raportul...',
-      noEntriesFound: 'Nu s-au găsit înregistrări pentru perioada selectată',
-      reportPreviewTitle: 'Previzualizare Raport',
       totalEntries: 'Total Înregistrări',
-      totalAmount: 'Sumă Totală',
-      entriesBreakdown: 'Detaliere Înregistrări',
-      fuelEntries: 'Înregistrări Combustibil',
-      serviceEntries: 'Înregistrări Service',
-      repairEntries: 'Înregistrări Reparații',
-      taxEntries: 'Înregistrări Taxe',
-      parkingEntries: 'Înregistrări Parcare',
-      insuranceEntries: 'Înregistrări Asigurări',
-      reportError: 'Nu s-a putut genera raportul',
-      previewError: 'Nu s-a putut încărca previzualizarea',
       periodLabel: 'Perioadă',
       vehiclesIncluded: 'Vehicule',
       vehiclesCount: 'vehicul(e)',
@@ -5147,6 +5229,7 @@ export const translations = {
     
     // Admin Panel
     admin: {
+      aiSettingsLoadFailed: 'Setările AI nu au putut fi încărcate',
       title: 'Panou Admin',
       description: 'Gestionează utilizatorii și setările sistemului',
       totalUsers: 'Total Utilizatori',
@@ -5287,6 +5370,7 @@ export const translations = {
         failed24h: 'Eșuate (24h)',
         failed7d: 'Eșuate (7z)',
       },
+      ai: 'AI',
     },
     
     // Auth
@@ -5298,12 +5382,12 @@ export const translations = {
       email: 'Email',
       username: 'utilizator',
       password: 'parolă',
+      showPassword: 'Afișează parola',
       confirmPassword: 'Confirmă Parola',
       name: 'Nume',
       forgotPassword: 'Ai uitat parola?',
       noAccount: 'Nu ai cont?',
       hasAccount: 'Ai deja cont?',
-      rememberPassword: 'Reține Parola',
       createAccountHere: 'Creează-ți contul',
       here: 'aici!',
       backToLogin: 'Înapoi la Autentificare',
@@ -5382,6 +5466,9 @@ export const translations = {
     
     // Security Questions
     securityQuestions: {
+      welcomeDescription: 'Configurează întrebări de securitate ca să îți poți recupera contul dacă îți uiți parola.',
+      allSet: 'Totul este gata!',
+      successMessage: 'Întrebările de securitate au fost salvate. Le poți folosi pentru a-ți recupera contul, dacă este nevoie.',
       title: 'Întrebări de Securitate',
       subtitle: 'Configurează întrebări de securitate pentru recuperarea contului',
       description: 'Întrebările de securitate oferă o metodă alternativă de verificare a identității în cazul pierderii accesului la cont.',
@@ -5521,11 +5608,36 @@ export const translations = {
       considerRegenerating: 'Consideră regenerarea codurilor de backup',
       activeSessions: 'Sesiuni Active',
       currentDevice: 'Dispozitiv Curent',
-      lastActive: 'Ultima activitate',
-      logoutAllDevices: 'Deconectează Toate Dispozitivele',
+      lastActive: 'Ultima activitate: {date}',
+      sessionEnds: 'Sesiunea se încheie la {date}',
+      unknownDevice: 'Dispozitiv necunoscut',
+      signOutSession: 'Deconectează',
+      signOutDevice: 'Deconectează {device}',
+      signOutSessionTitle: 'Deconectezi {device}?',
+      signOutSessionConfirm: 'Acel dispozitiv va trebui să se autentifice din nou.',
+      sessionSignedOut: 'Acel dispozitiv a fost deconectat.',
+      sessionChanged: 'Autentificarea acelui dispozitiv s-a schimbat, așa că lista a fost reîmprospătată. Încearcă din nou.',
+      logoutOtherDevices: 'Deconectează Celelalte Dispozitive',
+      logoutOtherDevicesTitle: 'Deconectezi celelalte dispozitive?',
+      logoutOtherDevicesConfirm: 'Toate celelalte dispozitive vor trebui să se autentifice din nou. Rămâi conectat pe acest dispozitiv.',
+      otherDevicesSignedOut: 'Toate celelalte dispozitive au fost deconectate.',
+      noOtherSessions: 'Niciun alt dispozitiv nu este conectat.',
       dangerZone: 'Zonă Periculoasă',
       deleteAccount: 'Șterge Contul',
       cannotBeUndone: 'Această acțiune nu poate fi anulată',
+      deleteAccountDescription: 'Aceasta șterge definitiv contul, vehiculele, înregistrările, bonurile, backup-urile și setările tale și deconectează toate dispozitivele. Descarcă mai întâi un backup dacă vrei să păstrezi o copie.',
+      deleteAccountUnsentDrafts: 'Pe acest dispozitiv există încă modificări sau bonuri netrimise. Ștergerea contului nu le elimină de pe dispozitiv, așa că sincronizează-le sau renunță la ele mai întâi.',
+      deleteAccountConfirm: 'Șterge-mi Contul',
+      deletingAccount: 'Se șterge...',
+      accountDeleted: 'Contul tău a fost șters.',
+      deleteAccountPasswordInvalid: 'Parola nu este corectă.',
+      deleteAccountCodeInvalid: 'Introdu un cod de autentificare sau un cod de backup valid.',
+      deleteAccountLastAdmin: 'Ești singurul administrator activ. Acordă rolul de administrator altui cont înainte de a-l șterge pe al tău.',
+      deleteAccountUnconfirmed: 'Ștergerea contului nu a putut fi confirmată. Reîmprospătează pagina înainte de a încerca din nou; fișierele tale sunt păstrate dacă ștergerea nu s-a finalizat.',
+      deleteAccountConflict: 'Unele dintre înregistrările tale trebuie reparate de un administrator înainte ca acest cont să poată fi șters.',
+      deleteAccountMayHaveCompleted: 'Serverul nu a putut confirma dacă contul tău a fost șters. Reîmprospătează pagina: dacă a fost șters, vei fi deconectat; dacă nu, încearcă din nou.',
+      deleteAccountTooManyAttempts: 'Prea multe încercări. Încearcă din nou mai târziu.',
+      deleteAccountBusy: 'Serverul este ocupat acum. Încearcă din nou în câteva secunde.',
       language: 'Limbă',
       currency: 'Monedă',
       distance: 'Distanță',
@@ -5565,12 +5677,12 @@ export const translations = {
       locationSettings: 'Setări Locație',
       locationDescription: 'Setează locația ta pentru prețuri carburanți precise pe dashboard.',
       autoDetectLocation: 'Detectare Automată Locație',
-      autoDetectDescription: 'Folosește GPS-ul dispozitivului pentru locație precisă',
+      autoDetectDescription: 'Cere acordul pe fiecare dispozitiv, apoi îi folosește poziția aproximativă pentru prețurile carburanților',
       locationName: 'Nume Locație',
       locationPlaceholder: 'ex. Brighton, Marea Britanie',
       latitude: 'Latitudine',
       longitude: 'Longitudine',
-      locationTip: 'Sfat: Poți găsi coordonatele făcând click dreapta pe Google Maps.',
+      locationTip: 'Pentru prețurile carburanților sunt necesare atât latitudinea, cât și longitudinea. Sfat: le poți găsi făcând click dreapta pe Google Maps.',
     },
 
     // Two-Factor Authentication
@@ -5680,6 +5792,7 @@ export const translations = {
       passwordMatch: 'Parolele trebuie să coincidă',
       invalidValue: 'Valoarea nu este una dintre opțiunile permise',
       invalidCurrency: 'Introduceți un cod monetar recunoscut (ex. RON)',
+      unsupportedCurrencyPrecision: 'Această monedă necesită mai mult de două zecimale, care nu pot fi salvate',
       invalidText: 'Introduceți text în limita de caractere a câmpului',
       invalidNumber: 'Vă rugăm introduceți un număr valid',
       positiveNumber: 'Trebuie să fie un număr pozitiv',
@@ -5696,7 +5809,7 @@ export const translations = {
     privacy: {
       title: "Confidențialitate și utilizarea datelor",
       lastUpdated: "Ultima actualizare",
-      updatedDate: "1 noiembrie 2026",
+      updatedDate: "9 noiembrie 2026",
       intro: "GearCargo este un software găzduit pe serverul ales de operator. Administratorul acestei instanțe controlează serverele, serviciile activate și politicile de păstrare. Această informare descrie funcțiile aplicației; cereți administratorului condițiile de confidențialitate aplicabile acestei instalări.",
       dataCollectionTitle: "Date stocate de aplicație",
       dataCollectionDesc: "În funcție de funcțiile folosite, serverul și browserul stochează:",
@@ -5714,13 +5827,21 @@ export const translations = {
       noThirdPartyHighlight: "Integrările activate pot trimite date în afara acestui server.",
       noThirdPartyDesc: "Furnizorii care primesc date depind de această instalare și de funcțiile folosite:",
       noThirdPartyItem1: "Serviciile de email și notificări push primesc date de livrare. CalDAV primește evenimente; Ollama poate primi date selectate despre vehicule, întrebări și textul bonurilor; destinațiile externe de backup primesc exporturi.",
-      noThirdPartyItem2: "Verificarea parolelor compromise trimite un prefix scurt al hash-ului parolei către Have I Been Pwned. Alte servicii activate, precum prețurile carburanților și cursurile valutare, fac cereri externe.",
+      noThirdPartyItem2: "Unele funcții integrate contactează și serviciile publice enumerate mai jos, la „Servicii terțe”.",
       noThirdPartyItem3: "Oricine are un link valid de raport, flux de calendar sau fișier semnat poate accesa conținutul permis. Revocarea linkului nu șterge copiile deja descărcate.",
+      thirdPartyTitle: "Servicii terțe",
+      thirdPartyDesc: "Dacă nu se precizează altfel, acest server contactează direct aceste servicii publice, așa că ele văd adresa de rețea a serverului, nu pe cea a dumneavoastră:",
+      thirdPartyLocation: "OpenStreetMap Nominatim: când dashboard-ul încarcă sau actualizează prețurile carburanților, serverul trimite coordonatele folosite (poziția acestui dispozitiv, doar după ce ați permis acest lucru pe dispozitivul respectiv, sau locația salvată) și limba aplicației, apoi primește țara și numele localității.",
+      thirdPartyFuelPrices: "Prețurile carburanților: în fiecare luni, la o actualizare manuală și ori de câte ori nu există o copie recentă, serverul descarcă prețurile medii naționale publicate de GOV.UK (prețurile săptămânale ale carburanților) și de Comisia Europeană (Buletinul Săptămânal al UE pentru Petrol). Nu se trimit date personale.",
+      thirdPartyExchangeRates: "Cursuri valutare: aproximativ o dată pe zi, serverul descarcă cursurile de referință ale Băncii Centrale Europene prin serviciul Frankfurter (api.frankfurter.app). Nu se trimit date personale.",
+      thirdPartyPasswordCheck: "Have I Been Pwned: când alegeți, setați sau schimbați o parolă, serverul trimite doar primele cinci caractere ale hash-ului SHA-1 al parolei (k-anonimitate). Parola în sine nu este trimisă niciodată.",
+      thirdPartyManuals: "Manuale de utilizare: când căutați manualul unui vehicul, serverul verifică site-urile producătorilor și o arhivă de manuale folosind marca, modelul și anul vehiculului.",
+      thirdPartyFonts: "Google Fonts: browserul dumneavoastră încarcă direct de la Google fonturile aplicației pentru text și pictograme, iar Google primește adresa IP și detalii despre browser.",
       dataAccessTitle: "Acces și exporturi",
       dataAccessDesc: "Folosiți controalele disponibile pentru cont, vehicule și backup sau contactați administratorul instanței:",
       dataAccessItem1: "Vizualizați și modificați în aplicație datele de profil și de vehicul pentru care există controale.",
       dataAccessItem2: "Backup-urile personale JSON/ZIP exportă datele de vehicul acceptate. Nu sunt un export complet al credențialelor, istoricului de securitate sau al tuturor înregistrărilor serverului.",
-      dataAccessItem3: "Administratorii gestionează conturile și pot iniția ștergerea lor. Aplicația nu oferă în setări un buton prin care utilizatorul să își șteargă singur contul.",
+      dataAccessItem3: "Puteți să vă ștergeți contul din Profil → Securitate după ce reintroduceți parola, plus un cod dacă autentificarea în doi pași este activă. Ștergerea nu elimină modificările și bonurile netrimise deja salvate pe dispozitivul dumneavoastră. Administratorii pot șterge și ei conturi, dar ultimul administrator activ nu își poate șterge propriul cont.",
       notificationTitle: "Opțiuni pentru emailurile de notificare",
       notificationDesc: "O adresă personalizată opțională pentru notificări necesită consimțământ și verificarea adresei.",
       notificationItem1: "Puteți elimina adresa din setări. Dacă notificările rămân activate, se poate folosi adresa contului; eliminarea adresei personalizate nu dezactivează singură notificările.",
@@ -5805,12 +5926,11 @@ export const translations = {
       contactDesc: 'Pentru întrebări despre acești Termeni și Condiții, vă rugăm să ne contactați la gearcargo.team@gmail.com.',
       
       understood: 'Am Înțeles',
-      invalidFileType: 'Selectează un fișier JSON',
-      ai: 'AI',
     },
 
     // Common
     common: {
+      change: 'Schimbă',
       deletionCleanupPending: 'Înregistrarea a fost ștearsă. Unele fișiere sau date de conectare necesită încă ștergere. Curățarea va fi reîncercată automat.',
       save: 'Salvează',
       cancel: 'Anulează',
@@ -5826,6 +5946,7 @@ export const translations = {
       close: 'Închide',
       back: 'Înapoi',
       next: 'Următorul',
+      previous: 'Anteriorul',
       continue: 'Continuă',
       submit: 'Trimite',
       reset: 'Resetează',
@@ -5886,7 +6007,6 @@ export const translations = {
       off: 'Oprit',
       enabled: 'Activat',
       disabled: 'Dezactivat',
-      active: 'Activ',
       inactive: 'Inactiv',
       blocked: 'Blocat',
       configured: 'Configurat',
@@ -5958,6 +6078,7 @@ export const translations = {
       formats: 'JPG, PNG, GIF, WebP, iPhone (HEIC), PDF până la 10MB',
       browse: 'Navighează Fișiere',
       camera: 'Folosește Camera',
+      remove: 'Elimină fișierul',
       invalidType: 'Tip de fișier invalid. Selectează o imagine sau PDF.',
       tooLarge: 'Fișierul este prea mare. Mărimea maximă este 10MB.',
       scanBanner: 'Chitanță scanată — extrage date pentru completare',
@@ -6162,6 +6283,7 @@ export const translations = {
       gethomepage: 'Gethomepage',
       gethomepageDesc: 'Adaugă în fișierul services.yaml din Gethomepage:',
       endpoints: 'Endpoint-uri disponibile:',
+      copyConfig: 'Copiază configurația',
     },
     
     // Backup System
@@ -7047,7 +7169,6 @@ export const translations = {
 
     // Predicciones AI (notificaciones push y estado)
     aiPredictions: {
-      pushTitle: 'Nueva Alerta de Mantenimiento IA',
       pushBody: 'Se ha generado una predicción de mantenimiento crítica para tu vehículo.',
       viewPredictions: 'Ver Predicciones',
       generating: 'Generando predicciones de IA…',
@@ -7218,6 +7339,7 @@ export const translations = {
       treesNeeded: 'Planta',
       treesToOffset: 'árboles para compensar las emisiones anuales',
       orOffset: 'O compra créditos de carbono por',
+      perYear: '/año',
       fuelEfficiencyTips: 'Consejos de Eficiencia de Combustible',
       componentStatus: 'Estado de Componentes',
       showingTopComponents: 'Mostrando componentes prioritarios',
@@ -7337,6 +7459,7 @@ export const translations = {
       notes: 'Notas',
       optionalNotes: 'Notas opcionales...',
       error: 'Error al añadir combustible',
+      odometerBelowLatest: 'Es inferior a la última lectura registrada ({reading}): está bien si esta carga es anterior; si no, revisa que no sea un error de tecleo.',
     },
     
     // Add Service Form
@@ -7521,6 +7644,9 @@ export const translations = {
       annual: 'Anual',
       oneTime: 'Pago Único',
       annualCost: 'Costo Anual',
+      monthlyBreakdown: '{amount}/mes × 12',
+      quarterlyBreakdown: '{amount}/trimestre × 4',
+      semiAnnualBreakdown: '{amount}/6 meses × 2',
       coverageAmount: 'Suma Asegurada',
       deductible: 'Deducible',
       policyPeriod: 'Período de Póliza',
@@ -7910,7 +8036,17 @@ export const translations = {
       updatedJustNow: 'Actualizado ahora mismo',
       updatedAgo: 'Actualizado hace {n} min',
     },
-    
+
+    // Location consent (dashboard fuel prices)
+    locationConsent: {
+      title: '¿Usar tu ubicación para los precios del combustible?',
+      description: 'Para mostrar los precios del país en el que estás, este servidor de GearCargo envía la posición de tu dispositivo al servicio Nominatim de OpenStreetMap, que devuelve el país y el nombre del lugar.',
+      note: 'Si tu navegador aún no tiene permiso, te lo pedirá a continuación. Puedes desactivar la detección automática cuando quieras en Perfil → Configuración de Ubicación.',
+      allow: 'Usar mi ubicación',
+      enterManually: 'Introducir mi ubicación manualmente',
+      unavailable: 'El navegador no ha compartido la ubicación. Permítela en los ajustes del sitio o indica una en Perfil.',
+    },
+
     // Vehicles
     vehicles: {
       removePhoto: 'Eliminar foto del vehículo',
@@ -7950,6 +8086,8 @@ export const translations = {
       dimensions: 'Dimensiones',
       dimensionsOptional: 'Dimensiones (Opcional)',
       dimensionsHelp: 'Estos detalles ayudan con recomendaciones inteligentes para aparcamiento, ferries y más.',
+      moreDetails: 'Más detalles',
+      moreDetailsHint: 'Opcionales — puedes añadirlos ahora o más tarde.',
       // F17 — etiquetas sin unidades para el bloque Dimensiones (página de detalle)
       dimHeight: 'Altura',
       dimWidth: 'Anchura',
@@ -8015,6 +8153,18 @@ export const translations = {
       anomalyPriceOutlier: 'Precio Inusual',
       anomalyDataQuality: 'Problema de Calidad de Datos',
       anomalyAnalyzing: 'Analizando carga de combustible…',
+      measurementStatus: {
+        partial: 'Carga parcial: el consumo solo se mide entre dos tanques llenos',
+        first_full_fill: 'Punto de partida: el siguiente tanque lleno se mide desde esta lectura',
+        odometer_regression: 'El odómetro no supera la lectura del tanque lleno anterior, así que no se puede medir el consumo. El siguiente tanque lleno se medirá desde esta lectura: corrígela si fue un error de tecleo.',
+        odometer_missing: 'Sin lectura del odómetro: el consumo solo se mide entre dos tanques llenos con lectura',
+        odometer_invalid: 'La lectura del odómetro no es válida: no se puede medir el consumo',
+        volume_invalid: 'Falta la cantidad de combustible o no es válida: no se puede medir el consumo',
+        distance_unit_unknown: 'Se desconoce la unidad de distancia del vehículo: no se puede calcular el consumo',
+      },
+      warningTypes: {
+        odometer_regression: 'Guardado. El odómetro no supera la lectura del tanque lleno anterior ({previous}), así que no se puede medir el consumo de esta carga. El siguiente tanque lleno se medirá desde esta lectura: corrígela si fue un error de tecleo.',
+      },
     },
 
     // Reminders/Alerts
@@ -8236,22 +8386,7 @@ export const translations = {
       selectYear: 'Seleccionar Año',
       selectMonth: 'Seleccionar Mes',
       previewReport: 'Vista Previa del Informe',
-      generateReport: 'Descargar PDF',
-      loadingPreview: 'Cargando vista previa...',
-      generatingReport: 'Generando informe...',
-      noEntriesFound: 'No se encontraron registros para el período seleccionado',
-      reportPreviewTitle: 'Vista Previa del Informe',
       totalEntries: 'Total de Registros',
-      totalAmount: 'Monto Total',
-      entriesBreakdown: 'Desglose de Registros',
-      fuelEntries: 'Registros de Combustible',
-      serviceEntries: 'Registros de Servicio',
-      repairEntries: 'Registros de Reparaciones',
-      taxEntries: 'Registros de Impuestos',
-      parkingEntries: 'Registros de Estacionamiento',
-      insuranceEntries: 'Registros de Seguros',
-      reportError: 'No se pudo generar el informe',
-      previewError: 'No se pudo cargar la vista previa',
       periodLabel: 'Período',
       vehiclesIncluded: 'Vehículos',
       vehiclesCount: 'vehículo(s)',
@@ -8342,6 +8477,7 @@ export const translations = {
     
     // Admin Panel
     admin: {
+      aiSettingsLoadFailed: 'No se pudo cargar la configuración de IA',
       title: 'Panel de Admin',
       description: 'Gestionar usuarios y configuraciones del sistema',
       totalUsers: 'Total Usuarios',
@@ -8482,6 +8618,7 @@ export const translations = {
         failed24h: 'Fallidos (24h)',
         failed7d: 'Fallidos (7d)',
       },
+      ai: 'IA',
     },
     
     // Auth
@@ -8493,12 +8630,12 @@ export const translations = {
       email: 'Correo Electrónico',
       username: 'usuario',
       password: 'contraseña',
+      showPassword: 'Mostrar contraseña',
       confirmPassword: 'Confirmar Contraseña',
       name: 'Nombre',
       forgotPassword: '¿Olvidaste tu contraseña?',
       noAccount: '¿No tienes cuenta?',
       hasAccount: '¿Ya tienes cuenta?',
-      rememberPassword: 'Recordar Contraseña',
       createAccountHere: 'Crea tu cuenta',
       here: '¡aquí!',
       backToLogin: 'Volver al Inicio de Sesión',
@@ -8577,6 +8714,9 @@ export const translations = {
     
     // Security Questions
     securityQuestions: {
+      welcomeDescription: 'Configura preguntas de seguridad para poder recuperar tu cuenta si olvidas tu contraseña.',
+      allSet: '¡Todo listo!',
+      successMessage: 'Tus preguntas de seguridad se han guardado. Puedes usarlas para recuperar tu cuenta si lo necesitas.',
       title: 'Preguntas de Seguridad',
       subtitle: 'Configura preguntas de seguridad para la recuperación de cuenta',
       description: 'Las preguntas de seguridad proporcionan un método alternativo para verificar tu identidad si pierdes acceso a tu cuenta.',
@@ -8716,11 +8856,36 @@ export const translations = {
       considerRegenerating: 'Considera regenerar tus códigos de respaldo',
       activeSessions: 'Sesiones Activas',
       currentDevice: 'Dispositivo Actual',
-      lastActive: 'Última actividad',
-      logoutAllDevices: 'Cerrar Sesión en Todos los Dispositivos',
+      lastActive: 'Última actividad: {date}',
+      sessionEnds: 'La sesión termina el {date}',
+      unknownDevice: 'Dispositivo desconocido',
+      signOutSession: 'Cerrar Sesión',
+      signOutDevice: 'Cerrar sesión en {device}',
+      signOutSessionTitle: '¿Cerrar sesión en {device}?',
+      signOutSessionConfirm: 'Ese dispositivo tendrá que iniciar sesión de nuevo.',
+      sessionSignedOut: 'Se cerró la sesión en ese dispositivo.',
+      sessionChanged: 'El inicio de sesión de ese dispositivo cambió, así que se actualizó la lista. Inténtalo de nuevo.',
+      logoutOtherDevices: 'Cerrar Sesión en los Demás Dispositivos',
+      logoutOtherDevicesTitle: '¿Cerrar sesión en los demás dispositivos?',
+      logoutOtherDevicesConfirm: 'Los demás dispositivos tendrán que iniciar sesión de nuevo. Tu sesión en este dispositivo sigue abierta.',
+      otherDevicesSignedOut: 'Se cerró la sesión en todos los demás dispositivos.',
+      noOtherSessions: 'No hay otros dispositivos con la sesión iniciada.',
       dangerZone: 'Zona de Peligro',
       deleteAccount: 'Eliminar Cuenta',
       cannotBeUndone: 'Esta acción no se puede deshacer',
+      deleteAccountDescription: 'Esto elimina de forma permanente tu cuenta, vehículos, registros, recibos, copias de seguridad y ajustes, y cierra la sesión en todos los dispositivos. Descarga antes una copia de seguridad si quieres conservar tus datos.',
+      deleteAccountUnsentDrafts: 'Este dispositivo aún tiene cambios o recibos sin enviar. Eliminar tu cuenta no los borra de este dispositivo, así que sincronízalos o descártalos antes.',
+      deleteAccountConfirm: 'Eliminar Mi Cuenta',
+      deletingAccount: 'Eliminando...',
+      accountDeleted: 'Tu cuenta ha sido eliminada.',
+      deleteAccountPasswordInvalid: 'La contraseña no es correcta.',
+      deleteAccountCodeInvalid: 'Ingresa un código de autenticación o de respaldo válido.',
+      deleteAccountLastAdmin: 'Eres el único administrador activo. Asigna el rol de administrador a otra cuenta antes de eliminar la tuya.',
+      deleteAccountUnconfirmed: 'No se pudo confirmar la eliminación de la cuenta. Actualiza la página antes de volver a intentarlo; tus archivos se conservan salvo que la eliminación se haya completado.',
+      deleteAccountConflict: 'Un administrador debe reparar algunos de tus registros antes de que se pueda eliminar esta cuenta.',
+      deleteAccountMayHaveCompleted: 'El servidor no pudo confirmar si tu cuenta se eliminó. Actualiza la página: si se eliminó, se cerrará tu sesión; si no, inténtalo de nuevo.',
+      deleteAccountTooManyAttempts: 'Demasiados intentos. Inténtalo de nuevo más tarde.',
+      deleteAccountBusy: 'El servidor está ocupado en este momento. Inténtalo de nuevo en unos segundos.',
       language: 'Idioma',
       currency: 'Moneda',
       distance: 'Distancia',
@@ -8760,12 +8925,12 @@ export const translations = {
       locationSettings: 'Configuración de Ubicación',
       locationDescription: 'Configura tu ubicación para precios de combustible precisos en el panel.',
       autoDetectLocation: 'Detectar Ubicación Automáticamente',
-      autoDetectDescription: 'Usar el GPS de tu dispositivo para ubicación precisa',
+      autoDetectDescription: 'Pide permiso en cada dispositivo y luego usa su posición aproximada para los precios del combustible',
       locationName: 'Nombre de Ubicación',
       locationPlaceholder: 'ej. Brighton, Reino Unido',
       latitude: 'Latitud',
       longitude: 'Longitud',
-      locationTip: 'Consejo: Puedes encontrar las coordenadas haciendo clic derecho en Google Maps.',
+      locationTip: 'Los precios del combustible necesitan tanto la latitud como la longitud. Consejo: puedes encontrarlas haciendo clic derecho en Google Maps.',
     },
 
     // Two-Factor Authentication
@@ -8875,6 +9040,7 @@ export const translations = {
       passwordMatch: 'Las contraseñas deben coincidir',
       invalidValue: 'Ese valor no es una de las opciones permitidas',
       invalidCurrency: 'Introduce un código de moneda reconocido (p. ej. EUR)',
+      unsupportedCurrencyPrecision: 'Esta moneda necesita más de dos decimales, que no se pueden guardar',
       invalidText: 'Introduce texto dentro del límite de caracteres del campo',
       invalidNumber: 'Por favor ingresa un número válido',
       positiveNumber: 'Debe ser un número positivo',
@@ -8891,7 +9057,7 @@ export const translations = {
     privacy: {
       title: "Privacidad y uso de datos",
       lastUpdated: "Última actualización",
-      updatedDate: "1 de noviembre de 2026",
+      updatedDate: "9 de noviembre de 2026",
       intro: "GearCargo es software autoalojado. El administrador de esta instancia controla sus servidores, los servicios activados y las políticas de conservación. Este aviso describe las funciones de la aplicación; solicite al administrador las condiciones de privacidad de esta instalación.",
       dataCollectionTitle: "Datos almacenados por la aplicación",
       dataCollectionDesc: "Según las funciones que utilice, el servidor y su navegador almacenan:",
@@ -8909,13 +9075,21 @@ export const translations = {
       noThirdPartyHighlight: "Las integraciones activadas pueden enviar datos fuera de este servidor.",
       noThirdPartyDesc: "Los proveedores que reciben datos dependen de esta instalación y de las funciones utilizadas:",
       noThirdPartyItem1: "Los servicios de correo y notificaciones push reciben datos de entrega. CalDAV recibe eventos; Ollama puede recibir contexto seleccionado de vehículos, preguntas y texto de recibos; los destinos externos de copias reciben exportaciones.",
-      noThirdPartyItem2: "La comprobación de contraseñas filtradas envía un prefijo corto del hash a Have I Been Pwned. Otros servicios activados, como precios de combustible y tipos de cambio, realizan solicitudes externas.",
+      noThirdPartyItem2: "Algunas funciones integradas también contactan con los servicios públicos indicados más abajo, en «Servicios de terceros».",
       noThirdPartyItem3: "Cualquier persona con un enlace válido de informe, calendario o archivo firmado puede acceder al contenido autorizado. Revocar un enlace no borra las copias ya descargadas.",
+      thirdPartyTitle: "Servicios de terceros",
+      thirdPartyDesc: "Salvo que se indique lo contrario, este servidor contacta directamente con estos servicios públicos, por lo que ven la dirección de red del servidor y no la suya:",
+      thirdPartyLocation: "OpenStreetMap Nominatim: cuando el panel carga o actualiza los precios del combustible, el servidor envía las coordenadas en uso (la posición de este dispositivo, solo después de que usted lo permita en ese dispositivo, o su ubicación guardada) y el idioma de la aplicación, y recibe el país y el nombre del lugar.",
+      thirdPartyFuelPrices: "Precios del combustible: cada lunes, al actualizar manualmente y siempre que no haya una copia reciente, el servidor descarga los precios medios nacionales publicados por GOV.UK (precios semanales del combustible) y por la Comisión Europea (Boletín Semanal de Petróleo de la UE). No se envían datos personales.",
+      thirdPartyExchangeRates: "Tipos de cambio: aproximadamente una vez al día, el servidor descarga los tipos de referencia del Banco Central Europeo a través del servicio Frankfurter (api.frankfurter.app). No se envían datos personales.",
+      thirdPartyPasswordCheck: "Have I Been Pwned: cuando elige, establece o cambia una contraseña, el servidor envía solo los cinco primeros caracteres del hash SHA-1 de la contraseña (k-anonimato). La contraseña nunca se envía.",
+      thirdPartyManuals: "Manuales del propietario: cuando busca el manual de un vehículo, el servidor consulta sitios web de fabricantes y un archivo de manuales con la marca, el modelo y el año del vehículo.",
+      thirdPartyFonts: "Google Fonts: su navegador carga las fuentes de texto e iconos de la aplicación directamente desde Google, que recibe su dirección IP y datos del navegador.",
       dataAccessTitle: "Acceso y exportaciones",
       dataAccessDesc: "Utilice los controles disponibles de cuenta, vehículos y copias de seguridad, o contacte con el administrador:",
       dataAccessItem1: "Consulte y edite en la aplicación los datos de perfil y vehículos que disponen de controles.",
       dataAccessItem2: "Las copias personales JSON/ZIP exportan los datos de vehículos admitidos. No son una exportación completa de credenciales, historial de seguridad ni de todos los registros del servidor.",
-      dataAccessItem3: "Los administradores gestionan las cuentas y pueden iniciar su eliminación. La aplicación no ofrece un botón de eliminación de la propia cuenta en los ajustes.",
+      dataAccessItem3: "Puede eliminar su propia cuenta en Perfil → Seguridad después de volver a introducir su contraseña, más un código si la autenticación de dos factores está activada. Esto no borra los cambios ni los recibos sin enviar ya guardados en su dispositivo. Los administradores también pueden eliminar cuentas, pero el último administrador activo no puede eliminar la suya.",
       notificationTitle: "Opciones del correo de notificaciones",
       notificationDesc: "Una dirección personalizada opcional requiere consentimiento y verificación de la dirección.",
       notificationItem1: "Puede eliminar esa dirección en los ajustes. Si las notificaciones siguen activadas, se puede usar el correo de la cuenta; eliminar la dirección personalizada no desactiva por sí solo las notificaciones.",
@@ -9000,12 +9174,11 @@ export const translations = {
       contactDesc: 'Para preguntas sobre estos Términos de Servicio, contáctenos a gearcargo.team@gmail.com.',
       
       understood: 'Entendido',
-      invalidFileType: 'Selecciona un archivo JSON',
-      ai: 'IA',
     },
 
     // Common
     common: {
+      change: 'Cambiar',
       deletionCleanupPending: 'Eliminado. Algunos archivos o datos de acceso aún necesitan limpieza. La limpieza se reintentará automáticamente.',
       save: 'Guardar',
       cancel: 'Cancelar',
@@ -9021,6 +9194,7 @@ export const translations = {
       close: 'Cerrar',
       back: 'Atrás',
       next: 'Siguiente',
+      previous: 'Anterior',
       continue: 'Continuar',
       creating: 'Creando...',
       create: 'Crear',
@@ -9067,7 +9241,6 @@ export const translations = {
       off: 'Apagado',
       enabled: 'Activado',
       disabled: 'Desactivado',
-      active: 'Activo',
       inactive: 'Inactivo',
       blocked: 'Bloqueado',
       configured: 'Configurado',
@@ -9153,6 +9326,7 @@ export const translations = {
       formats: 'JPG, PNG, GIF, WebP, iPhone (HEIC), PDF hasta 10MB',
       browse: 'Buscar Archivos',
       camera: 'Usar Cámara',
+      remove: 'Eliminar archivo',
       invalidType: 'Tipo de archivo no válido. Selecciona una imagen o PDF.',
       tooLarge: 'El archivo es demasiado grande. El tamaño máximo es 10MB.',
       scanBanner: 'Recibo escaneado — extrae datos para completar el formulario',
@@ -9357,6 +9531,7 @@ export const translations = {
       gethomepage: 'Gethomepage',
       gethomepageDesc: 'Añade a tu services.yaml de Gethomepage:',
       endpoints: 'Endpoints disponibles:',
+      copyConfig: 'Copiar configuración',
     },
     
     // Backup System

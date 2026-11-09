@@ -12,7 +12,11 @@ const vehicle = { id: 1, name: 'Visit car' }
 const expense = { id: 9, title: 'Brake invoice', date: '2026-11-01', amount: 200, currency: 'GBP', type: 'service' }
 vi.mock('../services/api', () => ({ appointmentApi: api, vehicleApi: { getById: async () => ({ data: vehicle }) }, serviceApi: { getByVehicle: async () => ({ data: { entries: [expense], pages: 1 } }) }, repairApi: { getByVehicle: async () => ({ data: { entries: [], pages: 1 } }) } }))
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: { timezone: 'Europe/London' } }) }))
-vi.mock('../contexts/LanguageContext', () => ({ useTranslation: () => ({ language: 'en', t: key => key.split('.').reduce((v, k) => v?.[k], translations.en) || key }) }))
+vi.mock('../contexts/LanguageContext', async () => {
+  const { createCurrencyFormatter } = await import('../utils/currencyFormat')
+  const formatCurrency = createCurrencyFormatter({ language: 'en', currency: 'USD' })
+  return { useCurrency: () => ({ formatCurrency }), useTranslation: () => ({ language: 'en', t: key => key.split('.').reduce((v, k) => v?.[k], translations.en) || key }) }
+})
 vi.mock('../components/ui/ConfirmDialog', () => ({ useConfirm: () => confirm }))
 const sample = { id: 2, revision: 1, title: 'Annual check', status: 'requested', time_zone: 'Europe/London', start_at: '2027-06-15T08:30:00Z', end_at: '2027-06-15T16:00:00Z', start_local: '2027-06-15T09:30', end_local: '2027-06-15T17:00', prepare_minutes: 1440, tasks: [], expenses: [] }
 function mount() { return render(<MemoryRouter initialEntries={['/vehicles/1/appointments']}><Routes><Route path="/vehicles/:id/appointments" element={<VehicleAppointments />} /></Routes></MemoryRouter>) }
@@ -40,7 +44,7 @@ it('completes only selected expenses and linked work', async () => {
   const record = { ...sample, status: 'confirmed', dropoff_at: '2026-11-01T09:00:00Z', tasks: [{ id: 3, title: 'Oil due', reminder_id: 7, done: false }, { id: 4, title: 'Later work', done: false }] }
   api.list.mockResolvedValue({ data: { appointments: [record] } }); api.action.mockResolvedValue({ data: { ...record, status: 'completed', expenses: [expense] } }); mount()
   fireEvent.click(await screen.findByRole('button', { name: 'Complete visit' }))
-  fireEvent.click(screen.getByLabelText('Brake invoice · 2026-11-01 · 200 GBP'))
+  fireEvent.click(screen.getByLabelText('Brake invoice · 2026-11-01 · £200.00'))
   fireEvent.click(screen.getByLabelText('Oil due'))
   fireEvent.click(screen.getByRole('button', { name: 'Complete visit' }))
   await waitFor(() => expect(api.action).toHaveBeenCalled())

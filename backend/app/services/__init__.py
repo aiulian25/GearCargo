@@ -5,17 +5,23 @@ GearCargo - Background Task Scheduler Service
 from app.services.restore_transaction import guarded_app_context
 from app.services.vehicle_archive import active_vehicle_condition
 import hashlib
+import logging
 from datetime import datetime, date, timedelta, timezone
 from app.utils.timeutils import utc_naive_now, utc_today
 from flask_apscheduler import APScheduler
 
 scheduler = APScheduler()
+APSCHEDULER_LOGGER_NAME = 'apscheduler'
 
 
 def init_scheduler(app):
     """Start polling durable cursors only in the designated scheduler process."""
     if app.config.get('PROCESS_ROLE') != 'scheduler':
         raise RuntimeError('Scheduler must run in the scheduler process role')
+    # APScheduler logs every cursor poll at INFO. Keep its warnings and errors;
+    # LOG_LEVEL=DEBUG still shows the polls and stricter levels already hide them.
+    if logging.getLogger().getEffectiveLevel() == logging.INFO:
+        logging.getLogger(APSCHEDULER_LOGGER_NAME).setLevel(logging.WARNING)
     from app.services.scheduler_registry import job_definitions
     from app.services.scheduler_ownership import seed_jobs, run_due_job
     definitions = job_definitions(app)

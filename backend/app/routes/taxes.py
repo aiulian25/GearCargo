@@ -116,8 +116,7 @@ def create_tax_entry(current_user):
             step = relativedelta(years=1)
         next_due_date = base + step
         # If already in the past, advance until it's in the future
-        from datetime import date as date_cls
-        while next_due_date <= date_cls.today():
+        while next_due_date <= utc_today():
             next_due_date = next_due_date + step
     
     # Validate insurance_policy_id if provided

@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import { vehicleApi, consumableApi, tireApi } from '../../services/api'
-import { useTranslation } from '../../contexts/LanguageContext'
+import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { useDateFormat } from '../../hooks/useDateFormat'
 import { useMutationIntent } from '../../hooks/useMutationIntent'
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
@@ -19,6 +19,7 @@ const POSITIONS = ['FL', 'FR', 'RL', 'RR']
 
 function TireForm({ mode, record, event, vehicle, purchases, onSaved, onClose, onQueued }) {
   const { t } = useTranslation()
+  const { formatCurrency } = useCurrency()
   const mutation = useMutationIntent()
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -72,7 +73,7 @@ function TireForm({ mode, record, event, vehicle, purchases, onSaved, onClose, o
           <input id={`identity-${position}`} className="input w-full" required maxLength={60} {...register(`tires.${index}`)} />
         </FormField>)}
       </div></fieldset>}
-      {select('purchase_entry_id', [['', t('tires.noPurchase')], ...purchases.map(p => [p.id, `${p.title || t('tires.purchase')} · ${p.amount} ${p.currency || ''}`])])}
+      {select('purchase_entry_id', [['', t('tires.noPurchase')], ...purchases.map(p => [p.id, `${p.title || t('tires.purchase')} · ${formatCurrency(p.amount, { currency: p.currency })}`])])}
       <p className="text-sm text-(--color-text-muted)">{t('tires.purchaseHint')} <Link className="text-primary-500 underline" to={`/vehicles/${vehicle.id}/consumable/add`}>{t('tires.recordPurchase')}</Link></p>
       {field('rotation_interval', 'number', { min: 0.001, max: 100000000, step: 'any', placeholder: vehicle.distance_unit })}
       {select('tread_unit', [['mm', 'mm'], ['32nds', t('tires.unit32')]])}
@@ -106,6 +107,7 @@ function TireForm({ mode, record, event, vehicle, purchases, onSaved, onClose, o
 export default function VehicleTires() {
   const { id } = useParams()
   const { t } = useTranslation()
+  const { formatCurrency } = useCurrency()
   const { formatDate } = useDateFormat()
   const confirm = useConfirm()
   const [vehicle, setVehicle] = useState(null)
@@ -159,7 +161,7 @@ export default function VehicleTires() {
         <div className="grid grid-cols-2 gap-3">{POSITIONS.map(position => <div key={position} className="rounded-lg bg-(--color-bg-tertiary) p-3"><p className="text-xs text-(--color-text-muted)">{t(`tires.${position}`)}</p><p className="font-medium">{record.positions[position]}</p></div>)}</div>
         <p>{t('tires.distance')}: {Number(record.known_distance).toLocaleString()} {record.distance_unit}{record.unknown_intervals > 0 && <span> · {t('tires.unknownDistance')}</span>}</p>
         {record.storage_location && <p>{t('tires.storage_location')}: {record.storage_location}</p>}
-        {record.purchase && <p>{t('tires.purchase')}: {record.purchase.title || t('tires.purchase')} · {record.purchase.amount} {record.purchase.currency} <span className="text-sm">({t('tires.linkedOnly')})</span></p>}
+        {record.purchase && <p>{t('tires.purchase')}: {record.purchase.title || t('tires.purchase')} · {formatCurrency(record.purchase.amount, { currency: record.purchase.currency })} <span className="text-sm">({t('tires.linkedOnly')})</span></p>}
         {record.rotation_remaining != null && <p>{t('tires.rotationRemaining')}: {Math.max(0, record.rotation_remaining).toLocaleString()} {record.distance_unit}</p>}
         {record.tread_threshold != null && <p>{t('tires.tread_threshold')}: {record.tread_threshold} {record.tread_unit === 'mm' ? 'mm' : t('tires.unit32')}</p>}
         {record.alerts.map(alert => <p key={alert} className="text-amber-600 dark:text-amber-400">{t(`tires.${alert}Alert`)}</p>)}

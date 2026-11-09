@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useTranslation } from '../../contexts/LanguageContext'
 import { useDateFormat } from '../../hooks/useDateFormat'
 import { formatFuelEconomy, getFuelEconomyUnit, resolveFuelSystem, litersToDisplayVolume, volumeUnitLabel } from '../../utils/fuelEconomy'
+import { measurementReason } from '../../utils/fuelMeasurement'
 import EmptyState from '../../components/ui/EmptyState'
 
 export default function FuelEntries() {
@@ -102,6 +103,7 @@ export default function FuelEntries() {
       {vehicles.length > 1 && (
         <div className="mb-4">
           <select
+            aria-label={t('common.vehicle')}
             value={selectedVehicle}
             onChange={(e) => setSelectedVehicle(e.target.value)}
             className="input"
@@ -211,47 +213,56 @@ export default function FuelEntries() {
         />
       ) : (
         <div className="space-y-2">
-          {entries.map(entry => (
-            <Link 
-              key={entry.id} 
-              to={`/fuel/${entry.id}`}
-              className="card flex items-center gap-3 touch-manipulation"
-            >
-              <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
-                <span className="material-icons-outlined icon-sm text-amber-500">
-                  local_gas_station
-                </span>
-              </div>
-              
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium">
-                    {entry.liters != null ? litersToDisplayVolume(entry.liters, user).toFixed(2) : '--'} {volumeUnitLabel(user, t)}
+          {entries.map(entry => {
+            const reason = measurementReason(entry, t)
+            return (
+              <Link
+                key={entry.id}
+                to={`/fuel/${entry.id}`}
+                className="card flex items-center gap-3 touch-manipulation"
+              >
+                <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
+                  <span className="material-icons-outlined icon-sm text-amber-500">
+                    local_gas_station
+                  </span>
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium">
+                      {entry.liters != null ? litersToDisplayVolume(entry.liters, user).toFixed(2) : '--'} {volumeUnitLabel(user, t)}
+                    </p>
+                    {entry.is_full_tank && (
+                      <span className="badge badge-sm bg-green-500/10 text-green-500">Full</span>
+                    )}
+                  </div>
+                  <p className="text-2xs text-(--color-text-muted)">
+                    {formatDate(entry.date)} • {entry.odometer?.toLocaleString()} {vehicles.find(v => v.id === entry.vehicle_id)?.distance_unit || 'km'}
+                    {vehicles.length > 1 && entry.vehicle_name && ` • ${entry.vehicle_name}`}
                   </p>
-                  {entry.is_full_tank && (
-                    <span className="badge badge-sm bg-green-500/10 text-green-500">Full</span>
+                  {reason && (
+                    <p className="text-2xs text-(--color-text-muted) flex items-start gap-1 mt-0.5">
+                      <span className="material-icons-outlined icon-xs" aria-hidden="true">info</span>
+                      <span>{reason}</span>
+                    </p>
                   )}
                 </div>
-                <p className="text-2xs text-(--color-text-muted)">
-                  {formatDate(entry.date)} • {entry.mileage?.toLocaleString()} {vehicles.find(v => v.id === entry.vehicle_id)?.distance_unit || 'km'}
-                  {vehicles.length > 1 && entry.vehicle_name && ` • ${entry.vehicle_name}`}
-                </p>
-              </div>
-              
-              <div className="text-right shrink-0">
-                <p className="text-sm font-semibold">{entry.total_cost}</p>
-                {entry.consumption && (
-                  <p className="text-2xs text-(--color-text-muted)">
-                    {formatFuelEconomy(entry.consumption, getVehicleDistanceUnit(entry.vehicle_id), 1, economyOpts)}
-                  </p>
-                )}
-              </div>
-              
-              <span className="material-icons-outlined icon-sm text-(--color-text-muted)">
-                chevron_right
-              </span>
-            </Link>
-          ))}
+
+                <div className="text-right shrink-0">
+                  <p className="text-sm font-semibold">{entry.total_cost}</p>
+                  {entry.fuel_efficiency != null && (
+                    <p className="text-2xs text-(--color-text-muted)">
+                      {formatFuelEconomy(entry.fuel_efficiency, getVehicleDistanceUnit(entry.vehicle_id), 1, economyOpts)}
+                    </p>
+                  )}
+                </div>
+
+                <span className="material-icons-outlined icon-sm text-(--color-text-muted)">
+                  chevron_right
+                </span>
+              </Link>
+            )
+          })}
         </div>
       )}
     </div>

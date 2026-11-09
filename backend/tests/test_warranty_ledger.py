@@ -1,11 +1,12 @@
 """Tests for F2 — warranty ledger endpoint + expiry push job."""
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from dateutil.relativedelta import relativedelta
 
 from app import db
 from app.models import User, Vehicle, ServiceEntry, RepairEntry, ConsumableEntry
+from app.utils.timeutils import utc_today
 
 
 def _mk_vehicle(user_id, name='Focus', mileage=10000):
@@ -24,7 +25,7 @@ def test_requires_auth(client):
 def test_ledger_lists_in_force_and_excludes_expired(app, client, user, auth_headers):
     with app.app_context():
         v = _mk_vehicle(user.id)
-        today = date.today()
+        today = utc_today()
         # In force: explicit expiry 10 days out.
         db.session.add(ServiceEntry(user_id=user.id, vehicle_id=v.id, date=today,
                                     title='Cambelt', amount=400,
@@ -58,7 +59,7 @@ def test_km_limit_excludes_when_mileage_exhausted(app, client, user, auth_header
         # Warranty: 12 months AND 20,000 km from odo 10,000; car now at 35,000 →
         # km exhausted (whichever-first) → excluded even though time remains.
         v = _mk_vehicle(user.id, mileage=35000)
-        today = date.today()
+        today = utc_today()
         db.session.add(ServiceEntry(user_id=user.id, vehicle_id=v.id, date=today,
                                     title='Clutch', amount=800, odometer=10000,
                                     warranty_months=12, warranty_km=20000))
@@ -73,7 +74,7 @@ def test_km_limit_excludes_when_mileage_exhausted(app, client, user, auth_header
 def test_km_left_reported_when_in_force(app, client, user, auth_headers):
     with app.app_context():
         v = _mk_vehicle(user.id, mileage=15000)
-        today = date.today()
+        today = utc_today()
         db.session.add(ServiceEntry(user_id=user.id, vehicle_id=v.id, date=today,
                                     title='Gearbox', amount=800, odometer=10000,
                                     warranty_months=36, warranty_km=20000))
@@ -92,7 +93,7 @@ def test_ledger_scoped_to_owner(app, client, user, auth_headers):
         db.session.add(other)
         db.session.commit()
         v = _mk_vehicle(other.id, 'Other')
-        db.session.add(ServiceEntry(user_id=other.id, vehicle_id=v.id, date=date.today(),
+        db.session.add(ServiceEntry(user_id=other.id, vehicle_id=v.id, date=utc_today(),
                                     title='X', amount=1, warranty_months=12))
         db.session.commit()
         vid = v.id
@@ -115,7 +116,7 @@ def test_check_warranty_expiry_pushes_once(app, monkeypatch):
         db.session.add(u)
         db.session.commit()
         v = _mk_vehicle(u.id)
-        today = date.today()
+        today = utc_today()
         # Expires in 12 days → within the 30-day horizon.
         s = ServiceEntry(user_id=u.id, vehicle_id=v.id, date=today, title='Brakes',
                          amount=200, warranty_expires=today + timedelta(days=12))
@@ -145,7 +146,7 @@ def test_check_warranty_expiry_ignores_far_off(app, monkeypatch):
         db.session.commit()
         v = _mk_vehicle(u.id)
         # 24 months away → outside the 30-day window.
-        db.session.add(RepairEntry(user_id=u.id, vehicle_id=v.id, date=date.today(),
+        db.session.add(RepairEntry(user_id=u.id, vehicle_id=v.id, date=utc_today(),
                                    title='Engine', amount=999, warranty_months=24))
         db.session.commit()
 
@@ -181,13 +182,13 @@ def test_service_create_captures_warranty_fields(app, client, user, auth_headers
 def test_service_update_sets_and_clears_warranty(app, client, user, auth_headers):
     with app.app_context():
         v = _mk_vehicle(user.id)
-        s = ServiceEntry(user_id=user.id, vehicle_id=v.id, date=date.today(),
+        s = ServiceEntry(user_id=user.id, vehicle_id=v.id, date=utc_today(),
                          title='Clutch', amount=600, service_type='other')
         db.session.add(s)
         db.session.commit()
         sid, vid = s.id, v.id
 
-    expires = (date.today() + timedelta(days=90)).isoformat()
+    expires = (utc_today() + timedelta(days=90)).isoformat()
     resp = client.put(f'/api/services/{sid}', json={
         'warranty_months': 12, 'warranty_expires': expires,
     }, headers=auth_headers(user.id))
@@ -195,7 +196,7 @@ def test_service_update_sets_and_clears_warranty(app, client, user, auth_headers
     with app.app_context():
         s = db.session.get(ServiceEntry, sid)
         assert s.warranty_months == 12
-        assert s.warranty_expires == date.today() + timedelta(days=90)
+        assert s.warranty_expires == utc_today() + timedelta(days=90)
 
     # Clearing with empty string / null removes the warranty.
     resp = client.put(f'/api/services/{sid}', json={

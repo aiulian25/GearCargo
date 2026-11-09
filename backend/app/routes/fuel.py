@@ -28,7 +28,7 @@ from app.utils.entryparse import (
     parse_optional_int,
 )
 from app.services.currency import sum_to_display, get_rates_cached
-from app.services.fuel_efficiency import recalculate_efficiencies
+from app.services.fuel_efficiency import measurement_statuses, measurement_warnings, recalculate_efficiencies
 from app.services.ollama import chat as ollama_chat, OllamaError, resolve_model, ai_cache_get, ai_cache_set, AI_CACHE_TTL, validate_ollama_url
 from app.utils.timeutils import utc_today
 
@@ -48,6 +48,20 @@ def _recalculate_vehicle_current_mileage(user_id, vehicle_id):
     ).scalar()
 
     vehicle.current_mileage = max_odometer or 0
+
+
+def _entry_payload(entry, measurement_status):
+    return {**entry.to_dict(), 'measurement_status': measurement_status}
+
+
+def _saved_entry_response(message, entry, measurements):
+    """The saved fill, why it has or lacks a figure, and non-blocking warnings."""
+    measurement = measurements.get(entry.id)
+    return {
+        'message': message,
+        'entry': _entry_payload(entry, measurement.status if measurement else None),
+        'warnings': measurement_warnings(measurement),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -315,9 +329,10 @@ def get_fuel_entries(current_user):
         .order_by(FuelEntry.date.desc()).paginate(
         page=page, per_page=per_page, error_out=False
     )
-    
+    statuses = measurement_statuses(current_user.id, list({entry.vehicle_id for entry in entries.items}))
+
     return jsonify({
-        'entries': [e.to_dict() for e in entries.items],
+        'entries': [_entry_payload(entry, statuses.get(entry.id)) for entry in entries.items],
         'total': entries.total,
         'pages': entries.pages,
         'current_page': page,
@@ -400,7 +415,7 @@ def create_fuel_entry(current_user):
     db.session.flush()
     # Recompute only this fill's full-to-full window. Existing stale history
     # is repaired explicitly with rebuild-unit-metrics, outside HTTP requests.
-    recalculate_efficiencies(vehicle.id, current_user.id, positions=[(entry.date, entry.id)])
+    measurements = recalculate_efficiencies(vehicle.id, current_user.id, positions=[(entry.date, entry.id)])
     commit_mutation()
 
     # Auto-sync to calendar if enabled
@@ -423,10 +438,7 @@ def create_fuel_entry(current_user):
         except Exception as _bg_exc:
             current_app.logger.warning(f'Could not start fuel anomaly thread: {_bg_exc}')
 
-    return jsonify({
-        'message': 'Fuel entry created',
-        'entry': entry.to_dict()
-    }), 201
+    return jsonify(_saved_entry_response('Fuel entry created', entry, measurements)), 201
 
 
 @fuel_bp.route('/<int:entry_id>', methods=['GET'])
@@ -440,8 +452,9 @@ def get_fuel_entry(current_user, entry_id):
     
     if not entry:
         return jsonify({'error': 'Entry not found'}), 404
-    
-    return jsonify(entry.to_dict())
+
+    statuses = measurement_statuses(current_user.id, [entry.vehicle_id])
+    return jsonify(_entry_payload(entry, statuses.get(entry.id)))
 
 
 @fuel_bp.route('/<int:entry_id>', methods=['PUT'])
@@ -516,15 +529,12 @@ def update_fuel_entry(current_user, entry_id):
 
     _recalculate_vehicle_current_mileage(current_user.id, entry.vehicle_id)
     # A date move affects its old and new windows, including same-day ID order.
-    recalculate_efficiencies(entry.vehicle_id, current_user.id,
-                             positions=[previous_position, (entry.date, entry.id)])
+    measurements = recalculate_efficiencies(entry.vehicle_id, current_user.id,
+                                            positions=[previous_position, (entry.date, entry.id)])
 
     commit_mutation()
 
-    return jsonify({
-        'message': 'Fuel entry updated',
-        'entry': entry.to_dict()
-    })
+    return jsonify(_saved_entry_response('Fuel entry updated', entry, measurements))
 
 
 @fuel_bp.route('/<int:entry_id>', methods=['DELETE'])

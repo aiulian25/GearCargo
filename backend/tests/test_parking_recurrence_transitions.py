@@ -10,14 +10,13 @@ The create path also fell through an inline branch chain to "annual" for the
 permit's first renewal landed nine months late.
 """
 
-from datetime import date, timedelta
-
 from dateutil.relativedelta import relativedelta
 
 from app import db
 from app.models import Vehicle, ParkingEntry
+from app.utils.timeutils import utc_today
 
-TODAY = date.today()
+TODAY = utc_today()
 PARKING_URL = '/api/parking'
 
 

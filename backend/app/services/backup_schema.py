@@ -18,6 +18,7 @@ from app import db
 from app.models import (Entry, Vehicle, FuelEntry, ServiceEntry, RepairEntry, TaxEntry,
                         ParkingEntry, ConsumableEntry, InsurancePolicy, Reminder,
                         Todo, PredictionAlert, Attachment, DueDismissal, User, TireSet, Tire, FitmentEvent, TreadReading, Appointment, AppointmentTask, AppointmentExpense, StatementBatch, StatementTransaction, StatementMatch)
+from app.utils.timeutils import utc_today
 
 USER_BACKUP_VERSION = '4.7'
 STATEMENT_COLLECTIONS = ('statement_batches', 'statement_transactions', 'statement_matches')
@@ -469,7 +470,7 @@ def prepare_backup(data, *, validate_domains=True):
                     row.setdefault('name', 'Imported Vehicle')
                 # Preserve old adapter defaults, but expose them above as gaps.
                 if kind in ENTRY_COLLECTIONS:
-                    row.setdefault('date', date.today().isoformat())
+                    row.setdefault('date', utc_today().isoformat())
                 if kind == 'attachments':
                     row.setdefault('filename', row.get('original_filename') or 'attachment')
                 for field, value in list(row.items()):

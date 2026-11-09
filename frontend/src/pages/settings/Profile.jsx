@@ -1,10 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTranslation } from '../../contexts/LanguageContext'
+import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import api, { authApi } from '../../services/api'
 import TwoFactorSetup from '../../components/settings/TwoFactorSetup'
+import ActiveSessions from '../../components/settings/ActiveSessions'
+import AccountDeletion from '../../components/settings/AccountDeletion'
+import { LOCATION_SETTINGS_ANCHOR, MANUAL_LOCATION_STATE_KEY } from '../../config/location'
+
+// valueAsNumber turns an empty coordinate into NaN, which never equals its '' default, so an
+// untouched form would count as unsaved. The server reads '' as no coordinate.
+const parseCoordinateInput = value => (value === '' ? '' : Number(value))
 
 // Password strength indicator component with optional server-side validation
 function PasswordStrength({ password, useServerValidation = false }) {
@@ -220,10 +228,11 @@ function SecurityVerificationModal({ isOpen, onClose, onVerify, requires2FA, isV
           )}
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="security-verification-password" className="block text-xs text-(--color-text-muted) mb-1">
               {t('profile.currentPassword') || 'Current Password'}
             </label>
             <input
+              id="security-verification-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -235,10 +244,11 @@ function SecurityVerificationModal({ isOpen, onClose, onVerify, requires2FA, isV
           
           {requires2FA && (
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="security-verification-totp" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('profile.twoFactorCode') || '2FA Code'}
               </label>
               <input
+                id="security-verification-totp"
                 type="text"
                 value={totpCode}
                 onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
@@ -273,6 +283,9 @@ function SecurityVerificationModal({ isOpen, onClose, onVerify, requires2FA, isV
 
 export default function Profile() {
   const navigate = useNavigate()
+  const { pathname, search, hash, state: routeState } = useLocation()
+  const manualLocationRequested = Boolean(routeState?.[MANUAL_LOCATION_STATE_KEY])
+  const locationNameFocusPending = useRef(manualLocationRequested)
   const { user, updateUser, refreshUser } = useAuth()
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState('profile')
@@ -345,7 +358,7 @@ export default function Profile() {
     }
     fetch2FAStatus()
   }, [user?.two_factor_enabled])
-  
+
   const profileForm = useForm({
     defaultValues: {
       name: user?.name || '',
@@ -362,7 +375,27 @@ export default function Profile() {
       location_name: user?.location_name || '',
     }
   })
-  
+  const autoDetectLocation = profileForm.watch('location_auto_detect')
+
+  // The router does not scroll to a #hash, so deep links such as the location dialog's land on their card here.
+  useEffect(() => {
+    const anchor = window.location.hash.slice(1)
+    if (anchor) document.getElementById(anchor)?.scrollIntoView()
+    if (!manualLocationRequested) return
+    // One-shot: history keeps router state across Back and reloads. Cleared before the form turns dirty,
+    // so the leave guard lets this replace through.
+    navigate({ pathname, search, hash }, { replace: true, state: null })
+    // Left unsaved, so the leave guard keeps the switch until the person saves it.
+    profileForm.setValue('location_auto_detect', false, { shouldDirty: true })
+  }, [manualLocationRequested, navigate, pathname, search, hash, profileForm])
+
+  // Location Name renders only once auto-detect is off, and switching it off later must not move focus.
+  useEffect(() => {
+    if (autoDetectLocation || !locationNameFocusPending.current) return
+    locationNameFocusPending.current = false
+    profileForm.setFocus('location_name')
+  }, [autoDetectLocation, profileForm])
+
   const passwordForm = useForm({
     defaultValues: {
       current_password: '',
@@ -372,6 +405,9 @@ export default function Profile() {
     }
   })
   
+  // Profile stays mounted after a save, so saves re-baseline the form with reset() rather than the one-way markSaved() latch.
+  useUnsavedChanges(profileForm.formState.isDirty || passwordForm.formState.isDirty)
+
   const watchNewPassword = passwordForm.watch('new_password')
   
   // Check if sensitive fields have changed
@@ -421,6 +457,8 @@ export default function Profile() {
       }
       
       const response = await authApi.updateProfile(payload)
+      // ponytail: a field changed back to its old saved value during the request shows the new saved value; disable the inputs while saving if that matters.
+      profileForm.reset(data, { keepDirtyValues: true })
       updateUser(response.data.user)
       setSuccess(t('profile.profileUpdated') || 'Profile updated successfully')
       setShowVerification(false)
@@ -605,8 +643,8 @@ export default function Profile() {
     <div className="pb-4">
       {/* Header */}
       <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
-        <button onClick={() => navigate(-1)} className="btn-icon">
-          <span className="material-icons-outlined icon-md">arrow_back</span>
+        <button aria-label={t('common.back')} onClick={() => navigate(-1)} className="btn-icon">
+          <span aria-hidden="true" className="material-icons-outlined icon-md">arrow_back</span>
         </button>
         <h1 className="text-base font-semibold flex-1">{t('profile.updateProfile') || 'Update Profile'}</h1>
       </div>
@@ -614,6 +652,7 @@ export default function Profile() {
       {/* Avatar - Clickable to change */}
       <div className="flex flex-col items-center py-6">
         <button 
+          aria-label={t('profile.changeAvatar')}
           onClick={() => setShowAvatarModal(true)}
           className="relative group"
         >
@@ -632,11 +671,11 @@ export default function Profile() {
           </div>
           {/* Edit overlay */}
           <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-            <span className="material-icons-outlined text-white text-xl">photo_camera</span>
+            <span aria-hidden="true" className="material-icons-outlined text-white text-xl">photo_camera</span>
           </div>
           {/* Edit badge */}
           <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-(--color-accent) flex items-center justify-center border-2 border-(--color-bg)">
-            <span className="material-icons-outlined text-white text-sm">edit</span>
+            <span aria-hidden="true" className="material-icons-outlined text-white text-sm">edit</span>
           </div>
         </button>
         <h2 className="text-base font-semibold mt-3">{user?.name}</h2>
@@ -684,10 +723,11 @@ export default function Profile() {
               </h3>
               
               <div>
-                <label className="block text-xs text-(--color-text-muted) mb-1">
+                <label htmlFor="name" className="block text-xs text-(--color-text-muted) mb-1">
                   {t('profile.displayName') || 'Display Name'}
                 </label>
                 <input
+                  id="name"
                   type="text"
                   {...profileForm.register('name', { required: true })}
                   className="input"
@@ -696,10 +736,11 @@ export default function Profile() {
               </div>
               
               <div>
-                <label className="block text-xs text-(--color-text-muted) mb-1">
+                <label htmlFor="username" className="block text-xs text-(--color-text-muted) mb-1">
                   {t('common.username') || 'Username'}
                 </label>
                 <input
+                  id="username"
                   type="text"
                   {...profileForm.register('username')}
                   className="input"
@@ -708,10 +749,11 @@ export default function Profile() {
               </div>
               
               <div>
-                <label className="block text-xs text-(--color-text-muted) mb-1">
+                <label htmlFor="email" className="block text-xs text-(--color-text-muted) mb-1">
                   {t('common.email') || 'Email'}
                 </label>
                 <input
+                  id="email"
                   type="email"
                   {...profileForm.register('email', { required: true })}
                   className="input"
@@ -767,10 +809,10 @@ export default function Profile() {
               
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-(--color-text-muted) mb-1">
+                  <label htmlFor="language" className="block text-xs text-(--color-text-muted) mb-1">
                     {t('profile.language') || 'Language'}
                   </label>
-                  <select {...profileForm.register('language')} className="input">
+                  <select id="language" {...profileForm.register('language')} className="input">
                     <option value="en">English</option>
                     <option value="de">Deutsch</option>
                     <option value="fr">Français</option>
@@ -780,10 +822,10 @@ export default function Profile() {
                 </div>
                 
                 <div>
-                  <label className="block text-xs text-(--color-text-muted) mb-1">
+                  <label htmlFor="currency" className="block text-xs text-(--color-text-muted) mb-1">
                     {t('profile.currency') || 'Currency'}
                   </label>
-                  <select {...profileForm.register('currency')} className="input">
+                  <select id="currency" {...profileForm.register('currency')} className="input">
                     <option value="EUR">EUR (€)</option>
                     <option value="USD">USD ($)</option>
                     <option value="GBP">GBP (£)</option>
@@ -794,20 +836,20 @@ export default function Profile() {
               
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-(--color-text-muted) mb-1">
+                  <label htmlFor="distance_unit" className="block text-xs text-(--color-text-muted) mb-1">
                     {t('profile.distance') || 'Distance'}
                   </label>
-                  <select {...profileForm.register('distance_unit')} className="input">
+                  <select id="distance_unit" {...profileForm.register('distance_unit')} className="input">
                     <option value="km">{t('profile.kilometers') || 'Kilometers'}</option>
                     <option value="mi">{t('common.miles') || 'Miles'}</option>
                   </select>
                 </div>
                 
                 <div>
-                  <label className="block text-xs text-(--color-text-muted) mb-1">
+                  <label htmlFor="volume_unit" className="block text-xs text-(--color-text-muted) mb-1">
                     {t('profile.volume') || 'Volume'}
                   </label>
-                  <select {...profileForm.register('volume_unit')} className="input">
+                  <select id="volume_unit" {...profileForm.register('volume_unit')} className="input">
                     <option value="liters">{t('common.liters') || 'Liters'}</option>
                     <option value="gallons_us">{t('units.gallonsUs')}</option>
                     <option value="gallons_uk">{t('units.gallonsUk')}</option>
@@ -818,41 +860,44 @@ export default function Profile() {
             </div>
             
             {/* Location Settings */}
-            <div className="card space-y-4">
+            <div id={LOCATION_SETTINGS_ANCHOR} className="card space-y-4 scroll-mt-20">
               <h3 className="text-sm font-medium text-(--color-text-secondary)">
                 {t('profile.locationSettings') || 'Location Settings'}
               </h3>
-              
+
               <p className="text-xs text-(--color-text-muted)">
                 {t('profile.locationDescription') || 'Set your location for accurate fuel prices on the dashboard.'}
               </p>
-              
+
               <div className="flex items-center justify-between">
                 <div>
-                  <label className="text-sm font-medium text-(--color-text-primary)">
+                  <label htmlFor="location-auto-detect" className="text-sm font-medium text-(--color-text-primary)">
                     {t('profile.autoDetectLocation') || 'Auto-detect Location'}
                   </label>
-                  <p className="text-xs text-(--color-text-muted)">
-                    {t('profile.autoDetectDescription') || 'Use your device GPS for precise location'}
+                  <p id="location-auto-detect-description" className="text-xs text-(--color-text-muted)">
+                    {t('profile.autoDetectDescription') || 'Asks on each device first, then uses its approximate position for fuel prices'}
                   </p>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
-                  <input 
-                    type="checkbox" 
+                  <input
+                    id="location-auto-detect"
+                    type="checkbox"
+                    aria-describedby="location-auto-detect-description"
                     {...profileForm.register('location_auto_detect')}
-                    className="sr-only peer" 
+                    className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-(--color-bg-tertiary) peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-(--color-accent)"></div>
+                  <div className="w-11 h-6 bg-(--color-bg-tertiary) peer-focus-visible:ring-2 peer-focus-visible:ring-(--color-accent) rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-(--color-accent)"></div>
                 </label>
               </div>
               
-              {!profileForm.watch('location_auto_detect') && (
+              {!autoDetectLocation && (
                 <div className="space-y-3 pt-2 border-t border-(--color-border)">
                   <div>
-                    <label className="block text-xs text-(--color-text-muted) mb-1">
+                    <label htmlFor="location_name" className="block text-xs text-(--color-text-muted) mb-1">
                       {t('profile.locationName') || 'Location Name'}
                     </label>
                     <input
+                      id="location_name"
                       type="text"
                       {...profileForm.register('location_name')}
                       className="input"
@@ -862,25 +907,27 @@ export default function Profile() {
                   
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs text-(--color-text-muted) mb-1">
+                      <label htmlFor="location_lat" className="block text-xs text-(--color-text-muted) mb-1">
                         {t('profile.latitude') || 'Latitude'}
                       </label>
                       <input
+                        id="location_lat"
                         type="number"
                         step="any"
-                        {...profileForm.register('location_lat', { valueAsNumber: true })}
+                        {...profileForm.register('location_lat', { setValueAs: parseCoordinateInput })}
                         className="input"
                         placeholder="51.5074"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-(--color-text-muted) mb-1">
+                      <label htmlFor="location_lon" className="block text-xs text-(--color-text-muted) mb-1">
                         {t('profile.longitude') || 'Longitude'}
                       </label>
                       <input
+                        id="location_lon"
                         type="number"
                         step="any"
-                        {...profileForm.register('location_lon', { valueAsNumber: true })}
+                        {...profileForm.register('location_lon', { setValueAs: parseCoordinateInput })}
                         className="input"
                         placeholder="-0.1278"
                       />
@@ -888,7 +935,7 @@ export default function Profile() {
                   </div>
                   
                   <p className="text-xs text-(--color-text-muted)">
-                    {t('profile.locationTip') || 'Tip: You can find coordinates by right-clicking on Google Maps.'}
+                    {t('profile.locationTip') || 'Fuel prices need both the latitude and the longitude. Tip: you can find them by right-clicking on Google Maps.'}
                   </p>
                 </div>
               )}
@@ -913,22 +960,25 @@ export default function Profile() {
               </h3>
               
               <div>
-                <label className="block text-xs text-(--color-text-muted) mb-1">
+                <label htmlFor="current_password" className="block text-xs text-(--color-text-muted) mb-1">
                   {t('profile.currentPassword') || 'Current Password'}
                 </label>
                 <div className="relative">
                   <input
+                    id="current_password"
                     type={showCurrentPassword ? 'text' : 'password'}
                     {...passwordForm.register('current_password', { required: true })}
                     className="input pr-10"
                     placeholder="••••••••"
                   />
                   <button
+                    aria-label={t('auth.showPassword')}
+                    aria-pressed={showCurrentPassword}
                     type="button"
                     onClick={() => setShowCurrentPassword(!showCurrentPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-(--color-text-muted) hover:text-(--color-text-secondary)"
                   >
-                    <span className="material-icons-outlined text-lg">
+                    <span aria-hidden="true" className="material-icons-outlined text-lg">
                       {showCurrentPassword ? 'visibility_off' : 'visibility'}
                     </span>
                   </button>
@@ -936,11 +986,12 @@ export default function Profile() {
               </div>
               
               <div>
-                <label className="block text-xs text-(--color-text-muted) mb-1">
+                <label htmlFor="new_password" className="block text-xs text-(--color-text-muted) mb-1">
                   {t('profile.newPassword') || 'New Password'}
                 </label>
                 <div className="relative">
                   <input
+                    id="new_password"
                     type={showNewPassword ? 'text' : 'password'}
                     {...passwordForm.register('new_password', { 
                       required: true,
@@ -950,11 +1001,13 @@ export default function Profile() {
                     placeholder="••••••••"
                   />
                   <button
+                    aria-label={t('auth.showPassword')}
+                    aria-pressed={showNewPassword}
                     type="button"
                     onClick={() => setShowNewPassword(!showNewPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-(--color-text-muted) hover:text-(--color-text-secondary)"
                   >
-                    <span className="material-icons-outlined text-lg">
+                    <span aria-hidden="true" className="material-icons-outlined text-lg">
                       {showNewPassword ? 'visibility_off' : 'visibility'}
                     </span>
                   </button>
@@ -963,22 +1016,25 @@ export default function Profile() {
               </div>
               
               <div>
-                <label className="block text-xs text-(--color-text-muted) mb-1">
+                <label htmlFor="confirm_password" className="block text-xs text-(--color-text-muted) mb-1">
                   {t('profile.confirmNewPassword') || 'Confirm New Password'}
                 </label>
                 <div className="relative">
                   <input
+                    id="confirm_password"
                     type={showConfirmPassword ? 'text' : 'password'}
                     {...passwordForm.register('confirm_password', { required: true })}
                     className="input pr-10"
                     placeholder="••••••••"
                   />
                   <button
+                    aria-label={t('auth.showPassword')}
+                    aria-pressed={showConfirmPassword}
                     type="button"
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-(--color-text-muted) hover:text-(--color-text-secondary)"
                   >
-                    <span className="material-icons-outlined text-lg">
+                    <span aria-hidden="true" className="material-icons-outlined text-lg">
                       {showConfirmPassword ? 'visibility_off' : 'visibility'}
                     </span>
                   </button>
@@ -987,10 +1043,11 @@ export default function Profile() {
               
               {user?.two_factor_enabled && (
                 <div>
-                  <label className="block text-xs text-(--color-text-muted) mb-1">
+                  <label htmlFor="totp_code" className="block text-xs text-(--color-text-muted) mb-1">
                     {t('profile.twoFactorCode') || '2FA Code'}
                   </label>
                   <input
+                    id="totp_code"
                     type="text"
                     {...passwordForm.register('totp_code')}
                     className="input text-center tracking-widest"
@@ -1082,38 +1139,9 @@ export default function Profile() {
               </button>
             </div>
             
-            <div className="card">
-              <h3 className="text-sm font-medium mb-3">{t('profile.activeSessions') || 'Active Sessions'}</h3>
-              
-              <div className="space-y-3">
-                <div className="flex items-center gap-3 p-2 bg-(--color-bg-tertiary) rounded-lg">
-                  <span className="material-icons-outlined icon-sm text-green-500">
-                    smartphone
-                  </span>
-                  <div className="flex-1">
-                    <p className="text-xs font-medium">{t('profile.currentDevice') || 'Current Device'}</p>
-                    <p className="text-2xs text-(--color-text-muted)">
-                      {t('common.active') || 'Active now'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              
-              <button className="btn btn-ghost w-full mt-4 text-red-500 text-sm">
-                {t('profile.logoutAllDevices') || 'Logout All Devices'}
-              </button>
-            </div>
-            
-            <div className="card">
-              <h3 className="text-sm font-medium text-red-500 mb-3">{t('profile.dangerZone') || 'Danger Zone'}</h3>
-              
-              <button className="btn w-full border-red-500 text-red-500 hover:bg-red-500/10 text-sm">
-                {t('profile.deleteAccount') || 'Delete Account'}
-              </button>
-              <p className="text-2xs text-(--color-text-muted) mt-2 text-center">
-                {t('profile.cannotBeUndone') || 'This action cannot be undone'}
-              </p>
-            </div>
+            <ActiveSessions />
+
+            <AccountDeletion />
           </div>
         )}
       </div>
@@ -1149,11 +1177,12 @@ export default function Profile() {
             <div className="flex items-center justify-between p-4 border-b border-(--color-border)">
               <h3 className="text-base font-semibold">{t('profile.changeAvatar') || 'Change Avatar'}</h3>
               <button 
+                aria-label={t('common.close')}
                 onClick={() => setShowAvatarModal(false)}
                 className="btn-icon"
                 disabled={isUploadingAvatar}
               >
-                <span className="material-icons-outlined">close</span>
+                <span aria-hidden="true" className="material-icons-outlined">close</span>
               </button>
             </div>
             
@@ -1230,13 +1259,14 @@ export default function Profile() {
                         </button>
                         {/* Delete button */}
                         <button
+                          aria-label={t('common.delete')}
                           onClick={(e) => {
                             e.stopPropagation()
                             handleDeleteAvatar(avatarUrl)
                           }}
                           className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                         >
-                          <span className="material-icons-outlined text-white text-xs">close</span>
+                          <span aria-hidden="true" className="material-icons-outlined text-white text-xs">close</span>
                         </button>
                       </div>
                     ))}

@@ -1,19 +1,22 @@
 """GC-024: process roles and durable scheduled-job ownership."""
 from app import create_app
 from app.config import TestingConfig
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta
 import json
+import logging
 import os
 from pathlib import Path
 import subprocess
 import sys
 import time
+from types import SimpleNamespace
 import pytest
 from sqlalchemy import select, update, text
 from app import db
 from app.models import JobRun, ScheduledEffect, Vehicle, InsurancePolicy
 from app.services.scheduler_registry import JobDefinition
 from app.services.scheduler_ownership import seed_jobs, run_due_job, MAX_ATTEMPTS
+from app.utils.timeutils import utc_today
 
 
 def test_web_factory_starts_no_scheduled_work(app, monkeypatch):
@@ -108,6 +111,25 @@ def test_non_scheduler_roles_cannot_consume(app):
             init_scheduler(app)
         with pytest.raises(RuntimeError, match='role'):
             run_due_job(app, 'fixture')
+
+
+@pytest.mark.parametrize('configured_level, expected_level', [
+    (logging.INFO, logging.WARNING),
+    (logging.DEBUG, logging.DEBUG),
+    (logging.ERROR, logging.ERROR),
+])
+def test_scheduler_quiets_apscheduler_polls_only_at_default_log_level(app, monkeypatch, caplog,
+                                                                      configured_level, expected_level):
+    import app.services as services
+    monkeypatch.setattr(services, 'scheduler', SimpleNamespace(
+        init_app=lambda flask_app: None, add_job=lambda **options: None, start=lambda: None))
+    app.config['PROCESS_ROLE'] = 'scheduler'
+    # Start from an inheriting logger; caplog restores both levels at teardown.
+    caplog.set_level(logging.NOTSET, logger=services.APSCHEDULER_LOGGER_NAME)
+    caplog.set_level(configured_level)
+    services.init_scheduler(app)
+    for name in ('apscheduler.executors.default', 'apscheduler.scheduler'):
+        assert logging.getLogger(name).getEffectiveLevel() == expected_level
 
 
 def test_rq_entrypoint_uses_consumer_role(monkeypatch, app):
@@ -386,7 +408,7 @@ def scheduler_processes(app, user, tmp_path):
     vehicle = Vehicle(user_id=user.id, name='Scheduler car')
     db.session.add(vehicle); db.session.flush()
     policy = InsurancePolicy(user_id=user.id, vehicle_id=vehicle.id, provider='Fixture', premium=10,
-        start_date=date.today() - timedelta(days=366), end_date=date.today() - timedelta(days=1),
+        start_date=utc_today() - timedelta(days=366), end_date=utc_today() - timedelta(days=1),
         status='active', auto_renew=True)
     db.session.add(policy); db.session.commit()
     policy_id = policy.id
@@ -450,8 +472,8 @@ def test_process_loss_recovers_the_same_generation(scheduler_processes, point, l
     folder, start, policy_id = scheduler_processes
     if long_overdue:
         policy = db.session.get(InsurancePolicy, policy_id)
-        policy.start_date = date.today() - timedelta(days=31)
-        policy.end_date = date.today() - timedelta(days=30)
+        policy.start_date = utc_today() - timedelta(days=31)
+        policy.end_date = utc_today() - timedelta(days=30)
         db.session.commit()
     (folder/'start').touch()
     crashed, log = start(point, 'crashed')

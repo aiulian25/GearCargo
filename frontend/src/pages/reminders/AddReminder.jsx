@@ -186,8 +186,8 @@ export default function AddReminder() {
     <div className="pb-4">
       {/* Header */}
       <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
-        <button onClick={() => navigate(-1)} className="btn-icon">
-          <span className="material-icons-outlined icon-md">close</span>
+        <button aria-label={t('common.close')} onClick={() => navigate(-1)} className="btn-icon">
+          <span aria-hidden="true" className="material-icons-outlined icon-md">close</span>
         </button>
         <h1 className="text-base font-semibold flex-1">{t('reminders.addReminder')}</h1>
         <button 
@@ -332,10 +332,11 @@ export default function AddReminder() {
         {/* Basic Info */}
         <div className="card space-y-4">
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="vehicle_id" className="block text-xs text-(--color-text-muted) mb-1">
               {t('reminders.vehicle')} *
             </label>
             <select 
+              id="vehicle_id"
               {...register('vehicle_id', { required: t('reminders.selectVehicleRequired') })}
               className="input"
             >
@@ -350,10 +351,11 @@ export default function AddReminder() {
           </div>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="title" className="block text-xs text-(--color-text-muted) mb-1">
               {t('reminders.titleLabel')} *
             </label>
             <input
+              id="title"
               type="text"
               {...register('title', { required: t('reminders.titleRequired') })}
               className="input"
@@ -370,10 +372,11 @@ export default function AddReminder() {
           <h3 className="text-sm font-medium text-(--color-text-secondary)">{t('reminders.dueWhen')}</h3>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="due_date" className="block text-xs text-(--color-text-muted) mb-1">
               {t('reminders.dueDateLabel')}
             </label>
             <input
+              id="due_date"
               type="date"
               {...register('due_date')}
               className="input"
@@ -395,10 +398,11 @@ export default function AddReminder() {
           </div>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="due_mileage" className="block text-xs text-(--color-text-muted) mb-1">
               {t('reminders.dueAtMileage')}
             </label>
             <input
+              id="due_mileage"
               type="number" inputMode="decimal"
               {...register('due_mileage')}
               className="input"
@@ -416,10 +420,10 @@ export default function AddReminder() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="repeat_interval" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('reminders.interval')}
               </label>
-              <select {...register('repeat_interval', { onChange: event => { if (!event.target.value) setValue('repeat_mileage', '') } })} className="input">
+              <select id="repeat_interval" {...register('repeat_interval', { onChange: event => { if (!event.target.value) setValue('repeat_mileage', '') } })} className="input">
                 <option value="">{t('reminders.dontRepeat')}</option>
                 <option value="weekly">{t('reminders.weekly')}</option>
                 <option value="monthly">{t('reminders.monthly')}</option>
@@ -430,10 +434,11 @@ export default function AddReminder() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="repeat_mileage" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('reminders.everyXKm')}
               </label>
               <input
+                id="repeat_mileage"
                 type="number" inputMode="decimal"
                 {...register('repeat_mileage', { min: { value: 1, message: t('validation.invalidNumber') },
                   validate: value => !value || (watch('repeat_interval') && watch('due_mileage') !== '') || t('reminderDelivery.intervalRequired') })}
@@ -481,10 +486,11 @@ export default function AddReminder() {
           </div>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="notes" className="block text-xs text-(--color-text-muted) mb-1">
               {t('reminders.notes')}
             </label>
             <textarea
+              id="notes"
               {...register('notes')}
               className="input resize-none"
               rows={2}

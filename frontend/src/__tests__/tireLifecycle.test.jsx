@@ -10,7 +10,11 @@ const toast = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }))
 const vehicle = { id: 1, name: 'Winter car', distance_unit: 'miles', current_mileage: 5000 }
 vi.mock('../services/api', () => ({ tireApi: api, vehicleApi: { getById: async () => ({ data: vehicle }) }, consumableApi: { getByVehicle: async () => ({ data: { entries: [], pages: 1 } }) } }))
 vi.mock('react-hot-toast', () => ({ default: toast }))
-vi.mock('../contexts/LanguageContext', () => ({ useTranslation: () => ({ t: key => key.split('.').reduce((v, k) => v?.[k], translations.en) || key }) }))
+vi.mock('../contexts/LanguageContext', async () => {
+  const { createCurrencyFormatter } = await import('../utils/currencyFormat')
+  const formatCurrency = createCurrencyFormatter({ language: 'en', currency: 'USD' })
+  return { useCurrency: () => ({ formatCurrency }), useTranslation: () => ({ t: key => key.split('.').reduce((v, k) => v?.[k], translations.en) || key }) }
+})
 vi.mock('../hooks/useDateFormat', () => ({ useDateFormat: () => ({ formatDate: value => value }) }))
 vi.mock('../components/ui/ConfirmDialog', () => ({ useConfirm: () => async () => true }))
 const sample = { id: 2, revision: 1, name: 'Summer', season: 'summer', storage_location: 'Garage', distance_unit: 'miles', known_distance: 1000, unknown_intervals: 0,

@@ -6,14 +6,15 @@ date. F42 adds the UI PUT path, sentinel re-arm, and the daily push job.
 """
 
 import io
-from datetime import date, timedelta
+from datetime import timedelta
 
 from app import db
 from app.models import Vehicle, Attachment
 from app.services.due import build_due_items
 from app.services import check_document_expiry
+from app.utils.timeutils import utc_today
 
-TODAY = date.today()
+TODAY = utc_today()
 
 
 def _mk_vehicle(user_id, name='Focus'):

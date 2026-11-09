@@ -178,7 +178,7 @@ export default function AiStatusPanel() {
   if (!settings) {
     return (
       <p className="text-sm text-(--color-text-muted) text-center py-4">
-        {t('common.loadFailed') || 'Failed to load settings'}
+        {t('admin.aiSettingsLoadFailed')}
       </p>
     )
   }
@@ -227,7 +227,7 @@ export default function AiStatusPanel() {
             <StatusBadge status={testing ? 'loading' : (testResult?.status || displayStatus)} />
             <button
               onClick={loadSettings}
-              title="Refresh"
+              title={t('common.refresh')}
               className="p-1 rounded-md text-(--color-text-muted) hover:bg-(--color-bg-secondary) transition-colors"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -433,7 +433,7 @@ export default function AiStatusPanel() {
             { key: 'classifier', label: t('aiPredictions.modelClassifier') || 'Chat Safety Classifier' },
           ].map(({ key, label }) => (
             <div key={key} className={`flex flex-col gap-1 ${key === 'global' ? 'pb-3 mb-1 border-b border-(--color-border)' : ''}`}>
-              <label className="text-xs font-medium text-(--color-text)">
+              <label htmlFor={`ai-model-${key}`} className="text-xs font-medium text-(--color-text)">
                 {label}
                 {key === 'global' && (
                   <span className="ml-2 text-2xs font-normal text-(--color-text-muted)">
@@ -447,6 +447,7 @@ export default function AiStatusPanel() {
                 )}
               </label>
               <select
+                id={`ai-model-${key}`}
                 value={taskModels[key] || ''}
                 onChange={e => setTaskModels(prev => ({ ...prev, [key]: e.target.value }))}
                 className="w-full text-xs bg-(--color-bg-card) border border-(--color-border) rounded-lg px-2.5 py-1.5 text-(--color-text) focus:outline-hidden focus:ring-1 focus:ring-(--color-accent)"

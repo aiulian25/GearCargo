@@ -2,9 +2,10 @@
 client-controlled IP address.
 
 `_get_client_ip` returned the LEFTMOST X-Forwarded-For entry, which any caller
-can set to anything. ProxyFix (applied in create_app, S11) has already resolved
-the real client into `request.remote_addr` by peeling exactly
-TRUSTED_PROXY_COUNT hops from the RIGHT, so the header must not be re-read.
+can set to anything. app/services/proxy_trust.py (S11/GC-104) has already
+resolved the real client into `request.remote_addr`, peeling hops from the RIGHT
+only for a peer TRUSTED_PROXY_COUNT trusts as a proxy, so the header must not be
+re-read.
 
 The consequence was not cosmetic: every login failure, lockout, export and admin
 action could be attributed to an address the attacker chose, while the
@@ -22,14 +23,19 @@ import logging
 
 import pytest
 
+import app.routes.auth as auth_module
 from app import db
-from app.models import User
+from app.models import BlockedIP, User
+from app.services.proxy_trust import AUTOMATIC_PROXY_TRUST
 from app.utils.security_audit import security_audit
 
 
 SPOOFED = '1.1.1.1'          # what the caller claims
 TRUSTED_HOP = '9.9.9.9'      # what the trusted proxy appended — the real client
 DIRECT_PEER = '10.0.0.5'     # the proxy itself
+PUBLIC_PEER = '8.8.8.8'      # a client reaching the app port directly
+# Global addresses only: ipaddress counts the documentation ranges as non-public.
+ROTATED_SPOOFS = (SPOOFED, '1.0.0.1', '8.8.4.4')
 
 
 @pytest.fixture()
@@ -56,12 +62,12 @@ def audit_records(app):
         security_audit._logger.removeHandler(handler)
 
 
-def _failed_login(client, forwarded=f'{SPOOFED}, {TRUSTED_HOP}'):
+def _failed_login(client, forwarded=f'{SPOOFED}, {TRUSTED_HOP}', peer=DIRECT_PEER):
     headers = {'X-Forwarded-For': forwarded} if forwarded else {}
     return client.post('/api/auth/login',
                        json={'email': 'victim@example.com', 'password': 'WrongPass123!'},
                        headers=headers,
-                       environ_base={'REMOTE_ADDR': DIRECT_PEER})
+                       environ_base={'REMOTE_ADDR': peer})
 
 
 def _login_failures(records):
@@ -87,10 +93,11 @@ def test_the_helper_never_consults_the_forwarded_header(app):
 
 
 def test_a_failed_login_is_recorded_against_the_trusted_hop(app, client, audit_records):
-    """Integration: through the real WSGI stack, ProxyFix peels exactly
-    TRUSTED_PROXY_COUNT hops from the RIGHT, so the caller cannot choose the
-    address written to the audit trail."""
-    assert app.config['TRUSTED_PROXY_COUNT'] == 1
+    """Integration: through the real WSGI stack, the default auto setting trusts
+    the private DIRECT_PEER as one proxy hop, so only the rightmost entry (the
+    one that proxy appended) is used and the caller cannot choose the address
+    written to the audit trail."""
+    assert app.config['TRUSTED_PROXY_COUNT'] == AUTOMATIC_PROXY_TRUST
     _make_victim(app)
 
     _failed_login(client)
@@ -158,3 +165,20 @@ def test_a_sign_in_survives_geoip2_being_unavailable(app, client, monkeypatch):
     # A wrong password is a 401; anything else means the geo lookup took the
     # request down with it.
     assert response.status_code == 401, response.get_data(as_text=True)
+
+
+def test_a_directly_connected_client_cannot_rotate_past_the_ip_block(app, client, audit_records, monkeypatch):
+    """GC-104: with no proxy in front, a new X-Forwarded-For per attempt used to
+    become a new client address each time, so the 3-strike IP block never fired
+    and the audit log named whatever the caller chose."""
+    # The DB lockout counter is per test; CI's shared Redis is not.
+    monkeypatch.setattr(auth_module, 'redis_client', None)
+    _make_victim(app)
+
+    responses = [_failed_login(client, forwarded=spoof, peer=PUBLIC_PEER) for spoof in ROTATED_SPOOFS]
+
+    assert responses[-1].status_code == 403
+    assert responses[-1].get_json()['block_type'] == 'ip'
+    with app.app_context():
+        assert [row.ip_address for row in BlockedIP.query.all()] == [PUBLIC_PEER]
+    assert {record['ip'] for record in _login_failures(audit_records())} == {PUBLIC_PEER}

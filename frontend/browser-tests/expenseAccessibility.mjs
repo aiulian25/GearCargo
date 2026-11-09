@@ -100,7 +100,7 @@ try {
     if (screenReader) { await page.bringToFront(); await page.waitForTimeout(1500) }
     const t = key => key.split('.').reduce((v, k) => v?.[k], translations[language])
     const names = Array.from({ length: 12 }, (_, i) => new Intl.DateTimeFormat(language === 'en' ? 'en-GB' : language, { month: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(2026, i, 1))))
-    const label = i => `${names[i]} 2026: ${new Intl.NumberFormat(language, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(i === 0 ? 1234.5 : i === 1 ? 37.5 : 0)} GBP`
+    const label = i => `${names[i]} 2026: ${new Intl.NumberFormat({ en: 'en-GB', ro: 'ro-RO', es: 'es-ES' }[language], { style: 'currency', currency: 'GBP' }).format(i === 0 ? 1234.5 : i === 1 ? 37.5 : 0)}`
     const year = page.getByRole('combobox', { name: t('expenses.selectYear') })
     await year.focus(); await pauseForReader(page); await press(page, 'Tab'); await pauseForReader(page)
     if (before) {
@@ -185,7 +185,7 @@ try {
     await context.addInitScript(theme => { document.addEventListener('DOMContentLoaded', () => document.documentElement.classList.toggle('light', theme === 'light')); localStorage.setItem('language', 'en') }, theme)
     const page = await context.newPage(); page.on('pageerror', e => errors.push(e.message))
     await page.goto(origin + '/vehicles/1/expenses?year=2026')
-    const january = page.getByRole('button', { name: 'January 2026: 1,234.50 GBP', exact: true }); await january.waitFor()
+    const january = page.getByRole('button', { name: 'January 2026: £1,234.50', exact: true }); await january.waitFor()
     const months = page.getByRole('group', { name: 'Monthly Expenses' }).getByRole('button')
     for (let i = 0; i < 12; i++) { const box = await months.nth(i).boundingBox(); assert.ok(box.width >= 44 && box.height >= 44) }
     await january.tap(); await page.waitForFunction(() => new URL(location.href).searchParams.get('month') === '1')
@@ -203,7 +203,7 @@ try {
     await page.waitForTimeout(200)
     assert.ok(await scroller.evaluate(el => el.scrollLeft > 0), 'Horizontal touch swipe reaches later months')
     assert.equal(new URL(page.url()).searchParams.get('month'), '1', 'Swiping must not activate another filter')
-    await page.getByRole('button', { name: 'December 2026: 0.00 GBP' }).tap()
+    await page.getByRole('button', { name: 'December 2026: £0.00' }).tap()
     await page.waitForFunction(() => new URL(location.href).searchParams.get('month') === '12')
     await page.getByRole('button', { name: 'Full Year', exact: true }).tap()
     await page.locator('summary', { hasText: 'Monthly totals' }).tap()

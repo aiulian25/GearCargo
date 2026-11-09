@@ -9,7 +9,7 @@ Covers the fixes for the "Coming up" duplicate flood:
   previously created stale auto-reminders.
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from app import db
 from app.models import Vehicle, TaxEntry, ParkingEntry, Reminder, ServiceEntry
@@ -19,8 +19,9 @@ from app.services import (
     dedupe_duplicate_reminders,
     process_due_services,
 )
+from app.utils.timeutils import utc_today
 
-TODAY = date.today()
+TODAY = utc_today()
 
 
 def _mk_vehicle(user_id, name='Qashqai'):

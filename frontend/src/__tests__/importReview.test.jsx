@@ -25,6 +25,15 @@ it('cannot accept a unit conflict, including one outside the visible row limit',
   expect(screen.getByRole('alert').textContent).toContain('distance units differ')
   expect(screen.getByRole('button', { name: 'Keep existing and import new records' }).disabled).toBe(true)
 })
+it('shows a refused row in the user language when the server sends a message key', () => {
+  render(<ImportReview preview={{ error_count: 2, records: [], errors: [
+    { row: 2, error: 'Server English', field: 'currency', message_key: 'validation.unsupportedCurrencyPrecision' },
+    { row: 3, error: 'missing vehicle_id' },
+  ] }} />)
+  expect(screen.getByText(new RegExp(translations.en.validation.unsupportedCurrencyPrecision))).toBeTruthy()
+  expect(screen.queryByText(/Server English/)).toBeNull()
+  expect(screen.getByText(/missing vehicle_id/)).toBeTruthy()
+})
 it('localizes every review and result category', () => {
   for (const language of ['ro', 'es']) {
     expect(Object.keys(translations[language].backup.importReview).sort()).toEqual(Object.keys(translations.en.backup.importReview).sort())

@@ -17,11 +17,18 @@ load balancers to require HTTP 200 here; keep their restart/liveness check on
 `/health/live`. Docker Compose has only one health check, so its `healthy` status
 alone is **not** a traffic-readiness guarantee.
 
-`GET /health` retains its `healthy`, application/version and `redis_ok` fields for
-older monitors. Its Redis boolean is the legacy **startup snapshot**, never a
-current readiness signal. Move dependency alerts to `/health/ready`. All three
-endpoints accept GET/HEAD, ignore cookies and return no-store JSON without
-setting cookies. Other methods return 405.
+`GET /health` remains for older monitors and for Compose files older than 1.8.0,
+which probe it. It answers like `/health/live`, with `status: healthy` plus the
+application and version, and reports no dependency state. It no longer returns
+`redis_ok`, which only recorded whether the process reached Redis when it
+started. Read Redis state from `/health/ready`: `checks.redis_cache`, plus
+`checks.browser_sessions` and `checks.rate_limiter` where those stores are
+required. Treat any 503 there as not ready, because a probe that is still
+checking, timed out or unavailable returns only `checks.probe`. A process that
+could not reach Redis when it started runs without its shared Redis client until
+it is restarted, even after Redis recovers; its `I15: Redis connection failed`
+start-up warning records this. All three endpoints accept GET/HEAD, ignore
+cookies and return no-store JSON without setting cookies. Other methods return 405.
 
 ## Readiness policy
 
@@ -93,5 +100,7 @@ Personal exports already exclude OCR coordination rows. Full backups contain the
 new column and follow the existing exact migration-revision restore contract.
 No application data or sessions are invalidated by this migration. Stop new
 writers before downgrading; the downgrade drops only the consumer timestamp.
-Older `/health` clients keep working, but switch readiness consumers back as part
-of an application rollback because older code has no `/health/ready` endpoint.
+Older `/health` clients that check only the HTTP status or `status: healthy` keep
+working; move any check on `redis_ok` to `/health/ready` (older images still
+return its start-up value). Switch readiness consumers back as part of an
+application rollback because older code has no `/health/ready` endpoint.

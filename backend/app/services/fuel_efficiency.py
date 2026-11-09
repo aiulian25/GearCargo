@@ -12,10 +12,43 @@ the health eco-score and the anomaly baseline.
 Create/update/delete recalculate affected full-to-full windows. Imports walk
 the complete history in batches. Existing derived values can be previewed and
 rebuilt outside HTTP requests with the unit_rebuild maintenance CLI.
+
+measure_fills also names why a fill has no figure (GC-105). Reads derive that
+status with measurement_statuses; nothing is stored.
 """
+
+import math
+from dataclasses import dataclass
+from itertools import groupby
+from operator import attrgetter
+
+from app.utils.entryparse import INT32_MAX
 
 # A memory/flush bound, never a limit on the history considered.
 BATCH_SIZE = 256
+
+MEASURED = 'measured'
+PARTIAL = 'partial'
+FIRST_FULL_FILL = 'first_full_fill'
+ODOMETER_REGRESSION = 'odometer_regression'
+ODOMETER_MISSING = 'odometer_missing'
+ODOMETER_INVALID = 'odometer_invalid'
+VOLUME_INVALID = 'volume_invalid'
+DISTANCE_UNIT_UNKNOWN = 'distance_unit_unknown'
+
+ODOMETER_REGRESSION_MESSAGE = (
+    "The odometer is not above the previous full-tank reading ({previous}), so this fill's "
+    'consumption cannot be measured. The next full tank will be measured from this reading; '
+    'edit it if it was a typo.')
+
+
+@dataclass(frozen=True, slots=True)
+class FuelMeasurement:
+    """One fill's outcome. previous_odometer is the full-tank anchor in force before the fill."""
+    distance: int | None
+    efficiency: float | None
+    status: str
+    previous_odometer: int | None
 
 
 def _position(entry):
@@ -62,6 +95,10 @@ def recalculate_efficiencies(vehicle_id, user_id, *, positions=None):
     preceding full odometer anchor and ends at the next full odometer anchor.
     Moving an entry visits two windows, not every intervening year of history.
     Mutated and flushed rows remain in the current session — the CALLER commits.
+
+    Returns {entry_id: FuelMeasurement} for each entry named in positions that
+    still exists, never taken from a window that entry only seeds. A full walk
+    returns {}, so imports keep the BATCH_SIZE memory bound.
     """
     from app import db
     from app.models import FuelEntry, Vehicle
@@ -70,6 +107,8 @@ def recalculate_efficiencies(vehicle_id, user_id, *, positions=None):
     history = FuelEntry.query.filter(FuelEntry.vehicle_id == vehicle_id, FuelEntry.user_id == user_id)
     vehicle = Vehicle.query.filter_by(id=vehicle_id, user_id=user_id).first()
     unit = vehicle.distance_unit if vehicle else None
+    requested_ids = {entry_id for _, entry_id in positions or ()}
+    measurements = {}
 
     for position in sorted(set(positions)) if positions is not None else [None]:
         query, baseline_id = history, None
@@ -85,49 +124,121 @@ def recalculate_efficiencies(vehicle_id, user_id, *, positions=None):
         # The pure walker retains its anchor and accumulated partial litres
         # across every page. A preceding anchor seeds the state but its own
         # efficiency belongs to an earlier, unaffected observation window.
-        for entry, distance, efficiency in derive_efficiencies(_batched_entries(query), unit):
-            if entry.id != baseline_id:
-                entry.trip_distance = distance
-                entry.fuel_efficiency = efficiency
+        for entry, measurement in measure_fills(_batched_entries(query), unit):
+            if entry.id == baseline_id:
+                continue
+            entry.trip_distance = measurement.distance
+            entry.fuel_efficiency = measurement.efficiency
+            if entry.id in requested_ids:
+                measurements[entry.id] = measurement
     if vehicle:
         # Consumption contributes to the health score; imported/stored caches
         # must never survive a rebuild using a different unit calculation.
         vehicle.avg_fuel_efficiency = vehicle.cost_per_km = None
         vehicle.health_score = vehicle.health_computed_at = None
+    return measurements
 
 
-def derive_efficiencies(entries, unit):
-    """Pure full-to-full walk; each yielded distance keeps the vehicle unit.
+def _measurable_liters(value):
+    """A finite, non-negative volume, or None. Zero litres is a real measurement."""
+    try:
+        liters = float(value)
+    except (ValueError, TypeError, OverflowError):
+        return None
+    if not math.isfinite(liters) or liters < 0:
+        return None
+    return liters
+
+
+def _is_valid_odometer(value):
+    return isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= INT32_MAX
+
+
+def _full_fill_measurement(odometer, previous_odometer, consumed, unit):
+    from app.utils.units import distance_to_km
+    if previous_odometer is None:
+        return FuelMeasurement(None, None, FIRST_FULL_FILL, None)
+    if odometer <= previous_odometer:
+        return FuelMeasurement(None, None, ODOMETER_REGRESSION, previous_odometer)
+    distance = odometer - previous_odometer
+    km = distance_to_km(distance, unit)
+    if km is None:
+        return FuelMeasurement(distance, None, DISTANCE_UNIT_UNKNOWN, previous_odometer)
+    return FuelMeasurement(distance, consumed / float(km) * 100, MEASURED, previous_odometer)
+
+
+def measure_fills(entries, unit):
+    """Pure full-to-full walk yielding (entry, FuelMeasurement); distances keep the vehicle unit.
 
     Missing/invalid volume breaks an observation window, never invents zero fuel.
     Missing odometers on otherwise measured fills still accumulate consumption.
+    A full fill not above the previous full-tank reading re-anchors and drops
+    pending litres.
     """
-    import math
-    from app.utils.units import distance_to_km
-    last_full_odo = None
+    anchor_odometer = None
     pending_liters = 0.0
     for entry in entries:
-        try:
-            liters = float(entry.liters)
-            usable = math.isfinite(liters) and liters >= 0
-        except (ValueError, TypeError, OverflowError):
-            usable = False
-        odo = entry.odometer
-        if not usable or (odo is not None and (not isinstance(odo, int) or isinstance(odo, bool) or not 0 <= odo <= 2147483647)):
-            last_full_odo = None
-            pending_liters = 0.0
-            yield entry, None, None
+        previous_odometer = anchor_odometer
+        liters = _measurable_liters(entry.liters)
+        odometer = entry.odometer
+        if liters is None:
+            anchor_odometer, pending_liters = None, 0.0
+            yield entry, FuelMeasurement(None, None, VOLUME_INVALID, previous_odometer)
             continue
-        if entry.full_tank and odo is not None:
-            distance = odo - last_full_odo if last_full_odo is not None and odo > last_full_odo else None
-            km = distance_to_km(distance, unit)
-            efficiency = (liters + pending_liters) / float(km) * 100 if km else None
-            yield entry, distance, efficiency
-            last_full_odo = odo
-            pending_liters = 0.0
-        else:
-            yield entry, None, None
+        if odometer is not None and not _is_valid_odometer(odometer):
+            anchor_odometer, pending_liters = None, 0.0
+            yield entry, FuelMeasurement(None, None, ODOMETER_INVALID, previous_odometer)
+            continue
+        if not entry.full_tank:
             pending_liters += liters
+            yield entry, FuelMeasurement(None, None, PARTIAL, previous_odometer)
+            continue
+        if odometer is None:
+            pending_liters += liters
+            yield entry, FuelMeasurement(None, None, ODOMETER_MISSING, previous_odometer)
+            continue
+        consumed = liters + pending_liters
+        anchor_odometer, pending_liters = odometer, 0.0
+        yield entry, _full_fill_measurement(odometer, previous_odometer, consumed, unit)
+
+
+def derive_efficiencies(entries, unit):
+    """The (entry, distance, efficiency) view kept for unit_rebuild and existing callers."""
+    for entry, measurement in measure_fills(entries, unit):
+        yield entry, measurement.distance, measurement.efficiency
+
+
+def measurement_warnings(measurement):
+    """Non-blocking save feedback: a lower reading can be a legitimate correction."""
+    if measurement is None or measurement.status != ODOMETER_REGRESSION:
+        return []
+    previous_odometer = measurement.previous_odometer
+    return [{'code': ODOMETER_REGRESSION, 'previous': previous_odometer,
+             'message': ODOMETER_REGRESSION_MESSAGE.format(previous=previous_odometer)}]
+
+
+def measurement_statuses(user_id, vehicle_ids):
+    """{entry_id: status} from one ordered read of the listed vehicles' complete histories.
+
+    A status can depend on an anchor far back, so a page is never measured on its own.
+    """
+    from app import db
+    from app.models import FuelEntry, Vehicle
+
+    if not vehicle_ids:
+        return {}
+    # ponytail: re-walks complete histories on every read; persist or cache statuses if list latency matters.
+    rows = db.session.query(
+        FuelEntry.id, FuelEntry.vehicle_id, FuelEntry.odometer, FuelEntry.liters,
+        FuelEntry.full_tank, Vehicle.distance_unit,
+    ).join(Vehicle, Vehicle.id == FuelEntry.vehicle_id).filter(
+        FuelEntry.user_id == user_id, Vehicle.user_id == user_id, FuelEntry.vehicle_id.in_(vehicle_ids),
+    ).order_by(FuelEntry.vehicle_id, FuelEntry.date, FuelEntry.id)
+    statuses = {}
+    for (_, unit), history in groupby(rows, key=attrgetter('vehicle_id', 'distance_unit')):
+        for row, measurement in measure_fills(history, unit):
+            statuses[row.id] = measurement.status
+    return statuses
 
 
 def weighted_efficiency_query(*filters):

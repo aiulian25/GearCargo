@@ -10,14 +10,15 @@ A legitimate one-day policy (term_days == 1) must keep renewing, so the guard is
 `< 1`, not `<= 1`.
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from app import db
 from app.models import Vehicle
 from app.models.insurance import InsurancePolicy
 from app.services import process_auto_renew_insurance
+from app.utils.timeutils import utc_today
 
-TODAY = date.today()
+TODAY = utc_today()
 
 
 def _vehicle(user_id, name='Focus'):

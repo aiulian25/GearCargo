@@ -172,14 +172,14 @@ def test_unknown_purchase_requires_review_and_known_currency_survives_preference
 
 def test_backup_purchase_currency_and_old_version_review(app, user):
     from copy import deepcopy
-    from app.services.backup_schema import export_user_data, prepare_backup
+    from app.services.backup_schema import USER_BACKUP_VERSION, export_user_data, prepare_backup
     from app.services.import_identity import same_source
     with app.app_context():
         owner = db.session.get(User, user.id)
         db.session.add(Vehicle(user_id=user.id, name='Purchase', purchase_price=20, purchase_currency='RON'))
         db.session.commit()
         backup = export_user_data(owner)
-        assert backup['version'] == '4.4'
+        assert backup['version'] == USER_BACKUP_VERSION
         assert backup['vehicles'][0]['purchase_currency'] == 'RON'
         assert prepare_backup(backup).records['vehicles'][0]['purchase_currency'] == 'RON'
         old = deepcopy(backup)

@@ -4,6 +4,7 @@ from pathlib import Path
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -11,7 +12,7 @@ import pytest
 from sqlalchemy import update, text
 from app import db
 from app.models import Attachment, OcrSlot, ServiceEntry, Vehicle
-from app.utils.timeutils import utc_naive_now
+from app.utils.timeutils import utc_naive_now, utc_today
 from app.services.ocr_queue import enqueue_attachment, run_one, backfill, ACTIVE, MAX_ATTEMPTS
 
 
@@ -52,7 +53,7 @@ def test_poisoned_work_exhausts_retries_without_touching_expense(app, user, tmp_
     vehicle = Vehicle(user_id=user.id, name='Saved expense')
     db.session.add(vehicle); db.session.flush()
     expense = ServiceEntry(user_id=user.id, vehicle_id=vehicle.id, title='Keep', amount=25,
-                           date=datetime.now().date(), service_type='oil_change')
+                           date=utc_today(), service_type='oil_change')
     db.session.add(expense); db.session.commit(); expense_id = expense.id
     enqueue_attachment(row); db.session.commit(); row_id = row.id
     app.config['PROCESS_ROLE'] = 'worker'
@@ -157,6 +158,13 @@ def wait_path(path, child, log):
         time.sleep(.02)
 
 
+TESSERACT_BINARY = 'tesseract'
+
+
+# Real OCR on images is what makes two concurrent native jobs measurable; without
+# the binary the image jobs fail fast and the count check cannot be met.
+@pytest.mark.skipif(shutil.which(TESSERACT_BINARY) is None,
+                    reason=f'{TESSERACT_BINARY} is not on PATH; install it to run the OCR concurrency test')
 def test_many_submitters_and_consumers_never_exceed_two_native_jobs(app, user, processes):
     from PIL import Image, ImageDraw
     from reportlab.pdfgen import canvas
@@ -342,7 +350,7 @@ def test_admission_failure_does_not_roll_back_saved_expense(app, user, tmp_path,
     vehicle = Vehicle(user_id=user.id, name='Receipt owner')
     db.session.add(vehicle); db.session.flush()
     expense = ServiceEntry(user_id=user.id, vehicle_id=vehicle.id, title='Keep', amount=25,
-                           date=datetime.now().date(), service_type='oil_change')
+                           date=utc_today(), service_type='oil_change')
     db.session.add(expense)
     original = ocr_queue.admission
     def unavailable():
@@ -364,7 +372,10 @@ def test_upload_decoder_reports_lost_lock_without_releasing_lease(app, user):
     with pytest.raises(DecoderBusy):
         with decoder_slot():
             with db.engine.begin() as connection:
-                pid = connection.execute(text("SELECT pid FROM pg_locks WHERE locktype='advisory' AND granted")).scalar_one()
+                # pg_locks is cluster-wide: parallel test workers hold advisory locks in their own databases.
+                pid = connection.execute(text(
+                    "SELECT pid FROM pg_locks WHERE locktype='advisory' AND granted "
+                    "AND database = (SELECT oid FROM pg_database WHERE datname = current_database())")).scalar_one()
                 assert connection.execute(text('SELECT pg_terminate_backend(:pid)'), {'pid': pid}).scalar_one()
     db.session.expire_all()
     assert db.session.get(OcrSlot, 1).lease_until > utc_naive_now()

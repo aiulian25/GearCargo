@@ -271,6 +271,7 @@ export default function SetupSecurityQuestions() {
                     </span>
                     {selectedQuestions.length > 2 && (
                       <button
+                        aria-label={t('securityQuestions.removeQuestion')}
                         onClick={() => handleRemoveQuestion(index)}
                         className="p-1.5 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
                       >
@@ -280,6 +281,7 @@ export default function SetupSecurityQuestions() {
                   </div>
                   
                   <select
+                    aria-label={`${t('securityQuestions.question')} ${index + 1}`}
                     value={q.question}
                     onChange={(e) => handleQuestionChange(index, 'question', e.target.value)}
                     className="w-full bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg px-3 py-2.5 text-sm mb-3 focus:outline-hidden focus:ring-2 focus:ring-(--color-accent)/50"
@@ -293,6 +295,7 @@ export default function SetupSecurityQuestions() {
                   </select>
                   
                   <input
+                    aria-label={`${t('securityQuestions.answer')} ${index + 1}`}
                     type="text"
                     value={q.answer}
                     onChange={(e) => handleQuestionChange(index, 'answer', e.target.value)}

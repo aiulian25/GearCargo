@@ -10,9 +10,10 @@ import FinancialBasis from '../components/ui/FinancialBasis'
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { reportsApi } from '../services/api'
-import { useTranslation } from '../contexts/LanguageContext'
+import { useTranslation, useCurrency } from '../contexts/LanguageContext'
 import { ReportSharePrivacyNotice } from '../components/settings/ReportSharePreview'
 
+const SHARED_REPORT_FRACTION_DIGITS = 0
 const CATS = ['fuel', 'service', 'repair', 'tax', 'parking', 'consumable', 'insurance']
 const CAT_COLOR = {
   fuel: '#f59e0b', service: '#3b82f6', repair: '#ef4444',
@@ -22,7 +23,8 @@ const CAT_COLOR = {
 export default function SharedReport() {
   const { formatDateShort } = useDateFormat()
   const { token } = useParams()
-  const { t, language } = useTranslation()
+  const { t } = useTranslation()
+  const { formatCurrency } = useCurrency()
   const [state, setState] = useState({ loading: true, data: null, error: null, status: null })
 
   useEffect(() => {
@@ -37,14 +39,6 @@ export default function SharedReport() {
     return () => { active = false }
   }, [token])
 
-  const fmtMoney = (currencyCode, amount) => {
-    const n = Number(amount) || 0
-    try {
-      return new Intl.NumberFormat(language || 'en', { style: 'currency', currency: currencyCode || 'EUR', maximumFractionDigits: 0 }).format(n)
-    } catch {
-      return `${currencyCode || ''} ${n.toFixed(0)}`
-    }
-  }
   const fmtDate = iso => iso ? formatDateShort(iso) : ''
 
   // Themed container shared by all states.
@@ -102,7 +96,7 @@ export default function SharedReport() {
       {/* Grand total */}
       <div className="bg-(--color-bg-secondary) rounded-2xl p-6 mb-4">
         <p className="text-sm text-(--color-text-secondary) mb-1">{t('sharedReport.total') || 'Total expenses'}</p>
-        <p className="text-3xl font-bold">{fmtMoney(d.currency, grand)}</p>
+        <p className="text-3xl font-bold">{formatCurrency(grand, { currency: d.currency, decimals: SHARED_REPORT_FRACTION_DIGITS })}</p>
         <p className="text-xs text-(--color-text-muted) mt-1">
           {(t('sharedReport.entriesVehicles') || '{entries} entries · {vehicles} vehicle(s)')
             .replace('{entries}', String(d.entry_counts?.total || 0))
@@ -122,7 +116,7 @@ export default function SharedReport() {
                   <span className="text-sm truncate">{t(['insurance', 'consumable'].includes(k) ? `financial.${k}` : `charts.${k}`) || k}</span>
                   <span className="text-2xs text-(--color-text-muted) shrink-0">({d.entry_counts?.[k] || 0})</span>
                 </span>
-                <span className="text-sm font-medium shrink-0">{fmtMoney(d.currency, d.totals?.[k] || 0)}</span>
+                <span className="text-sm font-medium shrink-0">{formatCurrency(d.totals?.[k], { currency: d.currency, decimals: SHARED_REPORT_FRACTION_DIGITS })}</span>
               </li>
             ))}
           </ul>

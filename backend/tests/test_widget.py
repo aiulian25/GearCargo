@@ -4,7 +4,7 @@ Covers the full API-key flow (generate → call with X-API-Key) since no widget
 tests existed before.
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import event
@@ -15,9 +15,10 @@ from app.models.fuel import FuelEntry
 from app.models.insurance import InsurancePolicy
 from app.models.repair import RepairEntry
 from app.models.service import ServiceEntry
+from app.utils.timeutils import utc_today
 import app.services.fuel_price_service as fps
 
-TODAY = date.today()
+TODAY = utc_today()
 
 
 @pytest.fixture(autouse=True)

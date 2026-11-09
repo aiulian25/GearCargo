@@ -11,10 +11,14 @@ import requests
 from flask import Blueprint, request, jsonify, current_app
 
 from app.routes.auth import token_required
+from app.utils.timeutils import utc_today
 
 external_bp = Blueprint('external', __name__)
 
 CACHE_DURATION = timedelta(minutes=30)
+
+# Label when no place name is known and EU_COUNTRY_NAMES has none (UK/GB).
+_DEFAULT_LOCATION_NAME = 'United Kingdom'
 
 # S10: external-API response cache.
 #
@@ -122,20 +126,23 @@ def get_fuel_prices(current_user):
 
     Prices are national averages updated weekly (typically Monday).
     Supports force_refresh=true to bypass cache and fetch live data.
+
+    With lat/lon, one Nominatim reverse lookup supplies both the country and
+    the place name (the browser never calls a geocoder); country_detected says
+    whether it did. The query-string country and location are the fallbacks,
+    and the country's name labels a request that has neither.
     """
-    from app.services.fuel_price_service import get_prices
+    from app.services.fuel_price_service import EU_COUNTRY_NAMES, get_prices
 
     country = request.args.get('country', 'UK').upper()
-    location = request.args.get('location', 'United Kingdom')
+    location = request.args.get('location')
     lat = request.args.get('lat', type=float)
     lon = request.args.get('lon', type=float)
     force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
 
-    # Auto-detect country from coordinates if provided
-    if lat and lon:
-        detected_country = detect_country_from_coords(lat, lon)
-        if detected_country:
-            country = detected_country
+    place = reverse_geocode(lat, lon, current_user.language) if lat and lon else {}
+    country = place.get('country') or country
+    location = place.get('location') or location or EU_COUNTRY_NAMES.get(country, _DEFAULT_LOCATION_NAME)
 
     cache_key = f"fuel_prices_{country}"
 
@@ -164,6 +171,7 @@ def get_fuel_prices(current_user):
     return jsonify({
         'location': location,
         'country': country,
+        'country_detected': bool(place.get('country')),
         'currency': prices.get('currency', '£'),
         'currency_code': prices.get('currency_code', 'GBP'),
         'prices': {
@@ -189,13 +197,12 @@ def get_fuel_price_history(current_user):
     Accrues automatically from the Monday refresh job — zero external calls
     here. ?country= (default UK), ?weeks= (default 12, clamped 1..52).
     """
-    from datetime import timedelta, date as date_cls
     from app.models import FuelPriceHistory
 
     country = (request.args.get('country') or 'UK').strip().upper()[:2]
     weeks = request.args.get('weeks', 12, type=int) or 12
     weeks = max(1, min(52, weeks))
-    cutoff = date_cls.today() - timedelta(weeks=weeks)
+    cutoff = utc_today() - timedelta(weeks=weeks)
 
     rows = (
         FuelPriceHistory.query
@@ -213,51 +220,58 @@ def get_fuel_price_history(current_user):
 
 # Nominatim Usage Policy: max 1 request/second, descriptive User-Agent required.
 # See: https://operations.osmfoundation.org/policies/nominatim/
+_NOMINATIM_REVERSE_URL = 'https://nominatim.openstreetmap.org/reverse'
 _NOMINATIM_USER_AGENT = 'GearCargo/1.0 (https://github.com/gearcargo; gearcargo-app@proton.me)'
 _NOMINATIM_THROTTLE_KEY = 'nominatim_throttle'
 _NOMINATIM_MIN_INTERVAL_MS = 1100  # 1.1 s — slightly above the 1 req/s policy limit
+_NOMINATIM_TIMEOUT_SECONDS = 5
+# Nominatim address fields, most to least specific; the first present one names the place.
+_PLACE_NAME_FIELDS = ('suburb', 'hamlet', 'village', 'town', 'city', 'municipality', 'district', 'county', 'state')
 
 
-def detect_country_from_coords(lat, lon):
-    """Detect country code from coordinates using Nominatim reverse geocoding.
+def _place_name(address):
+    """'Westminster, United Kingdom' from a Nominatim address, or None."""
+    locality = next((address[field] for field in _PLACE_NAME_FIELDS if address.get(field)), None)
+    return ', '.join(part for part in (locality, address.get('country')) if part) or None
+
+
+def reverse_geocode(lat, lon, language):
+    """Return {'country': 'GB', 'location': 'Westminster, United Kingdom'} from one lookup.
+
+    Place names come back in *language*, the account's UI language.
 
     Complies with the Nominatim Usage Policy (max 1 req/s) by acquiring a
     short-lived Redis lock before each request.  If the lock is already held
-    by another worker the call is skipped gracefully and None is returned so
-    the caller falls back to the user-supplied country value.
+    by another worker, or the lookup fails, {} is returned so the caller keeps
+    the client's country and location.
     """
     try:
         from app import redis_client
-        if redis_client:
-            # SET NX with automatic expiry — acts as a cross-worker throttle
-            acquired = redis_client.set(
-                _NOMINATIM_THROTTLE_KEY, 1,
-                px=_NOMINATIM_MIN_INTERVAL_MS,
-                nx=True,
-            )
-            if not acquired:
-                current_app.logger.debug(
-                    'Nominatim throttle active — skipping reverse-geocode request'
-                )
-                return None
+        # SET NX with automatic expiry — acts as a cross-worker throttle
+        throttled = redis_client is not None and not redis_client.set(
+            _NOMINATIM_THROTTLE_KEY, 1, px=_NOMINATIM_MIN_INTERVAL_MS, nx=True)
+        if throttled:
+            current_app.logger.debug('Nominatim throttle active — skipping reverse-geocode request')
+            return {}
 
         # S07: pass query params via `params=` rather than f-string interpolation.
         # lat/lon are already coerced to float by the caller, but letting requests
         # build and url-encode the query string is correct-by-construction and
         # prevents any future caller from injecting into the URL.
         response = requests.get(
-            'https://nominatim.openstreetmap.org/reverse',
-            params={'lat': lat, 'lon': lon, 'format': 'json'},
+            _NOMINATIM_REVERSE_URL,
+            params={'lat': lat, 'lon': lon, 'format': 'json', 'accept-language': language},
             headers={'User-Agent': _NOMINATIM_USER_AGENT},
-            timeout=5,
+            timeout=_NOMINATIM_TIMEOUT_SECONDS,
         )
-        if response.status_code == 200:
-            data = response.json()
-            country_code = data.get('address', {}).get('country_code', '').upper()
-            return country_code if country_code else None
-    except Exception as e:
-        current_app.logger.warning(f'Country detection failed: {e}')
-    return None
+        if response.status_code != requests.codes.ok:
+            return {}
+        address = response.json().get('address', {})
+        return {'country': address.get('country_code', '').upper() or None, 'location': _place_name(address)}
+    except Exception as error:
+        # Class name only: requests' messages repeat the URL, coordinates included.
+        current_app.logger.warning(f'Reverse geocoding failed: {type(error).__name__}')
+        return {}
 
 
 @external_bp.route('/currency-rates', methods=['GET'])

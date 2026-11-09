@@ -180,7 +180,12 @@ export default function AddVehicleTax() {
         navigate(`/vehicles/${vehicleId}`)
         return
       }
-      setError(err.response?.data?.error || err.message || t('addTax.error') || 'Failed to add tax entry')
+      const body = err.response?.data
+      setError((body?.message_key && t(body.message_key))
+        || body?.error
+        || err.message
+        || t('addTax.error')
+        || 'Failed to add tax entry')
     } finally {
       setIsSubmitting(false)
     }
@@ -209,7 +214,7 @@ export default function AddVehicleTax() {
     <div className="pb-4">
       {/* Header */}
       <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
-        <button onClick={() => navigate(-1)} className="btn-icon">
+        <button aria-label={t('common.close')} onClick={() => navigate(-1)} className="btn-icon">
           {Icons.close}
         </button>
         <div className="flex-1">
@@ -250,10 +255,11 @@ export default function AddVehicleTax() {
         {/* Tax Details */}
         <div className="card space-y-4">
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="tax_type" className="block text-xs text-(--color-text-muted) mb-1">
               {t('addTax.taxType') || 'Tax Type'} *
             </label>
             <select 
+              id="tax_type"
               {...register('tax_type', { required: t('addTax.typeRequired') || 'Tax type is required' })}
               className="input"
             >
@@ -269,10 +275,11 @@ export default function AddVehicleTax() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="date" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addTax.paymentDate') || 'Payment Date'} *
               </label>
               <input
+                id="date"
                 type="date"
                 {...register('date', { required: t('addTax.dateRequired') || 'Date is required' })}
                 className="input"
@@ -281,10 +288,11 @@ export default function AddVehicleTax() {
             
             <div className="flex gap-3">
               <div className="flex-1">
-                <label className="block text-xs text-(--color-text-muted) mb-1">
+                <label htmlFor="amount" className="block text-xs text-(--color-text-muted) mb-1">
                   {t('addTax.amount') || 'Amount'} ({currency.symbol}) *
                 </label>
                 <input
+                  id="amount"
                   type="number" inputMode="decimal"
                   step="0.01"
                   {...register('amount', {
@@ -305,10 +313,10 @@ export default function AddVehicleTax() {
           {/* F47 — payment status. 'paid' keeps today's behaviour; 'pending'
               creates an unpaid tax that ranks in the Coming-up feed until paid. */}
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="status" className="block text-xs text-(--color-text-muted) mb-1">
               {t('taxes.status') || 'Status'}
             </label>
-            <select {...register('status')} className="input">
+            <select id="status" {...register('status')} className="input">
               <option value="paid">{t('taxes.paid') || 'Paid'}</option>
               <option value="pending">{t('taxes.unpaid') || 'Unpaid'}</option>
             </select>
@@ -322,10 +330,11 @@ export default function AddVehicleTax() {
           </h3>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="valid_until" className="block text-xs text-(--color-text-muted) mb-1">
               {t('addTax.validUntil') || 'Valid Until'}
             </label>
             <input
+              id="valid_until"
               type="date"
               {...register('valid_until')}
               className="input"
@@ -349,10 +358,11 @@ export default function AddVehicleTax() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="insurance_policy_id" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addTax.selectInsurance') || 'Select Insurance Policy'}
               </label>
               <select
+                id="insurance_policy_id"
                 {...register('insurance_policy_id')}
                 className="input"
               >
@@ -389,6 +399,7 @@ export default function AddVehicleTax() {
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
               <input
+                aria-label={t('recurring.enableRecurring')}
                 type="checkbox"
                 {...register('recurring')}
                 className="sr-only peer"
@@ -400,10 +411,11 @@ export default function AddVehicleTax() {
           {isRecurring && (
             <div className="space-y-4 pt-2 border-t border-(--color-border)">
               <div>
-                <label className="block text-xs text-(--color-text-muted) mb-1">
+                <label htmlFor="recurrence_type" className="block text-xs text-(--color-text-muted) mb-1">
                   {t('recurring.frequency') || 'Frequency'}
                 </label>
                 <select
+                  id="recurrence_type"
                   {...register('recurrence_type')}
                   className="input"
                 >
@@ -415,10 +427,11 @@ export default function AddVehicleTax() {
               </div>
               
               <div>
-                <label className="block text-xs text-(--color-text-muted) mb-1">
+                <label htmlFor="reminder_days" className="block text-xs text-(--color-text-muted) mb-1">
                   {t('recurring.reminderDays') || 'Remind me (days before)'}
                 </label>
                 <select
+                  id="reminder_days"
                   {...register('reminder_days')}
                   className="input"
                 >
@@ -446,10 +459,11 @@ export default function AddVehicleTax() {
           </h3>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="reference_number" className="block text-xs text-(--color-text-muted) mb-1">
               {t('addTax.referenceNumber') || 'Reference Number'}
             </label>
             <input
+              id="reference_number"
               type="text"
               {...register('reference_number')}
               className="input"
@@ -458,10 +472,11 @@ export default function AddVehicleTax() {
           </div>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="notes" className="block text-xs text-(--color-text-muted) mb-1">
               {t('addTax.notes') || 'Notes'}
             </label>
             <textarea
+              id="notes"
               {...register('notes')}
               className="input resize-none"
               rows={2}

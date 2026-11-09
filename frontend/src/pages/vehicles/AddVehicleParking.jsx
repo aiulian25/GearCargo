@@ -189,7 +189,12 @@ export default function AddVehicleParking() {
         navigate(`/vehicles/${vehicleId}`)
         return
       }
-      setError(err.response?.data?.error || err.message || t('addParking.error') || 'Failed to add parking entry')
+      const body = err.response?.data
+      setError((body?.message_key && t(body.message_key))
+        || body?.error
+        || err.message
+        || t('addParking.error')
+        || 'Failed to add parking entry')
     } finally {
       setIsSubmitting(false)
     }
@@ -220,7 +225,7 @@ export default function AddVehicleParking() {
     <div className="pb-4">
       {/* Header */}
       <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
-        <button onClick={() => navigate(-1)} className="btn-icon">
+        <button aria-label={t('common.close')} onClick={() => navigate(-1)} className="btn-icon">
           {Icons.close}
         </button>
         <div className="flex-1">
@@ -261,10 +266,11 @@ export default function AddVehicleParking() {
         {/* Parking Details */}
         <div className="card space-y-4">
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="parking_type" className="block text-xs text-(--color-text-muted) mb-1">
               {t('addParking.parkingType') || 'Parking Type'} *
             </label>
             <select 
+              id="parking_type"
               {...register('parking_type', { required: t('addParking.typeRequired') || 'Parking type is required' })}
               className="input"
             >
@@ -280,10 +286,11 @@ export default function AddVehicleParking() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="date" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addParking.date') || 'Date'} *
               </label>
               <input
+                id="date"
                 type="date"
                 {...register('date', { required: t('addParking.dateRequired') || 'Date is required' })}
                 className="input"
@@ -292,10 +299,11 @@ export default function AddVehicleParking() {
             
             <div className="flex gap-3">
               <div className="flex-1">
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="amount" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addParking.amount') || 'Amount'} ({currency.symbol}) *
               </label>
               <input
+                id="amount"
                 type="number" inputMode="decimal"
                 step="0.01"
                 {...register('amount', {
@@ -314,10 +322,11 @@ export default function AddVehicleParking() {
           </div>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="location" className="block text-xs text-(--color-text-muted) mb-1">
               {t('addParking.location') || 'Location'}
             </label>
             <input
+              id="location"
               type="text"
               {...register('location')}
               className="input"
@@ -334,10 +343,11 @@ export default function AddVehicleParking() {
             </h3>
 
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="fine_reason" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addParking.fineReason') || 'Reason'}
               </label>
               <input
+                id="fine_reason"
                 type="text"
                 {...register('fine_reason')}
                 className="input"
@@ -346,10 +356,10 @@ export default function AddVehicleParking() {
             </div>
 
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="fine_status" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addParking.fineStatus') || 'Status'}
               </label>
-              <select {...register('fine_status')} className="input">
+              <select id="fine_status" {...register('fine_status')} className="input">
                 <option value="pending">{t('parking.pending') || 'Unpaid'}</option>
                 <option value="contested">{t('parking.contested') || 'Contested'}</option>
                 <option value="paid">{t('parking.paid') || 'Paid'}</option>
@@ -373,10 +383,11 @@ export default function AddVehicleParking() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="start_time" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addParking.startTime') || 'Start Time'}
               </label>
               <input
+                id="start_time"
                 type="time"
                 {...register('start_time')}
                 className="input"
@@ -384,10 +395,11 @@ export default function AddVehicleParking() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="end_time" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addParking.endTime') || 'End Time'}
               </label>
               <input
+                id="end_time"
                 type="time"
                 {...register('end_time')}
                 className="input"
@@ -414,6 +426,7 @@ export default function AddVehicleParking() {
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
               <input
+                aria-label={t('recurring.parkingPermit')}
                 type="checkbox"
                 {...register('recurring')}
                 className="sr-only peer"
@@ -426,10 +439,11 @@ export default function AddVehicleParking() {
             <div className="space-y-4 pt-2 border-t border-(--color-border)">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-(--color-text-muted) mb-1">
+                  <label htmlFor="permit_number" className="block text-xs text-(--color-text-muted) mb-1">
                     {t('recurring.permitNumber') || 'Permit Number'}
                   </label>
                   <input
+                    id="permit_number"
                     type="text"
                     {...register('permit_number')}
                     className="input"
@@ -438,10 +452,11 @@ export default function AddVehicleParking() {
                 </div>
                 
                 <div>
-                  <label className="block text-xs text-(--color-text-muted) mb-1">
+                  <label htmlFor="permit_expires" className="block text-xs text-(--color-text-muted) mb-1">
                     {t('recurring.expiresOn') || 'Expires On'}
                   </label>
                   <input
+                    id="permit_expires"
                     type="date"
                     {...register('permit_expires')}
                     className="input"
@@ -450,10 +465,11 @@ export default function AddVehicleParking() {
               </div>
               
               <div>
-                <label className="block text-xs text-(--color-text-muted) mb-1">
+                <label htmlFor="recurrence_type" className="block text-xs text-(--color-text-muted) mb-1">
                   {t('recurring.frequency') || 'Renewal Frequency'}
                 </label>
                 <select
+                  id="recurrence_type"
                   {...register('recurrence_type')}
                   className="input"
                 >
@@ -465,10 +481,11 @@ export default function AddVehicleParking() {
               </div>
               
               <div>
-                <label className="block text-xs text-(--color-text-muted) mb-1">
+                <label htmlFor="reminder_days" className="block text-xs text-(--color-text-muted) mb-1">
                   {t('recurring.reminderDays') || 'Remind me (days before expiry)'}
                 </label>
                 <select
+                  id="reminder_days"
                   {...register('reminder_days')}
                   className="input"
                 >
@@ -492,10 +509,11 @@ export default function AddVehicleParking() {
         {/* Notes */}
         <div className="card space-y-4">
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="notes" className="block text-xs text-(--color-text-muted) mb-1">
               {t('addParking.notes') || 'Notes'}
             </label>
             <textarea
+              id="notes"
               {...register('notes')}
               className="input resize-none"
               rows={2}

@@ -1,7 +1,7 @@
-from datetime import date
 
 from app import db
 from app.models import FuelEntry, Vehicle
+from app.utils.timeutils import utc_today
 
 
 def _create_vehicle_and_entries(user_id, vehicle_mileage=0, odometers=None):
@@ -19,7 +19,7 @@ def _create_vehicle_and_entries(user_id, vehicle_mileage=0, odometers=None):
         entry = FuelEntry(
             user_id=user_id,
             vehicle_id=vehicle.id,
-            date=date.today(),
+            date=utc_today(),
             odometer=value,
             liters=10,
             total_price=20,

@@ -1,10 +1,11 @@
 """Tests for F6 — honoring InsurancePolicy.auto_renew."""
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from app import db
 from app.models import User, Vehicle, InsurancePolicy
 from app.services import process_auto_renew_insurance
+from app.utils.timeutils import utc_today
 
 
 def _mk_user(email, username):
@@ -38,8 +39,8 @@ def test_expired_auto_renew_creates_one_successor(app):
     with app.app_context():
         u = _mk_user('r1@example.com', 'ren1')
         v = _mk_vehicle(u.id)
-        start = date.today() - timedelta(days=400)
-        end = date.today() - timedelta(days=35)   # 365-day term, expired
+        start = utc_today() - timedelta(days=400)
+        end = utc_today() - timedelta(days=35)   # 365-day term, expired
         old = _mk_policy(u.id, v.id, start, end, premium=500)
         old_id = old.id
 
@@ -61,8 +62,8 @@ def test_idempotent_no_duplicate_on_second_run(app):
     with app.app_context():
         u = _mk_user('r2@example.com', 'ren2')
         v = _mk_vehicle(u.id)
-        old = _mk_policy(u.id, v.id, date.today() - timedelta(days=400),
-                         date.today() - timedelta(days=35))
+        old = _mk_policy(u.id, v.id, utc_today() - timedelta(days=400),
+                         utc_today() - timedelta(days=35))
         old_id = old.id
 
     process_auto_renew_insurance(app)
@@ -76,8 +77,8 @@ def test_non_auto_renew_not_renewed(app):
     with app.app_context():
         u = _mk_user('r3@example.com', 'ren3')
         v = _mk_vehicle(u.id)
-        old = _mk_policy(u.id, v.id, date.today() - timedelta(days=400),
-                         date.today() - timedelta(days=10), auto_renew=False)
+        old = _mk_policy(u.id, v.id, utc_today() - timedelta(days=400),
+                         utc_today() - timedelta(days=10), auto_renew=False)
         old_id = old.id
 
     process_auto_renew_insurance(app)
@@ -92,8 +93,8 @@ def test_not_yet_expired_not_renewed(app):
     with app.app_context():
         u = _mk_user('r4@example.com', 'ren4')
         v = _mk_vehicle(u.id)
-        old = _mk_policy(u.id, v.id, date.today() - timedelta(days=30),
-                         date.today() + timedelta(days=335))  # still active
+        old = _mk_policy(u.id, v.id, utc_today() - timedelta(days=30),
+                         utc_today() + timedelta(days=335))  # still active
         old_id = old.id
 
     process_auto_renew_insurance(app)
@@ -107,8 +108,8 @@ def test_editing_renewed_policy_clears_confirm_flag(app, client, user, auth_head
     """PUT on an auto-renewed policy clears renewed_from_id (user confirmed)."""
     with app.app_context():
         v = _mk_vehicle(user.id)
-        old = _mk_policy(user.id, v.id, date.today() - timedelta(days=400),
-                         date.today() - timedelta(days=35))
+        old = _mk_policy(user.id, v.id, utc_today() - timedelta(days=400),
+                         utc_today() - timedelta(days=35))
         old_id = old.id
 
     process_auto_renew_insurance(app)

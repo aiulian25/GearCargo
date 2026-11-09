@@ -9,6 +9,7 @@ from app import db
 from app.models import (Entry, FuelEntry, ServiceEntry, RepairEntry, TaxEntry, ParkingEntry,
                         ConsumableEntry, InsurancePolicy, Reminder, Todo)
 from app.services.expense_ledger import CATEGORIES, Expense, aggregate, money, scheduled_dates
+from app.services.fuel_efficiency import measurement_statuses
 from app.utils.timeutils import utc_today
 
 MODELS = dict(zip(CATEGORIES, (FuelEntry, ServiceEntry, RepairEntry, TaxEntry,
@@ -81,17 +82,21 @@ def detail_page(vehicle, user, category, start, end, page=1, per_page=20, scope=
     elif not task:
         query = query.options(selectinload(model.attachments))
     result = query.paginate(page=page, per_page=per_page, error_out=False)
+    is_fuel = category == 'fuel'
+    fuel_statuses = measurement_statuses(user.id, [vehicle.id]) if is_fuel and result.items else {}
     currency = (user.currency or 'GBP').upper()
     records, page_rows = [], []
     calculation_start, calculation_end = (None, utc_today()) if scope == 'outstanding' else (start, end)
     for record in result.items:
         data = record.to_dict()
+        if is_fuel:
+            data['measurement_status'] = fuel_statuses.get(record.id)
         rows = []
         if category == 'insurance':
             rows = [Expense(d, category, money(record.premium), record.currency, record)
                     for d in scheduled_dates(record, start, end)]
         elif not task:
-            amount = (record.total_price if category == 'fuel' and record.total_price is not None else record.amount)
+            amount = (record.total_price if is_fuel and record.total_price is not None else record.amount)
             rows = [Expense(utc_today() if scope == 'outstanding' else record.date, category, money(amount), record.currency, record)]
         if not task:
             row_total = aggregate(rows, currency, rates or {}, calculation_start, calculation_end)

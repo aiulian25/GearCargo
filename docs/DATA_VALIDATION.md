@@ -37,6 +37,17 @@ preserve historical domain values so they can be backed up before review.
   input is uppercased. Recognition does not promise an exchange rate. Archive
   values must already use canonical uppercase codes. Legacy missing currencies
   and distance units remain unknown; imports do not infer them.
+  Codes whose ISO 4217 minor unit exceeds two (BHD, IQD, JOD, KWD, LYD, OMR,
+  TND; CLF, UYW) are recognized, but an API, form or CSV write that sends one is
+  rejected with `validation.unsupportedCurrencyPrecision`: money columns store
+  two decimals, and rounding would silently change the amount. Rows stored
+  earlier in these codes are read, included in totals, exported and restored
+  from personal backups unchanged (archive validation already refuses any amount
+  that would need rounding), and the read-only repair report lists them. Edits
+  that resend such a code are refused. The fuel form, and the vehicle form unless
+  the purchase price changes, omit an unchanged code. An amount edited without
+  resending the code is still rounded to two decimals. Keep the recorded code:
+  it is the true source currency.
 - Existing nullable-field and date-default behavior remains. `null`/empty
   optional numeric fields can clear a value. Zero odometers remain zero.
 
@@ -61,7 +72,11 @@ work. The command scans all accounts' business records and reports table, record
 field, reason and required manual review. It does not include raw field contents,
 update records, clamp amounts, infer currencies, or perform repairs. Keep the
 report private because record identifiers refer to account data. Missing currency
-and distance-unit values are reported for review, not assigned defaults.
+and distance-unit values are reported for review, not assigned defaults. Rows
+stored in a currency whose minor unit exceeds two decimal places are listed with
+`validation.unsupportedCurrencyPrecision` and need no repair: keep their recorded
+code, which is the source currency. Their amounts hold two decimals, so any
+further decimals entered before this check survive only in the source document.
 
 The scanner reads raw database values so malformed historical SQLite numerics
 can be reported without failing in the ORM's numeric decoder. Missing tables/columns are listed separately in `schema_gaps`, allowing older

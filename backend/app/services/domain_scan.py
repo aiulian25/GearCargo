@@ -6,8 +6,18 @@ from flask import Flask
 from sqlalchemy import Boolean, JSON, inspect, literal_column, select
 
 from app import db
-from app.services.domain_validation import models, validate_field
-from app.utils.entryparse import InvalidFieldError
+from app.services.domain_validation import CURRENCY_FIELDS, INVALID_VALUE_KEY, models, validate_field
+from app.utils.entryparse import (
+    CURRENCY_CODES_BEYOND_STORED_PRECISION, InvalidFieldError,
+    UNSUPPORTED_CURRENCY_PRECISION_ERROR, UNSUPPORTED_CURRENCY_PRECISION_KEY,
+)
+
+MANUAL_REVIEW_ACTION = 'Review the preserved source and correct explicitly; no automatic repair performed.'
+# These rows are listed so operators know they exist, not because the code is wrong.
+KEEP_RECORDED_CURRENCY_ACTION = (
+    'Keep the recorded code: it is the source currency. Amounts in this code are stored with two decimals; '
+    'new input and edits that resend the code are refused. No automatic repair performed.'
+)
 
 
 def scan_records():
@@ -46,14 +56,18 @@ def scan_records():
                             value = json.loads(value)
                         if column.key in {'currency', 'distance_unit'} and value is None:
                             raise InvalidFieldError('validation.required', 'Unknown value; review source before assigning', column.key)
+                        if column.key in CURRENCY_FIELDS and value in CURRENCY_CODES_BEYOND_STORED_PRECISION:
+                            raise InvalidFieldError(UNSUPPORTED_CURRENCY_PRECISION_KEY, UNSUPPORTED_CURRENCY_PRECISION_ERROR, column.key)
                         validate_field(model, column.key, value, exact=True)
                     except (InvalidFieldError, ValueError, TypeError) as exc:
+                        message_key = getattr(exc, 'message_key', INVALID_VALUE_KEY)
+                        is_preserved_currency = message_key == UNSUPPORTED_CURRENCY_PRECISION_KEY
                         report['issues'].append({
                             'table': model.__tablename__, 'id': row['id'],
                             'field': column.key,
-                            'message_key': getattr(exc, 'message_key', 'validation.invalidValue'),
+                            'message_key': message_key,
                             'reason': getattr(exc, 'error', 'Invalid stored representation'),
-                            'action': 'Review the preserved source and correct explicitly; no automatic repair performed.',
+                            'action': KEEP_RECORDED_CURRENCY_ACTION if is_preserved_currency else MANUAL_REVIEW_ACTION,
                         })
     report['issue_count'] = len(report['issues'])
     return report

@@ -5,6 +5,8 @@ GearCargo - Application Configuration
 import os
 from datetime import timedelta
 
+from app.services.proxy_trust import AUTOMATIC_PROXY_TRUST
+
 
 def _read_docker_secret(name: str) -> str:
     """Read a value from a Docker secret file at /run/secrets/<name>.
@@ -283,17 +285,13 @@ class Config:
     RATELIMIT_HEADERS_ENABLED = True
     RATELIMIT_STRATEGY = 'fixed-window'  # Valid strategies: fixed-window, moving-window
 
-    # S11: Reverse-proxy trust depth for X-Forwarded-For processing via werkzeug ProxyFix.
-    # Set to the number of trusted reverse proxies in front of the app:
-    #   0 — no proxy; use request.remote_addr directly (dev / direct-bind)
-    #   1 — one proxy (nginx, Traefik, Cloudflare, etc.) — default for production
-    #   2 — proxy behind a CDN (e.g. Cloudflare in front of nginx)
-    # ProxyFix rewrites request.remote_addr to the nth-from-right hop in
-    # X-Forwarded-For, so Flask-Limiter and all IP-reading code always see the
-    # real client IP regardless of how many trusted hops strip/add headers.
-    # A client can never forge their IP by injecting extra XFF entries because
-    # ProxyFix only peels exactly TRUSTED_PROXY_COUNT hops from the RIGHT of the list.
-    TRUSTED_PROXY_COUNT = int(os.environ.get('TRUSTED_PROXY_COUNT', '1'))
+    # S11/GC-104: which reverse-proxy hops may set the client IP, scheme and host
+    # (app/services/proxy_trust.py):
+    #   auto — default: one hop, only from a non-public peer (loopback, a Docker
+    #          network, the LAN, Tailscale/CGNAT); public peers are clients
+    #   0    — no proxy: forwarded headers are never trusted (direct bind)
+    #   N    — N proxies in front, trusted from every peer (2 = CDN + proxy)
+    TRUSTED_PROXY_COUNT = os.environ.get('TRUSTED_PROXY_COUNT', AUTOMATIC_PROXY_TRUST)
 
     # S22: Widget CORS origin allowlist.
     # Default '*' maintains backward-compatibility with Gethomepage (server-side

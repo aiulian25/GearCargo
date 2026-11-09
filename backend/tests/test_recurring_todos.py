@@ -1,10 +1,11 @@
 """Tests for F15 — recurring todos (parity with reminders)."""
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from app import db
 from app.models import User, Vehicle
 from app.models.todo import Todo
+from app.utils.timeutils import utc_today
 
 
 def _mk_vehicle(user_id):
@@ -20,7 +21,7 @@ def _create(client, auth_headers, user_id, **body):
 
 
 def test_weekly_recurring_todo_spawns_one_successor(app, client, user, auth_headers):
-    due = date.today()
+    due = utc_today()
     with app.app_context():
         v = _mk_vehicle(user.id)
         vid = v.id
@@ -46,7 +47,7 @@ def test_weekly_recurring_todo_spawns_one_successor(app, client, user, auth_head
 
 def test_monthly_recurring_advances_one_month(app, client, user, auth_headers):
     from dateutil.relativedelta import relativedelta
-    due = date.today()
+    due = utc_today()
     with app.app_context():
         v = _mk_vehicle(user.id)
         vid = v.id
@@ -61,7 +62,7 @@ def test_non_recurring_todo_is_terminal(app, client, user, auth_headers):
         v = _mk_vehicle(user.id)
         vid = v.id
     tid = _create(client, auth_headers, user.id, vehicle_id=vid, title='One-off',
-                  due_date=date.today().isoformat()).get_json()['todo']['id']
+                  due_date=utc_today().isoformat()).get_json()['todo']['id']
     body = client.post(f'/api/todos/{tid}/complete', headers=auth_headers(user.id)).get_json()
     assert 'next_todo' not in body
     with app.app_context():

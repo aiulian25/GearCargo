@@ -14,6 +14,7 @@ from datetime import date
 from app import db
 from app.models import Vehicle, ServiceEntry, RepairEntry, FuelEntry
 from app.routes.vehicles import _build_chat_context
+from app.utils.timeutils import utc_today
 
 
 def _vehicle(user_id, name, **kw):
@@ -97,7 +98,7 @@ def test_single_vehicle_has_empty_other_vehicles(app, user):
 def test_due_soon_and_forecast_in_vehicle_context(app, user):
     from datetime import timedelta
     from app.models.insurance import InsurancePolicy
-    today = date.today()
+    today = utc_today()
 
     with app.app_context():
         v = _vehicle(user.id, 'DueCar', monthly_budget=100)
@@ -124,7 +125,7 @@ def test_due_soon_and_forecast_in_vehicle_context(app, user):
 def test_due_soon_is_vehicle_scoped_and_capped(app, user):
     from datetime import timedelta
     from app.models import Reminder
-    today = date.today()
+    today = utc_today()
 
     with app.app_context():
         mine = _vehicle(user.id, 'Mine')
@@ -147,7 +148,7 @@ def test_fleet_context_has_toplevel_due_and_forecast(app, user):
     from datetime import timedelta
     from app.models import Reminder
     from app.routes.vehicles import _build_fleet_chat_context
-    today = date.today()
+    today = utc_today()
 
     with app.app_context():
         a = _vehicle(user.id, 'FleetA')
@@ -180,7 +181,7 @@ def test_chat_prompt_contains_due_soon(app, client, user, auth_headers, monkeypa
         veh = _vehicle(user.id, 'PromptCar')
         db.session.add(Reminder(user_id=user.id, vehicle_id=veh.id,
                                 title='MOT-PROMPT-MARKER',
-                                due_date=date.today() + timedelta(days=7)))
+                                due_date=utc_today() + timedelta(days=7)))
         db.session.commit()
         vid = veh.id
 
@@ -211,14 +212,14 @@ def test_chat_prompt_contains_due_soon(app, client, user, auth_headers, monkeypa
 
 def test_due_soon_includes_todos_F44(app, user):
     """F44 — a dated incomplete todo surfaces in the chat context's due_soon."""
-    from datetime import date, timedelta
+    from datetime import timedelta
     from app.models import Todo
     from app.routes.vehicles import _build_chat_context
 
     with app.app_context():
         v = _vehicle(user.id, 'FitCar')
         db.session.add(Todo(user_id=user.id, vehicle_id=v.id, title='Swap winter tyres',
-                            due_date=date.today() + timedelta(days=4), completed=False))
+                            due_date=utc_today() + timedelta(days=4), completed=False))
         db.session.commit()
         ctx = _build_chat_context(user, db.session.get(Vehicle, v.id))
 

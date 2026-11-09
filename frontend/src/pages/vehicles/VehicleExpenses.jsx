@@ -11,9 +11,11 @@ import { vehicleApi, fuelApi, serviceApi, repairApi, taxApi, reminderApi, insura
 import api from '../../services/api'
 import toast from 'react-hot-toast'
 import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
-import { useTranslation } from '../../contexts/LanguageContext'
+import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { litersToDisplayVolume, pricePerLiterToDisplay, volumeUnitLabel } from '../../utils/fuelEconomy'
+import { UNIT_PRICE_FRACTION_DIGITS } from '../../utils/currencyFormat'
+import { measurementReason } from '../../utils/fuelMeasurement'
 import { useDateFormat } from '../../hooks/useDateFormat'
 import { Skeleton, SkeletonScreen } from '../../components/ui/Skeleton'
 import AttachmentViewer from '../../components/ui/AttachmentViewer'
@@ -129,6 +131,7 @@ const Icons = {
 
 // Donut Chart Component
 const DonutChart = ({ data, centerText, centerSubtext, currency }) => {
+  const { formatCurrency } = useCurrency()
   const total = data.reduce((sum, item) => sum + item.value, 0)
   let currentAngle = -90 // Start from top
   
@@ -192,7 +195,7 @@ const DonutChart = ({ data, centerText, centerSubtext, currency }) => {
               <span className="text-(--color-text-primary)">{item.label}</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-(--color-text-primary)">{item.value.toFixed(2)} {currency}</span>
+              <span className="text-(--color-text-primary)">{formatCurrency(item.value, { currency })}</span>
               <span className="text-(--color-text-secondary)">({((item.value / (total || 1)) * 100).toFixed(1)}%)</span>
             </div>
           </div>
@@ -206,12 +209,10 @@ const DonutChart = ({ data, centerText, centerSubtext, currency }) => {
 // Monthly filters and a readable equivalent of the chart's complete totals.
 const BarChart = ({ data, categories, title, onMonthClick, selectedMonth, hintText, currency, year }) => {
   const { monthNames, monthNamesShort } = useDateFormat()
-  const { t, language } = useTranslation()
+  const { t } = useTranslation()
+  const { formatCurrency } = useCurrency()
   const chartId = useId()
   const maxValue = Math.max(...data.map(d => d.total), 1)
-  const formatTotal = value => `${new Intl.NumberFormat(language || 'en', {
-    minimumFractionDigits: 2, maximumFractionDigits: 2,
-  }).format(value)} ${currency || t('financial.unknownCurrency')}`
   const months = monthNames.map((name, i) => ({ name, shortName: monthNamesShort[i],
     total: data.find(d => d.month === i + 1)?.total ?? 0 }))
   const selection = selectedMonth === null
@@ -231,7 +232,7 @@ const BarChart = ({ data, categories, title, onMonthClick, selectedMonth, hintTe
             const height = (month.total / maxValue) * 100
             const isSelected = selectedMonth === i
             const label = t('expenses.monthFilterLabel').replace('{month}', month.name)
-              .replace('{year}', year).replace('{total}', formatTotal(month.total))
+              .replace('{year}', year).replace('{total}', formatCurrency(month.total, { currency }))
             return (
               <button
                 key={i}
@@ -277,7 +278,7 @@ const BarChart = ({ data, categories, title, onMonthClick, selectedMonth, hintTe
             <th scope="col" className="py-2 text-right">{t('expenses.totalColumn')}</th></tr></thead>
           <tbody>{months.map((month, i) => <tr key={i}>
             <th scope="row" className="py-1 font-normal">{month.name}</th>
-            <td className="py-1 text-right tabular-nums">{formatTotal(month.total)}</td>
+            <td className="py-1 text-right tabular-nums">{formatCurrency(month.total, { currency })}</td>
           </tr>)}</tbody>
         </table>
       </details>
@@ -353,7 +354,7 @@ export default function VehicleExpenses() {
   const navigate = useNavigate()
   const location = useLocation()
   const { t } = useTranslation()
-  const formatCurrency = (amount, currency) => `${Number(amount ?? 0).toFixed(2)} ${currency || t('financial.unknownCurrency')}`
+  const { formatCurrency } = useCurrency()
   const { user } = useAuth()  // F27 — volume unit preference
   
   const [vehicle, setVehicle] = useState(null)
@@ -671,6 +672,12 @@ export default function VehicleExpenses() {
     )
   }
 
+  const renderMeasurementReason = (entry) => {
+    const reason = measurementReason(entry, t)
+    if (!reason) return null
+    return <span className="block max-w-xs text-xs text-(--color-text-muted)">{reason}</span>
+  }
+
   // Tab definitions
   const tabs = [
     { id: 'consumable', label: t('financial.consumable'), icon: Icons.service, count: activeTab === 'consumable' ? detailState.data?.total : undefined },
@@ -693,7 +700,7 @@ export default function VehicleExpenses() {
           <th className="p-3">{t('addFuel.totalCost')}</th><th className="p-3">{t('common.attachment')}</th><th className="p-3">{t('common.actions')}</th>
         </tr></thead><tbody>{consumableEntries.map(entry => <tr key={entry.id} className="border-t border-(--color-border)">
           <td className="p-3">{formatDate(entry.date)}</td><td className="p-3">{entry.title || entry.description || entry.consumable_type}</td>
-          <td className="p-3">{formatCurrency(entry.amount, entry.currency)}</td><td className="p-3">{renderAttachmentButton(entry)}</td>
+          <td className="p-3">{formatCurrency(entry.amount, { currency: entry.currency })}</td><td className="p-3">{renderAttachmentButton(entry)}</td>
           <td className="p-3"><button title={t('common.edit')} onClick={() => handleEdit('consumable', entry.id)}>{Icons.edit}</button>
             <button title={t('common.delete')} onClick={() => handleDelete('consumable', entry.id)}>{Icons.delete}</button></td>
         </tr>)}</tbody></table>
@@ -717,14 +724,17 @@ export default function VehicleExpenses() {
               {fuelEntries.map(entry => (
                 <tr key={entry.id} className="border-b border-(--color-border) hover:bg-(--color-bg-tertiary)">
                   <td className="py-3 px-4">{formatDate(entry.date)}</td>
-                  <td className="py-3 px-4">{entry.odometer?.toLocaleString()} {vehicle?.distance_unit || 'km'}</td>
+                  <td className="py-3 px-4">
+                    {entry.odometer?.toLocaleString()} {vehicle?.distance_unit || 'km'}
+                    {renderMeasurementReason(entry)}
+                  </td>
                   <td className="py-3 px-4">
                     {entry.liters != null ? litersToDisplayVolume(entry.liters, user).toFixed(2) : '--'} {volumeUnitLabel(user, t)}
                   </td>
                   <td className="py-3 px-4 text-(--color-accent)">
-                    {formatCurrency(entry.price_per_liter != null ? pricePerLiterToDisplay(entry.price_per_liter, user) : entry.price_per_liter, entry.currency)}
+                    {formatCurrency(entry.price_per_liter != null ? pricePerLiterToDisplay(entry.price_per_liter, user) : entry.price_per_liter, { currency: entry.currency, decimals: UNIT_PRICE_FRACTION_DIGITS })}
                   </td>
-                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.total_price, entry.currency)}</td>
+                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.total_price, { currency: entry.currency })}</td>
                   <td className="py-3 px-4">{entry.fuel_type || '-'}</td>
                   <td className="py-3 px-4">{entry.station || '-'}</td>
                   <td className="py-3 px-4">
@@ -779,9 +789,9 @@ export default function VehicleExpenses() {
                   <td className="py-3 px-4">{formatDate(entry.date)}</td>
                   <td className="py-3 px-4">{(entry.service_types?.length > 0 ? entry.service_types.map(st => st.replace(/_/g, ' ')).join(', ') : entry.service_type || entry.title || '-')}</td>
                   <td className="py-3 px-4">{entry.odometer?.toLocaleString()} {vehicle?.distance_unit || 'km'}</td>
-                  <td className="py-3 px-4">{formatCurrency(entry.parts_cost || 0, entry.currency)}</td>
-                  <td className="py-3 px-4">{formatCurrency(entry.labor_cost || 0, entry.currency)}</td>
-                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.amount, entry.currency)}</td>
+                  <td className="py-3 px-4">{formatCurrency(entry.parts_cost || 0, { currency: entry.currency })}</td>
+                  <td className="py-3 px-4">{formatCurrency(entry.labor_cost || 0, { currency: entry.currency })}</td>
+                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.amount, { currency: entry.currency })}</td>
                   <td className="py-3 px-4">
                     <div title={entry.work_order_number ? `${t('addService.workOrder') || 'Work order #'}: ${entry.work_order_number}` : undefined}>
                       <span>{entry.provider || '-'}</span>
@@ -849,7 +859,7 @@ export default function VehicleExpenses() {
                       )}
                     </span>
                   </td>
-                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.amount, entry.currency)}</td>
+                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.amount, { currency: entry.currency })}</td>
                   <td className="py-3 px-4">{formatDate(entry.due_date)}</td>
                   <td className="py-3 px-4">
                     {entry.insurance_policy ? (
@@ -932,7 +942,7 @@ export default function VehicleExpenses() {
                       <div className="mt-1"><RecurringChip entry={entry} t={t} /></div>
                     )}
                   </td>
-                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.amount, entry.currency)}</td>
+                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.amount, { currency: entry.currency })}</td>
                   <td className="py-3 px-4">{entry.duration || '-'}</td>
                   <td className="py-3 px-4">{renderAttachmentButton(entry)}</td>
                   <td className="py-3 px-4">
@@ -1002,9 +1012,9 @@ export default function VehicleExpenses() {
                     </div>
                   </td>
                   <td className="py-3 px-4">{entry.odometer?.toLocaleString()} {vehicle?.distance_unit || 'km'}</td>
-                  <td className="py-3 px-4">{formatCurrency(entry.parts_cost || 0, entry.currency)}</td>
-                  <td className="py-3 px-4">{formatCurrency(entry.labor_cost || 0, entry.currency)}</td>
-                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.amount, entry.currency)}</td>
+                  <td className="py-3 px-4">{formatCurrency(entry.parts_cost || 0, { currency: entry.currency })}</td>
+                  <td className="py-3 px-4">{formatCurrency(entry.labor_cost || 0, { currency: entry.currency })}</td>
+                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.amount, { currency: entry.currency })}</td>
                   <td className="py-3 px-4">{entry.provider || '-'}</td>
                   <td className="py-3 px-4">{renderAttachmentButton(entry)}</td>
                   <td className="py-3 px-4">
@@ -1081,7 +1091,7 @@ export default function VehicleExpenses() {
                   </td>
                   <td className="py-3 px-4">{entry.policy_number || '-'}</td>
                   <td className="py-3 px-4 capitalize">{entry.policy_type?.replace('_', ' ') || '-'}</td>
-                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.premium, entry.currency)}<span className="block text-xs">{t('expensePages.policyEstimate')}: {entry.period_amount == null ? t('financial.unavailable') : formatCurrency(entry.period_amount, detailState.data?.display_currency)}</span></td>
+                  <td className="py-3 px-4 text-(--color-accent) font-medium">{formatCurrency(entry.premium, { currency: entry.currency })}<span className="block text-xs">{t('expensePages.policyEstimate')}: {entry.period_amount == null ? t('financial.unavailable') : formatCurrency(entry.period_amount, { currency: detailState.data?.display_currency })}</span></td>
                   <td className="py-3 px-4 capitalize">{entry.payment_frequency || '-'}</td>
                   <td className="py-3 px-4">{formatDate(entry.start_date)}</td>
                   <td className="py-3 px-4">{formatDate(entry.end_date)}</td>
@@ -1177,13 +1187,13 @@ export default function VehicleExpenses() {
                           {entry.coverage_amount != null && (
                             <div>
                               <p className="text-2xs uppercase tracking-wide text-(--color-text-muted) mb-0.5">{t('addInsurance.coverageAmount') || 'Coverage'}</p>
-                              <span>{formatCurrency(entry.coverage_amount, entry.currency)}</span>
+                              <span>{formatCurrency(entry.coverage_amount, { currency: entry.currency })}</span>
                             </div>
                           )}
                           {entry.deductible != null && (
                             <div>
                               <p className="text-2xs uppercase tracking-wide text-(--color-text-muted) mb-0.5">{t('addInsurance.deductible') || 'Deductible'}</p>
-                              <span>{formatCurrency(entry.deductible, entry.currency)}</span>
+                              <span>{formatCurrency(entry.deductible, { currency: entry.currency })}</span>
                             </div>
                           )}
                         </div>
@@ -1467,7 +1477,7 @@ export default function VehicleExpenses() {
             </h3>
             <span className="text-sm font-semibold">
               {t('expensePages.pageTotal')}:{' '}
-              {formatCurrency(fineState.data.page_total, fineState.data.display_currency)}
+              {formatCurrency(fineState.data.page_total, { currency: fineState.data.display_currency })}
             </span>
           </div>
           <ul className="space-y-2">
@@ -1486,7 +1496,7 @@ export default function VehicleExpenses() {
                   </p>
                 </div>
                 <span className="text-sm font-semibold text-orange-500 whitespace-nowrap">
-                  {formatCurrency(fine.amount, fine.currency)}
+                  {formatCurrency(fine.amount, { currency: fine.currency })}
                 </span>
                 <button
                   onClick={() => handleMarkFinePaid(fine)}
@@ -1510,9 +1520,9 @@ export default function VehicleExpenses() {
           {detailState.data.records.length ? <div className="bg-(--color-bg-secondary) rounded-xl border border-(--color-border) overflow-x-auto">{renderTable()}</div>
             : <p>{t('expenses.noEntries')}</p>}
           {!['todo', 'reminder'].includes(activeTab) && <div className="text-sm py-2">
-            <p>{t('expensePages.pageTotal')}: {formatCurrency(detailState.data.page_total, detailState.data.display_currency)}</p>
+            <p>{t('expensePages.pageTotal')}: {formatCurrency(detailState.data.page_total, { currency: detailState.data.display_currency })}</p>
             {detailState.data.converted === false && <p>{t('financial.partial')}</p>}
-            {expenseSummary && <p>{t('expensePages.periodTotal')}: {formatCurrency(categoryTotal ?? 0, expenseSummary.display_currency)}</p>}
+            {expenseSummary && <p>{t('expensePages.periodTotal')}: {formatCurrency(categoryTotal ?? 0, { currency: expenseSummary.display_currency })}</p>}
           </div>}
           <ExpensePagination data={detailState.data} page={page} onPage={setPage} />
         </>}

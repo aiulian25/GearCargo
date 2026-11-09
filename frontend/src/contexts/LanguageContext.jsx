@@ -1,7 +1,8 @@
-import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { translations, defaultLanguage, supportedLanguages } from '../i18n/translations'
 import { db } from '../services/db'
 import api from '../services/api'
+import { createCurrencyFormatter } from '../utils/currencyFormat'
 
 const LanguageContext = createContext(null)
 
@@ -200,18 +201,11 @@ export function LanguageProvider({ children }) {
     return rate ? amountEur * rate : amountEur
   }, [exchangeRates, currency.code])
 
-  // Format currency helper
-  const formatCurrency = useCallback((amount, options = {}) => {
-    const { showSymbol = true, decimals = 2 } = options
-    const formattedAmount = Number(amount).toFixed(decimals)
-
-    // Currencies that follow the number (suffix format)
-    const suffixCodes = new Set(['RON', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK', 'HUF', 'CHF', 'BGN', 'kr', 'lei', 'Ft', 'Kč', 'zł', 'лв'])
-    if (suffixCodes.has(currency.code) || suffixCodes.has(currency.symbol)) {
-      return showSymbol ? `${formattedAmount} ${currency.symbol}` : formattedAmount
-    }
-    return showSymbol ? `${currency.symbol}${formattedAmount}` : formattedAmount
-  }, [currency])
+  const unknownCurrencyLabel = t('financial.unknownCurrency')
+  const formatCurrency = useMemo(
+    () => createCurrencyFormatter({ language, currency: currency.code, unknownCurrencyLabel }),
+    [language, currency.code, unknownCurrencyLabel],
+  )
 
   const value = {
     language,

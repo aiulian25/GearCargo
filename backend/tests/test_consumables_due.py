@@ -6,6 +6,7 @@ import pytest
 
 from app import db
 from app.models import User, Vehicle, ConsumableEntry
+from app.utils.timeutils import utc_today
 
 
 def _mk_vehicle(user_id, name='Focus', mileage=0):
@@ -21,7 +22,7 @@ def _mk_consumable(user_id, vehicle_id, ctype='tire', install_odo=0,
                    expected_km=1000):
     """A purely mileage-based consumable (no month lifespan → time wear is None)."""
     c = ConsumableEntry(
-        user_id=user_id, vehicle_id=vehicle_id, date=date.today(),
+        user_id=user_id, vehicle_id=vehicle_id, date=utc_today(),
         consumable_type=ctype, install_odometer=install_odo, odometer=install_odo,
         expected_lifespan_km=expected_km, amount=200,
     )
@@ -65,7 +66,7 @@ def test_due_excludes_fresh_and_unknown(app, client, user, auth_headers):
         # Fresh (10% worn) → good → excluded.
         _mk_consumable(user.id, v.id, ctype='tire', expected_km=1000)
         # No expected lifespan at all → 'unknown' → excluded.
-        c = ConsumableEntry(user_id=user.id, vehicle_id=v.id, date=date.today(),
+        c = ConsumableEntry(user_id=user.id, vehicle_id=v.id, date=utc_today(),
                             consumable_type='other', amount=10)
         db.session.add(c)
         db.session.commit()
@@ -157,12 +158,12 @@ def test_replaced_consumable_superseded_in_feed(app, client, user, auth_headers)
         v = _mk_vehicle(user.id, mileage=60000)
         # Old tyres: fitted 400 days ago at 50k, long past their 1k-km wear.
         _mk_dated_consumable(user.id, v.id, 'tire', 50000, 1000,
-                             date.today() - timedelta(days=400))
+                             utc_today() - timedelta(days=400))
         # New tyres: fitted today at 60k, fresh (40k-km lifespan).
-        _mk_dated_consumable(user.id, v.id, 'tire', 60000, 40000, date.today())
+        _mk_dated_consumable(user.id, v.id, 'tire', 60000, 40000, utc_today())
         # A DIFFERENT worn type (battery) still surfaces — supersede is per-type.
         _mk_dated_consumable(user.id, v.id, 'battery', 50000, 1000,
-                             date.today() - timedelta(days=300))
+                             utc_today() - timedelta(days=300))
         db.session.commit()
 
     items = client.get('/api/due?days=30', headers=auth_headers(user.id)).get_json()['items']
@@ -189,8 +190,8 @@ def test_check_consumables_due_skips_superseded(app, monkeypatch):
         v = _mk_vehicle(u.id, 'Focus', mileage=60000)
         # Old worn brake pads (would push) + a fresh replacement of the same type.
         _mk_dated_consumable(u.id, v.id, 'brake_pads', 50000, 1000,
-                             date.today() - timedelta(days=400))
-        _mk_dated_consumable(u.id, v.id, 'brake_pads', 60000, 40000, date.today())
+                             utc_today() - timedelta(days=400))
+        _mk_dated_consumable(u.id, v.id, 'brake_pads', 60000, 40000, utc_today())
 
     check_consumables_due(app)
     assert calls == []                   # the superseded old pads never push
@@ -230,6 +231,7 @@ def _valid_consumable_payload(vehicle_id, **overrides):
     ('expected_lifespan_months', 'abc', 'validation.invalidNumber'),
     ('warranty_months', 'abc', 'validation.invalidNumber'),
     ('currency', 'EURO', 'validation.invalidCurrency'),
+    ('currency', 'KWD', 'validation.unsupportedCurrencyPrecision'),
 ])
 def test_create_consumable_rejects_malformed_input(
         app, client, user, auth_headers, field, bad_value, expected_key):
@@ -292,6 +294,7 @@ def _existing_consumable(app, user_id, vehicle_id):
     ('quantity', 'abc', 'validation.invalidNumber'),
     ('expected_lifespan_km', 'abc', 'validation.invalidNumber'),
     ('currency', 'EURO', 'validation.invalidCurrency'),
+    ('currency', 'KWD', 'validation.unsupportedCurrencyPrecision'),
 ])
 def test_update_consumable_rejects_malformed_input_without_partial_writes(
         app, client, user, auth_headers, field, bad_value, expected_key):

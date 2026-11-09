@@ -84,7 +84,14 @@ function refreshSession(expectedRevision) {
 }
 
 // Pages where auth errors must NOT trigger a redirect/toast (you are already there).
-const AUTH_PAGES = new Set(['/login', '/register', '/change-password'])
+// The reset and forgot pages are opened from emailed links while signed out; a
+// redirect would drop the link's token.
+const AUTH_PAGES = new Set(['/login', '/register', '/forgot-password', '/reset-password', '/change-password'])
+// Pages anyone may open from a link: a signed-in session is still refreshed, but a
+// signed-out visitor stays on the page instead of being sent to /login.
+const LINK_PAGES = new Set(['/verify-email'])
+const LINK_PAGE_PREFIXES = ['/shared/report/']
+const isLinkPage = path => LINK_PAGES.has(path) || LINK_PAGE_PREFIXES.some(prefix => path.startsWith(prefix))
 // Server codes meaning the session is definitively over — refreshing is futile.
 const SESSION_ENDED_CODES = new Set(['SESSION_EXPIRED', 'SESSION_INVALID'])
 
@@ -100,6 +107,7 @@ export async function handleAuthError(error, deps) {
   const originalRequest = error.config
   const path = getPath()
   const isAuthPage = AUTH_PAGES.has(path)
+  const staysOnPage = isAuthPage || isLinkPage(path)
   const loginPath = reminderAuthPath('/login', reminderIdFromPath(path))
 
   // Session definitively expired / invalid — no point refreshing.
@@ -108,7 +116,7 @@ export async function handleAuthError(error, deps) {
     // Clear the local auth flag so ThemeContext / LanguageContext stop
     // attempting background sync (they check this flag, not the cookie).
     await clearAuth()
-    if (!isAuthPage) {
+    if (!staysOnPage) {
       notifyExpired(error.response?.data?.error || 'Your session has expired. Please login again.')
       redirectSoon(loginPath)
     }
@@ -138,7 +146,7 @@ export async function handleAuthError(error, deps) {
       if (refreshError.code === 'AUTH_CONTEXT_CHANGED' || refreshErrorCode?.startsWith('CSRF_')) return Promise.reject(refreshError)
       if (SESSION_ENDED_CODES.has(refreshErrorCode)) {
         await clearAuth()
-        if (!isAuthPage) {
+        if (!staysOnPage) {
           notifyExpired(refreshError.response?.data?.error || 'Your session has expired. Please login again.')
           redirectSoon(loginPath)
         }
@@ -147,7 +155,7 @@ export async function handleAuthError(error, deps) {
 
       // Refresh failed for any other reason — send user to login.
       await clearAuth()
-      if (!isAuthPage) {
+      if (!staysOnPage) {
         redirectNow(loginPath)
       }
       return Promise.reject(refreshError)
@@ -402,6 +410,12 @@ export const authApi = {
   resendVerificationEmail: (email) => api.post('/auth/email/resend-verification', { email }),
 
   // 2FA: TwoFactorSetup.jsx calls the real /auth/2fa/* endpoints directly.
+
+  // Signed-in devices and account deletion
+  getSessions: () => api.get('/auth/sessions'),
+  revokeSession: (sessionId) => api.delete(`/auth/sessions/${sessionId}`),
+  revokeOtherSessions: () => api.post('/auth/sessions/revoke-others'),
+  deleteAccount: (credentials) => api.delete('/auth/account', { data: credentials }),
 
   // Avatar
   getAvatars: () => api.get('/auth/avatars'),

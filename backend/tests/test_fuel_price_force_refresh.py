@@ -4,15 +4,16 @@ Before the fix, ?force_refresh=true hit a deleted `_cache` dict and raised
 NameError → 500 for every press of the dashboard refresh button.
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 import app.services.fuel_price_service as fps
+from app.utils.timeutils import utc_today
 
 
 SENTINEL = {
     'diesel': 1.11, 'petrol': 2.22, 'lpg': None, 'premium': None,
     'currency': '£', 'currency_code': 'GBP',
-    'source': 'sentinel-source', 'last_update': date.today().isoformat(),
+    'source': 'sentinel-source', 'last_update': utc_today().isoformat(),
 }
 
 
@@ -59,7 +60,7 @@ def test_fresh_fetch_is_not_stale(app, monkeypatch):
 
 
 def test_old_last_update_is_stale(app, monkeypatch):
-    old = dict(SENTINEL, last_update=(date.today() - timedelta(days=30)).isoformat())
+    old = dict(SENTINEL, last_update=(utc_today() - timedelta(days=30)).isoformat())
     monkeypatch.setattr(fps, '_redis_get', lambda *_a, **_k: None)
     monkeypatch.setattr(fps, '_redis_set', lambda *_a, **_k: None)
     monkeypatch.setattr(fps, '_fetch_uk_prices', lambda *_a, **_k: old)

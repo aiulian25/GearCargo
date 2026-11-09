@@ -1,12 +1,13 @@
 """Tests for F31 — per-vehicle, unit-aware maintenance intervals."""
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from app import db
 from app.models import Vehicle, ServiceEntry
 from app.routes.vehicles import _effective_intervals, MAINTENANCE_INTERVALS
+from app.utils.timeutils import utc_today
 
-TODAY = date.today()
+TODAY = utc_today()
 
 
 def _mk_vehicle(app, user, **kwargs):

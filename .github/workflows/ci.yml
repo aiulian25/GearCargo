@@ -81,6 +81,22 @@ jobs:
             backend/requirements.txt
             backend/requirements-dev.txt
 
+      - name: Install redis-server and tesseract for the process tests
+        # test_redis_session_boundary / test_readiness start and stop a server
+        # they own to prove outage recovery. The Redis service container above
+        # cannot be stopped from inside the job, so the binary is needed too.
+        # policy-rc.d keeps the package from starting its own daemon on 6379,
+        # which the service container already occupies.
+        # test_many_submitters_and_consumers_never_exceed_two_native_jobs runs
+        # real OCR on images, which needs the tesseract binary the image ships.
+        run: |
+          printf '#!/bin/sh\nexit 101\n' | sudo tee /usr/sbin/policy-rc.d >/dev/null
+          sudo chmod +x /usr/sbin/policy-rc.d
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq redis-server tesseract-ocr tesseract-ocr-eng
+          redis-server --version
+          tesseract --version
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip

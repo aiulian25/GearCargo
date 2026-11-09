@@ -42,6 +42,11 @@ const Icons = {
       <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
     </svg>
   ),
+  globe: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+    </svg>
+  ),
   check: (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="20 6 9 17 4 12"/>
@@ -99,6 +104,7 @@ export default function PrivacyPolicy({ isOpen, onClose }) {
             </div>
           </div>
           <button
+            aria-label={t('common.close')}
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-(--color-bg-tertiary) transition-colors text-(--color-text-muted) hover:text-(--color-text)"
           >
@@ -142,6 +148,17 @@ export default function PrivacyPolicy({ isOpen, onClose }) {
             <BulletPoint>{t('privacy.noThirdPartyItem1')}</BulletPoint>
             <BulletPoint>{t('privacy.noThirdPartyItem2')}</BulletPoint>
             <BulletPoint>{t('privacy.noThirdPartyItem3')}</BulletPoint>
+          </PolicySection>
+
+          {/* Third-party services */}
+          <PolicySection icon={Icons.globe} title={t('privacy.thirdPartyTitle')}>
+            <p className="mb-3">{t('privacy.thirdPartyDesc')}</p>
+            <BulletPoint>{t('privacy.thirdPartyLocation')}</BulletPoint>
+            <BulletPoint>{t('privacy.thirdPartyFuelPrices')}</BulletPoint>
+            <BulletPoint>{t('privacy.thirdPartyExchangeRates')}</BulletPoint>
+            <BulletPoint>{t('privacy.thirdPartyPasswordCheck')}</BulletPoint>
+            <BulletPoint>{t('privacy.thirdPartyManuals')}</BulletPoint>
+            <BulletPoint>{t('privacy.thirdPartyFonts')}</BulletPoint>
           </PolicySection>
 
           {/* Data Access */}

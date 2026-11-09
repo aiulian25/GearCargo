@@ -33,6 +33,20 @@ accumulates known fuel until the next full fill with an odometer. First,
 non-increasing or incomplete-volume windows produce no consumption estimate;
 invalid historical measurements break the window instead of inventing fuel.
 
+Every entry from `GET /api/fuel`, `GET /api/fuel/<id>` and the fuel
+`expense-records` page, and the entry in create/update responses, carries
+`measurement_status`: `measured`, `partial`, `first_full_fill`,
+`odometer_regression` (a full fill not above the previous full-tank reading),
+`odometer_missing`, `odometer_invalid`, `volume_invalid` or
+`distance_unit_unknown`. It is derived on read from the same full-to-full walk
+as `fuel_efficiency`; nothing is stored. Create and update also return
+`warnings`, always a list, currently either empty or
+`[{code: 'odometer_regression', previous: <reading in the vehicle unit>, message: <English text>}]`.
+Clients localize by `code`; `message` is readable text for other API users. A
+warning never blocks the save, because a lower reading can be a legitimate
+correction, and partial fills never warn. The next full fill is measured from
+that lower reading, and pending partial litres are dropped.
+
 For example, 10 L over 100 miles is **6.2137119 L/100km**. Per-vehicle statistics,
 fleet fuel statistics and health consumption weight each measured value by its
 covered distance, with kilometres used across mixed-unit vehicles. They do not
@@ -175,9 +189,10 @@ does not run a data repair automatically at startup.
 ## Acceptance checks
 
 Backend regressions: `python -m pytest -q tests/test_unit_semantics.py
-tests/test_fuel_efficiency_chain.py tests/test_fuel_history_rebuild.py` (run on
-both SQLite and PostgreSQL). Frontend regressions: `npm test --
-src/__tests__/fuelUnits.test.js src/__tests__/fuelEditUnits.test.jsx`.
+tests/test_fuel_efficiency_chain.py tests/test_fuel_history_rebuild.py
+tests/test_fuel_measurement_status.py` (run on both SQLite and PostgreSQL).
+Frontend regressions: `npm test -- src/__tests__/fuelUnits.test.js
+src/__tests__/fuelEditUnits.test.jsx src/__tests__/fuelMeasurementFeedback.test.jsx`.
 
 `frontend/browser-tests/unitSemantics.mjs` uses the existing disposable
 `backend/tests/browser_queue_fixture.py` through a Unix socket. Set `GC_FRONTEND`

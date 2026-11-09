@@ -4,12 +4,13 @@ Before the fix every fill was scored against the previous entry regardless of
 partial fills, and editing/deleting never touched the stored figures.
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from app import db
 from app.models import Vehicle, FuelEntry
+from app.utils.timeutils import utc_today
 
-TODAY = date.today()
+TODAY = utc_today()
 
 
 def _mk_vehicle(app, user):

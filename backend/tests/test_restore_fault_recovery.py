@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from datetime import date
 from io import BytesIO
 from pathlib import Path
@@ -33,9 +34,11 @@ def test_file_publish_failure_does_not_commit_records(app, user, tmp_path, monke
     db.session.rollback(); db.session.expire_all()
     assert Vehicle.query.filter_by(user_id=target_id).count() == 0
 
+import fcntl
 import gzip
 import hashlib
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -183,6 +186,81 @@ def test_pending_recovery_blocks_requests_until_startup_recovery(app, user, clie
     restarted = create_app(configuration)
     assert restarted.test_client().get('/api/backup/recovery-status').get_json()['maintenance'] is False
     assert_personal_state(target_id, original, committed=False)
+
+
+def restart_application(app):
+    # INFO is pinned whatever LOG_LEVEL the environment sets. The OCR worker's role
+    # skips init_default_admin, so the restarted app never touches the database.
+    from app import create_app
+    configuration = type('RestartConfig', (), dict(app.config, LOG_LEVEL='INFO'))
+    return create_app(configuration, process_role='worker')
+
+
+@contextmanager
+def restore_lock_shared_elsewhere(app):
+    # flock(2) belongs to the open file description, so this conflicts like another process's lease.
+    with app.app_context():
+        lock_path = tx.state_root() / 'lock'
+    with lock_path.open('rb') as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_SH)
+        yield
+
+
+def startup_recovery_logs(caplog):
+    return [record for record in caplog.records if record.getMessage().startswith('Restore recovery')]
+
+
+def test_idle_startup_takes_no_exclusive_restore_lock_and_logs_nothing(app, caplog):
+    with restore_lock_shared_elsewhere(app):
+        with app.app_context():
+            assert tx.recover_unfinished() == 'idle'
+        restart_application(app)
+    assert startup_recovery_logs(caplog) == []
+
+
+def test_startup_lock_contention_logs_info_and_keeps_maintenance(app, caplog):
+    with app.app_context(), tx.activity_guard(exclusive=True):
+        tx.Journal.create('personal')
+    with restore_lock_shared_elsewhere(app):
+        restarted = restart_application(app)
+        recovery_command = restarted.test_cli_runner().invoke(args=['recover-restores'])
+    assert [(record.levelno, record.exc_info) for record in startup_recovery_logs(caplog)] == [(logging.INFO, None)]
+    # migrate.sh refuses schema changes on this nonzero exit.
+    assert recovery_command.exit_code != 0 and isinstance(recovery_command.exception, tx.RestoreLockHeld)
+    response = restarted.test_client().get('/api/vehicles')
+    assert response.status_code == 503 and response.headers['Retry-After'] == '5'
+    assert response.get_json()['recovery']['state'] == 'maintenance'
+    with app.app_context():
+        assert tx.recover_unfinished() == 'rolled_back'
+    assert restarted.test_client().get('/api/backup/recovery-status').get_json()['maintenance'] is False
+
+
+def test_startup_recovery_failure_still_logs_error_with_traceback(app, caplog):
+    with app.app_context():
+        journal_path = tx.state_root() / 'active.json'
+        tx.atomic_json(journal_path, {'version': 999, 'id': 'a' * 32, 'phase': 'unknown'})
+    restart_application(app)
+    records = startup_recovery_logs(caplog)
+    assert [record.levelno for record in records] == [logging.ERROR] and records[0].exc_info is not None
+    assert journal_path.exists()
+
+
+def test_journal_recovered_elsewhere_after_precheck_reports_idle(app, monkeypatch):
+    with app.app_context(), tx.activity_guard(exclusive=True):
+        journal = tx.Journal.create('personal')
+    lease = tx.activity_guard
+
+    @contextmanager
+    def lease_after_concurrent_recovery(**options):
+        # Another recoverer finishes between the lock-free pre-check and this lease.
+        with lease(exclusive=True, pending=True):
+            tx.recover(journal)
+        with lease(**options):
+            yield
+
+    monkeypatch.setattr(tx, 'activity_guard', lease_after_concurrent_recovery)
+    with app.app_context():
+        assert tx.recover_unfinished() == 'idle'
 
 
 def test_exclusion_spans_processes_and_background_operations(app, tmp_path):

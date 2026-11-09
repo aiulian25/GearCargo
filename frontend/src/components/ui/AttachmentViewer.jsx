@@ -853,6 +853,7 @@ const AttachmentViewer = ({
         {allAttachments.length > 1 && (
           <>
             <button
+              aria-label={t('common.previous')}
               onClick={() => {
                 if (currentIndex > 0) {
                   setCurrentIndex(prev => prev - 1)
@@ -869,6 +870,7 @@ const AttachmentViewer = ({
               {Icons.chevronLeft}
             </button>
             <button
+              aria-label={t('common.next')}
               onClick={() => {
                 if (currentIndex < allAttachments.length - 1) {
                   setCurrentIndex(prev => prev + 1)
@@ -904,6 +906,7 @@ const AttachmentViewer = ({
                 {t('attachments.editAttachment') || 'Edit Attachment'}
               </h3>
               <button 
+                aria-label={t('common.close')}
                 onClick={() => setShowEditModal(false)}
                 className="p-1 hover:bg-(--color-bg-tertiary) rounded-lg transition-colors text-(--color-text-muted)"
               >
@@ -921,10 +924,11 @@ const AttachmentViewer = ({
               
               {/* Description */}
               <div>
-                <label className="block text-xs text-(--color-text-muted) mb-1">
+                <label htmlFor="attachment-description" className="block text-xs text-(--color-text-muted) mb-1">
                   {t('common.description') || 'Description'}
                 </label>
                 <textarea
+                  id="attachment-description"
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
                   placeholder={t('attachments.descriptionPlaceholder') || 'Add a description...'}
@@ -935,10 +939,11 @@ const AttachmentViewer = ({
               
               {/* Category */}
               <div>
-                <label className="block text-xs text-(--color-text-muted) mb-1">
+                <label htmlFor="attachment-category" className="block text-xs text-(--color-text-muted) mb-1">
                   {t('common.category') || 'Category'}
                 </label>
                 <select
+                  id="attachment-category"
                   value={editCategory}
                   onChange={(e) => setEditCategory(e.target.value)}
                   className="input w-full"

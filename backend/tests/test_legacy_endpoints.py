@@ -14,8 +14,9 @@ from app import db
 from app.models import (
     Vehicle, ServiceEntry, RepairEntry, TaxEntry, ParkingEntry, Reminder,
 )
+from app.utils.timeutils import utc_today
 
-TODAY = date.today()
+TODAY = utc_today()
 
 
 @pytest.fixture

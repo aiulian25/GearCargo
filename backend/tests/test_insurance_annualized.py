@@ -1,14 +1,15 @@
 """Tests for F12 — annualize insurance premiums in analytics (payment_frequency)."""
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 
 from app import db
 from app.models import User, Vehicle
 from app.models.insurance import InsurancePolicy
+from app.utils.timeutils import utc_today
 
-TODAY = date.today()
+TODAY = utc_today()
 
 
 @pytest.fixture(autouse=True)

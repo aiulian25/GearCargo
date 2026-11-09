@@ -175,7 +175,7 @@ export default function VehicleDetail() {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const confirm = useConfirm()
-  const { currency } = useCurrency()
+  const { formatCurrency } = useCurrency()
   const { user } = useAuth()
   const [vehicle, setVehicle] = useState(null)
   const [stats, setStats] = useState(null)
@@ -260,7 +260,7 @@ export default function VehicleDetail() {
       : {
           title: t('confirm.archiveVehicleTitle') || 'Archive vehicle?',
           message: (t('confirm.archiveVehicleMessage') || 'Archive “{name}”? Its history and obligations are kept. GearCargo pauses reminders and automatic entries until you restore it. Insurance and recurring charges are not cancelled; use their separate cancellation actions.').replace('{name}', name),
-          confirmLabel: t('archive.archive') || 'Archive',
+          confirmLabel: t('vehicleDetail.archive') || 'Archive',
           destructive: false,
         })
     if (ok) {
@@ -328,8 +328,8 @@ export default function VehicleDetail() {
     }
   }
 
-  const formatCurrency = (amount, code = stats?.display_currency || currency.code) => `${Number(amount ?? 0).toFixed(2)} ${code}`
-  
+  const displayCurrency = stats?.display_currency
+
   if (isLoading) {
     return (
       <div className="p-4">
@@ -356,7 +356,7 @@ export default function VehicleDetail() {
     { 
       id: 'ytdSpent',
       label: t('vehicleDetail.ytdSpent') || 'YTD Spent',
-      value: formatCurrency(stats?.ytd_spent ?? stats?.total_costs ?? 0),
+      value: formatCurrency(stats?.ytd_spent ?? stats?.total_costs ?? 0, { currency: displayCurrency }),
       icon: Icons.wallet,
       color: 'text-blue-500',
       bgColor: 'bg-blue-500/10',
@@ -365,7 +365,7 @@ export default function VehicleDetail() {
     { 
       id: 'spentThisMonth',
       label: t('vehicleDetail.spentThisMonth') || 'Spent This Month',
-      value: formatCurrency(stats?.costs_this_month || 0),
+      value: formatCurrency(stats?.costs_this_month || 0, { currency: displayCurrency }),
       icon: Icons.calendar,
       color: 'text-green-500',
       bgColor: 'bg-green-500/10',
@@ -374,7 +374,7 @@ export default function VehicleDetail() {
     { 
       id: 'parkingExpense',
       label: t('vehicleDetail.parkingExpense') || 'YTD Parking',
-      value: formatCurrency(stats?.parking_ytd_cost ?? stats?.parking_costs ?? 0),
+      value: formatCurrency(stats?.parking_ytd_cost ?? stats?.parking_costs ?? 0, { currency: displayCurrency }),
       icon: Icons.parking,
       color: 'text-purple-500',
       bgColor: 'bg-purple-500/10',
@@ -383,7 +383,7 @@ export default function VehicleDetail() {
     { 
       id: 'totalFuelCost',
       label: t('vehicleDetail.totalFuelCost') || 'YTD Fuel Cost',
-      value: formatCurrency(stats?.ytd_fuel_costs || 0),
+      value: formatCurrency(stats?.ytd_fuel_costs || 0, { currency: displayCurrency }),
       icon: Icons.fuel,
       color: 'text-amber-500',
       bgColor: 'bg-amber-500/10',
@@ -409,7 +409,7 @@ export default function VehicleDetail() {
     { 
       id: 'taxExpenses',
       label: t('vehicleDetail.taxExpenses') || 'YTD Tax',
-      value: formatCurrency(stats?.tax_costs || 0),
+      value: formatCurrency(stats?.tax_costs || 0, { currency: displayCurrency }),
       icon: Icons.receipt,
       color: 'text-rose-500',
       bgColor: 'bg-rose-500/10',
@@ -418,7 +418,7 @@ export default function VehicleDetail() {
     { 
       id: 'insuranceExpenses',
       label: t('vehicleDetail.insuranceExpenses') || 'YTD Insurance',
-      value: formatCurrency(stats?.insurance_costs || 0),
+      value: formatCurrency(stats?.insurance_costs || 0, { currency: displayCurrency }),
       icon: Icons.shield,
       color: 'text-emerald-500',
       bgColor: 'bg-emerald-500/10',
@@ -543,7 +543,7 @@ export default function VehicleDetail() {
       {/* Header */}
       <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 sticky top-0 z-20">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate(isArchived ? '/settings' : '/')} className="btn-icon">
+          <button aria-label={t('common.back')} onClick={() => navigate(isArchived ? '/settings' : '/')} className="btn-icon">
             {Icons.arrowBack}
           </button>
           
@@ -557,7 +557,7 @@ export default function VehicleDetail() {
           {/* Only show menu for non-archived vehicles */}
           {!isArchived && (
             <div className="relative">
-              <button onClick={() => setShowMenu(!showMenu)} className="btn-icon">
+              <button aria-label={t('common.actions')} onClick={() => setShowMenu(!showMenu)} className="btn-icon">
                 {Icons.moreVert}
               </button>
               
@@ -721,7 +721,7 @@ export default function VehicleDetail() {
                 <div className="rounded-lg p-3 bg-(--color-bg-tertiary)">
                   <p className="text-xs text-(--color-text-muted)">{t('tank.fullTankCost') || 'Full tank at national average'}</p>
                   <p className="text-sm font-bold tabular-nums whitespace-nowrap">
-                    {tankPrices?.currency || ''}{fullTankCost.toFixed(2)}
+                    {formatCurrency(fullTankCost, { currency: tankPrices?.currency_code })}
                   </p>
                 </div>
               )}
@@ -821,7 +821,7 @@ export default function VehicleDetail() {
                           {entry.description}
                         </td>
                         <td className="py-3 text-right text-sm font-medium">
-                          {formatCurrency(entry.cost, entry.currency)}
+                          {formatCurrency(entry.cost, { currency: entry.currency })}
                         </td>
                       </tr>
                     )
@@ -946,10 +946,11 @@ export default function VehicleDetail() {
             
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-2">
+                <label htmlFor="new-mileage" className="block text-sm font-medium mb-2">
                   {t('vehicles.currentMileage') || 'Current Mileage'} ({vehicle?.distance_unit || 'km'})
                 </label>
                 <input
+                  id="new-mileage"
                   type="number"
                   value={newMileage}
                   onChange={(e) => {

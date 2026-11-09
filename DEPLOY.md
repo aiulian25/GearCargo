@@ -71,7 +71,10 @@ sh gearcargo-install.sh      # writes docker-compose.yml, .env.example, setup.sh
 ```
 
 Then run `./setup.sh` (it generates every secret and starts the app — you can
-stop here) or continue with the manual steps below for full control.
+stop here) or continue with the manual steps below for full control. Either way,
+other devices can sign in only over HTTPS ([§9](#9-reverse-proxy-setup)); on the
+host itself, `http://localhost:<APP_PORT>` also works when that origin is trusted
+([§4.2](#42-application-settings)).
 
 > **Synology / Portainer users:** You can paste the compose file directly into the Stacks UI instead. See [Platform-Specific Notes](#13-platform-specific-notes).
 
@@ -79,32 +82,23 @@ stop here) or continue with the manual steps below for full control.
 
 ## 3. Create Data Directories
 
-GearCargo needs six directories to persist data between container restarts. The container runs as **UID 1000** (non-root), so the backend directories must be owned by that UID.
+GearCargo keeps its data in seven directories under `./volumes` (`setup.sh` creates them):
 
 ```bash
-# Create all directories
-mkdir -p volumes/{db,redis,attachments,backups,uploads,logs}
+mkdir -p volumes/{pgdata,redis,attachments,backups,uploads,logs,geoip}
 ```
 
-Set correct ownership on the directories the backend writes to:
+No `chown` is needed, whatever your host UID. The container starts as root, re-owns the writable directories on every start, and then drops each service to its own user ([§4.4](#44-user--group-ids-important-for-synology--nas)). Do not `chown -R` `pgdata` or `redis` to your own user: only their top-level directory is re-owned.
 
-```bash
-# Linux / standard Docker
-sudo chown -R 1000:1000 volumes/attachments volumes/backups volumes/uploads volumes/logs
-```
-
-> **Why UID 1000?** The container runs with `user: "1000:1000"` and `no-new-privileges` security policy, which means it cannot change its own user at runtime. All writable directories must be pre-owned by this UID.
->
-> **Custom UID (Synology, etc.):** If your system user has a different UID, see [Section 4.4](#44-user--group-ids-important-for-synology--nas).
-
-| Directory | Purpose | Written by |
-|-----------|---------|------------|
-| `volumes/db` | PostgreSQL database files | postgres container (manages its own permissions) |
-| `volumes/redis` | Redis persistence (AOF + RDB) | redis container (manages its own permissions) |
-| `volumes/attachments` | Uploaded vehicle documents, receipts | backend (UID 1000) |
-| `volumes/backups` | Database backup archives | backend (UID 1000) |
-| `volumes/uploads` | User avatars, vehicle photos | backend (UID 1000) |
-| `volumes/logs` | Security audit logs | backend (UID 1000) |
+| Directory | Purpose | Owner inside the container |
+|-----------|---------|----------------------------|
+| `volumes/pgdata` | Embedded PostgreSQL data | `postgres` |
+| `volumes/redis` | Embedded Redis data | `redis` |
+| `volumes/attachments` | Uploaded vehicle documents, receipts | `gearcargo` (UID 1000) |
+| `volumes/backups` | Backup archives | `gearcargo` |
+| `volumes/uploads` | User avatars, vehicle photos | `gearcargo` |
+| `volumes/logs` | Security audit logs | `gearcargo` |
+| `volumes/geoip` | Optional GeoLite2 database, mounted read-only | not changed |
 
 ---
 
@@ -174,21 +168,11 @@ APP_URL=https://car.yourdomain.com
 # Must include your APP_URL. Comma-separated, no spaces.
 CORS_ORIGINS=https://car.yourdomain.com
 
-# Cookie security — set to true ONLY if using HTTPS
-SESSION_COOKIE_SECURE=true
-
 # Rate limiting (protects against brute force)
 RATELIMIT_DEFAULT=200 per day
 ```
 
-If you're running without HTTPS (e.g., local network only):
-
-```env
-APP_URL=http://192.168.1.50:5000
-CORS_ORIGINS=http://192.168.1.50:5000
-SESSION_COOKIE_SECURE=false
-SESSION_COOKIE_SAMESITE=Lax
-```
+> **Sign-in needs HTTPS.** Browsers treat plain HTTP as a secure context only on `localhost`, and the app needs one; the bundled compose files also keep every cookie that sign-in needs Secure. So other devices cannot sign in over plain HTTP. `SESSION_COOKIE_*` lines in `.env` have no effect: the compose files set those values. Use your reverse proxy's `https://` address ([§9](#9-reverse-proxy-setup)) for `APP_URL` and `CORS_ORIGINS`. On the host itself, `http://localhost:<APP_PORT>` also works when that exact origin is trusted: listed in `CSRF_TRUSTED_ORIGINS`, or equal to `APP_URL` while that list is empty. See [Sign-in fails with "Login failed" or "Request verification failed"](README.md#sign-in-fails-with-login-failed-or-request-verification-failed).
 
 ---
 
@@ -218,39 +202,11 @@ USER_DOMAIN=
 
 ### 4.4 User / Group IDs (Important for Synology / NAS)
 
-The container runs as a non-root user. By default, this is **UID 1000 / GID 1000** (the `gearcargo` user built into the image). On most Linux servers, this matches the first non-root user.
+Nothing to configure for the data volumes, on Synology or anywhere else. The image starts as root under s6-overlay, re-owns the data directories ([§3](#3-create-data-directories)), and runs each service under its own user through `s6-setuidgid`: gunicorn, the scheduler and the OCR workers as `gearcargo` (UID 1000), PostgreSQL as `postgres`, Redis as `redis`. Volume ownership does not depend on your host UID/GID, and there is no `PUID`/`PGID` setting.
 
-**To find your system's UID/GID:**
+The push key is the exception. Compose mounts `secrets/vapid_private_key` with its host owner and mode (`setup.sh` writes it with mode 600), and the app reads it as UID 1000 when it starts. After `sudo ./setup.sh`, or when your host UID is not 1000, run `sudo chown 1000:1000 secrets/vapid_private_key` and then `docker compose restart gearcargo`; otherwise push notifications stay off, with no warning at startup.
 
-```bash
-id
-# Output: uid=1000(ubuntu) gid=1000(ubuntu) ...
-```
-
-**If your UID is NOT 1000** (common on Synology DSM where the admin user is UID 1026, or on some cloud VMs):
-
-You need to edit the `user:` line in `docker-compose.yml`:
-
-```yaml
-services:
-  backend:
-    # Change 1000:1000 to your UID:GID
-    user: "1026:100"
-```
-
-Then set the volume ownership to match:
-
-```bash
-sudo chown -R 1026:100 volumes/attachments volumes/backups volumes/uploads volumes/logs
-```
-
-**Synology DSM common UIDs:**
-| User | UID | GID |
-|------|-----|-----|
-| admin | 1024 | 100 |
-| First user | 1026 | 100 (users group) |
-
-> **Tip:** On Synology, you can also check UID via SSH: `id youruser`
+Do not add a `user:` line to the compose file. s6-overlay must start as root to drop each service to its own user; with a `user:` line the services cannot switch users and first-boot database setup fails.
 
 ---
 
@@ -495,11 +451,11 @@ Database setup complete.
 
 ## 8. Post-Install Steps
 
-1. **Open the app** at your configured `APP_URL` (or `http://YOUR_IP:5000`)
+1. **Open the app** at your `APP_URL`. Sign-in needs its `https://` address, or `http://localhost:<APP_PORT>` on the host itself if that origin is trusted ([§4.2](#42-application-settings)).
 2. **Create your admin account** (register first, or it was auto-created via env vars)
 3. **Remove `ADMIN_PASSWORD`** from `.env` if you used auto-bootstrap
 4. **Add your first vehicle** and start tracking
-5. **Set up a reverse proxy** if exposing to the internet (see next section)
+5. **Set up an HTTPS reverse proxy** if you have not yet (see next section): other devices can sign in only over HTTPS.
 
 ---
 
@@ -633,26 +589,23 @@ docker compose logs backend --tail 50
 |-------|-------|-----|
 | `Read-only file system: '/app/volumes/logs'` | Missing logs volume mount | Add `./volumes/logs:/app/volumes/logs` to compose volumes |
 | `Permission denied: 'security_audit.log'` | Wrong ownership on volumes | `sudo chown -R 1000:1000 volumes/logs` |
-| `failed switching to "gearcargo": operation not permitted` | `gosu` blocked by `no-new-privileges` | Add `user: "1000:1000"` to compose backend service |
 | `Connection refused` to database | DB not ready yet | Wait — entrypoint retries for 60 seconds |
 | `FATAL: password authentication failed` | Wrong `DB_PASSWORD` | Wipe `volumes/db` and restart to re-initialize |
 | `NanoCPUs can not be set, as your kernel does not support CPU CFS scheduler` | Synology/older kernels lack CFS | Remove all `deploy:` resource limit blocks from compose |
 
 ### Redis health check fails
 
+Redis runs inside the `gearcargo` container as the `redis` user, and the compose file already grants the capabilities it needs; there is no separate `redis` service to change. Its messages are in the container log:
+
 ```bash
-docker compose logs redis --tail 20
+docker compose logs gearcargo --tail 50
 ```
 
-If you see `Permission denied` on `appendonlydir`, the Redis container needs CHOWN capability:
+`Can't open the append-only file ...: Permission denied` means files under `./volumes/redis` were re-owned on the host; each start re-owns only that top-level directory. Re-own them from inside the container, then restart:
 
-```yaml
-# In docker-compose.yml under the redis service:
-cap_add:
-  - CHOWN
-  - DAC_OVERRIDE
-  - SETGID
-  - SETUID
+```bash
+docker compose exec gearcargo chown -R redis:redis /data
+docker compose restart gearcargo
 ```
 
 ### Can't connect from browser
@@ -709,20 +662,14 @@ automatically (no PUID/PGID juggling), and it carries no hard resource limits
    sudo docker compose version
    ```
 
-3. **Find your UID** (update `.env` if it differs from the default `1026:100`):
-   ```bash
-   id
-   # Typical output: uid=1026(youruser) gid=100(users)
-   ```
-
-4. **Create the project directory and volumes:**
+3. **Create the project directory and volumes:**
    ```bash
    sudo mkdir -p /volume1/docker/gearcargo/volumes/{pgdata,redis,attachments,backups,uploads,logs,geoip}
    ```
    (The single container runs as root and drops each service to its own user, so
    you don't need to pre-set ownership yourself.)
 
-5. **Get the install files from the image** (single container; `setup.sh` creates
+4. **Get the install files from the image** (single container; `setup.sh` creates
    the dirs above too):
    ```bash
    cd /volume1/docker/gearcargo
@@ -731,26 +678,28 @@ automatically (no PUID/PGID juggling), and it carries no hard resource limits
    ```
    > If Docker CLI isn't handy, download the files on your PC and upload via DSM File Station.
 
-6. **Configure `.env`** — run `sudo ./setup.sh` to generate all secrets, **or** copy
+5. **Configure `.env`** — run `sudo ./setup.sh` to generate all secrets (then
+   `sudo chown 1000:1000 secrets/vapid_private_key` and `sudo docker compose restart gearcargo`,
+   or push notifications stay off; see [§4.4](#44-user--group-ids-important-for-synology--nas)), **or** copy
    `.env.example` to `.env` and edit it. Set `APP_PORT=5050` (DSM uses 5000/5001) and
    point `APP_URL` / `CORS_ORIGINS` at your Synology. See [Section 4](#4-configure-environment-variables):
    ```bash
    sudo nano .env
    ```
 
-7. **Login to GHCR** (or see [Section 5](#5-login-to-github-container-registry)):
+6. **Login to GHCR** (or see [Section 5](#5-login-to-github-container-registry)):
    ```bash
    echo "YOUR_GITHUB_TOKEN" | sudo docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
    ```
 
-8. **Start:**
+7. **Start:**
    ```bash
    cd /volume1/docker/gearcargo
    sudo docker compose pull
    sudo docker compose up -d
    ```
 
-9. **Verify** (wait ~60 seconds for health checks):
+8. **Verify** (wait ~60 seconds for health checks):
     ```bash
     sudo docker compose ps
     curl http://localhost:5050/health
@@ -827,8 +776,8 @@ Every environment variable the application reads, with its default value:
 | `ADMIN_DOMAIN` | *(empty)* | Domain restricted to admin logins |
 | `USER_DOMAIN` | *(empty)* | Domain restricted to user logins |
 | `CORS_ORIGINS` | `http://localhost:5000` | Allowed CORS origins (comma-separated) |
-| `SESSION_COOKIE_SECURE` | `false` | Set `true` when using HTTPS |
-| `SESSION_COOKIE_SAMESITE` | `Lax` | Cookie SameSite policy (`Lax` or `Strict`) |
+| `SESSION_COOKIE_SECURE` | `true` (set by both compose files) | Secure flag on the sign-in cookies. The compose files set it, so a `.env` value has no effect; see [4.2](#42-application-settings) |
+| `SESSION_COOKIE_SAMESITE` | `Strict` (set by both compose files) | No effect: Flask-Talisman sets the session cookie to `Lax`, and sign-in cookies are always `Strict` |
 | `RATELIMIT_DEFAULT` | `200 per day` | Global rate limit |
 | `JWT_ACCESS_TOKEN_EXPIRES` | `3600` | Access token lifetime (seconds) |
 | `JWT_REFRESH_TOKEN_EXPIRES` | `2592000` | Refresh token lifetime (seconds, default: 30 days) |
@@ -857,8 +806,6 @@ Every environment variable the application reads, with its default value:
 | `ADMIN_USERNAME` | *(empty)* | Admin username |
 | `ADMIN_PASSWORD` | *(empty)* | Admin password (remove after first login) |
 | **Docker** | | |
-| `PUID` | `1000` | Container user UID |
-| `PGID` | `1000` | Container user GID |
 | `GUNICORN_WORKERS` | `(CPU × 2) + 1` | Number of web server workers |
 
 ---
@@ -876,9 +823,10 @@ the container and are never exposed to the network.
 > **Trade-off:** consolidating into one container reduces process isolation
 > between the app, database and Redis. For a single-tenant, self-hosted app
 > behind a reverse proxy this is a reasonable, deliberate trade-off (see
-> `SECURITY_ASSESSMENT.md` §9). If you require strict service isolation, run
-> PostgreSQL/Redis as separate containers of your own and point `DATABASE_URL` /
-> `REDIS_URL` at them (dual-mode) — the app image stays the same.
+> [container and processing boundaries](docs/SECURITY_AND_PRIVACY.md#container-and-processing-boundaries)).
+> If you require strict service isolation, run PostgreSQL/Redis as separate
+> containers of your own and point `DATABASE_URL` / `REDIS_URL` at them
+> (dual-mode) — the app image stays the same.
 
 ### 15.1 Fresh install
 

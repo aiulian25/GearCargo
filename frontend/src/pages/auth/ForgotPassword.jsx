@@ -91,6 +91,7 @@ export default function ForgotPassword() {
           </div>
           <div className="flex-1">
             <input
+              aria-label={t('auth.emailAddress')}
               type="email"
               className="w-full px-4 py-3 border border-gray-200 rounded-full focus:outline-hidden focus:border-teal-500 transition-colors text-gray-700 placeholder-gray-400"
               placeholder={t('auth.emailAddress') || 'Email address'}
@@ -113,11 +114,8 @@ export default function ForgotPassword() {
         {/* Submit Button */}
         <button 
           type="submit" 
-          className="w-full text-white font-medium py-3 px-6 rounded-full transition-colors flex items-center justify-center gap-2"
-          style={{ backgroundColor: '#1a3a3a' }}
+          className="w-full text-white font-medium py-3 px-6 rounded-full transition-colors flex items-center justify-center gap-2 bg-(--color-auth-accent) hover:bg-(--color-auth-accent-hover)"
           disabled={isLoading}
-          onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#152e2e'}
-          onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#1a3a3a'}
         >
           {isLoading ? (
             <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">

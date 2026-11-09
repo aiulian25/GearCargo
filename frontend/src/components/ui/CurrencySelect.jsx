@@ -14,18 +14,20 @@
  * (models/user.py — GBP/EUR/RON/USD); any code still round-trips through the
  * ECB-based converter, so this list is a UX convenience, not a hard limit.
  */
+import { useId } from 'react'
 import { useTranslation } from '../../contexts/LanguageContext'
 
 export const CURRENCY_CODES = ['GBP', 'EUR', 'RON', 'USD']
 
 export default function CurrencySelect({ register, name = 'currency', className = '', extraCurrency }) {
   const { t } = useTranslation()
+  const id = useId()
   return (
     <div className={className}>
-      <label className="block text-xs text-(--color-text-muted) mb-1">
+      <label htmlFor={id} className="block text-xs text-(--color-text-muted) mb-1">
         {t('settings.currency') || 'Currency'}
       </label>
-      <select {...register(name)} className="input">
+      <select id={id} {...register(name)} className="input">
         {[...new Set([...CURRENCY_CODES, ...(extraCurrency ? [extraCurrency] : [])])].map((code) => (
           <option key={code} value={code}>{code}</option>
         ))}

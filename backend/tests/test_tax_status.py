@@ -6,13 +6,14 @@ the round-trip: a pending tax ranks in build_due_items as kind 'tax', and
 marking it paid via PUT removes it.
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from app import db
 from app.models import Vehicle, TaxEntry
 from app.services.due import build_due_items
+from app.utils.timeutils import utc_today
 
-TODAY = date.today()
+TODAY = utc_today()
 
 
 def _mk_vehicle(user_id, name='Focus'):

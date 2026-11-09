@@ -28,10 +28,20 @@ The browser's Flask/CSRF session store is separate from JWT sessions. If a Redis
 browser-session read fails, return 503 before CSRF/authentication and preserve
 the existing cookie. Do not invent an empty authenticated session. If its write
 fails after a view runs, replace the response with 503 and withhold new cookies.
-The durable operation may already have committed (for example, logout or refresh
-revocation); no new credentials are delivered. A fresh sign-in may be required
-when Redis recovers. Ordinary mutation retries retain their existing idempotency
-contracts; 503 does not prove that an already-executed write was rolled back.
+The durable operation may already have committed (for example, logout, refresh
+revocation or account deletion); no new credentials are delivered. A fresh
+sign-in may be required when Redis recovers. Ordinary mutation retries retain
+their existing idempotency contracts; 503 does not prove that an
+already-executed write was rolled back.
+
+The Profile account-deletion form therefore treats `AUTH_UNAVAILABLE` as an
+unknown outcome. It keeps the person signed in, says the deletion may have
+completed and asks them to refresh. After a committed deletion the account is
+gone, so the next request fails authentication and the web client signs out and
+clears this device's private data; otherwise they can try again. The form does
+not sign out locally: the same 503 can arrive before the view ran (a
+browser-session read, rate-limit store or database failure), and the browser
+would then keep a valid session while the page said it had signed out.
 
 Clients whose requests do not need browser CSRF state can continue through the
 JWT database policy if their other dependencies are available. A Redis-backed
@@ -44,7 +54,7 @@ keys, token strings or database connection details.
 Existing short-lived HMAC media links retain their separate signature/expiry and
 ownership checks; this change does not convert them into JWT sessions.
 
-The legacy `/health` remains a startup/liveness response. Use `/health/ready`
+The legacy `/health` remains a liveness response. Use `/health/ready`
 for current dependencies and `/health/live` for restart checks; see
 [health policy and bounds](HEALTH_CHECKS.md).
 

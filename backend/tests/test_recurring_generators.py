@@ -13,7 +13,7 @@ and how far they go:
   created nothing, otherwise the series stays past-due and nags forever.
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from dateutil.relativedelta import relativedelta
 
@@ -24,8 +24,9 @@ from app.services import (
     process_recurring_parking_entries,
     process_recurring_tax_entries,
 )
+from app.utils.timeutils import utc_today
 
-TODAY = date.today()
+TODAY = utc_today()
 
 
 def _vehicle(user_id, name='Qashqai'):

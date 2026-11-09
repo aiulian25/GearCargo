@@ -5,13 +5,14 @@ Rates are patched to a fixed EUR-based dict so the tests are deterministic and
 never touch the network.
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 
 from app import db
 from app.models import User, Vehicle, FuelEntry, ServiceEntry
 from app.services import currency as currency_svc
+from app.utils.timeutils import utc_today
 
 
 # EUR-based: "units of X per 1 EUR" (EUR itself is the base = 1.0, not a key).
@@ -77,7 +78,7 @@ def test_cost_analytics_converts_mixed_currencies_to_user_currency(app, client, 
         u.currency = 'GBP'
         db.session.commit()
         v = _mk_vehicle(user.id)
-        today = date.today()
+        today = utc_today()
         db.session.add(FuelEntry(user_id=user.id, vehicle_id=v.id,
                                  date=today - timedelta(days=3), amount=100,
                                  total_price=100, currency='EUR', fuel_type='petrol'))
@@ -105,7 +106,7 @@ def test_cost_analytics_flags_unconverted_when_rate_missing(app, client, user, a
         u.currency = 'GBP'
         db.session.commit()
         v = _mk_vehicle(user.id)
-        today = date.today()
+        today = utc_today()
         # JPY has no rate in FIXED_RATES -> converted must be False.
         db.session.add(FuelEntry(user_id=user.id, vehicle_id=v.id,
                                  date=today - timedelta(days=1), amount=5000,
@@ -128,7 +129,7 @@ def test_summary_converts_and_ignores_archived(app, client, user, auth_headers):
         u.currency = 'GBP'
         db.session.commit()
         v = _mk_vehicle(user.id)
-        today = date.today()
+        today = utc_today()
         db.session.add(FuelEntry(user_id=user.id, vehicle_id=v.id,
                                  date=today - timedelta(days=1), amount=100,
                                  total_price=100, currency='EUR', fuel_type='petrol'))
@@ -161,7 +162,7 @@ def test_vehicle_stats_converts_mixed_fuel_currencies(app, client, user, auth_he
         u.currency = 'GBP'
         db.session.commit()
         v = _mk_vehicle(user.id)
-        today = date.today()
+        today = utc_today()
         db.session.add(FuelEntry(user_id=user.id, vehicle_id=v.id,
                                  date=today - timedelta(days=3), amount=100,
                                  total_price=100, currency='EUR', fuel_type='petrol'))
@@ -190,7 +191,7 @@ def test_vehicle_stats_matches_summary_conversion_basis(app, client, user, auth_
         u.currency = 'GBP'
         db.session.commit()
         v = _mk_vehicle(user.id)
-        today = date.today()
+        today = utc_today()
         db.session.add(FuelEntry(user_id=user.id, vehicle_id=v.id,
                                  date=today - timedelta(days=5), amount=700,
                                  total_price=700, currency='RON', fuel_type='diesel'))
@@ -218,7 +219,7 @@ def test_vehicle_stats_converts_insurance_premiums(app, client, user, auth_heade
         u.currency = 'GBP'
         db.session.commit()
         v = _mk_vehicle(user.id)
-        today = date.today()
+        today = utc_today()
         db.session.add(InsurancePolicy(
             user_id=user.id, vehicle_id=v.id, provider='Acme', status='active',
             premium=108, currency='USD', payment_frequency='annual',
@@ -240,7 +241,7 @@ def test_fuel_stats_converts_cost_but_not_volume(app, client, user, auth_headers
         u.currency = 'GBP'
         db.session.commit()
         v = _mk_vehicle(user.id)
-        today = date.today()
+        today = utc_today()
         db.session.add(FuelEntry(user_id=user.id, vehicle_id=v.id,
                                  date=today - timedelta(days=3), amount=100,
                                  total_price=100, liters=40,
@@ -349,7 +350,7 @@ def test_service_create_defaults_to_user_currency(app, client, user, auth_header
 
     resp = client.post('/api/services', headers=auth_headers(user.id), json={
         'vehicle_id': vid, 'service_types': ['oil_change'], 'total_cost': 200,
-        'date': date.today().isoformat(),
+        'date': utc_today().isoformat(),
     })
     assert resp.status_code == 201, resp.get_data(as_text=True)
     assert resp.get_json()['entry']['currency'] == 'RON'

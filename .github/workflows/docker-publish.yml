@@ -29,10 +29,42 @@ concurrency:
 permissions:
   contents: read
   packages: write
+  actions: read   # verify-ci reads the CI workflow's result for this commit
 
 jobs:
+  verify-ci:
+    name: Require a green CI run for this commit
+    # A scheduled or manual run rebuilds a commit that already published; only
+    # a push (branch or tag) can carry new code, so only a push is gated. CI
+    # and this workflow start together on a push, so this waits for CI's
+    # verdict rather than racing it.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Wait for CI on this commit and require success
+        run: |
+          deadline=$((SECONDS + 2700))   # 45 min; the suite takes about 25
+          while :; do
+            result=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow CI \
+                       --commit "$GITHUB_SHA" --limit 1 \
+                       --json status,conclusion --jq '.[0] | "\(.status) \(.conclusion)"')
+            case "$result" in
+              "completed success") echo "CI succeeded for $GITHUB_SHA"; exit 0 ;;
+              "completed "*)       echo "CI finished with: $result"; exit 1 ;;
+              "")                  echo "No CI run for $GITHUB_SHA yet" ;;
+              *)                   echo "CI is $result" ;;
+            esac
+            [ "$SECONDS" -lt "$deadline" ] || { echo "Timed out waiting for CI"; exit 1; }
+            sleep 60
+          done
+
   publish:
     name: Build & push single image (amd64 + arm64)
+    needs: verify-ci
+    # Runs when the gate passed, or when it was skipped (schedule / dispatch).
+    if: always() && (needs.verify-ci.result == 'success' || needs.verify-ci.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

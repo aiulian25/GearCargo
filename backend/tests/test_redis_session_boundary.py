@@ -1,6 +1,7 @@
 """Real Redis browser-session failures before dispatch and after authentication."""
 import os
 from pathlib import Path
+import shutil
 import socket
 import subprocess
 import time
@@ -13,8 +14,15 @@ from app.models import User
 from app.routes import auth
 
 
+REDIS_SERVER_BINARY = 'redis-server'
+
+
 @pytest.fixture
 def redis_server(tmp_path):
+    # These tests stop and restart a server they own to prove outage recovery,
+    # so a shared service instance cannot stand in for the binary.
+    if shutil.which(REDIS_SERVER_BINARY) is None:
+        pytest.skip(f'{REDIS_SERVER_BINARY} is not on PATH; install it to run the outage tests')
     with socket.socket() as listener:
         listener.bind(('127.0.0.1',0)); port=listener.getsockname()[1]
     client=Redis(host='127.0.0.1',port=port,socket_connect_timeout=.2,socket_timeout=.2)

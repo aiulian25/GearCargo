@@ -16,6 +16,7 @@ import {
   normalizeDistanceUnit, litersToDisplayVolume,
   pricePerLiterToDisplay, volumeUnitLabel, fuelFormPayload, editedFuelTotal,
 } from '../../utils/fuelEconomy'
+import { ODOMETER_HINT_ID, announceFuelWarnings, belowLatestReadingHint } from '../../utils/fuelMeasurement'
 import ReceiptUpload from '../../components/ReceiptUpload'
 import ScanReceiptBanner from '../../components/ui/ScanReceiptBanner'
 import CurrencySelect from '../../components/ui/CurrencySelect'
@@ -60,7 +61,8 @@ export default function AddVehicleFuel() {
   const [receiptFile, setReceiptFile] = useState(null)
   const [existingAttachments, setExistingAttachments] = useState([])
   const [uploadedAttachmentId, setUploadedAttachmentId] = useState(null)
-  
+  const [enteredOdometer, setEnteredOdometer] = useState('')
+
   const { register, getValues, handleSubmit, watch, setValue, reset, formState: { errors, isDirty } } = useForm({
     defaultValues: {
       date: localDate(),
@@ -166,15 +168,18 @@ export default function AddVehicleFuel() {
         vehicle_id: parseInt(vehicleId),
       }
       
+      // Receipt saves go through the service worker and return no server body.
+      let response = null
       if (receiptFile || uploadedAttachmentId) {
         const result = await saveExpenseWithReceipt({ resource: 'fuel', editId,
           payload, config: mutation.options(), file: receiptFile, attachmentId: uploadedAttachmentId })
         if (result.receiptPending) toast(t('pwa.sync.receipts.savedPending'), { duration: 8000 })
       } else if (isEditMode) {
-        await fuelApi.update(editId, payload, mutation.options())
+        response = await fuelApi.update(editId, payload, mutation.options())
       } else {
-        await fuelApi.create(payload, mutation.options())
+        response = await fuelApi.create(payload, mutation.options())
       }
+      announceFuelWarnings(response?.data?.warnings, t, declaredDistanceUnit)
 
       if (!markSaved()) return
       navigate(`/vehicles/${vehicleId}`)
@@ -209,8 +214,12 @@ export default function AddVehicleFuel() {
     { value: 'electric', label: t('addFuel.electric') || 'Electric (kWh)' },
   ]
 
-  const distUnit = vehicle?.distance_unit ? (normalizeDistanceUnit(vehicle.distance_unit) === 'miles' ? 'mi' : 'km') : t('units.unknown')
-  
+  const declaredDistanceUnit = vehicle?.distance_unit && (normalizeDistanceUnit(vehicle.distance_unit) === 'miles' ? 'mi' : 'km')
+  const distUnit = declaredDistanceUnit || t('units.unknown')
+  // While editing, the latest reading may be this fill's own or a later fill's, so every older fill would warn; the save response still reports a regression.
+  const latestReading = isEditMode ? null : vehicle?.current_mileage
+  const odometerHint = belowLatestReadingHint(enteredOdometer, latestReading, declaredDistanceUnit, t)
+
   if (isLoading) {
     return (
       <div className="p-4">
@@ -225,7 +234,7 @@ export default function AddVehicleFuel() {
     <div className="pb-4">
       {/* Header */}
       <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
-        <button onClick={() => navigate(-1)} className="btn-icon">
+        <button aria-label={t('common.close')} onClick={() => navigate(-1)} className="btn-icon">
           {Icons.close}
         </button>
         <div className="flex-1">
@@ -267,10 +276,11 @@ export default function AddVehicleFuel() {
         <div className="card space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="date" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addFuel.date') || 'Date'} *
               </label>
               <input
+                id="date"
                 type="date"
                 {...register('date', { required: t('addFuel.dateRequired') || 'Date is required' })}
                 className="input"
@@ -278,21 +288,28 @@ export default function AddVehicleFuel() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="mileage" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addFuel.odometer') || 'Odometer'} ({distUnit}) *
               </label>
               <input
+                id="mileage"
                 type="number" inputMode="decimal"
-                {...register('mileage', { 
+                {...register('mileage', {
                   required: !isEditMode && (t('addFuel.mileageRequired') || 'Mileage is required'),
-                  min: { value: 0, message: t('addFuel.invalidMileage') || 'Invalid mileage' }
+                  min: { value: 0, message: t('addFuel.invalidMileage') || 'Invalid mileage' },
+                  // Checked on blur: every prefix of a normal reading is below the latest one.
+                  onBlur: event => setEnteredOdometer(event.target.value),
                 })}
+                aria-describedby={ODOMETER_HINT_ID}
                 className="input"
                 placeholder="0"
               />
               {errors.mileage && (
                 <p className="text-xs text-red-500 mt-1">{errors.mileage.message}</p>
               )}
+              <p id={ODOMETER_HINT_ID} role="status" aria-live="polite" className="text-xs text-amber-700 dark:text-amber-400 mt-1 empty:mt-0">
+                {odometerHint}
+              </p>
             </div>
           </div>
         </div>
@@ -305,10 +322,11 @@ export default function AddVehicleFuel() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="liters" className="block text-xs text-(--color-text-muted) mb-1">
                 {volumeUnitLabel(user, t)} *
               </label>
               <input
+                id="liters"
                 type="number" inputMode="decimal"
                 step="0.01"
                 {...register('liters', {
@@ -324,10 +342,11 @@ export default function AddVehicleFuel() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="price_per_liter" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addFuel.pricePerUnit', { unit: volumeUnitLabel(user, t) })} ({currency.symbol}) *
               </label>
               <input
+                id="price_per_liter"
                 type="number" inputMode="decimal"
                 step="0.001"
                 {...register('price_per_liter', { 
@@ -344,10 +363,11 @@ export default function AddVehicleFuel() {
           
           <div className="flex gap-3">
             <div className="flex-1">
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="total_cost" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addFuel.totalCost') || 'Total Cost'} ({currency.symbol})
               </label>
               <input
+                id="total_cost"
                 type="number" inputMode="decimal"
                 step="0.01"
                 {...register('total_cost')}
@@ -379,10 +399,10 @@ export default function AddVehicleFuel() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="fuel_type" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addFuel.fuelType') || 'Fuel Type'}
               </label>
-              <select {...register('fuel_type')} className="input">
+              <select id="fuel_type" {...register('fuel_type')} className="input">
                 {fuelTypes.map(type => (
                   <option key={type.value} value={type.value}>{type.label}</option>
                 ))}
@@ -390,10 +410,11 @@ export default function AddVehicleFuel() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="station_name" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addFuel.station') || 'Station'}
               </label>
               <input
+                id="station_name"
                 type="text"
                 {...register('station_name')}
                 className="input"
@@ -403,10 +424,11 @@ export default function AddVehicleFuel() {
           </div>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="notes" className="block text-xs text-(--color-text-muted) mb-1">
               {t('addFuel.notes') || 'Notes'}
             </label>
             <textarea
+              id="notes"
               {...register('notes')}
               className="input resize-none"
               rows={2}

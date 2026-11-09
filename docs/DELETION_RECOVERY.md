@@ -1,16 +1,17 @@
 # Permanent deletion and retryable cleanup
 
-Vehicle hard deletion and administrator account deletion use one database
-transaction for relational cleanup and `deletion_tasks`. Physical files and
-Redis data are removed only after that transaction commits. A failed database
-commit therefore leaves the original files intact. Soft deletion still archives
-the vehicle and does not queue file deletion.
+Vehicle hard deletion and account deletion (by an administrator or by the account
+owner) use one database transaction for relational cleanup and `deletion_tasks`.
+Physical files and Redis data are removed only after that transaction commits. A
+failed database commit therefore leaves the original files intact. Soft deletion
+still archives the vehicle and does not queue file deletion.
 
 The existing foreign keys remain restrictive, except for the existing session
 and report-share cascades. The service explicitly deletes owned rows in dependency
 order. A reference from another account or vehicle stops deletion with HTTP 409
 and a repair message; it is not silently cascaded. Ordinary successful responses
-remain HTTP 200 with `Vehicle deleted` or `User deleted`, plus `cleanup.state`:
+remain HTTP 200 with `Vehicle deleted`, `User deleted` or `Account deleted`, plus
+`cleanup.state`:
 
 - `completed`: committed cleanup tasks finished, or a file was retained because
   another surviving record still owns it.
@@ -22,6 +23,30 @@ A database connection failure during commit returns an error asking the user to
 refresh before retrying: the result can be ambiguous. Committed tasks remain
 recoverable independently of that HTTP response. There is no file deletion from
 uncommitted tasks.
+
+## Self-service account deletion
+
+The owner deletes their account from Profile → Security (`DELETE /api/auth/account`)
+after re-entering the password, plus a live authenticator code or an unused backup
+code while 2FA is on. Refused credentials return HTTP 403 (never 401, which the web
+client treats as an expired session) and are audited. The last active administrator
+is refused with HTTP 400. Deletion writes the same PII-free audit row as
+administrator deletion, without an actor, and the response expires both auth cookies.
+The restricted `security_audit` log also records `account_deleted` with the account's
+id and email, under its existing PII policy.
+
+Deleting an administrator's account, by themselves or by another administrator,
+also deletes every activity-log row recorded under that account, including their
+administration events (for example, the record of an account they deleted).
+
+Each attempt, refused ones included, holds the instance-wide exclusive lease from
+before authentication until its response. It gets HTTP 503 while any other request
+is running, and every request arriving while the password and backup codes are
+checked gets HTTP 503 for retry. Attempts are limited to five per hour per account.
+
+Unsent changes and receipt drafts already stored on the deleting device are not
+removed: they stay in owner-bound quarantine that only the deleted account could
+review. The form warns when the device holds any; sync or discard them first.
 
 ## Relationship policy
 
@@ -42,6 +67,7 @@ references. A regression test requires a policy review when new FKs are added.
 | `report_shares.user_id` and JSON `vehicle_ids` | Revoke shares explicitly selecting the deleted vehicle | Delete owned shares |
 | `backups.user_id`, `backup_schedules.user_id` | Keep | Delete schedules/records; queue local archive files |
 | `push_subscriptions.user_id`, `user_sessions.user_id`, `email_consent_logs.user_id`, `activity_logs.user_id` | Keep | Delete owned rows, including stored PII |
+| `passkeys.user_id` | Keep | Delete owned passkeys |
 | Blocked IP/device `target_user_id`, `blocked_by_id`, `unblocked_by_id` | Keep | Detach links and scrub target email/descriptions; preserve the instance security block |
 | Admin activity JSON `created_user_id`, `target_user_id`, `deleted_user_id` | Keep | Scrub target identifiers/email and description; keep the administrator's audit event |
 | Vehicle photo; account avatar/history | Queue selected vehicle photo | Also queue avatars, including superseded files in the account avatar directory |

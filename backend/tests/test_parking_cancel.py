@@ -1,12 +1,13 @@
 """Tests for F34 — POST /api/parking/<id>/cancel stops a recurring series."""
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from app import db
 from app.models import User, Vehicle, ParkingEntry
 from app.services import process_recurring_parking_entries
+from app.utils.timeutils import utc_today
 
-TODAY = date.today()
+TODAY = utc_today()
 
 
 def _mk_vehicle(user_id):

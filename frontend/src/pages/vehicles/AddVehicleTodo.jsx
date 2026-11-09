@@ -175,7 +175,7 @@ export default function AddVehicleTodo() {
     <div className="pb-4">
       {/* Header */}
       <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
-        <button onClick={() => navigate(-1)} className="btn-icon">
+        <button aria-label={t('common.close')} onClick={() => navigate(-1)} className="btn-icon">
           {Icons.close}
         </button>
         <div className="flex-1">
@@ -216,10 +216,11 @@ export default function AddVehicleTodo() {
         {/* Todo Details */}
         <div className="card space-y-4">
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="title" className="block text-xs text-(--color-text-muted) mb-1">
               {t('addTodo.taskTitle') || 'Task Title'} *
             </label>
             <input
+              id="title"
               type="text"
               {...register('title', { required: t('addTodo.titleRequired') || 'Title is required' })}
               className="input"
@@ -231,10 +232,11 @@ export default function AddVehicleTodo() {
           </div>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="description" className="block text-xs text-(--color-text-muted) mb-1">
               {t('addTodo.description') || 'Description'}
             </label>
             <textarea
+              id="description"
               {...register('description')}
               className="input resize-none"
               rows={3}
@@ -247,10 +249,10 @@ export default function AddVehicleTodo() {
         <div className="card space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="priority" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addTodo.priority') || 'Priority'}
               </label>
-              <select {...register('priority')} className="input">
+              <select id="priority" {...register('priority')} className="input">
                 {priorities.map(p => (
                   <option key={p.value} value={p.value}>{p.label}</option>
                 ))}
@@ -258,10 +260,11 @@ export default function AddVehicleTodo() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="due_date" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addTodo.dueDate') || 'Due Date'}
               </label>
               <input
+                id="due_date"
                 type="date"
                 {...register('due_date')}
                 className="input"
@@ -272,10 +275,10 @@ export default function AddVehicleTodo() {
           {/* F15: Repeats — a recurring todo respawns its next occurrence on
               completion. Needs a due date to advance from. */}
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="repeat" className="block text-xs text-(--color-text-muted) mb-1">
               {t('todo.repeats') || 'Repeats'}
             </label>
-            <select {...register('repeat')} className="input">
+            <select id="repeat" {...register('repeat')} className="input">
               <option value="">{t('addReminder.noRepeat') || 'Does not repeat'}</option>
               <option value="weekly">{t('recurring.weekly') || 'Weekly'}</option>
               <option value="monthly">{t('recurring.monthly') || 'Monthly'}</option>

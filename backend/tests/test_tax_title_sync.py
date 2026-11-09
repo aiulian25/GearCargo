@@ -10,13 +10,14 @@ The expenses table is NOT affected: VehicleExpenses.jsx renders
 `entry.tax_type || entry.title`, type first.
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from app import db
 from app.models import Vehicle, TaxEntry
 from app.services.due import build_due_items
+from app.utils.timeutils import utc_today
 
-TODAY = date.today()
+TODAY = utc_today()
 TAXES_URL = '/api/taxes'
 
 

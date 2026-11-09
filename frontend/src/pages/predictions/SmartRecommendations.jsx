@@ -866,10 +866,11 @@ export default function SmartRecommendations() {
 
               {/* Notes — optional */}
               <div>
-                <label className="block text-sm font-medium mb-1.5">
+                <label htmlFor="rec-mark-done-notes" className="block text-sm font-medium mb-1.5">
                   {t('vehicleHealth.markDoneNotes') || 'Notes (optional)'}
                 </label>
                 <textarea
+                  id="rec-mark-done-notes"
                   rows={2}
                   value={recForm.notes}
                   onChange={(e) => setRecForm(prev => ({ ...prev, notes: e.target.value }))}

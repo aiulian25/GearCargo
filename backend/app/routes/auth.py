@@ -567,8 +567,8 @@ def get_real_client_ip():
     S11 fix: the previous implementation read X-Forwarded-For / X-Real-IP
     directly from the request, making it trivially spoofable — any client
     can inject arbitrary values into those headers. The correct approach is
-    to configure ProxyFix in create_app() (done in __init__.py) with
-    x_for=TRUSTED_PROXY_COUNT and then read request.remote_addr here.
+    to let app/services/proxy_trust.py settle request.remote_addr per
+    TRUSTED_PROXY_COUNT and then read request.remote_addr here.
     ProxyFix rewrites remote_addr to the nth-from-right hop in XFF, so only
     the trusted-proxy chain can influence the value; clients cannot.
     """
@@ -680,6 +680,12 @@ def get_known_devices_key(user_id):
     return f'known_devices:{user_id}'
 
 
+# iPhone and iPad user agents parsed as macOS until GC-102. Their stored
+# known-device signatures keep that family, so no false new-device alert follows;
+# device_type still tells them apart from Macs.
+FINGERPRINT_OS_FAMILIES = {'iOS': 'macOS'}
+
+
 def get_device_fingerprint():
     """Generate a *stable* device fingerprint for new-device login alerts (S04).
 
@@ -702,6 +708,7 @@ def get_device_fingerprint():
     # Parse to families WITHOUT version numbers (parse_user_agent extracts them
     # but we deliberately ignore *_version fields here for stability).
     info = parse_user_agent(user_agent) if user_agent else {}
+    operating_system = info.get('os')
 
     accept_language = request.headers.get('Accept-Language', '')
     primary_lang = accept_language.split(',')[0].strip().lower() if accept_language else ''
@@ -709,7 +716,7 @@ def get_device_fingerprint():
     signature = '|'.join([
         info.get('device_type') or 'unknown',
         info.get('browser') or 'unknown',
-        info.get('os') or 'unknown',
+        FINGERPRINT_OS_FAMILIES.get(operating_system, operating_system) or 'unknown',
         primary_lang or 'unknown',
     ])
     fingerprint = hashlib.sha256(signature.encode('utf-8')).hexdigest()[:16]
@@ -889,14 +896,31 @@ def _db_revoke_session(user_id, jti):
         _session_unavailable('revocation', exc)
 
 
-def _db_revoke_all_sessions(user_id):
+def _db_revoke_all_sessions(user_id, *, except_jti=None):
     from app.models import UserSession
     try:
-        UserSession.query.filter_by(user_id=user_id, revoked=False).update(
+        sessions = UserSession.query.filter_by(user_id=user_id, revoked=False)
+        if except_jti:
+            sessions = sessions.filter(UserSession.jti != except_jti)
+        revoked_count = sessions.update(
             {'revoked': True, 'revoked_at': _utcnow_naive()}, synchronize_session=False)
         db.session.commit()
+        return revoked_count
     except SQLAlchemyError as exc:
         _session_unavailable('bulk revocation', exc)
+
+
+def _db_live_sessions(user_id):
+    """The user's sessions that still authorize requests, newest first."""
+    from app.models import UserSession
+    try:
+        return UserSession.query.filter(
+            UserSession.user_id == user_id,
+            UserSession.revoked.is_(False),
+            UserSession.absolute_expires_at > _utcnow_naive(),
+        ).order_by(UserSession.created_at.desc(), UserSession.id.desc()).all()
+    except SQLAlchemyError as exc:
+        _session_unavailable('session listing', exc)
 
 
 def _db_prune_user_sessions(user_id):
@@ -1234,6 +1258,7 @@ def token_required(f):
             if domain_policy_error:
                 return domain_policy_error
             g.offline_identity = offline_identity(current_user, data)
+            g.current_session_jti = token_jti
             if request.method in {'POST', 'PUT', 'PATCH', 'DELETE'} and not offline_headers_match(request.headers, g.offline_identity):
                 return jsonify({'error': 'This offline change belongs to another sign-in session.',
                                 'code': 'OFFLINE_IDENTITY_MISMATCH'}), 409
@@ -1611,6 +1636,12 @@ def parse_user_agent(ua_string):
             result['os_version'] = '8.1'
         elif 'windows nt 6.1' in ua_lower:
             result['os_version'] = '7'
+    # iPhone and iPad user agents also say "like Mac OS X", so they are matched first.
+    elif 'iphone' in ua_lower or 'ipad' in ua_lower:
+        result['os'] = 'iOS'
+        match = re.search(r'os[/\s]?([\d_]+)', ua_lower)
+        if match:
+            result['os_version'] = match.group(1).replace('_', '.')
     elif 'mac os x' in ua_lower or 'macintosh' in ua_lower:
         result['os'] = 'macOS'
         match = re.search(r'mac os x[/\s]?([\d_]+)', ua_lower)
@@ -1621,11 +1652,6 @@ def parse_user_agent(ua_string):
         match = re.search(r'android[/\s]?([\d.]+)', ua_lower)
         if match:
             result['os_version'] = match.group(1)
-    elif 'iphone' in ua_lower or 'ipad' in ua_lower:
-        result['os'] = 'iOS'
-        match = re.search(r'os[/\s]?([\d_]+)', ua_lower)
-        if match:
-            result['os_version'] = match.group(1).replace('_', '.')
     elif 'linux' in ua_lower:
         result['os'] = 'Linux'
         if 'ubuntu' in ua_lower:
@@ -2134,6 +2160,144 @@ def logout(current_user):
     resp = jsonify({'message': 'Logged out successfully'})
     _clear_auth_cookies(resp)
     return resp
+
+
+# ---------------------------------------------------------------------------
+# Signed-in devices and self-service account deletion (GC-102)
+#
+# Credential refusals are 403, not 401: the web client treats every 401 as an
+# expired session and would sign the person out over a mistyped password.
+# ---------------------------------------------------------------------------
+
+MESSAGE_SESSION_CHANGED = 'profile.sessionChanged'
+MESSAGE_DELETE_PASSWORD_INVALID = 'profile.deleteAccountPasswordInvalid'
+MESSAGE_DELETE_CODE_INVALID = 'profile.deleteAccountCodeInvalid'
+MESSAGE_DELETE_LAST_ADMIN = 'profile.deleteAccountLastAdmin'
+MESSAGE_DELETE_UNCONFIRMED = 'profile.deleteAccountUnconfirmed'
+MESSAGE_DELETE_CONFLICT = 'profile.deleteAccountConflict'
+EVENT_SESSION_REVOKED = 'session_revoked'
+EVENT_OTHER_SESSIONS_REVOKED = 'other_sessions_revoked'
+EVENT_ACCOUNT_DELETION_DENIED = 'account_deletion_denied'
+
+
+def _session_summary(session, current_jti):
+    """One device in the session list: never its jti, IP or raw user agent."""
+    device = parse_user_agent(session.user_agent)
+    return {
+        'id': session.id,
+        'browser': device.get('browser'),
+        'os': device.get('os'),
+        # Refresh replaces the row, so this is the latest sign-in or refresh.
+        'last_active_at': isoformat_utc(session.created_at),
+        'expires_at': isoformat_utc(session.absolute_expires_at),
+        'is_current': session.jti == current_jti,
+    }
+
+
+@auth_bp.route('/sessions', methods=['GET'])
+@token_required
+def list_sessions(current_user):
+    """The caller's signed-in devices."""
+    return jsonify({'sessions': [_session_summary(session, g.current_session_jti)
+                                 for session in _db_live_sessions(current_user.id)]})
+
+
+@auth_bp.route('/sessions/<int:session_id>', methods=['DELETE'])
+@token_required
+def revoke_session(current_user, session_id):
+    """Sign out one of the caller's devices."""
+    target = next((session for session in _db_live_sessions(current_user.id) if session.id == session_id), None)
+    if target is None:
+        # A refresh replaces the row, so an id from a loaded list can already be stale.
+        return jsonify({'error': 'Session not found', 'message_key': MESSAGE_SESSION_CHANGED}), 404
+    jti = target.jti
+    _db_revoke_session(current_user.id, jti)
+    if redis_client:
+        try:
+            redis_client.delete(f'session:{current_user.id}:{jti}')
+        except Exception:
+            _warn_redis_degraded('session revoke cache cleanup')
+    ActivityLog.log(
+        event_type=EVENT_SESSION_REVOKED,
+        event_category='auth',
+        user_id=current_user.id,
+        description='Signed out one device',
+        success=True,
+    )
+    security_audit.session_invalidated(current_user.id, current_user.email, 1)
+    return jsonify({'message': 'Session signed out'})
+
+
+@auth_bp.route('/sessions/revoke-others', methods=['POST'])
+@token_required
+def revoke_other_sessions(current_user):
+    """Sign out every other device; this one stays signed in."""
+    revoked_count = _db_revoke_all_sessions(current_user.id, except_jti=g.current_session_jti)
+    # Cached copies never authorize (GC-026), so clearing this device's copy too is harmless.
+    _clear_cached_sessions(current_user.id)
+    ActivityLog.log(
+        event_type=EVENT_OTHER_SESSIONS_REVOKED,
+        event_category='auth',
+        user_id=current_user.id,
+        description='Signed out other devices',
+        success=True,
+        extra_data={'revoked': revoked_count},
+    )
+    security_audit.session_invalidated(current_user.id, current_user.email, revoked_count)
+    return jsonify({'message': 'Other devices signed out', 'revoked': revoked_count})
+
+
+def _refuse_account_deletion(user, error, message_key):
+    ActivityLog.log(
+        event_type=EVENT_ACCOUNT_DELETION_DENIED,
+        event_category='auth',
+        user_id=user.id,
+        description=f'Account deletion denied for: {user.email}',
+        success=False,
+    )
+    return jsonify({'error': error, 'message_key': message_key}), 403
+
+
+@auth_bp.route('/account', methods=['DELETE'])
+@token_required
+def delete_account(current_user):
+    """Permanently delete the caller's own account.
+
+    Requires the current password, plus a live TOTP or a backup code while 2FA
+    is on. The last active administrator cannot delete their own account.
+    """
+    body = request.get_json(silent=True)
+    data = body if isinstance(body, dict) else {}
+    password = data.get('password')
+    last_active_admin = current_user.is_admin and User.query.filter(User.id != current_user.id).filter_by(
+        is_admin=True, is_active=True).first() is None
+    if last_active_admin:
+        return jsonify({'error': 'The last active administrator cannot delete their own account',
+                        'message_key': MESSAGE_DELETE_LAST_ADMIN}), 400
+    if not password or not current_user.check_password(password):
+        return _refuse_account_deletion(current_user, 'Password verification failed', MESSAGE_DELETE_PASSWORD_INVALID)
+    if current_user.two_factor_enabled and not _second_factor_valid(current_user, data):
+        return _refuse_account_deletion(current_user, 'Invalid or missing 2FA code', MESSAGE_DELETE_CODE_INVALID)
+
+    account_id, account_email = current_user.id, current_user.email
+    from app.services.deletion import DeletionConflict, delete_owned_data, finish_cleanup
+    try:
+        # No actor: activity_logs.user_id is a plain FK, so an audit row naming
+        # the deleted account would block its deletion.
+        operation_id = delete_owned_data(account_id)
+    except DeletionConflict as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc), 'message_key': MESSAGE_DELETE_CONFLICT}), 409
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception('Account deletion could not be confirmed')
+        return jsonify({'error': 'Could not confirm account deletion. Refresh before retrying; files are retained unless deletion committed.',
+                        'message_key': MESSAGE_DELETE_UNCONFIRMED}), 500
+
+    # The database keeps no identity of a deleted account; the restricted security log does.
+    security_audit.account_deleted(account_id, account_email)
+    response = jsonify({'message': 'Account deleted', 'cleanup': finish_cleanup(operation_id)})
+    return _clear_auth_cookies(response)
 
 
 @auth_bp.route('/me', methods=['GET'])
@@ -2650,6 +2814,27 @@ def verify_2fa(current_user):
     })
 
 
+def _second_factor_valid(user, data):
+    """A live TOTP code or an unused backup code; never says which one failed.
+
+    The matching backup code is not consumed: both callers end it anyway
+    (disabling 2FA wipes every code, account deletion removes the account).
+    """
+    totp_code = data.get('totp_code')
+    # Live TOTP first (valid_window=1 tolerates minor clock skew, matching the
+    # other sensitive-action gates in this module).
+    if totp_code and user.two_factor_secret and pyotp.TOTP(_get_totp_secret(user)).verify(
+            totp_code, valid_window=1):
+        return True
+    # Same normalization and hash loop as login. Skipped while empty: every
+    # check is a deliberately slow hash.
+    backup_code = str(data.get('backup_code') or '').upper().replace('-', '').replace(' ', '')
+    if not backup_code or not user.two_factor_backup_codes:
+        return False
+    from werkzeug.security import check_password_hash
+    return any(check_password_hash(hashed_code, backup_code) for hashed_code in user.two_factor_backup_codes)
+
+
 @auth_bp.route('/2fa/disable', methods=['POST'])
 @token_required
 def disable_2fa(current_user):
@@ -2670,41 +2855,15 @@ def disable_2fa(current_user):
 
     # Second-factor challenge. Only meaningful while 2FA is actually enabled; if
     # it is already off, this endpoint stays an idempotent no-op.
-    if current_user.two_factor_enabled:
-        totp_code = data.get('totp_code')
-        backup_code = (
-            data.get('backup_code', '').upper().replace('-', '').replace(' ', '')
-            if data.get('backup_code') else None
+    if current_user.two_factor_enabled and not _second_factor_valid(current_user, data):
+        ActivityLog.log(
+            event_type='2fa_disable_denied',
+            event_category='auth',
+            user_id=current_user.id,
+            description=f'2FA disable denied (invalid/missing second factor) for: {current_user.email}',
+            success=False
         )
-
-        code_valid = False
-
-        # Live TOTP first (valid_window=1 tolerates minor clock skew, matching
-        # the other sensitive-action gates in this module).
-        if totp_code and current_user.two_factor_secret:
-            code_valid = pyotp.TOTP(_get_totp_secret(current_user)).verify(
-                totp_code, valid_window=1
-            )
-
-        # Fall back to a one-time backup code (same hash loop as login). No need
-        # to persist the "remaining" set here — every backup code is wiped below.
-        if not code_valid and backup_code and current_user.two_factor_backup_codes:
-            from werkzeug.security import check_password_hash
-            for hashed_code in current_user.two_factor_backup_codes:
-                if check_password_hash(hashed_code, backup_code):
-                    code_valid = True
-                    break
-
-        if not code_valid:
-            # Do not reveal which factor failed. Audit the rejected attempt.
-            ActivityLog.log(
-                event_type='2fa_disable_denied',
-                event_category='auth',
-                user_id=current_user.id,
-                description=f'2FA disable denied (invalid/missing second factor) for: {current_user.email}',
-                success=False
-            )
-            return jsonify({'error': 'Invalid or missing 2FA code'}), 401
+        return jsonify({'error': 'Invalid or missing 2FA code'}), 401
 
     current_user.two_factor_enabled = False
     current_user.two_factor_secret = None

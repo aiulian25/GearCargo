@@ -83,7 +83,7 @@ try {
   await act('Mark confirmed', '/api/appointments/1/confirm')
   await act('Record drop-off', '/api/appointments/1/dropoff')
   await page.getByRole('button', { name: 'Complete visit', exact: true }).click()
-  await page.getByLabel('Workshop invoice · 2026-11-01 · 230 GBP').check()
+  await page.getByLabel('Workshop invoice · 2026-11-01 · £230.00').check()
   await page.getByLabel('Inspect brakes', { exact: true }).check()
   const [completed] = await Promise.all([page.waitForResponse(r => r.url().endsWith('/api/appointments/1/complete')), page.getByRole('button', { name: 'Complete visit', exact: true }).click()])
   assert.equal(completed.status(), 200, await completed.text())

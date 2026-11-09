@@ -12,7 +12,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useTranslation } from '../../contexts/LanguageContext'
+import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { searchApi } from '../../services/api'
 
 // ── SVG icon helpers ─────────────────────────────────────────────────────────
@@ -100,19 +100,10 @@ const TYPE_COLOUR = {
   parking: 'text-blue-400',
 }
 
-// ── Helper: format currency amount ───────────────────────────────────────────
-function formatAmount(amount, currency) {
-  if (!amount) return null
-  return new Intl.NumberFormat(undefined, {
-    style: 'currency',
-    currency: currency || 'EUR',
-    maximumFractionDigits: 2,
-  }).format(amount)
-}
-
 // ── Main component ────────────────────────────────────────────────────────────
 export default function GlobalSearch({ isOpen, onClose }) {
   const { t } = useTranslation()
+  const { formatCurrency } = useCurrency()
   const navigate = useNavigate()
   const inputRef = useRef(null)
   const timerRef = useRef(null)
@@ -229,6 +220,7 @@ export default function GlobalSearch({ isOpen, onClose }) {
             {loading ? <SpinnerIcon /> : <SearchIcon />}
           </span>
           <input
+            aria-label={t('search.title')}
             ref={inputRef}
             type="search"
             value={query}
@@ -328,7 +320,7 @@ export default function GlobalSearch({ isOpen, onClose }) {
                         <p className="text-xs text-(--color-text-muted) truncate">
                           {e.vehicle_name && `${e.vehicle_name} · `}
                           {e.date}
-                          {e.amount && ` · ${formatAmount(e.amount, e.currency)}`}
+                          {e.amount && ` · ${formatCurrency(e.amount, { currency: e.currency })}`}
                         </p>
                       </div>
                     </button>

@@ -1,6 +1,4 @@
 import { notifyPendingCleanup } from '../utils/deletionFeedback'
-import { getBoundIdentity, requireCurrentIdentity } from '../utils/offlineIdentity'
-import { sameIdentity } from '../utils/offlinePolicy'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
@@ -9,9 +7,14 @@ import { useCurrency, useTranslation } from '../contexts/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 import { isOfflineWriteError, announceOfflineSaved } from '../utils/offlineWrite'
 import { useDateFormat } from '../hooks/useDateFormat'
+import { useUserLocation } from '../hooks/useUserLocation'
 import ServiceUnavailable from '../components/ui/ServiceUnavailable'
 import { useConfirm } from '../components/ui/ConfirmDialog'
 import ChatModal from '../components/chat/ChatModal'
+import LocationPrimingModal from '../components/PWA/LocationPrimingModal'
+import { FALLBACK_COUNTRY } from '../config/location'
+import { countryName } from '../utils/countryName'
+import { UNIT_PRICE_FRACTION_DIGITS } from '../utils/currencyFormat'
 
 // F25 — tiny dependency-free sparkline for the weekly price history.
 function Sparkline({ points }) {
@@ -42,10 +45,8 @@ function fuelTrend(history, type) {
 }
 
 // Fuel Prices Widget
-function FuelPricesWidget({ fuelPrices, history, currency, t, onRefresh, isRefreshing, lastAutoUpdate, error, onRetry, retrying, onDismiss }) {
+function FuelPricesWidget({ fuelPrices, history, formatCurrency, t, onRefresh, isRefreshing, lastAutoUpdate, error, onRetry, retrying, onDismiss, onUseLocation, locationUnavailable, headingRef }) {
   const { formatDateShort } = useDateFormat()
-  // Use currency from fuel prices API (based on detected country) or fallback to user's currency
-  const fuelCurrency = fuelPrices?.currency || currency.symbol
 
   // Live "Updated X min ago" label — ticks every 30 s
   const [timeAgoLabel, setTimeAgoLabel] = useState(null)
@@ -94,7 +95,7 @@ function FuelPricesWidget({ fuelPrices, history, currency, t, onRefresh, isRefre
       <div className="flex items-center justify-between px-4 py-3 border-b border-(--color-border)">
         <div className="flex items-center gap-2">
           <span className="text-lg">⛽</span>
-          <h3 className="text-sm font-semibold">{t('fuelPrices.title')}</h3>
+          <h3 ref={headingRef} tabIndex={-1} className="text-sm font-semibold">{t('fuelPrices.title')}</h3>
           {fuelPrices?.country && (
             <span className="text-xs px-1.5 py-0.5 bg-(--color-bg-tertiary) rounded-sm text-(--color-text-muted)">
               {fuelPrices.country}
@@ -126,9 +127,25 @@ function FuelPricesWidget({ fuelPrices, history, currency, t, onRefresh, isRefre
           Detected location sits on the left; the three fuel types spread
           across the remaining width with hairline dividers between them. */}
       <div className="px-4 py-4 flex flex-col gap-4 lg:flex-row lg:items-center">
-        <p className="text-sm text-(--color-text-secondary) lg:w-52 lg:shrink-0 truncate">
-          {fuelPrices?.location || t('common.loading') || 'Loading...'}
-        </p>
+        <div className="lg:w-52 lg:shrink-0 min-w-0">
+          <div role="status" aria-live="polite">
+            <p className="text-sm text-(--color-text-secondary) truncate">
+              {fuelPrices?.location || t('common.loading') || 'Loading...'}
+            </p>
+            {locationUnavailable && (
+              <p className="mt-0.5 text-xs text-(--color-text-muted)">{t('locationConsent.unavailable')}</p>
+            )}
+          </div>
+          {onUseLocation && (
+            <button
+              type="button"
+              onClick={onUseLocation}
+              className="mt-0.5 text-xs font-medium text-(--color-accent) hover:underline rounded-sm focus:outline-hidden focus:ring-2 focus:ring-(--color-accent)"
+            >
+              {t('locationConsent.allow')}
+            </button>
+          )}
+        </div>
 
         <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-(--color-border)">
           {[
@@ -147,7 +164,7 @@ function FuelPricesWidget({ fuelPrices, history, currency, t, onRefresh, isRefre
                   </span>
                   <span className="flex items-center gap-1.5 whitespace-nowrap">
                     <span className="font-semibold text-(--color-text-primary) tabular-nums">
-                      {fuelCurrency}{price != null ? price.toFixed(2) : '--'}/L
+                      {price != null ? formatCurrency(price, { currency: fuelPrices?.currency_code, decimals: UNIT_PRICE_FRACTION_DIGITS }) : '--'}/L
                     </span>
                     {price != null && (
                       <svg className="w-3.5 h-3.5 text-(--color-text-muted)" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -275,7 +292,7 @@ function RecentTransactions({ transactions, loading, error, t, formatCurrency })
                   </div>
                   <div className="shrink-0 text-right">
                     <p className="text-sm font-semibold text-(--color-text-primary) tabular-nums whitespace-nowrap">
-                      {tx.cost != null ? formatCurrency(tx.cost) : '—'}
+                      {tx.cost != null ? formatCurrency(tx.cost, { currency: tx.currency }) : '—'}
                     </p>
                     {tx.date && (
                       <p className="text-xs text-(--color-text-muted) tabular-nums whitespace-nowrap">
@@ -490,8 +507,8 @@ function DueSoon({ items, loading, error, t, onDismiss }) {
 export default function Dashboard() {
   const { formatDate } = useDateFormat()
   const navigate = useNavigate()
-  const { currency, setCurrencyFromCountry, formatCurrency } = useCurrency()
-  const { t } = useTranslation()
+  const { setCurrencyFromCountry, formatCurrency } = useCurrency()
+  const { t, language } = useTranslation()
   const { user } = useAuth()
   const confirm = useConfirm()
   const [vehicles, setVehicles] = useState([])
@@ -536,7 +553,17 @@ export default function Dashboard() {
   const [vehiclesError, setVehiclesError] = useState(false)
   const [retryingVehicles, setRetryingVehicles] = useState(false)
   const vehiclesRetryRef = useRef({ attempts: 0, timer: null })
-  const [userLocation, setUserLocation] = useState(null)
+  const { userLocation, locationUnavailable, consentPending, allowLocation, deferLocation, askForLocation } = useUserLocation(user)
+  const fuelHeadingRef = useRef(null)
+  // Agreeing removes the widget's "Use my location" button, so focus cannot go back to it if it opened the dialog.
+  const confirmLocation = () => {
+    allowLocation()
+    fuelHeadingRef.current?.focus()
+  }
+  // The server uses these when there are no coordinates or its lookup is skipped, as VehicleDetail does,
+  // so the label always names the country whose prices are shown.
+  const fallbackCountry = user?.country_preference || FALLBACK_COUNTRY
+  const fallbackLabel = countryName(fallbackCountry, language)
 
   // Drag and drop state
   const [draggedVehicle, setDraggedVehicle] = useState(null)
@@ -546,75 +573,7 @@ export default function Dashboard() {
   
   // Insurance state
   const [vehicleInsurance, setVehicleInsurance] = useState({}) // { vehicleId: { active: bool, expiring: policy|null } }
-  
-  // Get user location - checks user's saved location first, then auto-detect
-  useEffect(() => {
-    let cancelled = false
-    const identity = getBoundIdentity()
-    // If user has a manually set location and auto-detect is disabled, use it
-    if (user && !user.location_auto_detect && user.location_lat && user.location_lon) {
-      setUserLocation({
-        lat: user.location_lat,
-        lon: user.location_lon,
-        name: user.location_name,
-        saved: true
-      })
-      return
-    }
-    
-    // Try to use cached location from localStorage for faster load
-    const cachedLocation = localStorage.getItem('gearcargo_user_location')
-    if (cachedLocation) {
-      try {
-        const cached = JSON.parse(cachedLocation)
-        // Use cached if less than 10 minutes old
-        if (sameIdentity(cached.identity, identity) && cached.timestamp && Date.now() - cached.timestamp < 600000) {
-          setUserLocation({ lat: cached.lat, lon: cached.lon, cached: true })
-        }
-      } catch (e) {
-        localStorage.removeItem('gearcargo_user_location')
-      }
-    }
-    
-    // Auto-detect location — only available over HTTPS or localhost
-    if ('geolocation' in navigator && window.isSecureContext) {
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          try { await requireCurrentIdentity(identity) } catch { return }
-          if (cancelled || !sameIdentity(identity, getBoundIdentity())) return
-          const loc = {
-            lat: position.coords.latitude,
-            lon: position.coords.longitude,
-            accuracy: position.coords.accuracy // meters
-          }
-          setUserLocation(loc)
-          // Cache the location
-          localStorage.setItem('gearcargo_user_location', JSON.stringify({
-            lat: loc.lat,
-            lon: loc.lon,
-            identity,
-            timestamp: Date.now()
-          }))
-        },
-        (error) => {
-          if (cancelled || !sameIdentity(identity, getBoundIdentity())) return
-          console.warn('Geolocation error:', error)
-          // Default to London center when geolocation unavailable
-          setUserLocation({ lat: 51.5074, lon: -0.1278, default: true })
-        },
-        { 
-          enableHighAccuracy: true,  // Use GPS for better accuracy
-          timeout: 10000,             // Increase timeout for GPS
-          maximumAge: 300000          // 5 minutes cache
-        }
-      )
-    } else {
-      // Default to London center when geolocation not supported
-      setUserLocation({ lat: 51.5074, lon: -0.1278, default: true })
-    }
-    return () => { cancelled = true }
-  }, [user])
-  
+
   // Fetch vehicles. Returns true on success so the caller can schedule a
   // backoff retry on failure. A failed load sets vehiclesError (NOT an empty
   // list), so the render shows a "starting up / try again" state rather than
@@ -803,65 +762,33 @@ export default function Dashboard() {
     return () => { cancelled = true }
   }, [])
 
-  // Fetch fuel prices for the user's detected location
+  // The server turns coordinates into a country and place name, so the browser never calls a geocoder.
   useEffect(() => {
     if (!userLocation) return
-    
-    const fetchExternalData = async () => {
-      try {
-        let locationName = 'London, United Kingdom'
-        let countryCode = 'UK'
-        try {
-          const geoRes = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${userLocation.lat}&lon=${userLocation.lon}&format=json&addressdetails=1&zoom=18`,
-            { headers: { 'User-Agent': 'GearCargo/1.0' } }
-          )
-          const geoData = await geoRes.json()
-          const addr = geoData.address || {}
-          // Check address fields from most specific to least specific
-          // Nominatim returns different fields based on location type
-          locationName = addr.suburb || 
-                        addr.hamlet || 
-                        addr.village || 
-                        addr.town || 
-                        addr.city || 
-                        addr.municipality ||
-                        addr.district ||
-                        addr.county ||
-                        addr.state ||
-                        'Unknown'
-          locationName += ', ' + (addr.country || 'Unknown')
-          // Get country code for fuel prices (e.g., 'gb', 'de', 'fr')
-          countryCode = (addr.country_code || 'uk').toUpperCase()
-          // Update app currency to match the user's physical location
-          setCurrencyFromCountry(countryCode)
-        } catch (e) {
-          console.warn('Geocoding failed:', e)
-        }
-        
-        // Set resolved location up front so retry handlers work even if the
-        // fuel-price service fails on the first attempt.
-        setResolvedLocation({ countryCode, locationName, lat: userLocation.lat, lon: userLocation.lon })
+    const { lat, lon } = userLocation
+    // Set resolved location up front so retry handlers work even if the
+    // fuel-price service fails on the first attempt.
+    setResolvedLocation({ countryCode: fallbackCountry, locationName: fallbackLabel, lat, lon })
 
-        try {
-          const fuelRes = await externalApi.getFuelPrices(countryCode, locationName, userLocation.lat, userLocation.lon)
-          setFuelPrices(fuelRes.data)
-          setFuelError(false)
-          const now = Date.now()
-          fuelPriceFetchedAtRef.current = now
-          setFuelPriceFetchedAt(now)
-        } catch (fuelErr) {
-          console.error('Fuel price fetch failed:', fuelErr)
-          setFuelError(true)
-        }
+    const fetchFuelPrices = async () => {
+      try {
+        const { data } = await externalApi.getFuelPrices(fallbackCountry, fallbackLabel, lat, lon)
+        setFuelPrices(data)
+        setFuelError(false)
+        setResolvedLocation({ countryCode: data.country, locationName: data.location, lat, lon })
+        // Only a country the server actually looked up says where the user is.
+        if (data.country_detected) setCurrencyFromCountry(data.country)
+        const now = Date.now()
+        fuelPriceFetchedAtRef.current = now
+        setFuelPriceFetchedAt(now)
       } catch (error) {
-        console.error('Failed to fetch external data:', error)
+        console.error('Fuel price fetch failed:', error)
         setFuelError(true)
       }
     }
 
-    fetchExternalData()
-  }, [userLocation])
+    fetchFuelPrices()
+  }, [userLocation, fallbackCountry, fallbackLabel, setCurrencyFromCountry])
 
   // Retry just the fuel-price service after a failure.
   const retryFuel = async () => {
@@ -1214,14 +1141,18 @@ export default function Dashboard() {
       )}
 
       {aiEnabled && <ChatModal open={chatOpen} onClose={() => setChatOpen(false)} vehicles={vehicles} />}
+      <LocationPrimingModal isOpen={consentPending} onConfirm={confirmLocation} onClose={deferLocation} />
 
       {/* Fuel Prices Widget — full-width banner */}
       <div className="mb-6">
-        <FuelPricesWidget fuelPrices={fuelPrices} history={fuelHistory} currency={currency} t={t} onRefresh={handleRefreshFuelPrices} isRefreshing={isRefreshingFuel} lastAutoUpdate={fuelPriceFetchedAt}
+        <FuelPricesWidget fuelPrices={fuelPrices} history={fuelHistory} formatCurrency={formatCurrency} t={t} onRefresh={handleRefreshFuelPrices} isRefreshing={isRefreshingFuel} lastAutoUpdate={fuelPriceFetchedAt}
           error={fuelError && !fuelDismissed}
           onRetry={retryFuel}
           retrying={retryingFuel}
           onDismiss={() => setFuelDismissed(true)}
+          onUseLocation={askForLocation}
+          locationUnavailable={locationUnavailable}
+          headingRef={fuelHeadingRef}
         />
       </div>
 
@@ -1446,23 +1377,23 @@ export default function Dashboard() {
                       <button 
                         onClick={(e) => handleEditVehicle(e, vehicle.id)}
                         className="w-8 h-8 rounded-lg bg-black/60 backdrop-blur-md flex items-center justify-center text-white hover:bg-(--color-accent) transition-colors"
-                        title="Edit"
+                        title={t('common.edit')}
                       >
-                        <span className="material-icons-outlined text-sm">edit</span>
+                        <span aria-hidden="true" className="material-icons-outlined text-sm">edit</span>
                       </button>
                       <button 
                         onClick={(e) => handleViewDetails(e, vehicle.id)}
                         className="w-8 h-8 rounded-lg bg-black/60 backdrop-blur-md flex items-center justify-center text-white hover:bg-(--color-accent) transition-colors"
-                        title="Details"
+                        title={t('common.details')}
                       >
-                        <span className="material-icons-outlined text-sm">list</span>
+                        <span aria-hidden="true" className="material-icons-outlined text-sm">list</span>
                       </button>
                       <button 
                         onClick={(e) => handleDeleteVehicle(e, vehicle.id)}
                         className="w-8 h-8 rounded-lg bg-black/60 backdrop-blur-md flex items-center justify-center text-white hover:bg-red-500 transition-colors"
-                        title="Delete"
+                        title={t('common.delete')}
                       >
-                        <span className="material-icons-outlined text-sm">delete</span>
+                        <span aria-hidden="true" className="material-icons-outlined text-sm">delete</span>
                       </button>
                     </div>
                     

@@ -5,6 +5,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { vehicleApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
+import { UNIT_PRICE_FRACTION_DIGITS } from '../../utils/currencyFormat'
 
 // SVG Icons
 const Icons = {
@@ -269,7 +270,7 @@ export default function VehicleCharts() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { t } = useTranslation()
-  const { currency, language } = useCurrency()
+  const { language, formatCurrency } = useCurrency()
 
   const [vehicle, setVehicle] = useState(null)
   const [analytics, setAnalytics] = useState(null)
@@ -324,15 +325,12 @@ export default function VehicleCharts() {
     }
   }
 
-  // Per-distance values are small (e.g. 0.15) so they need decimals, unlike the
-  // whole-currency formatCurrency used elsewhere on this page.
-  const formatPerDistance = (v) => `${Number(v).toFixed(2)} ${analytics?.display_currency || expenseSummary?.display_currency || currency.code}`
-  
-  const formatCurrency = (amount, code = analytics?.display_currency || expenseSummary?.display_currency || currency.code) => `${Number(amount ?? 0).toFixed(2)} ${code}`
-  const formatExpenseCurrency = amount => formatCurrency(amount, expenseSummary?.display_currency || currency.code)
-  
   const expenseState = useExpenseSummary(id, selectedYear)
   const expenseSummary = expenseState.data
+  const formatAnalyticsAmount = amount => formatCurrency(amount, { currency: analytics?.display_currency })
+  const formatPerDistance = amount => formatCurrency(amount, { currency: analytics?.display_currency, decimals: UNIT_PRICE_FRACTION_DIGITS })
+  const formatForecastAmount = amount => formatCurrency(amount, { currency: forecast?.display_currency })
+  const formatExpenseCurrency = amount => formatCurrency(amount, { currency: expenseSummary?.display_currency })
 
   // Calculate chart data
   const chartData = useMemo(() => {
@@ -347,7 +345,7 @@ export default function VehicleCharts() {
     const monthlyData = monthlyExpenses.map((value, idx) => ({
       label: monthNames[idx],
       value,
-      displayValue: `${Number(value).toFixed(2)} ${expenseSummary.display_currency}`
+      displayValue: formatCurrency(value, { currency: expenseSummary.display_currency })
     }))
     
     // Donut chart data
@@ -377,7 +375,7 @@ export default function VehicleCharts() {
       donutData,
       maxMonthly: Math.max(...monthlyExpenses)
     }
-  }, [expenseSummary, selectedYear, t])
+  }, [expenseSummary, selectedYear, t, formatCurrency])
   
   if (isLoading) {
     return (
@@ -397,6 +395,7 @@ export default function VehicleCharts() {
         <div className="flex items-center justify-between p-4">
           <div className="flex items-center gap-3">
             <button 
+              aria-label={t('common.back')}
               onClick={() => navigate(`/vehicles/${id}`)}
               className="p-2 -ml-2 rounded-lg hover:bg-(--color-bg-tertiary) transition-colors"
             >
@@ -490,16 +489,16 @@ export default function VehicleCharts() {
                   </p>
                   <div className="flex items-end justify-between gap-3 mb-4 flex-wrap">
                     <div>
-                      <p className="text-3xl font-bold">{formatCurrency(analytics.forecast.projected_next_12_total)}</p>
+                      <p className="text-3xl font-bold">{formatAnalyticsAmount(analytics.forecast.projected_next_12_total)}</p>
                       <p className="text-xs text-(--color-text-secondary)">
-                        {(t('charts.forecastAvg') || '~{v}/month').replace('{v}', formatCurrency(analytics.forecast.avg_monthly))}
+                        {(t('charts.forecastAvg') || '~{v}/month').replace('{v}', formatAnalyticsAmount(analytics.forecast.avg_monthly))}
                       </p>
                     </div>
                     <TrendBadge trend={analytics.forecast.trend} t={t} />
                   </div>
                   <LineChart
                     points={analytics.forecast.monthly.map((mo) => ({ label: monthShort(mo.month), value: mo.projected_cost }))}
-                    formatValue={formatCurrency}
+                    formatValue={formatAnalyticsAmount}
                     ariaLabel={t('charts.forecastTitle') || 'Predicted next 12 months'}
                     color="#22c55e"
                   />
@@ -518,7 +517,7 @@ export default function VehicleCharts() {
               {analytics.ownership ? (
                 <>
                   <p className="text-2xs text-(--color-text-muted) mb-4">
-                    {Number(analytics.ownership.purchase_price).toFixed(2)} {analytics.ownership.purchase_currency || t('financial.unknownCurrency')}
+                    {formatCurrency(analytics.ownership.purchase_price, { currency: analytics.ownership.purchase_currency })}
                     {analytics.ownership.purchase_date && ` • ${analytics.ownership.purchase_date}`}
                     {analytics.ownership.months_owned != null &&
                       ` • ${analytics.ownership.months_owned} ${t('ownership.months') || 'months'}`}
@@ -530,7 +529,7 @@ export default function VehicleCharts() {
                         {t('ownership.totalWithPurchase') || 'Total incl. purchase'}
                       </p>
                       <p className="text-lg font-bold tabular-nums whitespace-nowrap">
-                        {analytics.ownership.total_with_purchase == null ? t('financial.unavailable') : formatCurrency(analytics.ownership.total_with_purchase)}
+                        {analytics.ownership.total_with_purchase == null ? t('financial.unavailable') : formatAnalyticsAmount(analytics.ownership.total_with_purchase)}
                       </p>
                     </div>
 
@@ -540,7 +539,7 @@ export default function VehicleCharts() {
                           {t('ownership.perMonth') || 'Per month owned'}
                         </p>
                         <p className="text-lg font-bold tabular-nums whitespace-nowrap">
-                          {formatCurrency(analytics.ownership.avg_monthly_ownership)}
+                          {formatAnalyticsAmount(analytics.ownership.avg_monthly_ownership)}
                         </p>
                       </div>
                     )}
@@ -582,7 +581,7 @@ export default function VehicleCharts() {
                 <h2 className="text-sm font-medium text-(--color-text-secondary)">
                   {t('forecast.title') || 'Projected costs — next 12 months'}
                 </h2>
-                <span className="text-lg font-bold whitespace-nowrap shrink-0">{formatCurrency(total)}</span>
+                <span className="text-lg font-bold whitespace-nowrap shrink-0">{formatForecastAmount(total)}</span>
               </div>
               <p className="text-2xs text-(--color-text-muted) mb-4">
                 {t('forecast.projected') || 'Recurring taxes, insurance, permits and predicted maintenance'}
@@ -602,7 +601,7 @@ export default function VehicleCharts() {
               <ForecastChart
                 buckets={forecast.buckets}
                 budget={forecast.monthly_budget}
-                formatCurrency={formatCurrency}
+                formatCurrency={formatForecastAmount}
                 monthShort={monthShort}
                 t={t}
               />
@@ -611,7 +610,7 @@ export default function VehicleCharts() {
                 {forecast.monthly_budget != null ? (
                   <span className="inline-flex items-center gap-1.5">
                     <span className="inline-block w-3 border-t border-dashed border-(--color-text-muted)" aria-hidden="true" />
-                    {t('forecast.budgetLine') || 'Monthly budget'}: {formatCurrency(forecast.monthly_budget)}
+                    {t('forecast.budgetLine') || 'Monthly budget'}: {formatForecastAmount(forecast.monthly_budget)}
                   </span>
                 ) : <span />}
                 {overCount > 0 && (

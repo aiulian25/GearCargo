@@ -1,6 +1,7 @@
 import { mutationDb, getQueueState } from '../db/mutationQueue'
 import { db } from '../db/database'
 import { sameIdentity } from './offlinePolicy'
+import { LOCATION_CACHE_STORAGE_KEY } from '../config/location'
 
 export const PRIVATE_CACHE_PREFIX = 'gearcargo-private-v1-'
 export const OFFLINE_SESSION_MS = 12 * 60 * 60 * 1000
@@ -9,7 +10,7 @@ export const privateSessionValid = (state, now = Date.now()) => !!state?.identit
 export const privateCacheName = (state, kind) => `${PRIVATE_CACHE_PREFIX}${state.identity.owner_key}-${state.identity.generation}-${state.revision}-${kind}`
 
 export function clearPrivatePageStorage() {
-  for (const key of ['auth_session', 'userEmail', 'username', 'gearcargo_user_location', 'seasonalBannerDismissed']) localStorage.removeItem(key)
+  for (const key of ['auth_session', 'userEmail', 'username', LOCATION_CACHE_STORAGE_KEY, 'seasonalBannerDismissed']) localStorage.removeItem(key)
 }
 
 async function clearCaches(legacyOnly = false) {

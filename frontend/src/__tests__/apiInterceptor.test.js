@@ -136,6 +136,47 @@ describe('handleAuthError', () => {
   })
 })
 
+describe('pages opened from an emailed or shared link', () => {
+  const bootstrap = () => err(401, {}, { url: '/auth/me' })
+
+  it.each(['/forgot-password', '/reset-password'])('a signed-out visitor stays on %s, so the link token is kept', async path => {
+    const deps = makeDeps({ getPath: () => path })
+    await expect(handleAuthError(bootstrap(), deps)).rejects.toBeDefined()
+    expect(deps.refresh).not.toHaveBeenCalled()
+    expect(deps.redirectNow).not.toHaveBeenCalled()
+    expect(deps.redirectSoon).not.toHaveBeenCalled()
+  })
+
+  it.each(['/verify-email', '/shared/report/abc123'])('a signed-out visitor on %s is not sent to /login when there is no session to refresh', async path => {
+    const noSession = err(400, { error: 'Refresh token required' })
+    const deps = makeDeps({ getPath: () => path, refresh: vi.fn().mockRejectedValue(noSession) })
+    await expect(handleAuthError(bootstrap(), deps)).rejects.toBe(noSession)
+    expect(deps.redirectNow).not.toHaveBeenCalled()
+    expect(deps.redirectSoon).not.toHaveBeenCalled()
+    expect(deps.notifyExpired).not.toHaveBeenCalled()
+  })
+
+  it('a signed-in visitor on a shared report keeps their session through a refresh', async () => {
+    const deps = makeDeps({ getPath: () => '/shared/report/abc123' })
+    await expect(handleAuthError(bootstrap(), deps)).resolves.toEqual({ data: 'retried-ok' })
+    expect(deps.refresh).toHaveBeenCalledOnce()
+  })
+
+  it('an ended session on a shared report is cleared without a toast or a redirect', async () => {
+    const deps = makeDeps({ getPath: () => '/shared/report/abc123' })
+    await expect(handleAuthError(err(401, { code: 'SESSION_EXPIRED' }), deps)).rejects.toBeDefined()
+    expect(deps.clearAuth).toHaveBeenCalled()
+    expect(deps.notifyExpired).not.toHaveBeenCalled()
+    expect(deps.redirectSoon).not.toHaveBeenCalled()
+  })
+
+  it('a path that only resembles the shared report route still goes to /login', async () => {
+    const deps = makeDeps({ getPath: () => '/shared/reports', refresh: vi.fn().mockRejectedValue(err(400)) })
+    await expect(handleAuthError(bootstrap(), deps)).rejects.toBeDefined()
+    expect(deps.redirectNow).toHaveBeenCalledWith('/login')
+  })
+})
+
 it.each(['CSRF_INVALID', 'CSRF_ORIGIN_REJECTED'])('a %s refresh failure does not clear an otherwise valid browser session', async code => {
   const failure = err(403, { code })
   const deps = makeDeps({ refresh: vi.fn().mockRejectedValue(failure) })

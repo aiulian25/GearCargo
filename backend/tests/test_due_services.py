@@ -1,11 +1,12 @@
 """Tests for F5 — auto-generate a maintenance reminder from a service's
 next_due_date / next_due_mileage."""
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from app import db
 from app.models import User, Vehicle, ServiceEntry, Reminder
 from app.services import process_due_services
+from app.utils.timeutils import utc_today
 
 
 def _mk_vehicle(user_id, name='Focus', mileage=10000):
@@ -24,9 +25,9 @@ def test_past_due_date_creates_one_reminder_and_is_idempotent(app):
         db.session.add(u)
         db.session.commit()
         v = _mk_vehicle(u.id)
-        svc = ServiceEntry(user_id=u.id, vehicle_id=v.id, date=date.today() - timedelta(days=200),
+        svc = ServiceEntry(user_id=u.id, vehicle_id=v.id, date=utc_today() - timedelta(days=200),
                            title='Oil & filter', amount=90,
-                           next_due_date=date.today() - timedelta(days=1))
+                           next_due_date=utc_today() - timedelta(days=1))
         db.session.add(svc)
         db.session.commit()
         sid, uid, vid = svc.id, u.id, v.id
@@ -40,7 +41,7 @@ def test_past_due_date_creates_one_reminder_and_is_idempotent(app):
         assert r.reminder_type == 'maintenance'
         assert r.title == 'Oil & filter'
         assert r.user_id == uid and r.vehicle_id == vid
-        assert r.due_date == date.today() - timedelta(days=1)
+        assert r.due_date == utc_today() - timedelta(days=1)
 
     # Second run must not create a duplicate.
     process_due_services(app)
@@ -55,9 +56,9 @@ def test_future_due_date_does_not_trigger(app):
         db.session.add(u)
         db.session.commit()
         v = _mk_vehicle(u.id)
-        svc = ServiceEntry(user_id=u.id, vehicle_id=v.id, date=date.today(),
+        svc = ServiceEntry(user_id=u.id, vehicle_id=v.id, date=utc_today(),
                            title='Future', amount=50,
-                           next_due_date=date.today() + timedelta(days=30))
+                           next_due_date=utc_today() + timedelta(days=30))
         db.session.add(svc)
         db.session.commit()
         sid = svc.id
@@ -75,7 +76,7 @@ def test_mileage_past_next_due_triggers(app):
         db.session.commit()
         # Odometer 22,000 already past the 20,000 service point; no date set.
         v = _mk_vehicle(u.id, mileage=22000)
-        svc = ServiceEntry(user_id=u.id, vehicle_id=v.id, date=date.today(),
+        svc = ServiceEntry(user_id=u.id, vehicle_id=v.id, date=utc_today(),
                            service_type='brake_fluid', amount=60,
                            next_due_mileage=20000)
         db.session.add(svc)
@@ -87,7 +88,7 @@ def test_mileage_past_next_due_triggers(app):
         rems = Reminder.query.filter_by(source_service_id=sid).all()
         assert len(rems) == 1
         # No next_due_date → reminder is due today so the standard pipeline notifies.
-        assert rems[0].due_date == date.today()
+        assert rems[0].due_date == utc_today()
         assert rems[0].due_mileage == 20000
         assert rems[0].title == 'Brake fluid'   # humanized service_type
 
@@ -99,7 +100,7 @@ def test_mileage_below_next_due_does_not_trigger(app):
         db.session.add(u)
         db.session.commit()
         v = _mk_vehicle(u.id, mileage=15000)   # below the 20,000 point
-        svc = ServiceEntry(user_id=u.id, vehicle_id=v.id, date=date.today(),
+        svc = ServiceEntry(user_id=u.id, vehicle_id=v.id, date=utc_today(),
                            service_type='brake_fluid', amount=60, next_due_mileage=20000)
         db.session.add(svc)
         db.session.commit()
@@ -118,8 +119,8 @@ def test_service_next_due_fields_preserved(app):
         db.session.add(u)
         db.session.commit()
         v = _mk_vehicle(u.id)
-        due = date.today() - timedelta(days=2)
-        svc = ServiceEntry(user_id=u.id, vehicle_id=v.id, date=date.today(),
+        due = utc_today() - timedelta(days=2)
+        svc = ServiceEntry(user_id=u.id, vehicle_id=v.id, date=utc_today(),
                            title='Coolant', amount=40, next_due_date=due, next_due_mileage=30000)
         db.session.add(svc)
         db.session.commit()

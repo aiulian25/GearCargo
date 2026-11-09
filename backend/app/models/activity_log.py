@@ -156,8 +156,8 @@ class ActivityLog(db.Model):
     def _get_client_ip(request):
         """Return the real client IP address.
 
-        S11 fix: werkzeug's ProxyFix (applied in create_app) rewrites
-        request.remote_addr to the real client IP before any route code runs,
+        S11 fix: app/services/proxy_trust.py settles request.remote_addr
+        per TRUSTED_PROXY_COUNT to the real client IP before any route code runs,
         so reading raw X-Forwarded-For / X-Real-IP headers here is both
         unnecessary and spoofable by clients. Use remote_addr directly.
         """

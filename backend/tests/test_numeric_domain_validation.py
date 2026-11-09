@@ -13,7 +13,12 @@ from sqlalchemy import text
 
 from app import db
 from app.models import FuelEntry, Vehicle
-from app.utils.entryparse import InvalidFieldError, parse_amount, parse_optional_int
+from app.utils.entryparse import (
+    CURRENCY_CODES, CURRENCY_CODES_BEYOND_STORED_PRECISION, InvalidFieldError, parse_amount,
+    parse_currency_code, parse_optional_int, parse_recognized_currency_code,
+)
+
+UNSUPPORTED_PRECISION_KEY = 'validation.unsupportedCurrencyPrecision'
 
 
 @pytest.mark.parametrize('value', ['NaN', 'Infinity', '-Infinity', '1e400', True, False, '1,25'])
@@ -35,6 +40,20 @@ def test_parser_preserves_decimal_and_optional_values():
     assert parse_optional_int(0) == 0
     assert parse_optional_int(None) is None
     assert parse_optional_int('') is None
+
+
+@pytest.mark.parametrize('code', ['BHD', 'IQD', 'JOD', 'KWD', 'LYD', 'OMR', 'TND', 'CLF', 'UYW', ' kwd '])
+def test_precision_codes_are_recognized_but_refused_for_new_input(code):
+    with pytest.raises(InvalidFieldError) as refused:
+        parse_currency_code(code)
+    assert refused.value.message_key == UNSUPPORTED_PRECISION_KEY
+    assert parse_recognized_currency_code(code) == code.strip().upper()
+
+
+def test_zero_decimal_currencies_still_parse():
+    assert parse_currency_code('JPY') == 'JPY'
+    assert parse_currency_code(' huf ') == 'HUF'
+    assert CURRENCY_CODES_BEYOND_STORED_PRECISION < CURRENCY_CODES
 
 
 @pytest.fixture()
@@ -82,7 +101,7 @@ def test_fuel_create_and_update_reject_atomically(client, garage, field, value):
     ('engine_cc', True), ('current_mileage', -1), ('tank_capacity', '10000'),
     ('purchase_price', -1), ('monthly_budget', 'NaN'), ('distance_unit', 'yards'),
     ('transmission', 'teleport'), ('drivetrain', 'all'),
-    ('maintenance_intervals', {'oil_change': 100.5}),
+    ('maintenance_intervals', {'oil_change': 100.5}), ('purchase_currency', 'KWD'),
 ])
 def test_vehicle_create_update_domains(client, garage, field, value):
     user, vehicle_id, headers = garage
@@ -174,7 +193,7 @@ def test_lubelog_rejects_invalid_source_before_mapping(field, value):
 
 
 def test_read_only_scan_reports_existing_bad_data(app, garage, tmp_path):
-    from app.services.domain_scan import scan_records, create_scan_app
+    from app.services.domain_scan import MANUAL_REVIEW_ACTION, scan_records, create_scan_app
     user, vehicle_id, _ = garage
     fuel = FuelEntry(user_id=user.id, vehicle_id=vehicle_id, date=date(2026, 1, 2), liters=10)
     db.session.add(fuel)
@@ -189,6 +208,7 @@ def test_read_only_scan_reports_existing_bad_data(app, garage, tmp_path):
     report = scan_records()
     assert report['read_only'] is True
     assert {'current_mileage', 'fuel_type', 'liters', 'currency'} <= {issue['field'] for issue in report['issues']}
+    assert {issue['action'] for issue in report['issues']} == {MANUAL_REVIEW_ACTION}
     output = tmp_path / 'repair-report.json'
     scan_app = create_scan_app(app.config['SQLALCHEMY_DATABASE_URI'])
     result = scan_app.test_cli_runner().invoke(args=['validate-records', '--output', str(output)])
@@ -221,6 +241,41 @@ def test_invalid_historical_domains_can_be_exported_for_repair(app, garage):
     assert archive.getbuffer().nbytes and payload['vehicles'][0]['current_mileage'] == -1
     with pytest.raises(BackupSchemaError):
         prepare_backup(payload)
+
+
+def test_csv_rows_in_a_refused_currency_are_reported(garage):
+    from app.services.csv_io import import_entries_csv
+    user, vehicle_id, _ = garage
+    result = import_entries_csv(user, 'fuel', f'vehicle_id,date,liters,amount,total_price,currency\n{vehicle_id},2026-01-03,10,20.25,20.25,KWD\n')
+    assert result['created'] == 0 and result['error_count'] == 1, result
+    assert (result['errors'][0]['field'], result['errors'][0]['message_key']) == ('currency', UNSUPPORTED_PRECISION_KEY)
+    assert FuelEntry.query.count() == 0
+
+
+def test_rows_stored_in_a_refused_currency_stay_readable_restorable_and_reported(client, garage):
+    from app.routes.backup import create_backup_zip
+    from app.services.backup_schema import prepare_backup
+    from app.services.domain_scan import KEEP_RECORDED_CURRENCY_ACTION, scan_records
+    user, vehicle_id, headers = garage
+    # Saved outside a request, so the flush hook is skipped: it stands in for a pre-upgrade row.
+    entry = FuelEntry(user_id=user.id, vehicle_id=vehicle_id, date=date(2026, 1, 2), liters=10,
+                      total_price=Decimal('20.25'), amount=Decimal('20.25'), currency='KWD')
+    db.session.add(entry)
+    db.session.commit()
+    entry_id = entry.id
+    read = client.get(f'/api/fuel/{entry_id}', headers=headers)
+    assert read.status_code == 200 and read.json['currency'] == 'KWD', read.json
+    kept = client.put(f'/api/fuel/{entry_id}', headers=headers, json={'notes': 'kept'})
+    assert kept.status_code == 200, kept.json
+    resent = client.put(f'/api/fuel/{entry_id}', headers=headers, json={'currency': 'KWD'})
+    assert resent.status_code == 400, resent.json
+    assert (resent.json['message_key'], resent.json['field']) == (UNSUPPORTED_PRECISION_KEY, 'currency')
+    _, payload = create_backup_zip(user, include_attachments=False)
+    restored = prepare_backup(payload).records['fuel_entries']
+    assert [(row['currency'], row['amount']) for row in restored] == [('KWD', Decimal('20.25'))]
+    reported = [{key: issue[key] for key in ('table', 'id', 'field', 'message_key', 'action')} for issue in scan_records()['issues']]
+    assert {'table': 'fuel_entries', 'id': entry_id, 'field': 'currency', 'message_key': UNSUPPORTED_PRECISION_KEY,
+            'action': KEEP_RECORDED_CURRENCY_ACTION} in reported
 
 
 def test_zero_fuel_values_are_stored_as_zero(client, garage):

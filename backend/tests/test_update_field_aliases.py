@@ -8,12 +8,13 @@ commit — edits returned 200 but changed nothing. These tests prove every
 alias now lands on the real column and round-trips through GET.
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from app import db
 from app.models import Vehicle, ServiceEntry, RepairEntry, Reminder, TaxEntry, ParkingEntry
+from app.utils.timeutils import utc_today
 
-TODAY = date.today()
+TODAY = utc_today()
 
 
 def _mk_vehicle(user_id, mileage=50000):

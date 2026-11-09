@@ -9,13 +9,17 @@ vi.mock('react-router-dom', () => ({ useParams: () => ({ token: 'public-token' }
 vi.mock('../services/api', () => ({ reportsApi: {
   getSharedReport: vi.fn(), sharedPdfUrl: token => `/api/reports/shared/${token}/pdf`,
 } }))
-vi.mock('../contexts/LanguageContext', () => ({ useTranslation: () => ({
-  language: 'en', t: key => {
-    const value = key.split('.').reduce((object, part) => object?.[part], translations.en)
-    if (typeof value !== 'string') throw new Error(`Missing translation: ${key}`)
-    return value
-  },
-}) }))
+vi.mock('../contexts/LanguageContext', async () => {
+  const { createCurrencyFormatter } = await import('../utils/currencyFormat')
+  const formatCurrency = createCurrencyFormatter({ language: 'en', currency: 'USD' })
+  return { useCurrency: () => ({ formatCurrency }), useTranslation: () => ({
+    language: 'en', t: key => {
+      const value = key.split('.').reduce((object, part) => object?.[part], translations.en)
+      if (typeof value !== 'string') throw new Error(`Missing translation: ${key}`)
+      return value
+    },
+  }) }
+})
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 const preview = {
@@ -36,7 +40,7 @@ it('requires a current preview and explains disclosure and downloaded copies', (
 it('shows the approved fields and totals without private preview extras', () => {
   const { container } = render(<ReportSharePreview preview={preview} />)
   expect(screen.getByText(/Daily.*Ford Focus/)).toBeTruthy()
-  expect(screen.getAllByText('12.34 GBP').length).toBe(2)
+  expect(screen.getAllByText('£12.34').length).toBe(2)
   expect(screen.getByText(/June 2026/)).toBeTruthy()
   expect(container.textContent).not.toContain('PRIVATE_')
   expect(container.textContent).not.toContain('19288')

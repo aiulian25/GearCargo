@@ -1,5 +1,5 @@
 import FinancialBasis from '../ui/FinancialBasis'
-import { useTranslation } from '../../contexts/LanguageContext'
+import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 
 const CATEGORIES = ['fuel', 'service', 'repair', 'tax', 'parking', 'consumable', 'insurance']
 
@@ -17,6 +17,7 @@ export function ReportSharePrivacyNotice() {
 
 export default function ReportSharePreview({ preview }) {
   const { t } = useTranslation()
+  const { formatCurrency } = useCurrency()
   return (
     <section aria-label={t('reportShare.previewTitle')} className="rounded-lg bg-(--color-bg-tertiary) p-3 space-y-3">
       <h3 className="text-sm font-medium">{t('reportShare.previewTitle')}</h3>
@@ -34,12 +35,12 @@ export default function ReportSharePreview({ preview }) {
             {CATEGORIES.map(category => (
               <div key={category} className="flex justify-between gap-3">
                 <dt>{t(['insurance', 'consumable'].includes(category) ? `financial.${category}` : `charts.${category}`)} ({preview.entry_counts?.[category] || 0})</dt>
-                <dd>{Number(preview.totals?.[category] || 0).toFixed(2)} {preview.currency}</dd>
+                <dd>{formatCurrency(preview.totals?.[category], { currency: preview.currency })}</dd>
               </div>
             ))}
             <div className="flex justify-between gap-3 font-medium">
               <dt>{t('sharedReport.total')}</dt>
-              <dd>{Number(preview.totals?.grand_total || 0).toFixed(2)} {preview.currency}</dd>
+              <dd>{formatCurrency(preview.totals?.grand_total, { currency: preview.currency })}</dd>
             </div>
           </dl>
         </div>

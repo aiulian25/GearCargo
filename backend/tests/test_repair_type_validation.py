@@ -7,12 +7,11 @@ GC-014 rejects any invalid enum member before persistence, preserving the
 original record instead of silently discarding part of the submitted selection.
 """
 
-from datetime import date
-
 from app import db
 from app.models import User
 from app.models.vehicle import Vehicle
 from app.models.repair import RepairEntry
+from app.utils.timeutils import utc_today
 
 PASSWORD = "StrongPass123!"
 
@@ -26,7 +25,7 @@ def _seed():
     db.session.add(v)
     db.session.commit()
     e = RepairEntry(
-        user_id=u.id, vehicle_id=v.id, date=date.today(), amount=100,
+        user_id=u.id, vehicle_id=v.id, date=utc_today(), amount=100,
         repair_type="brakes", repair_types=["brakes"], severity="low",
     )
     db.session.add(e)

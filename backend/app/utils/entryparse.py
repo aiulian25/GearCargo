@@ -26,11 +26,17 @@ SCR SDG SEK SGD SHP SLE SOS SRD SSP STN SVC SYP SZL THB TJS TMT TND TOP TRY TTD
 TWD TZS UAH UGX USD USN UYI UYU UYW UZS VED VES VND VUV WST XAD XAF XAG XAU XBA
 XBB XBC XBD XCD XCG XDR XOF XPD XPF XPT XSU XUA YER ZAR ZMW ZWG
 """.split())
+# ISO 4217 minor unit 3 (BHD IQD JOD KWD LYD OMR TND) or 4 (CLF UYW). Money columns
+# are Numeric(_, 2), so new input in these codes would be rounded silently. Stored
+# rows stay readable and restorable, and the read-only scan lists them.
+CURRENCY_CODES_BEYOND_STORED_PRECISION = frozenset('BHD CLF IQD JOD KWD LYD OMR TND UYW'.split())
 
 REQUIRED_FIELD_KEY = 'validation.required'
 INVALID_DATE_KEY = 'validation.invalidDate'
 INVALID_NUMBER_KEY = 'validation.invalidNumber'
 INVALID_CURRENCY_KEY = 'validation.invalidCurrency'
+UNSUPPORTED_CURRENCY_PRECISION_KEY = 'validation.unsupportedCurrencyPrecision'
+UNSUPPORTED_CURRENCY_PRECISION_ERROR = 'Currency needs more than two decimal places, which cannot be stored'
 
 
 class InvalidFieldError(ValueError):
@@ -86,7 +92,7 @@ def parse_amount(value, error='Amount must be a number'):
 # see is unstorable. Rejected here as a 400 instead. (SQLite, used by the test
 # suite, stores it happily, so only production would ever have noticed.)
 _INT32_MIN = -2_147_483_648
-_INT32_MAX = 2_147_483_647
+INT32_MAX = 2_147_483_647
 
 
 def parse_optional_int(value, error='Value must be a number'):
@@ -107,7 +113,7 @@ def parse_optional_int(value, error='Value must be a number'):
     if value is None or value == '':
         return None
     parsed = parse_amount(value, error)
-    if parsed != parsed.to_integral_value() or not (_INT32_MIN <= parsed <= _INT32_MAX):
+    if parsed != parsed.to_integral_value() or not (_INT32_MIN <= parsed <= INT32_MAX):
         raise InvalidFieldError(INVALID_NUMBER_KEY, error)
     return int(parsed)
 
@@ -124,11 +130,22 @@ def parse_optional_amount(value, error='Amount must be a number'):
     return parse_amount(value, error)
 
 
-def parse_currency_code(value, error='Currency must be a recognized code'):
-    """Recognized ISO currency code, uppercased, or a localized field error."""
+def parse_recognized_currency_code(value, error='Currency must be a recognized code'):
+    """Recognized ISO currency code, uppercased, or a localized field error.
+
+    Exact archive and scan validation use it: their amounts are stored data.
+    """
     code = value.strip().upper() if isinstance(value, str) else ''
     if code not in CURRENCY_CODES:
         raise InvalidFieldError(INVALID_CURRENCY_KEY, error)
+    return code
+
+
+def parse_currency_code(value, error='Currency must be a recognized code'):
+    """A recognized code that two-decimal money columns can store; every new-input path uses it."""
+    code = parse_recognized_currency_code(value, error)
+    if code in CURRENCY_CODES_BEYOND_STORED_PRECISION:
+        raise InvalidFieldError(UNSUPPORTED_CURRENCY_PRECISION_KEY, UNSUPPORTED_CURRENCY_PRECISION_ERROR)
     return code
 
 

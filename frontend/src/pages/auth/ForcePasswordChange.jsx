@@ -179,6 +179,8 @@ export default function ForcePasswordChange() {
                   placeholder={t('profile.enterCurrentPassword') || 'Enter current password'}
                 />
                 <button
+                  aria-label={t('auth.showPassword')}
+                  aria-pressed={showCurrentPassword}
                   type="button"
                   onClick={() => setShowCurrentPassword(!showCurrentPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-(--color-text-tertiary) hover:text-(--color-text-secondary)"
@@ -204,6 +206,8 @@ export default function ForcePasswordChange() {
                   placeholder={t('profile.enterNewPassword') || 'Enter new password'}
                 />
                 <button
+                  aria-label={t('auth.showPassword')}
+                  aria-pressed={showNewPassword}
                   type="button"
                   onClick={() => setShowNewPassword(!showNewPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-(--color-text-tertiary) hover:text-(--color-text-secondary)"
@@ -246,6 +250,8 @@ export default function ForcePasswordChange() {
                   placeholder={t('profile.confirmNewPassword') || 'Confirm new password'}
                 />
                 <button
+                  aria-label={t('auth.showPassword')}
+                  aria-pressed={showConfirmPassword}
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-(--color-text-tertiary) hover:text-(--color-text-secondary)"

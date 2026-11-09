@@ -137,8 +137,8 @@ export default function AddRepair() {
     <div className="pb-4">
       {/* Header */}
       <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
-        <button onClick={() => navigate(-1)} className="btn-icon">
-          <span className="material-icons-outlined icon-md">close</span>
+        <button aria-label={t('common.close')} onClick={() => navigate(-1)} className="btn-icon">
+          <span aria-hidden="true" className="material-icons-outlined icon-md">close</span>
         </button>
         <h1 className="text-base font-semibold flex-1">Add Repair</h1>
         <button 
@@ -164,10 +164,11 @@ export default function AddRepair() {
         {/* Vehicle & Date */}
         <div className="card space-y-4">
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="vehicle_id" className="block text-xs text-(--color-text-muted) mb-1">
               Vehicle *
             </label>
             <select 
+              id="vehicle_id"
               {...register('vehicle_id', { required: 'Select a vehicle' })}
               className="input"
             >
@@ -183,10 +184,11 @@ export default function AddRepair() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="date" className="block text-xs text-(--color-text-muted) mb-1">
                 Date *
               </label>
               <input
+                id="date"
                 type="date"
                 {...register('date', { required: 'Date is required' })}
                 className="input"
@@ -194,10 +196,11 @@ export default function AddRepair() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="mileage" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addRepair.odometer') || 'Odometer'} ({distUnit})
               </label>
               <input
+                id="mileage"
                 type="number" inputMode="decimal"
                 {...register('mileage', { min: 0 })}
                 className="input"
@@ -256,10 +259,11 @@ export default function AddRepair() {
           </div>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="description" className="block text-xs text-(--color-text-muted) mb-1">
               Description *
             </label>
             <input
+              id="description"
               type="text"
               {...register('description', { required: 'Description is required' })}
               className="input"
@@ -271,10 +275,11 @@ export default function AddRepair() {
           </div>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="shop_name" className="block text-xs text-(--color-text-muted) mb-1">
               Repair Shop
             </label>
             <input
+              id="shop_name"
               type="text"
               {...register('shop_name')}
               className="input"
@@ -289,10 +294,11 @@ export default function AddRepair() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="labor_cost" className="block text-xs text-(--color-text-muted) mb-1">
                 Labor Cost
               </label>
               <input
+                id="labor_cost"
                 type="number" inputMode="decimal"
                 step="0.01"
                 {...register('labor_cost', { min: 0 })}
@@ -302,10 +308,11 @@ export default function AddRepair() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="parts_cost" className="block text-xs text-(--color-text-muted) mb-1">
                 Parts Cost
               </label>
               <input
+                id="parts_cost"
                 type="number" inputMode="decimal"
                 step="0.01"
                 {...register('parts_cost', { min: 0 })}
@@ -316,10 +323,11 @@ export default function AddRepair() {
           </div>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="total_cost" className="block text-xs text-(--color-text-muted) mb-1">
               Total Cost
             </label>
             <input
+              id="total_cost"
               type="number" inputMode="decimal"
               step="0.01"
               {...register('total_cost')}
@@ -332,10 +340,11 @@ export default function AddRepair() {
         {/* Warranty & Notes */}
         <div className="card space-y-4">
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="warranty_months" className="block text-xs text-(--color-text-muted) mb-1">
               Warranty (months)
             </label>
             <input
+              id="warranty_months"
               type="number" inputMode="decimal"
               {...register('warranty_months', { min: 0 })}
               className="input"
@@ -344,10 +353,11 @@ export default function AddRepair() {
           </div>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="notes" className="block text-xs text-(--color-text-muted) mb-1">
               Notes
             </label>
             <textarea
+              id="notes"
               {...register('notes')}
               className="input resize-none"
               rows={3}

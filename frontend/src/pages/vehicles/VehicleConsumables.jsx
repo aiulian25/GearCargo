@@ -127,6 +127,7 @@ export default function VehicleConsumables() {
           </div>
         </div>
         <Link
+          aria-label={t('consumables.add')}
           to={`/vehicles/${id}/consumable/add`}
           className="btn-primary flex items-center gap-1.5 shrink-0"
         >
@@ -169,7 +170,7 @@ export default function VehicleConsumables() {
                     </p>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <span className="text-sm font-semibold mr-1">{formatCurrency(entry.amount)}</span>
+                    <span className="text-sm font-semibold mr-1">{formatCurrency(entry.amount, { currency: entry.currency })}</span>
                     <button
                       onClick={() => navigate(`/vehicles/${id}/consumable/add?edit=${entry.id}`)}
                       className="btn-icon" aria-label={t('common.edit') || 'Edit'}

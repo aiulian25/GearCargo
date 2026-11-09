@@ -12,7 +12,7 @@ always compare against a naive-UTC "now", so there is never an aware/naive mix.
 """
 
 from datetime import datetime
-from app.utils.timeutils import utc_naive_now, isoformat_utc
+from app.utils.timeutils import utc_naive_now
 from app import db
 
 
@@ -61,16 +61,3 @@ class UserSession(db.Model):
     def __repr__(self):
         state = 'revoked' if self.revoked else 'active'
         return f'<UserSession user={self.user_id} jti={self.jti[:8]}… {state}>'
-
-    def to_dict(self):
-        """Serialise for an active-sessions UI (no secrets are exposed)."""
-        return {
-            'id': self.id,
-            'jti_prefix': (self.jti[:8] + '…') if self.jti else None,
-            'absolute_expires_at': isoformat_utc(self.absolute_expires_at) if self.absolute_expires_at else None,
-            'revoked': self.revoked,
-            'revoked_at': isoformat_utc(self.revoked_at) if self.revoked_at else None,
-            'user_agent': self.user_agent,
-            'ip': self.ip,
-            'created_at': isoformat_utc(self.created_at) if self.created_at else None,
-        }

@@ -5,8 +5,9 @@ from datetime import date, timedelta
 from app import db
 from app.models import FuelPriceHistory
 from app.services.fuel_price_service import record_price_history
+from app.utils.timeutils import utc_today
 
-TODAY = date.today()
+TODAY = utc_today()
 
 
 def _payload(last_update, diesel=1.50, petrol=1.40):
@@ -68,6 +69,23 @@ def test_history_endpoint_orders_and_clamps(app, client, user, auth_headers):
     resp = client.get('/api/external/fuel-prices/history?country=RO&weeks=9999',
                       headers=auth_headers(user.id))
     assert resp.get_json()['weeks'] == 52
+
+
+def test_history_cutoff_counts_back_from_the_utc_day(app, client, user, auth_headers, monkeypatch):
+    from app.routes import external
+    pinned_utc_today = date(2001, 2, 3)
+    monkeypatch.setattr(external, 'utc_today', lambda: pinned_utc_today)
+    history_weeks = 4
+    cutoff = pinned_utc_today - timedelta(weeks=history_weeks)
+    day_before_cutoff = cutoff - timedelta(days=1)
+    with app.app_context():
+        for price_date in (day_before_cutoff, cutoff):
+            record_price_history('RO', _payload(price_date.isoformat()), app)
+
+    response = client.get(f'/api/external/fuel-prices/history?country=RO&weeks={history_weeks}',
+                          headers=auth_headers(user.id))
+    assert response.status_code == 200
+    assert [point['date'] for point in response.get_json()['points']] == [cutoff.isoformat()]
 
 
 # ---------------------------------------------------------------------------

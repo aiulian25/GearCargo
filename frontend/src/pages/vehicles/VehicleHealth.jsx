@@ -5,6 +5,11 @@ import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { useDateFormat } from '../../hooks/useDateFormat'
 import { formatFuelEconomy, resolveFuelSystem } from '../../utils/fuelEconomy'
+import { UNIT_PRICE_FRACTION_DIGITS } from '../../utils/currencyFormat'
+
+const DETAILED_COST_PER_DISTANCE_FRACTION_DIGITS = 3
+const CARBON_OFFSET_CURRENCY = 'USD'
+const CARBON_OFFSET_FRACTION_DIGITS = 0
 
 // SVG Icons
 const Icons = {
@@ -213,9 +218,9 @@ export default function VehicleHealth() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { t } = useTranslation()
-  const { currency } = useCurrency()
+  const { formatCurrency } = useCurrency()
   const { user } = useAuth()
-  
+
   const [health, setHealth] = useState(null)
   const [warranties, setWarranties] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -300,11 +305,6 @@ export default function VehicleHealth() {
     setCompletingAction(null)
     setCompleteError(null)
     setCompleteSuccess(false)
-  }
-  
-  const formatCurrency = (amount) => {
-    if (!amount && amount !== 0) return `${currency.symbol}0`
-    return `${currency.symbol}${Number(amount).toFixed(2)}`
   }
   
   // Translate issue titles and descriptions from backend
@@ -443,7 +443,7 @@ export default function VehicleHealth() {
       {/* Header */}
       <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 sticky top-0 z-20">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate(`/vehicles/${id}`)} className="btn-icon">
+          <button aria-label={t('common.back')} onClick={() => navigate(`/vehicles/${id}`)} className="btn-icon">
             {Icons.arrowBack}
           </button>
           <div className="flex-1 min-w-0">
@@ -540,7 +540,7 @@ export default function VehicleHealth() {
             </div>
             <p className="text-xl font-bold">
               {health.cost_efficiency?.cost_per_km 
-                ? `${currency.symbol}${health.cost_efficiency.cost_per_km.toFixed(2)}`
+                ? formatCurrency(health.cost_efficiency.cost_per_km, { decimals: UNIT_PRICE_FRACTION_DIGITS })
                 : '-'
               }
             </p>
@@ -666,7 +666,7 @@ export default function VehicleHealth() {
                     {t('vehicleHealth.treesNeeded') || 'Plant'} <strong>{Math.ceil(health.carbon_footprint?.trees_to_offset_yearly || 0)}</strong> {t('vehicleHealth.treesToOffset') || 'trees to offset yearly emissions'}
                   </p>
                   <p className="text-sm text-(--color-text-secondary)">
-                    {t('vehicleHealth.orOffset') || 'Or purchase carbon credits for'} <strong>~${health.carbon_footprint?.carbon_offset_cost_usd?.toFixed(0) || 0}</strong>/year
+                    {t('vehicleHealth.orOffset') || 'Or purchase carbon credits for'} <strong>~{formatCurrency(health.carbon_footprint?.carbon_offset_cost_usd, { currency: CARBON_OFFSET_CURRENCY, decimals: CARBON_OFFSET_FRACTION_DIGITS })}</strong>{t('vehicleHealth.perYear')}
                   </p>
                 </div>
               </div>
@@ -952,7 +952,7 @@ export default function VehicleHealth() {
                   {t('vehicleHealth.avgCostPerKm') || 'Average Cost Per Kilometer'}
                 </p>
                 <p className="text-3xl font-bold text-cyan-600 dark:text-cyan-400 mt-2">
-                  {currency.symbol}{health.cost_efficiency.cost_per_km.toFixed(3)}
+                  {formatCurrency(health.cost_efficiency.cost_per_km, { decimals: DETAILED_COST_PER_DISTANCE_FRACTION_DIGITS })}
                 </p>
               </div>
             )}
@@ -1017,10 +1017,11 @@ export default function VehicleHealth() {
 
               {/* Notes — optional */}
               <div>
-                <label className="block text-sm font-medium mb-1.5">
+                <label htmlFor="mark-done-notes" className="block text-sm font-medium mb-1.5">
                   {t('vehicleHealth.markDoneNotes') || 'Notes (optional)'}
                 </label>
                 <textarea
+                  id="mark-done-notes"
                   rows={2}
                   value={completeForm.notes}
                   onChange={(e) => setCompleteForm(prev => ({ ...prev, notes: e.target.value }))}

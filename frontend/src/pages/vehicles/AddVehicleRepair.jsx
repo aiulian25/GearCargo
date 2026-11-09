@@ -264,7 +264,7 @@ export default function AddVehicleRepair() {
     <div className="pb-4">
       {/* Header */}
       <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
-        <button onClick={() => navigate(-1)} className="btn-icon">
+        <button aria-label={t('common.close')} onClick={() => navigate(-1)} className="btn-icon">
           {Icons.close}
         </button>
         <div className="flex-1">
@@ -306,10 +306,11 @@ export default function AddVehicleRepair() {
         <div className="card space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="date" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addRepair.date') || 'Date'} *
               </label>
               <input
+                id="date"
                 type="date"
                 {...register('date', { required: t('addRepair.dateRequired') || 'Date is required' })}
                 className="input"
@@ -317,10 +318,11 @@ export default function AddVehicleRepair() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="mileage" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addRepair.odometer') || 'Odometer'} ({distUnit})
               </label>
               <input
+                id="mileage"
                 type="number" inputMode="decimal"
                 {...register('mileage')}
                 className="input"
@@ -383,10 +385,11 @@ export default function AddVehicleRepair() {
           </div>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="description" className="block text-xs text-(--color-text-muted) mb-1">
               {t('addRepair.description') || 'Description'} *
             </label>
             <textarea
+              id="description"
               {...register('description', { required: t('addRepair.descRequired') || 'Description is required' })}
               className="input resize-none"
               rows={3}
@@ -399,10 +402,11 @@ export default function AddVehicleRepair() {
 
           {/* F56 — root cause: what actually caused the fault (vs. the symptom) */}
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="root_cause" className="block text-xs text-(--color-text-muted) mb-1">
               {t('addRepair.rootCause') || 'Root cause'}
             </label>
             <textarea
+              id="root_cause"
               {...register('root_cause')}
               className="input resize-none"
               rows={2}
@@ -419,10 +423,11 @@ export default function AddVehicleRepair() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="parts_cost" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addRepair.partsCost') || 'Parts Cost'} ({currency.symbol})
               </label>
               <input
+                id="parts_cost"
                 type="number" inputMode="decimal"
                 step="0.01"
                 {...register('parts_cost')}
@@ -432,10 +437,11 @@ export default function AddVehicleRepair() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="labor_cost" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addRepair.laborCost') || 'Labor Cost'} ({currency.symbol})
               </label>
               <input
+                id="labor_cost"
                 type="number" inputMode="decimal"
                 step="0.01"
                 {...register('labor_cost')}
@@ -447,10 +453,11 @@ export default function AddVehicleRepair() {
           
           <div className="flex gap-3">
             <div className="flex-1">
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="total_cost" className="block text-xs text-(--color-text-muted) mb-1">
               {t('addRepair.totalCost') || 'Total Cost'} ({currency.symbol})
             </label>
             <input
+              id="total_cost"
               type="number" inputMode="decimal"
               step="0.01"
               {...register('total_cost')}
@@ -463,10 +470,11 @@ export default function AddVehicleRepair() {
 
           {/* F56 — labor hours (structured; was only expressible in notes) */}
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="labor_hours" className="block text-xs text-(--color-text-muted) mb-1">
               {t('addRepair.laborHours') || 'Labor hours'}
             </label>
             <input
+              id="labor_hours"
               type="number" inputMode="decimal"
               step="0.5" min="0"
               {...register('labor_hours')}
@@ -484,10 +492,11 @@ export default function AddVehicleRepair() {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="warranty_months" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('warranty.months') || 'Warranty (months)'}
               </label>
               <input
+                id="warranty_months"
                 type="number" inputMode="numeric" min="0"
                 {...register('warranty_months')}
                 className="input"
@@ -496,10 +505,11 @@ export default function AddVehicleRepair() {
             </div>
 
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="warranty_km" className="block text-xs text-(--color-text-muted) mb-1">
                 {(t('warranty.distance') || 'Warranty ({unit})').replace('{unit}', vehicle?.distance_unit || 'km')}
               </label>
               <input
+                id="warranty_km"
                 type="number" inputMode="numeric" min="0"
                 {...register('warranty_km')}
                 className="input"
@@ -530,10 +540,11 @@ export default function AddVehicleRepair() {
           </h3>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="shop_name" className="block text-xs text-(--color-text-muted) mb-1">
               {t('addRepair.shopName') || 'Shop/Mechanic'}
             </label>
             <input
+              id="shop_name"
               type="text"
               {...register('shop_name')}
               className="input"
@@ -542,10 +553,11 @@ export default function AddVehicleRepair() {
           </div>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="notes" className="block text-xs text-(--color-text-muted) mb-1">
               {t('addRepair.notes') || 'Notes'}
             </label>
             <textarea
+              id="notes"
               {...register('notes')}
               className="input resize-none"
               rows={2}

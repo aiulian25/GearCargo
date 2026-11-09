@@ -1,8 +1,10 @@
 import { Outlet } from 'react-router-dom'
 
 export default function AuthLayout({ children }) {
+  // The auth pages keep their light design in every theme. The light scope gives
+  // token-styled children (Register, the route loader) the light values of the white panel.
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row">
+    <div className="light min-h-screen flex flex-col lg:flex-row text-(--color-text-primary)">
       {/* Left Side - Logo/Branding (hidden on mobile, visible on desktop) */}
       <div 
         className="hidden lg:flex lg:w-1/2 items-center justify-center"

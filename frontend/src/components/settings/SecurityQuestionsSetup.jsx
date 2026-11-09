@@ -206,6 +206,7 @@ export default function SecurityQuestionsSetup({ isOpen, onClose, onSuccess, isC
             </div>
           </div>
           <button
+            aria-label={t('common.close')}
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-(--color-bg-tertiary) text-(--color-text-muted)"
           >
@@ -270,6 +271,7 @@ export default function SecurityQuestionsSetup({ isOpen, onClose, onSuccess, isC
                       </span>
                       {selectedQuestions.length > 2 && (
                         <button
+                          aria-label={t('securityQuestions.removeQuestion')}
                           onClick={() => handleRemoveQuestion(index)}
                           className="p-1 text-red-500 hover:bg-red-500/10 rounded-sm"
                         >
@@ -279,6 +281,7 @@ export default function SecurityQuestionsSetup({ isOpen, onClose, onSuccess, isC
                     </div>
                     
                     <select
+                      aria-label={`${t('securityQuestions.question')} ${index + 1}`}
                       value={q.question}
                       onChange={(e) => handleQuestionChange(index, 'question', e.target.value)}
                       className="w-full bg-(--color-bg-secondary) border border-(--color-border) rounded-lg px-3 py-2 text-sm mb-2"
@@ -292,6 +295,7 @@ export default function SecurityQuestionsSetup({ isOpen, onClose, onSuccess, isC
                     </select>
                     
                     <input
+                      aria-label={`${t('securityQuestions.answer')} ${index + 1}`}
                       type="text"
                       value={q.answer}
                       onChange={(e) => handleQuestionChange(index, 'answer', e.target.value)}
@@ -348,7 +352,7 @@ export default function SecurityQuestionsSetup({ isOpen, onClose, onSuccess, isC
               
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-2">
+                  <label htmlFor="security-questions-password" className="block text-sm font-medium mb-2">
                     {t('profile.currentPassword') || 'Current Password'}
                   </label>
                   <div className="relative">
@@ -356,6 +360,7 @@ export default function SecurityQuestionsSetup({ isOpen, onClose, onSuccess, isC
                       {Icons.lock}
                     </span>
                     <input
+                      id="security-questions-password"
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -367,10 +372,11 @@ export default function SecurityQuestionsSetup({ isOpen, onClose, onSuccess, isC
                 
                 {requires2FA && (
                   <div>
-                    <label className="block text-sm font-medium mb-2">
+                    <label htmlFor="security-questions-totp" className="block text-sm font-medium mb-2">
                       {t('auth.twoFactorCode') || '2FA Code'}
                     </label>
                     <input
+                      id="security-questions-totp"
                       type="text"
                       value={totpCode}
                       onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}

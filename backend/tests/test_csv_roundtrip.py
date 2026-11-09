@@ -7,15 +7,15 @@ lossless round-trip and confirm older CSVs without the column still import.
 
 import csv
 import io
-from datetime import date
 
 from app import db
 from app.models import Vehicle, FuelEntry
 from app.services.csv_io import (
     columns_for, export_entries_csv, import_entries_csv,
 )
+from app.utils.timeutils import utc_today
 
-TODAY = date.today()
+TODAY = utc_today()
 
 
 def _mk_vehicle(user_id, name='Focus'):

@@ -1,14 +1,15 @@
 """Tests for F26 — per-station fuel price insights."""
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 
 from app import db
 from app.models import User, Vehicle, FuelEntry
+from app.utils.timeutils import utc_today
 import app.services.fuel_price_service as fps
 
-TODAY = date.today()
+TODAY = utc_today()
 
 
 @pytest.fixture(autouse=True)

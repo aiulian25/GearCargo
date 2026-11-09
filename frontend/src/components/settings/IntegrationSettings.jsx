@@ -113,9 +113,9 @@ export default function IntegrationSettings() {
               <button
                 onClick={() => copyToClipboard(newKey, 'newKey')}
                 className="btn btn-ghost btn-sm shrink-0"
-                title="Copy"
+                title={t('common.copy')}
               >
-                <span className="material-icons-outlined text-sm">
+                <span aria-hidden="true" className="material-icons-outlined text-sm">
                   {copied === 'newKey' ? 'check' : 'content_copy'}
                 </span>
               </button>
@@ -191,9 +191,9 @@ export default function IntegrationSettings() {
               <button
                 onClick={() => copyToClipboard(`- GearCargo:\n    icon: ${baseUrl}/icons/logo.png\n    href: ${baseUrl}\n    widget:\n      type: customapi\n      url: ${baseUrl}/api/widget/v1/homepage\n      headers:\n        X-API-Key: ${newKey}\n      display: block\n      mappings:\n        - field: vehicles\n          label: Vehicles\n          format: number\n        - field: service_records\n          label: Service Records\n          format: number\n        - field: reminders\n          label: Reminders\n          format: number\n        - field: next_reminder\n          label: Next Reminder\n          format: text`, 'config')}
                 className="absolute top-2 right-2 btn btn-ghost btn-sm"
-                title="Copy config"
+                title={t('integrations.copyConfig')}
               >
-                <span className="material-icons-outlined text-sm">
+                <span aria-hidden="true" className="material-icons-outlined text-sm">
                   {copied === 'config' ? 'check' : 'content_copy'}
                 </span>
               </button>
@@ -210,10 +210,11 @@ export default function IntegrationSettings() {
                 GET /api/widget/v1/homepage
               </code>
               <button
+                aria-label={t('common.copy')}
                 onClick={() => copyToClipboard(`${baseUrl}/api/widget/v1/homepage`, 'ep1')}
                 className="btn btn-ghost p-0.5"
               >
-                <span className="material-icons-outlined text-xs">
+                <span aria-hidden="true" className="material-icons-outlined text-xs">
                   {copied === 'ep1' ? 'check' : 'content_copy'}
                 </span>
               </button>
@@ -223,10 +224,11 @@ export default function IntegrationSettings() {
                 GET /api/widget/v1/vehicles
               </code>
               <button
+                aria-label={t('common.copy')}
                 onClick={() => copyToClipboard(`${baseUrl}/api/widget/v1/vehicles`, 'ep2')}
                 className="btn btn-ghost p-0.5"
               >
-                <span className="material-icons-outlined text-xs">
+                <span aria-hidden="true" className="material-icons-outlined text-xs">
                   {copied === 'ep2' ? 'check' : 'content_copy'}
                 </span>
               </button>

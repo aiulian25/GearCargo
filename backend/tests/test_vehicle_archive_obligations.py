@@ -1,7 +1,7 @@
 """GC-018: archive pauses activity while preserving every obligation field."""
 import copy
 import json
-from datetime import date, datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -17,6 +17,7 @@ from app.services import (check_due_reminders, process_auto_renew_insurance,
 from app.services.due import build_due_items
 from app.services.email_service import get_all_alerts_for_user
 from app.services.vehicle_archive import scan_archive_history, create_archive_review_app
+from app.utils.timeutils import utc_naive_now, utc_today
 
 
 MODELS = (InsurancePolicy, TaxEntry, ParkingEntry, Reminder, Todo, ServiceEntry,
@@ -36,7 +37,7 @@ def snapshot(vehicle_id):
 
 @pytest.fixture()
 def obligations(app, user):
-    today = date.today()
+    today = utc_today()
     vehicle = Vehicle(user_id=user.id, name='Archived fixture', current_mileage=2000)
     db.session.add(vehicle); db.session.flush()
     base = {'user_id': user.id, 'vehicle_id': vehicle.id}
@@ -93,18 +94,18 @@ def test_jobs_pause_without_advancing_or_notifying_then_resume(app, client, user
     vid = obligations['vehicle'].id
     # Both missing dates and duplicate templates must remain untouched while
     # archived: the repair/consolidation passes are also automatic writers.
-    db.session.add(TaxEntry(user_id=user.id, vehicle_id=vid, date=date.today(), amount=1,
+    db.session.add(TaxEntry(user_id=user.id, vehicle_id=vid, date=utc_today(), amount=1,
         tax_type='road_tax', recurring=True, recurrence_type='monthly', next_due_date=None))
-    db.session.add(ParkingEntry(user_id=user.id, vehicle_id=vid, date=date.today(), amount=1,
+    db.session.add(ParkingEntry(user_id=user.id, vehicle_id=vid, date=utc_today(), amount=1,
         parking_type='permit', recurring=True, recurrence_type='weekly', next_due_date=None))
     old_service = ServiceEntry(user_id=user.id, vehicle_id=vid,
-        date=date.today()-timedelta(days=365), amount=10, service_type='oil_change')
+        date=utc_today()-timedelta(days=365), amount=10, service_type='oil_change')
     db.session.add(old_service); db.session.flush()
     db.session.add(Reminder(user_id=user.id, vehicle_id=vid, title='Superseded service',
-        due_date=date.today(), source_service_id=old_service.id))
+        due_date=utc_today(), source_service_id=old_service.id))
     for _ in range(2):
         db.session.add(Reminder(user_id=user.id, vehicle_id=vid,
-            title='Duplicate historical reminder', due_date=date.today()))
+            title='Duplicate historical reminder', due_date=utc_today()))
     db.session.commit()
     push, email = [], []
     monkeypatch.setattr('app.routes.push.send_push_to_user', lambda *a, **kw: push.append(kw) or 1)
@@ -124,9 +125,9 @@ def test_jobs_pause_without_advancing_or_notifying_then_resume(app, client, user
     db.session.expire_all()
     assert push and email
     assert InsurancePolicy.query.filter_by(renewed_from_id=obligations['policy'].id).count() == 1
-    assert obligations['policy'].end_date == date.today()-timedelta(days=1)
-    assert obligations['tax'].next_due_date > date.today()
-    assert obligations['parking'].next_due_date > date.today()
+    assert obligations['policy'].end_date == utc_today()-timedelta(days=1)
+    assert obligations['tax'].next_due_date > utc_today()
+    assert obligations['parking'].next_due_date > utc_today()
     assert obligations['reminder'].mileage_notified is True
 
 
@@ -135,8 +136,8 @@ def test_due_views_exclude_archived_but_keep_standalone_tasks_and_history(client
     # An active second car prevents the aggregator's no-vehicles early return
     # from masking unfiltered archived insurance/documents.
     db.session.add(Vehicle(user_id=user.id, name='Active control'))
-    standalone = Reminder(user_id=user.id, title='Standalone reminder', due_date=date.today(), calendar_sync=True)
-    task = Todo(user_id=user.id, title='Standalone task', due_date=date.today())
+    standalone = Reminder(user_id=user.id, title='Standalone reminder', due_date=utc_today(), calendar_sync=True)
+    task = Todo(user_id=user.id, title='Standalone task', due_date=utc_today())
     db.session.add_all([standalone,task]); db.session.commit()
     auth = auth_headers(user.id)
     before = {(item['kind'],item['ref_id']) for item in build_due_items(user.id)}
@@ -206,9 +207,9 @@ def test_explicit_cancellation_survives_archive_restore(client,user,auth_headers
 def test_legacy_review_flags_candidates_without_repairing(app,user,obligations):
     vehicle = obligations['vehicle']
     vehicle.archived = True
-    vehicle.archived_at = datetime.now()
+    vehicle.archived_at = utc_naive_now()
     obligations['current'].status = 'cancelled'
-    obligations['current'].end_date = date.today()
+    obligations['current'].end_date = utc_today()
     obligations['current'].auto_renew = False
     obligations['tax'].recurring = False
     obligations['tax'].next_due_date = None
@@ -230,8 +231,8 @@ def test_widget_and_bulk_calendar_settings_pause_archived_records(client,user,au
     monkeypatch.setattr('app.services.fuel_price_service.get_prices', lambda *a, **kw: None)
     vid = obligations['vehicle'].id
     obligations['reminder'].calendar_sync = False
-    standalone = Reminder(user_id=user.id, title='Standalone control', due_date=date.today(), calendar_sync=False)
-    fine = ParkingEntry(user_id=user.id, vehicle_id=vid, date=date.today(), amount=60,
+    standalone = Reminder(user_id=user.id, title='Standalone control', due_date=utc_today(), calendar_sync=False)
+    fine = ParkingEntry(user_id=user.id, vehicle_id=vid, date=utc_today(), amount=60,
                         parking_type='fine', fine_status='pending')
     db.session.add_all([standalone,fine]); db.session.commit()
     auth = auth_headers(user.id)

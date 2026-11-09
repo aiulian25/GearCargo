@@ -163,9 +163,9 @@ class SecurityAuditLogger:
         caller controls — so any client could choose the address recorded against
         their own login failures, lockouts, exports and admin actions.
 
-        werkzeug's ProxyFix (applied in create_app, S11) has already resolved the
-        real client into request.remote_addr by peeling exactly
-        TRUSTED_PROXY_COUNT hops from the RIGHT of the header, so the header must
+        app/services/proxy_trust.py (S11/GC-104) has already resolved the real
+        client into request.remote_addr, peeling hops from the RIGHT of the header
+        only for a peer TRUSTED_PROXY_COUNT trusts as a proxy, so the header must
         not be re-read here. This matches routes/auth.py:get_real_client_ip and
         ActivityLog._get_client_ip, which were corrected by S11 — the audit trail
         and the blocking machinery must always name the same client.

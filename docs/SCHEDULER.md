@@ -42,7 +42,11 @@ docker compose exec gearcargo /etc/gearcargo/scripts/run-backup.sh manual
 ```
 
 Each job has one durable cursor in `scheduled_job_runs`. The scheduler polls
-every 15 seconds with at most four local job threads. A claim records its
+every 15 seconds with at most four local job threads. At the default
+`LOG_LEVEL=INFO` the polls are not logged: the scheduler process holds
+APScheduler's loggers at WARNING, so missed or skipped runs and scheduler errors
+still appear, and `LOG_LEVEL=DEBUG` shows every poll. Individual job failures
+appear in `flask scheduler-status` (below). A claim records its
 occurrence, owner, fence and two-minute lease; a heartbeat renews every 15 seconds.
 Lease expiry cannot displace a process that still holds its execution lock.
 Database transactions validate ownership and check the lock before commit.

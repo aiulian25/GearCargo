@@ -18,9 +18,10 @@ from app.models import Vehicle, TaxEntry, ParkingEntry
 from app.utils.entryparse import (
     InvalidFieldError, parse_amount, parse_iso_date,
 )
+from app.utils.timeutils import utc_today
 from datetime import date
 
-TODAY = date.today()
+TODAY = utc_today()
 TAXES_URL = '/api/taxes'
 PARKING_URL = '/api/parking'
 
@@ -110,6 +111,26 @@ def test_create_tax_still_works_with_valid_input(app, client, user, auth_headers
 
     assert resp.status_code == 201, resp.data[:200]
     assert resp.get_json()['entry']['amount'] == 15.5
+
+
+@pytest.mark.parametrize('url, model, payload', [
+    (TAXES_URL, TaxEntry, {'tax_type': 'road_tax', 'amount': '15.50'}),
+    (PARKING_URL, ParkingEntry, {'parking_type': 'hourly', 'amount': '4.25'}),
+])
+def test_tax_and_parking_refuse_currencies_needing_more_than_two_decimals(
+        app, client, user, auth_headers, url, model, payload):
+    with app.app_context():
+        vehicle_id = _vehicle(user.id).id
+        before = model.query.count()
+
+    resp = client.post(url, json={**payload, 'vehicle_id': vehicle_id, 'currency': 'KWD'},
+                       headers=auth_headers(user.id))
+
+    assert resp.status_code == 400, resp.data[:200]
+    body = resp.get_json()
+    assert (body['message_key'], body['field']) == ('validation.unsupportedCurrencyPrecision', 'currency')
+    with app.app_context():
+        assert model.query.count() == before, 'a rejected create still inserted'
 
 
 # --- taxes: update -------------------------------------------------------------

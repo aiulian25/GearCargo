@@ -238,6 +238,7 @@ export default function UserManagement() {
             {Icons.search}
           </span>
           <input
+            aria-label={t('admin.searchUsers')}
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -246,6 +247,7 @@ export default function UserManagement() {
           />
         </form>
         <button
+          aria-label={t('admin.addUser')}
           onClick={() => setShowAddModal(true)}
           className="px-4 py-3 rounded-xl bg-(--color-accent) text-white font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
         >
@@ -337,6 +339,7 @@ export default function UserManagement() {
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-2">
           <button
+            aria-label={t('expensePages.previous')}
             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
             disabled={currentPage === 1}
             className="p-2 rounded-lg hover:bg-(--color-bg-tertiary) disabled:opacity-50 disabled:cursor-not-allowed"
@@ -347,6 +350,7 @@ export default function UserManagement() {
             {currentPage} / {totalPages}
           </span>
           <button
+            aria-label={t('expensePages.next')}
             onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
             disabled={currentPage === totalPages}
             className="p-2 rounded-lg hover:bg-(--color-bg-tertiary) disabled:opacity-50 disabled:cursor-not-allowed"
@@ -363,6 +367,7 @@ export default function UserManagement() {
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">{t('admin.editUser') || 'Edit User'}</h3>
               <button
+                aria-label={t('common.close')}
                 onClick={() => setShowEditModal(false)}
                 className="p-2 rounded-lg hover:bg-(--color-bg-tertiary)"
               >
@@ -441,11 +446,12 @@ export default function UserManagement() {
             
             {/* Vehicle Limit */}
             <div className="mb-6">
-              <label className="block text-sm font-medium mb-2">
+              <label htmlFor="edit-user-vehicle-limit" className="block text-sm font-medium mb-2">
                 {t('admin.vehicleLimit') || 'Vehicle Limit'}
               </label>
               <div className="flex items-center gap-3">
                 <input
+                  id="edit-user-vehicle-limit"
                   type="number"
                   min="0"
                   value={editForm.vehicle_limit}
@@ -489,6 +495,7 @@ export default function UserManagement() {
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">{t('admin.addUser') || 'Add User'}</h3>
               <button
+                aria-label={t('common.close')}
                 onClick={() => {
                   setShowAddModal(false)
                   setAddForm({ email: '', username: '', display_name: '', password: '', is_admin: false, is_active: true, vehicle_limit: 10 })
@@ -501,10 +508,11 @@ export default function UserManagement() {
             
             {/* Email */}
             <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">
+              <label htmlFor="add-user-email" className="block text-sm font-medium mb-2">
                 {t('common.email') || 'Email'} <span className="text-red-500">*</span>
               </label>
               <input
+                id="add-user-email"
                 type="email"
                 value={addForm.email}
                 onChange={(e) => setAddForm(f => ({ ...f, email: e.target.value }))}
@@ -517,10 +525,11 @@ export default function UserManagement() {
             
             {/* Username */}
             <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">
+              <label htmlFor="add-user-username" className="block text-sm font-medium mb-2">
                 {t('common.username') || 'Username'}
               </label>
               <input
+                id="add-user-username"
                 type="text"
                 value={addForm.username}
                 onChange={(e) => setAddForm(f => ({ ...f, username: e.target.value }))}
@@ -532,10 +541,11 @@ export default function UserManagement() {
             
             {/* Display Name */}
             <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">
+              <label htmlFor="add-user-display-name" className="block text-sm font-medium mb-2">
                 {t('common.displayName') || 'Display Name'}
               </label>
               <input
+                id="add-user-display-name"
                 type="text"
                 value={addForm.display_name}
                 onChange={(e) => setAddForm(f => ({ ...f, display_name: e.target.value }))}
@@ -547,10 +557,11 @@ export default function UserManagement() {
             
             {/* Password */}
             <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">
+              <label htmlFor="add-user-password" className="block text-sm font-medium mb-2">
                 {t('common.password') || 'Password'} <span className="text-red-500">*</span>
               </label>
               <input
+                id="add-user-password"
                 type="password"
                 value={addForm.password}
                 onChange={(e) => setAddForm(f => ({ ...f, password: e.target.value }))}
@@ -630,11 +641,12 @@ export default function UserManagement() {
             
             {/* Vehicle Limit */}
             <div className="mb-6">
-              <label className="block text-sm font-medium mb-2">
+              <label htmlFor="add-user-vehicle-limit" className="block text-sm font-medium mb-2">
                 {t('admin.vehicleLimit') || 'Vehicle Limit'}
               </label>
               <div className="flex items-center gap-3">
                 <input
+                  id="add-user-vehicle-limit"
                   type="number"
                   min="0"
                   value={addForm.vehicle_limit}

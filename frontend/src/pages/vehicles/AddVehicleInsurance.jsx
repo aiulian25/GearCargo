@@ -41,6 +41,12 @@ const Icons = {
   ),
 }
 
+const PREMIUM_BREAKDOWN_KEYS = {
+  monthly: 'addInsurance.monthlyBreakdown',
+  quarterly: 'addInsurance.quarterlyBreakdown',
+  semi_annual: 'addInsurance.semiAnnualBreakdown',
+}
+
 export default function AddVehicleInsurance() {
   const mutation = useMutationIntent()
   const { id: vehicleId } = useParams()
@@ -49,8 +55,8 @@ export default function AddVehicleInsurance() {
   const isEditMode = !!editId
   const navigate = useExpenseNavigation(vehicleId)
   const { t } = useTranslation()
-  const { currency } = useCurrency()
-  
+  const { currency, formatCurrency } = useCurrency()
+
   const [vehicle, setVehicle] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -82,7 +88,8 @@ export default function AddVehicleInsurance() {
   })
   
   const paymentFrequency = watch('payment_frequency')
-  
+  const premiumBreakdownKey = PREMIUM_BREAKDOWN_KEYS[paymentFrequency]
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -218,7 +225,7 @@ export default function AddVehicleInsurance() {
     <div className="pb-4">
       {/* Header */}
       <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
-        <button onClick={() => navigate(-1)} className="btn-icon">
+        <button aria-label={t('common.close')} onClick={() => navigate(-1)} className="btn-icon">
           {Icons.close}
         </button>
         <div className="flex-1">
@@ -263,10 +270,11 @@ export default function AddVehicleInsurance() {
           </h3>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="provider" className="block text-xs text-(--color-text-muted) mb-1">
               {t('addInsurance.provider') || 'Insurance Provider'} *
             </label>
             <input
+              id="provider"
               type="text"
               {...register('provider', { required: t('addInsurance.providerRequired') || 'Provider is required' })}
               className="input"
@@ -279,10 +287,11 @@ export default function AddVehicleInsurance() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="policy_number" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addInsurance.policyNumber') || 'Policy Number'}
               </label>
               <input
+                id="policy_number"
                 type="text"
                 {...register('policy_number')}
                 className="input"
@@ -291,10 +300,11 @@ export default function AddVehicleInsurance() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="policy_type" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addInsurance.policyType') || 'Policy Type'} *
               </label>
               <select 
+                id="policy_type"
                 {...register('policy_type', { required: true })}
                 className="input"
               >
@@ -314,10 +324,11 @@ export default function AddVehicleInsurance() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="premium" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addInsurance.premium') || 'Premium'} ({currency.symbol}) *
               </label>
               <input
+                id="premium"
                 type="number" inputMode="decimal"
                 step="0.01"
                 {...register('premium', { 
@@ -333,10 +344,11 @@ export default function AddVehicleInsurance() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="payment_frequency" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addInsurance.paymentFrequency') || 'Payment Frequency'}
               </label>
               <select
+                id="payment_frequency"
                 {...register('payment_frequency')}
                 className="input"
               >
@@ -351,20 +363,19 @@ export default function AddVehicleInsurance() {
           {getAnnualCost() && (
             <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-3">
               <p className="text-xs text-emerald-600 dark:text-emerald-400">
-                <strong>{t('addInsurance.annualCost') || 'Annual Cost'}:</strong> {currency.symbol}{getAnnualCost().toFixed(2)}
-                {paymentFrequency === 'monthly' && ` (${currency.symbol}${watch('premium')}/month × 12)`}
-                {paymentFrequency === 'quarterly' && ` (${currency.symbol}${watch('premium')}/quarter × 4)`}
-                {paymentFrequency === 'semi_annual' && ` (${currency.symbol}${watch('premium')}/6 months × 2)`}
+                <strong>{t('addInsurance.annualCost') || 'Annual Cost'}:</strong> {formatCurrency(getAnnualCost())}
+                {premiumBreakdownKey && ` (${t(premiumBreakdownKey, { amount: formatCurrency(watch('premium')) })})`}
               </p>
             </div>
           )}
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="coverage_amount" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addInsurance.coverageAmount') || 'Coverage Amount'} ({currency.symbol})
               </label>
               <input
+                id="coverage_amount"
                 type="number" inputMode="decimal"
                 step="0.01"
                 {...register('coverage_amount')}
@@ -374,10 +385,11 @@ export default function AddVehicleInsurance() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="deductible" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addInsurance.deductible') || 'Deductible'} ({currency.symbol})
               </label>
               <input
+                id="deductible"
                 type="number" inputMode="decimal"
                 step="0.01"
                 {...register('deductible')}
@@ -404,10 +416,11 @@ export default function AddVehicleInsurance() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="start_date" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addInsurance.startDate') || 'Start Date'} *
               </label>
               <input
+                id="start_date"
                 type="date"
                 {...register('start_date', { required: true })}
                 className="input"
@@ -415,10 +428,11 @@ export default function AddVehicleInsurance() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="end_date" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addInsurance.endDate') || 'End Date'} *
               </label>
               <input
+                id="end_date"
                 type="date"
                 {...register('end_date', { required: true })}
                 className="input"
@@ -435,6 +449,7 @@ export default function AddVehicleInsurance() {
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
               <input
+                aria-label={t('addInsurance.autoRenew')}
                 type="checkbox"
                 {...register('auto_renew')}
                 className="sr-only peer"
@@ -460,10 +475,11 @@ export default function AddVehicleInsurance() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="agent_name" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addInsurance.agentName') || 'Agent Name'}
               </label>
               <input
+                id="agent_name"
                 type="text"
                 {...register('agent_name')}
                 className="input"
@@ -472,10 +488,11 @@ export default function AddVehicleInsurance() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="agent_phone" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addInsurance.agentPhone') || 'Agent Phone'}
               </label>
               <input
+                id="agent_phone"
                 type="tel"
                 {...register('agent_phone')}
                 className="input"
@@ -486,10 +503,11 @@ export default function AddVehicleInsurance() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="agent_email" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addInsurance.agentEmail') || 'Agent Email'}
               </label>
               <input
+                id="agent_email"
                 type="email"
                 {...register('agent_email')}
                 className="input"
@@ -498,10 +516,11 @@ export default function AddVehicleInsurance() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="claims_phone" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addInsurance.claimsPhone') || 'Claims Phone'}
               </label>
               <input
+                id="claims_phone"
                 type="tel"
                 {...register('claims_phone')}
                 className="input"
@@ -514,10 +533,11 @@ export default function AddVehicleInsurance() {
         {/* Notes */}
         <div className="card space-y-4">
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="notes" className="block text-xs text-(--color-text-muted) mb-1">
               {t('addInsurance.notes') || 'Notes'}
             </label>
             <textarea
+              id="notes"
               {...register('notes')}
               className="input resize-none"
               rows={2}

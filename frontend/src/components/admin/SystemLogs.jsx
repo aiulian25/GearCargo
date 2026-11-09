@@ -230,6 +230,7 @@ export default function SystemLogs() {
               {Icons.search}
             </span>
             <input
+              aria-label={t('admin.searchLogs')}
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -265,10 +266,11 @@ export default function SystemLogs() {
           <div className="grid grid-cols-2 gap-3">
             {/* Event Type */}
             <div>
-              <label className="block text-2xs text-(--color-text-muted) mb-1">
+              <label htmlFor="logs-event-type" className="block text-2xs text-(--color-text-muted) mb-1">
                 {t('admin.eventType') || 'Event Type'}
               </label>
               <select
+                id="logs-event-type"
                 value={eventType}
                 onChange={(e) => { setEventType(e.target.value); setCurrentPage(1) }}
                 className="w-full px-3 py-2 rounded-lg bg-(--color-bg-secondary) text-(--color-text-primary) text-sm border border-(--color-border)"
@@ -284,10 +286,11 @@ export default function SystemLogs() {
             
             {/* Success/Failed */}
             <div>
-              <label className="block text-2xs text-(--color-text-muted) mb-1">
+              <label htmlFor="logs-status" className="block text-2xs text-(--color-text-muted) mb-1">
                 {t('admin.status') || 'Status'}
               </label>
               <select
+                id="logs-status"
                 value={successFilter}
                 onChange={(e) => { setSuccessFilter(e.target.value); setCurrentPage(1) }}
                 className="w-full px-3 py-2 rounded-lg bg-(--color-bg-secondary) text-(--color-text-primary) text-sm border border-(--color-border)"
@@ -300,10 +303,11 @@ export default function SystemLogs() {
             
             {/* Country */}
             <div>
-              <label className="block text-2xs text-(--color-text-muted) mb-1">
+              <label htmlFor="logs-country" className="block text-2xs text-(--color-text-muted) mb-1">
                 {t('admin.country') || 'Country'}
               </label>
               <select
+                id="logs-country"
                 value={country}
                 onChange={(e) => { setCountry(e.target.value); setCurrentPage(1) }}
                 className="w-full px-3 py-2 rounded-lg bg-(--color-bg-secondary) text-(--color-text-primary) text-sm border border-(--color-border)"
@@ -317,10 +321,11 @@ export default function SystemLogs() {
             
             {/* Category */}
             <div>
-              <label className="block text-2xs text-(--color-text-muted) mb-1">
+              <label htmlFor="logs-category" className="block text-2xs text-(--color-text-muted) mb-1">
                 {t('admin.category') || 'Category'}
               </label>
               <select
+                id="logs-category"
                 value={category}
                 onChange={(e) => { setCategory(e.target.value); setCurrentPage(1) }}
                 className="w-full px-3 py-2 rounded-lg bg-(--color-bg-secondary) text-(--color-text-primary) text-sm border border-(--color-border)"
@@ -334,10 +339,11 @@ export default function SystemLogs() {
             
             {/* Date Range */}
             <div>
-              <label className="block text-2xs text-(--color-text-muted) mb-1">
+              <label htmlFor="logs-start-date" className="block text-2xs text-(--color-text-muted) mb-1">
                 {t('admin.startDate') || 'Start Date'}
               </label>
               <input
+                id="logs-start-date"
                 type="date"
                 value={startDate}
                 onChange={(e) => { setStartDate(e.target.value); setCurrentPage(1) }}
@@ -345,10 +351,11 @@ export default function SystemLogs() {
               />
             </div>
             <div>
-              <label className="block text-2xs text-(--color-text-muted) mb-1">
+              <label htmlFor="logs-end-date" className="block text-2xs text-(--color-text-muted) mb-1">
                 {t('admin.endDate') || 'End Date'}
               </label>
               <input
+                id="logs-end-date"
                 type="date"
                 value={endDate}
                 onChange={(e) => { setEndDate(e.target.value); setCurrentPage(1) }}
@@ -514,6 +521,7 @@ export default function SystemLogs() {
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-4 pt-4">
           <button
+            aria-label={t('expensePages.previous')}
             onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
             disabled={currentPage === 1}
             className="p-2 rounded-lg bg-(--color-bg-tertiary) text-(--color-text-secondary) disabled:opacity-50 disabled:cursor-not-allowed"
@@ -524,6 +532,7 @@ export default function SystemLogs() {
             {t('common.page') || 'Page'} {currentPage} / {totalPages}
           </span>
           <button
+            aria-label={t('expensePages.next')}
             onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
             disabled={currentPage === totalPages}
             className="p-2 rounded-lg bg-(--color-bg-tertiary) text-(--color-text-secondary) disabled:opacity-50 disabled:cursor-not-allowed"

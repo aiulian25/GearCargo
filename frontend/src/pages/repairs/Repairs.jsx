@@ -89,6 +89,7 @@ export default function Repairs() {
       {vehicles.length > 1 && (
         <div className="mb-4">
           <select
+            aria-label={t('common.vehicle')}
             value={selectedVehicle}
             onChange={(e) => setSelectedVehicle(e.target.value)}
             className="input"

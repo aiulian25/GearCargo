@@ -39,7 +39,7 @@ export default function EditVehicle() {
   const fileInputRef = useRef(null)
   const cameraInputRef = useRef(null)
   
-  const { register, handleSubmit, formState: { errors, isDirty }, reset } = useForm()
+  const { register, handleSubmit, formState: { errors, isDirty, dirtyFields }, reset } = useForm()
   
   // Load existing vehicle data
   useEffect(() => {
@@ -132,7 +132,7 @@ export default function EditVehicle() {
     setError('')
     
     try {
-      const response = await vehicleApi.update(id, {
+      const payload = {
         ...data,
         year: parseInt(data.year),
         current_mileage: data.current_mileage ? parseInt(data.current_mileage) : 0,
@@ -157,8 +157,12 @@ export default function EditVehicle() {
           }
           return Object.keys(overrides).length ? overrides : null
         })(),
-      }, mutation.options())
-      
+      }
+      // An unchanged code is not new input: a stored code that new input may no
+      // longer use must not block unrelated edits.
+      if (!dirtyFields.purchase_currency && !dirtyFields.purchase_price) delete payload.purchase_currency
+      const response = await vehicleApi.update(id, payload, mutation.options())
+
       // Keep the acknowledged revision for edits/retries after a photo failure.
       if (response.data?.vehicle?.revision) mutation.capture(response.data.vehicle)
 
@@ -330,10 +334,11 @@ export default function EditVehicle() {
           <h3 className="text-sm font-medium text-(--color-text-secondary)">{t('vehicles.basicInfo')}</h3>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="name" className="block text-xs text-(--color-text-muted) mb-1">
               {t('vehicles.vehicleName')} *
             </label>
             <input
+              id="name"
               type="text"
               {...register('name', { required: t('vehicles.nameRequired') })}
               className="input"
@@ -346,10 +351,11 @@ export default function EditVehicle() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="make" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('vehicles.make')} *
               </label>
               <input
+                id="make"
                 type="text"
                 {...register('make', { required: t('vehicles.makeRequired') })}
                 className="input"
@@ -361,10 +367,11 @@ export default function EditVehicle() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="model" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('vehicles.model')} *
               </label>
               <input
+                id="model"
                 type="text"
                 {...register('model', { required: t('vehicles.modelRequired') })}
                 className="input"
@@ -378,10 +385,11 @@ export default function EditVehicle() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="year" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('vehicles.year')}
               </label>
               <input
+                id="year"
                 type="number" inputMode="decimal"
                 {...register('year', { 
                   min: { value: 1900, message: t('vehicles.invalidYear') },
@@ -393,10 +401,11 @@ export default function EditVehicle() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="license_plate" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('vehicles.licensePlate')}
               </label>
               <input
+                id="license_plate"
                 type="text"
                 {...register('license_plate')}
                 className="input uppercase"
@@ -411,10 +420,10 @@ export default function EditVehicle() {
           <h3 className="text-sm font-medium text-(--color-text-secondary)">{t('vehicles.technical')}</h3>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="fuel_type" className="block text-xs text-(--color-text-muted) mb-1">
               {t('vehicles.fuelType')}
             </label>
-            <select {...register('fuel_type')} className="input">
+            <select id="fuel_type" {...register('fuel_type')} className="input">
               {fuelTypes.map(type => (
                 <option key={type.value} value={type.value}>{type.label}</option>
               ))}
@@ -449,10 +458,11 @@ export default function EditVehicle() {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="current_mileage" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('vehicles.currentMileage')} ({distanceUnit ? (distanceUnit === 'miles' ? (t('vehicles.miles') || 'miles') : 'km') : t('units.unknown')})
               </label>
               <input
+                id="current_mileage"
                 type="number" inputMode="decimal"
                 {...register('current_mileage', { min: 0 })}
                 className="input"
@@ -461,10 +471,11 @@ export default function EditVehicle() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="tank_capacity" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('vehicles.tankCapacity')}
               </label>
               <input
+                id="tank_capacity"
                 type="number" inputMode="decimal"
                 step="0.1"
                 {...register('tank_capacity', { min: 0 })}
@@ -475,10 +486,11 @@ export default function EditVehicle() {
           </div>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="vin" className="block text-xs text-(--color-text-muted) mb-1">
               {t('vehicles.vinOptional')}
             </label>
             <input
+              id="vin"
               type="text"
               {...register('vin')}
               className="input uppercase"
@@ -488,10 +500,11 @@ export default function EditVehicle() {
           </div>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="engine_cc" className="block text-xs text-(--color-text-muted) mb-1">
               {t('vehicles.engineSize')}
             </label>
             <input
+              id="engine_cc"
               type="number" inputMode="decimal"
               {...register('engine_cc', { min: 0 })}
               className="input"
@@ -500,10 +513,10 @@ export default function EditVehicle() {
           </div>
 
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="drivetrain" className="block text-xs text-(--color-text-muted) mb-1">
               {t('vehicles.drivetrain') || 'Drivetrain'}
             </label>
-            <select {...register('drivetrain')} className="input">
+            <select id="drivetrain" {...register('drivetrain')} className="input">
               <option value="">{t('vehicles.selectDrivetrain') || 'Select drivetrain'}</option>
               <option value="fwd">{t('vehicles.drivetrainFwd') || 'Front-wheel drive (FWD)'}</option>
               <option value="rwd">{t('vehicles.drivetrainRwd') || 'Rear-wheel drive (RWD)'}</option>
@@ -514,10 +527,11 @@ export default function EditVehicle() {
           {/* Purchase info (F23) — stored at create, now visible and editable */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="purchase_date" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('vehicles.purchaseDate') || 'Purchase date'}
               </label>
               <input
+                id="purchase_date"
                 type="date"
                 {...register('purchase_date')}
                 className="input"
@@ -525,10 +539,11 @@ export default function EditVehicle() {
             </div>
 
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="purchase_price" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('vehicles.purchasePrice') || 'Purchase price'}
               </label>
               <input
+                id="purchase_price"
                 type="number" inputMode="decimal"
                 step="0.01"
                 {...register('purchase_price', { min: 0 })}
@@ -537,8 +552,8 @@ export default function EditVehicle() {
               />
             </div>
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">{t('financial.purchaseCurrency')}</label>
-              <input {...register('purchase_currency')} maxLength={3} className="input" list="purchase-currencies" placeholder="GBP / EUR / USD" />
+              <label htmlFor="purchase_currency" className="block text-xs text-(--color-text-muted) mb-1">{t('financial.purchaseCurrency')}</label>
+              <input id="purchase_currency" {...register('purchase_currency')} maxLength={3} className="input" list="purchase-currencies" placeholder="GBP / EUR / USD" />
               <datalist id="purchase-currencies">{['GBP', 'EUR', 'RON', 'USD'].map(code => <option key={code} value={code} />)}</datalist>
               <p className="text-xs mt-1">{t('financial.reviewPurchase')}</p>
             </div>
@@ -568,10 +583,11 @@ export default function EditVehicle() {
               
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-(--color-text-muted) mb-1">
+                  <label htmlFor="vehicle_height_cm" className="block text-xs text-(--color-text-muted) mb-1">
                     {t('vehicles.height')}
                   </label>
                   <input
+                    id="vehicle_height_cm"
                     type="number" inputMode="decimal"
                     {...register('vehicle_height_cm', { min: 0 })}
                     className="input"
@@ -580,10 +596,11 @@ export default function EditVehicle() {
                 </div>
                 
                 <div>
-                  <label className="block text-xs text-(--color-text-muted) mb-1">
+                  <label htmlFor="vehicle_width_cm" className="block text-xs text-(--color-text-muted) mb-1">
                     {t('vehicles.width')}
                   </label>
                   <input
+                    id="vehicle_width_cm"
                     type="number" inputMode="decimal"
                     {...register('vehicle_width_cm', { min: 0 })}
                     className="input"
@@ -592,10 +609,11 @@ export default function EditVehicle() {
                 </div>
 
                 <div>
-                  <label className="block text-xs text-(--color-text-muted) mb-1">
+                  <label htmlFor="vehicle_length_cm" className="block text-xs text-(--color-text-muted) mb-1">
                     {t('vehicles.length') || 'Length (cm)'}
                   </label>
                   <input
+                    id="vehicle_length_cm"
                     type="number" inputMode="decimal"
                     {...register('vehicle_length_cm', { min: 0 })}
                     className="input"
@@ -604,10 +622,11 @@ export default function EditVehicle() {
                 </div>
 
                 <div>
-                  <label className="block text-xs text-(--color-text-muted) mb-1">
+                  <label htmlFor="vehicle_weight_kg" className="block text-xs text-(--color-text-muted) mb-1">
                     {t('vehicles.weight')}
                   </label>
                   <input
+                    id="vehicle_weight_kg"
                     type="number" inputMode="decimal"
                     {...register('vehicle_weight_kg', { min: 0 })}
                     className="input"
@@ -643,10 +662,11 @@ export default function EditVehicle() {
               <div className="grid grid-cols-2 gap-3">
                 {MAINTENANCE_COMPONENTS.map(([key, km]) => (
                   <div key={key}>
-                    <label className="block text-xs text-(--color-text-muted) mb-1">
+                    <label htmlFor={`mi_${key}`} className="block text-xs text-(--color-text-muted) mb-1">
                       {t(`vehicleHealth.components_${key}`) || key.replace(/_/g, ' ')}
                     </label>
                     <input
+                      id={`mi_${key}`}
                       type="number" inputMode="numeric" min="1"
                       {...register(`mi_${key}`)}
                       className="input"

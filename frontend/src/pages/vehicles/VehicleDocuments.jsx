@@ -507,6 +507,7 @@ export default function VehicleDocuments() {
               {Icons.search}
             </span>
             <input
+              aria-label={t('vehicleDocuments.searchPlaceholder')}
               type="search"
               value={query}
               onChange={handleQueryChange}
@@ -521,7 +522,7 @@ export default function VehicleDocuments() {
               <button
                 onClick={clearQuery}
                 className="absolute right-3 text-(--color-text-muted) hover:text-(--color-text-primary) transition-colors touch-manipulation"
-                aria-label={t('common.clear') || 'Clear'}
+                aria-label={t('vehicleDocuments.clearSearch')}
               >
                 {Icons.clear}
               </button>
@@ -586,10 +587,11 @@ export default function VehicleDocuments() {
 
             {/* Category selector */}
             <div>
-              <label className="text-xs text-(--color-text-muted) mb-1 block">
+              <label htmlFor="upload-category" className="text-xs text-(--color-text-muted) mb-1 block">
                 {t('vehicleDocuments.categoryLabel') || 'Category'}
               </label>
               <select
+                id="upload-category"
                 value={uploadCategory}
                 onChange={e => setUploadCategory(e.target.value)}
                 className="w-full px-3 py-2 bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg text-sm text-(--color-text-primary) outline-hidden focus:border-(--color-accent) transition-colors"
@@ -813,10 +815,11 @@ export default function VehicleDocuments() {
             </div>
 
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="edit-document-category" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('documents.category') || 'Category'}
               </label>
               <select
+                id="edit-document-category"
                 value={editForm.category}
                 onChange={(e) => setEditForm((f) => ({ ...f, category: e.target.value }))}
                 className="input"
@@ -829,11 +832,12 @@ export default function VehicleDocuments() {
             </div>
 
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="edit-document-expiry" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('documents.expiryDate') || 'Expiry date'}
               </label>
               <div className="flex items-center gap-2">
                 <input
+                  id="edit-document-expiry"
                   type="date"
                   value={editForm.expires_at}
                   onChange={(e) => setEditForm((f) => ({ ...f, expires_at: e.target.value }))}
@@ -852,10 +856,11 @@ export default function VehicleDocuments() {
             </div>
 
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="edit-document-description" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addFuel.notes') || 'Notes'}
               </label>
               <textarea
+                id="edit-document-description"
                 value={editForm.description}
                 onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
                 rows={2}

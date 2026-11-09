@@ -340,6 +340,17 @@ def test_legacy_gaps_are_reported_and_never_guess_units_or_currency(app, user, v
     assert task.completed and task.recurring and task.vehicle_id == vehicle.id
 
 
+def test_legacy_entry_without_a_date_defaults_to_utc_today(app, monkeypatch):
+    from app.services import backup_schema
+    pinned_utc_today = date(2001, 2, 3)
+    monkeypatch.setattr(backup_schema, 'utc_today', lambda: pinned_utc_today)
+    payload = {'version': '1.0', 'vehicles': [{'id': 1, 'name': 'Old car',
+                                                'fuel_entries': [{'id': 2, 'amount': 10}]}]}
+    with app.app_context():
+        prepared = backup_schema.prepare_backup(payload)
+    assert prepared.records['fuel_entries'][0]['date'] == pinned_utc_today
+
+
 @pytest.mark.parametrize('mutation', ['version', 'unknown_collection', 'unknown_field', 'missing_field',
                                      'bad_todo', 'unknown_reference', 'account_permissions', 'unknown_json_reference'])
 def test_invalid_current_backup_is_rejected_before_writing(app, client, user, auth_headers, mutation):

@@ -198,6 +198,7 @@ export default function ReceiptUpload({ onFileSelect, onFileRemove, selectedFile
         /* Preview area */
         <div className="relative border border-(--color-border) rounded-xl p-4 bg-(--color-bg-tertiary)">
           <button
+            aria-label={t('receipt.remove')}
             type="button"
             onClick={handleRemove}
             className="absolute top-2 right-2 p-1.5 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors"

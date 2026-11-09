@@ -10,15 +10,16 @@ The real CalDAV call is monkeypatched: these tests assert the ROUTES dispatch
 correctly, not that caldav works.
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 
 from app import db
 from app.models import Vehicle, TaxEntry, ParkingEntry
+from app.utils.timeutils import utc_today
 import app.services.calendar_service as calendar_service
 
-TODAY = date.today()
+TODAY = utc_today()
 TAXES_URL = '/api/taxes'
 PARKING_URL = '/api/parking'
 

@@ -16,10 +16,11 @@ from sqlalchemy.orm import Session
 
 from app.utils.entryparse import (
     InvalidFieldError, INVALID_NUMBER_KEY, INVALID_DATE_KEY, REQUIRED_FIELD_KEY,
-    parse_amount, parse_optional_int, parse_currency_code, parse_iso_date,
+    parse_amount, parse_optional_int, parse_currency_code, parse_iso_date, parse_recognized_currency_code,
 )
 
 INVALID_VALUE_KEY = 'validation.invalidValue'
+CURRENCY_FIELDS = ('currency', 'purchase_currency')
 # Includes UI options and documented legacy model values.
 ENUMS = {
     'fuel_type': set('petrol gasoline regular premium diesel e85 lpg cng electric hybrid plugin_hybrid other'.split()),
@@ -136,10 +137,13 @@ def validate_field(model, field, value, *, exact=False):
                 if not exact:
                     value = normalized
         elif isinstance(typ, String):
-            if field in ('currency', 'purchase_currency'):
+            if field in CURRENCY_FIELDS:
                 # Preserve the existing currency-specific error key even when
-                # the submitted code exceeds the column length.
-                normalized = parse_currency_code(value)
+                # the submitted code exceeds the column length. Exact (archive
+                # and scan) values are stored data whose amounts exact mode never
+                # rounds; only new input must also fit two decimals.
+                parse = parse_recognized_currency_code if exact else parse_currency_code
+                normalized = parse(value)
                 if exact and normalized != value:
                     _fail(field, 'validation.invalidCurrency', 'Currency must use a recognized uppercase code')
                 value = normalized

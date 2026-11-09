@@ -119,6 +119,7 @@ def test_all_policies_delivered_once_on_page_one(app, client, auth_headers):
     assert "insurance" in p1
     assert {r["id"] for r in p1["insurance"]} == set(policy_ids)
     assert all(r["type"] == "insurance" for r in p1["insurance"])
+    assert all(r["currency"] == "USD" for r in p1["insurance"])
     # page-1 `entries` are pure entries — no insurance spliced in
     assert all(r["type"] != "insurance" for r in p1["entries"])
 

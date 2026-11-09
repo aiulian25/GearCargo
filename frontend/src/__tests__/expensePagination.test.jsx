@@ -12,9 +12,12 @@ vi.mock('../services/api', () => {
     fuelApi: list(), serviceApi: list(), repairApi: list(), taxApi: list(), reminderApi: list(), insuranceApi: list(), consumableApi: list(),
     parkingApi: { ...list(), getFines: vi.fn().mockResolvedValue({ data: { fines: [] } }) } }
 })
-vi.mock('../contexts/LanguageContext', () => ({ useTranslation: () => ({
-  t: key => key.split('.').reduce((v, k) => v?.[k], translations.en) || key,
-}) }))
+vi.mock('../contexts/LanguageContext', async () => {
+  const { createCurrencyFormatter } = await import('../utils/currencyFormat')
+  const formatCurrency = createCurrencyFormatter({ language: 'en', currency: 'USD' })
+  return { useTranslation: () => ({ t: key => key.split('.').reduce((v, k) => v?.[k], translations.en) || key }),
+    useCurrency: () => ({ formatCurrency }) }
+})
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: { currency: 'GBP', volume_unit: 'liters' } }) }))
 vi.mock('../components/ui/AttachmentViewer', () => ({ default: () => null }))
 const year = new Date().getFullYear()
@@ -59,7 +62,7 @@ it('lets the owner reach records beyond the first page without refetching whole-
   expect(vehicleApi.getExpenseRecords).toHaveBeenLastCalledWith('1', expect.objectContaining({ category: 'fuel', year, page: 2 }))
   expect(vehicleApi.getExpenseSummary).toHaveBeenCalledTimes(1)
   expect(screen.getByTestId('location').textContent).toContain('page=2')
-  expect(screen.getByText(`${translations.en.expensePages.periodTotal}: 450.00 GBP`)).toBeTruthy()
+  expect(screen.getByText(`${translations.en.expensePages.periodTotal}: £450.00`)).toBeTruthy()
   expect(vehicleApi.getById).toHaveBeenCalledTimes(1)
   expect(vehicleApi.getExpenseRecords).toHaveBeenCalledTimes(2)
   expect(fuelApi.getByVehicle).not.toHaveBeenCalled()
@@ -74,7 +77,7 @@ it('keeps month, year and tab in navigation and restores the exact page after ed
   fireEvent.click(await screen.findByRole('button', { name: 'Save edit' }))
   expect(await screen.findByText('Station 21')).toBeTruthy()
   expect(screen.getByTestId('location').textContent).toBe(url)
-  fireEvent.click(screen.getByRole('button', { name: 'February 2020: 0.00 GBP' }))
+  fireEvent.click(screen.getByRole('button', { name: 'February 2020: £0.00' }))
   await waitFor(() => expect(vehicleApi.getExpenseRecords).toHaveBeenLastCalledWith('1', expect.objectContaining({ year: 2020, month: 2, page: 1 })))
   fireEvent.click(screen.getByRole('button', { name: 'Browser back' }))
   await waitFor(() => expect(screen.getByTestId('location').textContent).toBe(url))
@@ -97,7 +100,7 @@ it('keeps totals visible when details fail, and offers a retry instead of a fals
   renderPage()
   expect(await screen.findByText(translations.en.expensePages.loadFailed)).toBeTruthy()
   expect(screen.queryByText(translations.en.expenses.noEntries)).toBeNull()
-  expect(screen.getAllByText('450.00 GBP').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('£450.00').length).toBeGreaterThan(0)
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
   expect(await screen.findByText('Station 20')).toBeTruthy()
 })
@@ -147,6 +150,18 @@ it('fetches outstanding fines only on the parking tab and reports failures separ
   fireEvent.click(screen.getByRole('button', { name: 'Parking' }))
   expect(await screen.findByText(translations.en.expensePages.finesFailed)).toBeTruthy()
   expect(vehicleApi.getExpenseRecords).toHaveBeenCalledTimes(3)
+})
+
+it('says next to the odometer why a fuel row has no consumption figure', async () => {
+  const [measured, typo] = pageData(1).records
+  vehicleApi.getExpenseRecords.mockResolvedValue({ data: { ...pageData(1), records: [
+    { ...measured, odometer: 51000, measurement_status: 'measured' },
+    { ...typo, odometer: 5100, measurement_status: 'odometer_regression' },
+  ] } })
+  renderPage()
+  const reason = await screen.findByText(translations.en.fuel.measurementStatus.odometer_regression)
+  expect(reason.closest('td').textContent).toContain((5100).toLocaleString())
+  expect(screen.getByText(`${(51000).toLocaleString()} km`).closest('td').textContent).toBe(`${(51000).toLocaleString()} km`)
 })
 
 it('rejects edit-return state pointing at another vehicle', async () => {

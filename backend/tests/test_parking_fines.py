@@ -1,9 +1,8 @@
 """Tests for F14 — surface paid and unpaid parking fines."""
 
-from datetime import date
-
 from app import db
 from app.models import User, Vehicle, ParkingEntry
+from app.utils.timeutils import utc_today
 
 
 def _mk_user(email='fines@example.com', username='finesuser'):
@@ -23,7 +22,7 @@ def _mk_vehicle(user_id, name='Focus'):
 
 
 def _mk_fine(user_id, vehicle_id, amount, status, reason='No ticket'):
-    f = ParkingEntry(user_id=user_id, vehicle_id=vehicle_id, date=date.today(),
+    f = ParkingEntry(user_id=user_id, vehicle_id=vehicle_id, date=utc_today(),
                      amount=amount, parking_type='fine',
                      fine_status=status, fine_reason=reason)
     db.session.add(f)

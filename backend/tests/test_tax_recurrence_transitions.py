@@ -16,15 +16,16 @@ The recompute deliberately advances to the first FUTURE occurrence, matching
 create_tax_entry. An edit never backfills (report decision A2).
 """
 
-from datetime import date, timedelta
+from datetime import date
 
 from dateutil.relativedelta import relativedelta
 
 from app import db
 from app.models import Vehicle, TaxEntry
 from app.services import process_recurring_tax_entries
+from app.utils.timeutils import utc_today
 
-TODAY = date.today()
+TODAY = utc_today()
 TAXES_URL = '/api/taxes'
 
 
@@ -247,3 +248,25 @@ def test_cross_user_update_still_forbidden(app, client, user, auth_headers):
                       headers=auth_headers(intruder_id))
     assert resp.status_code == 404
     assert _reload(app, tax_id).recurring is True
+
+
+# --- creating a recurring series -----------------------------------------------
+
+def test_creating_a_recurring_tax_schedules_the_first_date_after_the_utc_day(
+        app, client, user, auth_headers, monkeypatch):
+    from app.routes import taxes
+    pinned_utc_today = date(2001, 2, 3)
+    monkeypatch.setattr(taxes, 'utc_today', lambda: pinned_utc_today)
+    monthly_step = relativedelta(months=1)
+    # Two steps back, so the second step lands on the pinned day itself and must be skipped too.
+    base_date = pinned_utc_today - monthly_step - monthly_step
+    with app.app_context():
+        vehicle_id = _vehicle(user.id).id
+
+    response = client.post(TAXES_URL, json={
+        'vehicle_id': vehicle_id, 'tax_type': 'road_tax', 'amount': 15,
+        'date': base_date.isoformat(), 'recurring': True, 'recurrence_type': 'monthly',
+    }, headers=auth_headers(user.id))
+    assert response.status_code == 201, response.data[:200]
+    expected_next_due_date = pinned_utc_today + monthly_step
+    assert response.get_json()['entry']['next_due_date'] == expected_next_due_date.isoformat()

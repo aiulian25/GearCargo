@@ -2231,6 +2231,7 @@ def get_vehicle_timeline(current_user, vehicle_id):
                         'description':      f"{policy.provider} - {policy.policy_number or 'Policy'}",
                         'amount':           premium,
                         'cost':             premium,
+                        'currency':         policy.currency,
                         'annual_cost':      annual_cost,
                         'payment_frequency': frequency,
                         'date':             policy.start_date.isoformat() if policy.start_date else None,

@@ -98,10 +98,9 @@ class Readiness:
 
 
 class HealthMiddleware:
-    def __init__(self, wrapped, app, startup_redis):
+    def __init__(self, wrapped, app):
         self.wrapped = wrapped
         self.readiness = Readiness(app)
-        self.startup_redis = startup_redis
 
     def __call__(self, environ, start_response):
         path = environ.get('PATH_INFO')
@@ -119,14 +118,12 @@ class HealthMiddleware:
                 headers['Retry-After'] = str(CACHE_SECONDS)
         else:
             payload = {'status': 'healthy' if path == '/health' else 'alive'}
-            if path == '/health':
-                payload['redis_ok'] = self.startup_redis  # Legacy startup field only.
             status = 200
         payload.update(app='GearCargo', version=_load_build_info().get('version', '0.0.0'))
         return Response(json.dumps(payload), status=status, mimetype='application/json', headers=headers)(environ, start_response)
 
 
-def install_readiness(app, startup_redis):
-    middleware = HealthMiddleware(app.wsgi_app, app, startup_redis)
+def install_readiness(app):
+    middleware = HealthMiddleware(app.wsgi_app, app)
     app.wsgi_app = middleware
     app.extensions['readiness'] = middleware.readiness

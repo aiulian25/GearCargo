@@ -141,8 +141,9 @@ export default function Register() {
       
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div>
-          <label className="label">{t('common.name') || 'Name'}</label>
+          <label htmlFor="name" className="label">{t('common.name') || 'Name'}</label>
           <input
+            id="name"
             type="text"
             className="input"
             placeholder={t('auth.enterYourName') || 'Your name'}
@@ -158,8 +159,9 @@ export default function Register() {
         </div>
         
         <div>
-          <label className="label">{t('common.email') || 'Email'}</label>
+          <label htmlFor="email" className="label">{t('common.email') || 'Email'}</label>
           <input
+            id="email"
             type="email"
             className="input"
             placeholder={t('auth.enterYourEmail') || 'your@email.com'}
@@ -178,8 +180,9 @@ export default function Register() {
         </div>
         
         <div>
-          <label className="label">{t('common.password') || 'Password'}</label>
+          <label htmlFor="password" className="label">{t('common.password') || 'Password'}</label>
           <input
+            id="password"
             type="password"
             className="input"
             placeholder="••••••••"
@@ -196,8 +199,9 @@ export default function Register() {
         </div>
         
         <div>
-          <label className="label">{t('auth.confirmPassword') || 'Confirm Password'}</label>
+          <label htmlFor="confirmPassword" className="label">{t('auth.confirmPassword') || 'Confirm Password'}</label>
           <input
+            id="confirmPassword"
             type="password"
             className="input"
             placeholder="••••••••"

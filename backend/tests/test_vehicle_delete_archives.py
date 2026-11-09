@@ -5,12 +5,13 @@ Before the fix, DELETE /api/vehicles/<id> (without ?hard=true) set a phantom
 the vehicle stayed fully visible.
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from app import db
 from app.models import Vehicle, InsurancePolicy, TaxEntry
+from app.utils.timeutils import utc_today
 
-TODAY = date.today()
+TODAY = utc_today()
 
 
 def _create_vehicle(client, user, auth_headers, name='Corsa'):

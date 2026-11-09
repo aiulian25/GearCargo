@@ -1,15 +1,14 @@
 """Tests for F11 — 12-month forward cost forecast."""
 
-from datetime import date
-
 from dateutil.relativedelta import relativedelta
 
 from app import db
 from app.models import User, Vehicle, TaxEntry
 from app.models.insurance import InsurancePolicy
 from app.models.prediction import PredictionAlert
+from app.utils.timeutils import utc_today
 
-FIRST = date.today().replace(day=1)
+FIRST = utc_today().replace(day=1)
 
 
 def _mk_vehicle(user_id, name='Focus', budget=None):

@@ -59,6 +59,7 @@ def _valid_payload(vehicle_id, **overrides):
     ('odometer', 'abc', 'validation.invalidNumber'),
     ('mileage', {}, 'validation.invalidNumber'),
     ('currency', 'EURO', 'validation.invalidCurrency'),       # the column is String(3)
+    ('currency', 'KWD', 'validation.unsupportedCurrencyPrecision'),
 ])
 def test_create_rejects_malformed_input(app, client, auth_headers, field, bad_value, expected_key):
     user_id, vehicle_id = _seed(app)
@@ -169,6 +170,7 @@ def _existing_entry(app, user_id, vehicle_id):
     ('price_per_liter', 'x', 'validation.invalidNumber'),
     ('total_price', 'x', 'validation.invalidNumber'),
     ('currency', 'EURO', 'validation.invalidCurrency'),
+    ('currency', 'KWD', 'validation.unsupportedCurrencyPrecision'),
 ])
 def test_update_rejects_malformed_input_without_partial_writes(
         app, client, auth_headers, field, bad_value, expected_key):

@@ -154,7 +154,7 @@ export default function SeasonalChecklistBanner() {
         <button
           onClick={handleDismiss}
           className="shrink-0 p-1.5 rounded-lg hover:bg-(--color-bg-tertiary) text-(--color-text-muted) hover:text-(--color-text-secondary) transition-colors"
-          aria-label="Dismiss"
+          aria-label={t('common.dismiss')}
         >
           {Icons.x}
         </button>

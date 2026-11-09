@@ -349,6 +349,7 @@ function ChecklistCard({ checklist, onToggleItem, onReset, onDismiss, onAddItem,
           {/* F54 — Add custom item */}
           <div className="flex items-center gap-2 pt-1">
             <input
+              aria-label={t('seasonalChecklists.addItem')}
               type="text"
               value={newItemLabel}
               onChange={(e) => setNewItemLabel(e.target.value)}

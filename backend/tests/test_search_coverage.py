@@ -1,14 +1,15 @@
 """Tests for F8 / F49 — global search coverage across all searchable record fields."""
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from app import db
 from app.models import (
     User, Vehicle, Reminder, ServiceEntry, ParkingEntry, InsurancePolicy,
     FuelEntry, ConsumableEntry, TaxEntry, RepairEntry, Todo,
 )
+from app.utils.timeutils import utc_today
 
-TODAY = date.today()
+TODAY = utc_today()
 
 
 def _mk_user(email, username):

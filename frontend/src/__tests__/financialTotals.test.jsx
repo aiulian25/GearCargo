@@ -10,11 +10,15 @@ vi.mock('../services/api', () => ({
   default: { get: vi.fn() },
   vehicleApi: { getById: vi.fn(), getCostAnalytics: vi.fn(), getForecast: vi.fn(), getExpenseSummary: vi.fn() },
 }))
-vi.mock('../contexts/LanguageContext', () => ({
-  useTranslation: () => ({ t: key => key.split('.').reduce((v, k) => v?.[k], translations.en) || key }),
+vi.mock('../contexts/LanguageContext', async () => {
+  const { createCurrencyFormatter } = await import('../utils/currencyFormat')
   // A browser language/location currency must not relabel GBP server totals.
-  useCurrency: () => ({ currency: { code: 'USD', symbol: '$' }, language: 'en' }),
-}))
+  const formatCurrency = createCurrencyFormatter({ language: 'en', currency: 'USD' })
+  return {
+    useTranslation: () => ({ t: key => key.split('.').reduce((v, k) => v?.[k], translations.en) || key }),
+    useCurrency: () => ({ language: 'en', formatCurrency }),
+  }
+})
 const year = new Date().getFullYear()
 const summary = {
   display_currency: 'GBP', as_of: `${year}-03-31`, converted: true,
@@ -39,15 +43,15 @@ it('renders all categories from server totals even without timeline detail rows'
   await waitFor(() => expect(vehicleApi.getExpenseSummary).toHaveBeenCalledWith('1', { year }))
   expect(await screen.findByText('Consumables')).toBeTruthy()
   expect(screen.getByText('Insurance (estimate)')).toBeTruthy()
-  expect(screen.getAllByText('100.00 GBP').length).toBeGreaterThan(0)
-  expect(screen.queryByText('$100')).toBeNull()
+  expect(screen.getAllByText('£100.00').length).toBeGreaterThan(0)
+  expect(screen.queryByText('US$100.00')).toBeNull()
   expect(screen.getByText(/insurance payments are not verified/)).toBeTruthy()
 })
 it('shows an error rather than a zero-cost result when totals cannot load', async () => {
   vehicleApi.getExpenseSummary.mockRejectedValue(new Error('offline'))
   renderCharts()
   expect(await screen.findByText(translations.en.financial.loadFailed)).toBeTruthy()
-  expect(screen.queryByText('0.00 GBP')).toBeNull()
+  expect(screen.queryByText('£0.00')).toBeNull()
 })
 it('clearly labels partial FX totals and localizes the financial contract', () => {
   render(<FinancialBasis data={{ ...summary, converted: false, fx_applied: true }} />)

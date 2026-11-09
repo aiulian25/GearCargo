@@ -125,8 +125,8 @@ export default function AddService() {
     <div className="pb-4">
       {/* Header */}
       <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
-        <button onClick={() => navigate(-1)} className="btn-icon">
-          <span className="material-icons-outlined icon-md">close</span>
+        <button aria-label={t('common.close')} onClick={() => navigate(-1)} className="btn-icon">
+          <span aria-hidden="true" className="material-icons-outlined icon-md">close</span>
         </button>
         <h1 className="text-base font-semibold flex-1">{t('addService.title') || 'Add Service'}</h1>
         <button 
@@ -152,10 +152,11 @@ export default function AddService() {
         {/* Vehicle & Date */}
         <div className="card space-y-4">
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="vehicle_id" className="block text-xs text-(--color-text-muted) mb-1">
               {t('common.vehicle') || 'Vehicle'} *
             </label>
             <select 
+              id="vehicle_id"
               {...register('vehicle_id', { required: t('validation.selectVehicle') || 'Select a vehicle' })}
               className="input"
             >
@@ -171,10 +172,11 @@ export default function AddService() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="date" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addService.date') || 'Date'} *
               </label>
               <input
+                id="date"
                 type="date"
                 {...register('date', { required: t('addService.dateRequired') || 'Date is required' })}
                 className="input"
@@ -182,10 +184,11 @@ export default function AddService() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="mileage" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addService.odometer') || 'Odometer'} ({distUnit})
               </label>
               <input
+                id="mileage"
                 type="number" inputMode="decimal"
                 {...register('mileage', { min: 0 })}
                 className="input"
@@ -242,10 +245,11 @@ export default function AddService() {
           </div>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="description" className="block text-xs text-(--color-text-muted) mb-1">
               {t('addService.description') || 'Description'}
             </label>
             <input
+              id="description"
               type="text"
               {...register('description')}
               className="input"
@@ -254,10 +258,11 @@ export default function AddService() {
           </div>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="shop_name" className="block text-xs text-(--color-text-muted) mb-1">
               {t('addService.shopName') || 'Service Shop'}
             </label>
             <input
+              id="shop_name"
               type="text"
               {...register('shop_name')}
               className="input"
@@ -272,10 +277,11 @@ export default function AddService() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="labor_cost" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addService.laborCost') || 'Labor Cost'}
               </label>
               <input
+                id="labor_cost"
                 type="number" inputMode="decimal"
                 step="0.01"
                 {...register('labor_cost', { min: 0 })}
@@ -285,10 +291,11 @@ export default function AddService() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="parts_cost" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addService.partsCost') || 'Parts Cost'}
               </label>
               <input
+                id="parts_cost"
                 type="number" inputMode="decimal"
                 step="0.01"
                 {...register('parts_cost', { min: 0 })}
@@ -299,10 +306,11 @@ export default function AddService() {
           </div>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="total_cost" className="block text-xs text-(--color-text-muted) mb-1">
               {t('addService.totalCost') || 'Total Cost'}
             </label>
             <input
+              id="total_cost"
               type="number" inputMode="decimal"
               step="0.01"
               {...register('total_cost')}
@@ -314,10 +322,11 @@ export default function AddService() {
         
         {/* Notes */}
         <div className="card">
-          <label className="block text-xs text-(--color-text-muted) mb-1">
+          <label htmlFor="notes" className="block text-xs text-(--color-text-muted) mb-1">
             {t('addService.notes') || 'Notes'}
           </label>
           <textarea
+            id="notes"
             {...register('notes')}
             className="input resize-none"
             rows={3}

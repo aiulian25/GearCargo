@@ -112,7 +112,7 @@ services:
       - VAPID_SUBJECT=${VAPID_SUBJECT}
 
       - GEOIP_DB_PATH=${GEOIP_DB_PATH:-}
-      - TRUSTED_PROXY_COUNT=${TRUSTED_PROXY_COUNT:-1}
+      - TRUSTED_PROXY_COUNT=${TRUSTED_PROXY_COUNT:-auto}
 
     # NOTE: no `user:` — s6-overlay must start as root (PID 1) to reap zombies,
     # forward signals, and drop each service to its own unprivileged user

@@ -591,8 +591,9 @@ export default function SecurityBlocking() {
             <h3 className="text-lg font-semibold mb-4">Block IP Address</h3>
             <form onSubmit={handleBlockIP} className="space-y-3">
               <div>
-                <label className="text-xs text-(--color-text-muted) mb-1 block">IP Address</label>
+                <label htmlFor="block-ip" className="text-xs text-(--color-text-muted) mb-1 block">IP Address</label>
                 <input
+                  id="block-ip"
                   type="text"
                   value={newBlockIP}
                   onChange={(e) => setNewBlockIP(e.target.value)}
@@ -602,8 +603,9 @@ export default function SecurityBlocking() {
                 />
               </div>
               <div>
-                <label className="text-xs text-(--color-text-muted) mb-1 block">Reason (optional)</label>
+                <label htmlFor="block-reason" className="text-xs text-(--color-text-muted) mb-1 block">Reason (optional)</label>
                 <input
+                  id="block-reason"
                   type="text"
                   value={newBlockReason}
                   onChange={(e) => setNewBlockReason(e.target.value)}
@@ -645,8 +647,9 @@ export default function SecurityBlocking() {
               }
             </p>
             <div className="mb-4">
-              <label className="text-xs text-(--color-text-muted) mb-1 block">Reason (optional)</label>
+              <label htmlFor="unblock-reason" className="text-xs text-(--color-text-muted) mb-1 block">Reason (optional)</label>
               <input
+                id="unblock-reason"
                 type="text"
                 value={unblockReason}
                 onChange={(e) => setUnblockReason(e.target.value)}

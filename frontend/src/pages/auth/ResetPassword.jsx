@@ -160,8 +160,7 @@ export default function ResetPassword() {
           <div className="space-y-4">
             <Link
               to="/forgot-password"
-              className="block w-full text-white font-medium py-3 px-6 rounded-full transition-colors text-center"
-              style={{ backgroundColor: '#1a3a3a' }}
+              className="block w-full text-white font-medium py-3 px-6 rounded-full transition-colors text-center bg-(--color-auth-accent)"
             >
               {t('auth.requestNewLink') || 'Request New Link'}
             </Link>
@@ -200,8 +199,7 @@ export default function ResetPassword() {
           
           <Link
             to="/login"
-            className="block w-full text-white font-medium py-3 px-6 rounded-full transition-colors text-center"
-            style={{ backgroundColor: '#1a3a3a' }}
+            className="block w-full text-white font-medium py-3 px-6 rounded-full transition-colors text-center bg-(--color-auth-accent)"
           >
             {t('auth.continueToLogin') || 'Continue to Login'}
           </Link>
@@ -229,6 +227,7 @@ export default function ResetPassword() {
           </div>
           <div className="flex-1 relative">
             <input
+              aria-label={t('auth.newPassword')}
               type={showPassword ? 'text' : 'password'}
               className="w-full px-4 py-3 pr-12 border border-gray-200 rounded-full focus:outline-hidden focus:border-teal-500 transition-colors text-gray-700 placeholder-gray-400"
               placeholder={t('auth.newPassword') || 'New password'}
@@ -243,6 +242,8 @@ export default function ResetPassword() {
               })}
             />
             <button
+              aria-label={t('auth.showPassword')}
+              aria-pressed={showPassword}
               type="button"
               className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
               onClick={() => setShowPassword(!showPassword)}
@@ -274,6 +275,7 @@ export default function ResetPassword() {
           </div>
           <div className="flex-1 relative">
             <input
+              aria-label={t('auth.confirmPassword')}
               type={showConfirmPassword ? 'text' : 'password'}
               className="w-full px-4 py-3 pr-12 border border-gray-200 rounded-full focus:outline-hidden focus:border-teal-500 transition-colors text-gray-700 placeholder-gray-400"
               placeholder={t('auth.confirmPassword') || 'Confirm password'}
@@ -284,6 +286,8 @@ export default function ResetPassword() {
               })}
             />
             <button
+              aria-label={t('auth.showPassword')}
+              aria-pressed={showConfirmPassword}
               type="button"
               className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
               onClick={() => setShowConfirmPassword(!showConfirmPassword)}
@@ -308,11 +312,8 @@ export default function ResetPassword() {
         {/* Submit Button */}
         <button 
           type="submit" 
-          className="w-full text-white font-medium py-3 px-6 rounded-full transition-colors flex items-center justify-center gap-2"
-          style={{ backgroundColor: '#1a3a3a' }}
+          className="w-full text-white font-medium py-3 px-6 rounded-full transition-colors flex items-center justify-center gap-2 bg-(--color-auth-accent) hover:bg-(--color-auth-accent-hover)"
           disabled={isLoading}
-          onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#152e2e'}
-          onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#1a3a3a'}
         >
           {isLoading ? (
             <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">

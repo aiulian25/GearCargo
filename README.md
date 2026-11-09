@@ -273,7 +273,18 @@ it generates all secrets **inside the image** — including a valid Fernet
 
 In the bundled configuration, only the app port is published; PostgreSQL and
 Redis listen on `127.0.0.1` **inside** the container. Put a reverse proxy in front for HTTPS
-(say "yes" to the proxy prompt to loopback-bind the port).
+(say "yes" to the proxy prompt to loopback-bind the port). Other devices can sign in only over
+HTTPS. On this machine, `http://localhost:<APP_PORT>` also works when that exact address is your
+`APP_URL` (while `CSRF_TRUSTED_ORIGINS` is empty) or an entry in `CSRF_TRUSTED_ORIGINS`; see
+[Sign-in fails with "Login failed" or "Request verification failed"](#sign-in-fails-with-login-failed-or-request-verification-failed).
+
+Client IP addresses (rate limits, IP blocks, audit log) follow `TRUSTED_PROXY_COUNT`:
+`setup.sh` writes `1` for a proxy on this host and `0` (no proxy: forwarded headers
+are ignored) otherwise, and the default `auto` trusts one proxy hop only from a
+non-public address (loopback, Docker, LAN or Tailscale). If your proxy runs on
+another machine on your LAN or Tailscale network, change the `0` that `setup.sh`
+wrote to `auto`. Behind a CDN or a proxy on a public address, set the number of
+proxies; a log `WARNING` (once per worker) names the setting when traffic contradicts it.
 
 > **Prefer to do it by hand?** `cp .env.example .env`, fill the `REQUIRED` block
 > (see [Credential Generation](#credential-generation)), `mkdir -p secrets` and add
@@ -284,10 +295,23 @@ Redis listen on `127.0.0.1` **inside** the container. Put a reverse proxy in fro
 ### Build from source (for development)
 
 ```bash
-git clone https://github.com/aiulian25/GearCargo.git && cd gearcargo
-cp .env.example .env && ./setup.sh            # or edit .env by hand
-docker compose -f docker-compose.dev.yml up -d --build   # builds the single image
+git clone https://github.com/aiulian25/GearCargo.git gearcargo && cd gearcargo
+./setup.sh                  # pulls :latest, writes .env and secrets/, then starts the published image
+docker network create npm   # once: docker-compose.dev.yml joins this external network
+docker compose -f docker-compose.dev.yml up -d --build   # rebuilds from this checkout, replacing that container
 ```
+
+`setup.sh` initialises and migrates `./volumes/pgdata` with the published image, and migrations
+have no automatic downgrade. For a checkout older than `:latest`, skip `setup.sh` and start from
+an empty `./volumes`: `cp .env.example .env`, fill the `REQUIRED` block
+([Credential Generation](#credential-generation)), add `secrets/vapid_private_key`, then run the
+last two commands. `docker-compose.dev.yml` publishes the port on every interface; it ignores
+`APP_BIND_IP`.
+
+> **Signing in:** the app needs a secure context, which browsers give plain HTTP only on
+> `localhost`, and both compose files keep every cookie that sign-in needs Secure. Sign in at
+> `http://localhost:<APP_PORT>` on this machine (when that exact origin is trusted) or through an
+> HTTPS reverse proxy; see [Sign-in fails with "Login failed" or "Request verification failed"](#sign-in-fails-with-login-failed-or-request-verification-failed).
 
 ---
 
@@ -575,8 +599,8 @@ OLLAMA_MODEL_OCR=qwen2.5
 OLLAMA_MODEL_ANOMALY=llama3.2
 OLLAMA_MODEL_REMINDER=qwen2.5
 
-# Reverse Proxy (1 = nginx/Traefik/Cloudflare)
-TRUSTED_PROXY_COUNT=1
+# Reverse proxy: auto = 1 hop from a non-public (loopback/Docker/LAN/Tailscale) proxy only; 0 = direct; N = N proxies
+TRUSTED_PROXY_COUNT=auto
 
 # GeoIP (optional — download GeoLite2-City.mmdb from MaxMind)
 GEOIP_DB_PATH=
@@ -687,7 +711,7 @@ The admin user can:
 | `VAPID_PRIVATE_KEY` | Optional | Push notification private key (prefer Docker secret) | - |
 | `MAX_UPLOAD_SIZE_MB` | Optional | Max file upload size in MB | `200` |
 | `GUNICORN_WORKERS` | Optional | Gunicorn worker process count | `4` |
-| `TRUSTED_PROXY_COUNT` | Optional | Trusted reverse proxy depth for real IP detection | `1` |
+| `TRUSTED_PROXY_COUNT` | Optional | Proxy hops whose `X-Forwarded-*` headers set the client IP: `auto` = one hop, only from a non-public (loopback, private, link-local or Tailscale/CGNAT) peer; `0` = none (direct); `N` = N hops from every peer | `auto` |
 | `GEOIP_DB_PATH` | Optional | Container path to GeoLite2-City.mmdb for login country detection | empty |
 | `WIDGET_CORS_ORIGINS` | Optional | CORS origin allowlist for widget API endpoints | `*` |
 | `BACKUP_KEEP_LAST` | Optional | Number of daily/weekly backup archives to retain | `7` |
@@ -1007,6 +1031,8 @@ gearcargo/
 
 > **Breaking change (widget API key):** the Gethomepage widget key is now accepted **only** in the `X-API-Key` header — the previously-accepted `?key=` query parameter has been removed (it leaked the key into logs/history). If your `services.yaml` passed the key via `?key=` in the `url`, move it to a `headers:` block (see [Widget API](#widget-api-gethomepage)). The endpoints are also now rate-limited (120/min per IP) instead of unlimited.
 
+> **Breaking change (`/health`):** the legacy `/health` response no longer includes `redis_ok`, which only recorded whether the process reached Redis when it started. If a monitor checks that field, point it at `/health/ready` and read `checks.redis_cache.status`; in the default deployment a Redis outage also turns `/health/ready` into a 503 (see [health checks](docs/HEALTH_CHECKS.md)). Checks on the HTTP status or `status: healthy` of `/health` keep working.
+
 ### Standard (pre-built single image)
 ```bash
 docker compose pull
@@ -1085,7 +1111,7 @@ docker compose logs db
 Use `/health/live` for restart checks and `/health/ready` for traffic/deployment gates.
 Readiness checks current database/schema, required Redis stores and background consumers;
 HTTP 200 may report `degraded` when background work is unavailable. The legacy `/health`
-Redis field remains a startup snapshot. See [health policy, bounds and upgrade steps](docs/HEALTH_CHECKS.md).
+answers like `/health/live` and reports no dependency state. See [health policy, bounds and upgrade steps](docs/HEALTH_CHECKS.md).
 
 ### Redis connection errors
 
@@ -1100,10 +1126,45 @@ docker compose exec redis redis-cli -a \$REDIS_PASSWORD ping
 ```
 
 ### Permission errors on volumes
+
+The container re-owns its data directories on every start, before any service drops
+privileges, so restart it:
+
 ```bash
-# Fix ownership (use your user ID)
-sudo chown -R 1000:1000 ./volumes/
+docker compose restart gearcargo
 ```
+
+Do not `chown -R` `./volumes/pgdata` or `./volumes/redis` to your own user: PostgreSQL and
+Redis run as their own users inside the container, and only those top-level directories are
+re-owned at start.
+
+### Sign-in fails with "Login failed" or "Request verification failed"
+
+Neither message means a wrong password, which shows "Invalid email or password". Creating the
+first account shows "Registration failed" instead of "Login failed". The two common causes both
+show only that generic message:
+
+- **Plain HTTP from another device.** Browsers do not treat a plain-HTTP address such as
+  `http://192.168.1.10:5000` as a secure context, and the app needs one: the page stops before it
+  sends anything (the browser console reports that `crypto.randomUUID` is not a function). The
+  cookies would not survive either: the bundled compose files set `SESSION_COOKIE_SECURE=true` for
+  the sign-in cookies, Flask-Talisman keeps the Flask session cookie that the CSRF token is bound
+  to Secure, and browsers drop Secure cookies on such an address. Serve the app over HTTPS through
+  a reverse proxy ([DEPLOY §9](DEPLOY.md#9-reverse-proxy-setup)). On the machine running the
+  container, most browsers treat `http://localhost:<APP_PORT>` as secure and keep the cookies
+  there, provided that origin is trusted (next point). A `SESSION_COOKIE_SECURE` line in `.env`
+  has no effect: the compose files set the value.
+- **Untrusted address.** The address in the browser (scheme, host and port) must exactly match an
+  entry in `CSRF_TRUSTED_ORIGINS` or, when that list is empty, `APP_URL`. The server checks this
+  first, when the page fetches its CSRF token, so its message never reaches the form. Typical
+  mismatches: an HTTPS proxy domain while `APP_URL` is still `http://localhost:5000`, `127.0.0.1`
+  instead of `localhost`, another port, or `http://localhost` once `APP_URL` is the HTTPS address.
+  See [CSRF deployment origins](docs/COOKIE_CSRF.md#deployment-origins).
+
+"Request verification failed. Reload the page and try again." means the address is secure and
+trusted, but the CSRF check still failed: usually the browser did not keep the session cookie, for
+example because cookies are blocked for the site, or a proxy rewrote the `Origin` header. Allow
+cookies for the site, pass `Origin` through the proxy unchanged, and reload.
 
 ---
 

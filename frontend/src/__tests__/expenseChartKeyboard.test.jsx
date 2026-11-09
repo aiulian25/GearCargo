@@ -13,10 +13,13 @@ vi.mock('../services/api', () => {
   return { default: { get: vi.fn() }, vehicleApi: { getById: vi.fn(), getExpenseSummary: vi.fn(), getExpenseRecords: vi.fn() },
     fuelApi: list, serviceApi: list, repairApi: list, taxApi: list, reminderApi: list, insuranceApi: list, consumableApi: list, parkingApi: list }
 })
-vi.mock('../contexts/LanguageContext', () => {
+vi.mock('../contexts/LanguageContext', async () => {
+  const { createCurrencyFormatter } = await import('../utils/currencyFormat')
   const t = key => key.split('.').reduce((v, k) => v?.[k], translations[state.language]) || key
-  return { useTranslation: () => ({ t, language: state.language }), useLanguage: () => ({ t, language: state.language }) }
+  return { useTranslation: () => ({ t, language: state.language }), useLanguage: () => ({ t, language: state.language }),
+    useCurrency: () => ({ formatCurrency: createCurrencyFormatter({ language: state.language, currency: 'USD' }) }) }
 })
+const NO_BREAK_SPACE = ' '
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: { currency: 'USD', volume_unit: 'liters' } }) }))
 vi.mock('../components/ui/AttachmentViewer', () => ({ default: () => null }))
 const summary = { display_currency: 'GBP', converted: true, as_of: '2026-12-31',
@@ -41,9 +44,9 @@ function page(component, path, language = 'en') {
 // Browser coverage exercises actual Tab/Enter/Space defaults. jsdom assertions
 // verify native semantics and filter results without faking a keyboard click.
 it.each([
-  ['en', 'January 2026: 1,234.50 GBP', 'February 2026: 37.50 GBP', 'December'],
-  ['ro', 'ianuarie 2026: 1.234,50 GBP', 'februarie 2026: 37,50 GBP', 'decembrie'],
-  ['es', 'enero 2026: 1234,50 GBP', 'febrero 2026: 37,50 GBP', 'diciembre'],
+  ['en', 'January 2026: £1,234.50', 'February 2026: £37.50', 'December'],
+  ['ro', `ianuarie 2026: 1.234,50${NO_BREAK_SPACE}GBP`, `februarie 2026: 37,50${NO_BREAK_SPACE}GBP`, 'decembrie'],
+  ['es', `enero 2026: 1234,50${NO_BREAK_SPACE}GBP`, `febrero 2026: 37,50${NO_BREAK_SPACE}GBP`, 'diciembre'],
 ])('has native localized month filters and complete tabular totals (%s)', async (language, january, february, december) => {
   page(<VehicleExpenses />, '/vehicles/1/expenses?year=2026', language)
   const first = await screen.findByRole('button', { name: january })
@@ -71,7 +74,7 @@ it.each([
   const table = screen.getByRole('table', { name: translations[language].expenses.monthlyTotalsYear.replace('{year}', 2026) })
   expect(within(table).getAllByRole('row')).toHaveLength(13)
   expect(within(table).getByRole('rowheader', { name: december })).toBeTruthy()
-  expect(within(table).getAllByText(language === 'en' ? '0.00 GBP' : '0,00 GBP')).toHaveLength(10)
+  expect(within(table).getAllByText(language === 'en' ? '£0.00' : '0,00 GBP')).toHaveLength(10)
   expect(vehicleApi.getExpenseSummary).toHaveBeenCalledTimes(1)
 })
 

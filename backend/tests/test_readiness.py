@@ -48,12 +48,14 @@ def test_liveness_bypasses_sessions_request_hooks_and_database(app, monkeypatch,
     def forbidden(*args, **kwargs):
         raise AssertionError('Liveness touched an application dependency')
     monkeypatch.setattr(app.session_interface, 'open_session', forbidden)
+    monkeypatch.setattr(app.extensions['readiness'], 'check', forbidden)
     app.before_request(forbidden)
     with app.app_context():
         monkeypatch.setattr(db.engine, 'connect', forbidden)
     response = app.test_client().get(path, headers={'Cookie': 'session=existing-browser-cookie'})
     assert response.status_code == 200
     assert response.json['status'] in ('healthy', 'alive')
+    assert set(response.json) == {'status', 'app', 'version'}
     assert not response.headers.getlist('Set-Cookie')
     assert app.test_client().head(path).data == b''
     assert app.test_client().post(path).status_code == 405

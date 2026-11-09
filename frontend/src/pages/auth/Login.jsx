@@ -18,7 +18,6 @@ export default function Login() {
   const [requires2FA, setRequires2FA] = useState(false)
   const [credentials, setCredentials] = useState(null)
   const [showPassword, setShowPassword] = useState(false)
-  const [rememberPassword, setRememberPassword] = useState(false)
   const [useBackupCode, setUseBackupCode] = useState(false)
   const [codeValue, setCodeValue] = useState('')
   const usernameRef = useRef(null)
@@ -105,7 +104,7 @@ export default function Login() {
   const onSubmit = async (data) => {
     setIsLoading(true)
     try {
-      const result = await login(data.email, data.password, null, rememberPassword)
+      const result = await login(data.email, data.password)
       
       if (result.requires2FA) {
         setCredentials(data)
@@ -128,9 +127,9 @@ export default function Login() {
     try {
       // If using backup code, pass it differently
       if (useBackupCode) {
-        await login(credentials.email, credentials.password, null, rememberPassword, data.code)
+        await login(credentials.email, credentials.password, null, data.code)
       } else {
-        await login(credentials.email, credentials.password, data.code, rememberPassword)
+        await login(credentials.email, credentials.password, data.code)
       }
       toast.success(t('auth.welcomeBack'))
       navigate(reminderReturnPath(searchParams.toString()), { replace: true })
@@ -156,6 +155,7 @@ export default function Login() {
         <form onSubmit={handleSubmit2FA(onSubmit2FA)} className="space-y-6">
           <div>
             <input
+              aria-label={t('auth.twoFactorCode')}
               ref={codeInputRef}
               type="text"
               inputMode={useBackupCode ? "text" : "numeric"}
@@ -170,11 +170,8 @@ export default function Login() {
           
           <button 
             type="submit" 
-            className="w-full text-white font-medium py-3 px-6 rounded-full transition-colors flex items-center justify-center gap-2"
-            style={{ backgroundColor: '#1a3a3a' }}
+            className="w-full text-white font-medium py-3 px-6 rounded-full transition-colors flex items-center justify-center gap-2 bg-(--color-auth-accent) hover:bg-(--color-auth-accent-hover)"
             disabled={isLoading}
-            onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#152e2e'}
-            onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#1a3a3a'}
           >
             {isLoading ? (
               <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
@@ -241,6 +238,7 @@ export default function Login() {
           </div>
           <div className="flex-1">
             <input
+              aria-label={t('auth.username')}
               type="text"
               className="w-full px-4 py-3 border border-gray-200 rounded-full focus:outline-hidden focus:border-teal-500 transition-colors text-gray-700 placeholder-gray-400"
               placeholder={t('auth.username')}
@@ -268,6 +266,7 @@ export default function Login() {
           </div>
           <div className="flex-1 relative">
             <input
+              aria-label={t('auth.password')}
               type={showPassword ? 'text' : 'password'}
               className="w-full px-4 py-3 pr-12 border border-gray-200 rounded-full focus:outline-hidden focus:border-teal-500 transition-colors text-gray-700 placeholder-gray-400"
               placeholder={t('auth.password')}
@@ -279,6 +278,8 @@ export default function Login() {
               }}
             />
             <button
+              aria-label={t('auth.showPassword')}
+              aria-pressed={showPassword}
               type="button"
               className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
               onClick={() => {
@@ -308,25 +309,11 @@ export default function Login() {
           </div>
         </div>
         
-        {/* Remember Password & Login Button Row */}
-        <div className="flex items-center justify-between pt-2">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={rememberPassword}
-              onChange={(e) => setRememberPassword(e.target.checked)}
-              className="w-4 h-4 rounded-sm border-gray-300 text-teal-600 focus:ring-teal-500"
-            />
-            <span className="text-sm text-gray-500">{t('auth.rememberPassword')}</span>
-          </label>
-          
+        <div className="flex items-center justify-end pt-2">
           <button 
             type="submit" 
-            className="text-white font-medium py-2.5 px-6 rounded-full transition-colors flex items-center gap-2 text-sm tracking-wider"
-            style={{ backgroundColor: '#1a3a3a' }}
+            className="text-white font-medium py-2.5 px-6 rounded-full transition-colors flex items-center gap-2 text-sm tracking-wider bg-(--color-auth-accent) hover:bg-(--color-auth-accent-hover)"
             disabled={isLoading}
-            onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#152e2e'}
-            onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#1a3a3a'}
           >
             {isLoading ? (
               <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">

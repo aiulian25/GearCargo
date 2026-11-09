@@ -5,10 +5,9 @@ custom items (add → appears with custom flag, toggle persists, remove),
 and validation (bad month 400, label caps, cross-user isolation).
 """
 
-from datetime import datetime
-
 from app import db
 from app.models import User
+from app.utils.timeutils import utc_today
 
 
 def _mk_user(email, username):
@@ -26,7 +25,7 @@ def _state_inspection(body):
 # --- Settings (inspection months) -------------------------------------------
 
 def test_inspection_months_roundtrip_and_in_season(app, client, user, auth_headers):
-    current_month = datetime.now().month
+    current_month = utc_today().month
 
     # Default: no months set → year-round (not seasonal, always in season).
     body = client.get('/api/predictions/checklists', headers=auth_headers(user.id)).get_json()

@@ -274,6 +274,7 @@ export default function Calendar() {
       {/* Vehicle Filter */}
       <div className="mb-4">
         <select
+          aria-label={t('common.vehicle')}
           value={selectedVehicle || ''}
           onChange={(e) => setSelectedVehicle(e.target.value || null)}
           className="w-full px-3 py-2 bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg text-sm text-(--color-text-primary) focus:outline-hidden focus:border-(--color-accent)"
@@ -290,6 +291,7 @@ export default function Calendar() {
       {/* Calendar Navigation */}
       <div className="flex items-center justify-between mb-4 bg-(--color-bg-card) rounded-xl p-3 border border-(--color-border)">
         <button
+          aria-label={t('common.previous')}
           onClick={goToPrevMonth}
           className="p-2 hover:bg-(--color-bg-tertiary) rounded-lg transition-colors"
         >
@@ -308,6 +310,7 @@ export default function Calendar() {
         </div>
         
         <button
+          aria-label={t('common.next')}
           onClick={goToNextMonth}
           className="p-2 hover:bg-(--color-bg-tertiary) rounded-lg transition-colors"
         >
@@ -431,6 +434,7 @@ export default function Calendar() {
                   </p>
                 </div>
                 <button
+                  aria-label={t('common.close')}
                   onClick={() => setShowDayModal(false)}
                   className="p-2 hover:bg-(--color-bg-tertiary) rounded-lg"
                 >

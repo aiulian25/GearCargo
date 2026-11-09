@@ -56,6 +56,10 @@ class RestoreBusy(RuntimeError):
     pass
 
 
+class RestoreLockHeld(RestoreBusy):
+    pass
+
+
 class RestoreFailure(RuntimeError):
     def __init__(self, restore_id, state):
         self.restore_id, self.state = restore_id, state
@@ -130,7 +134,7 @@ def activity_guard(*, exclusive=False, pending=False, blocking=False):
             fcntl.flock(fd, (fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH) |
                         (0 if blocking else fcntl.LOCK_NB))
         except BlockingIOError:
-            raise RestoreBusy('Restore maintenance is active. Retry shortly.') from None
+            raise RestoreLockHeld('Restore maintenance is active. Retry shortly.') from None
         if not pending and (root / 'active.json').exists():
             raise RestoreBusy('An interrupted restore requires recovery before data can be used.')
         leases[key] = (fd, exclusive)
@@ -400,8 +404,11 @@ def recover(journal):
 
 
 def recover_unfinished():
+    path = state_root() / 'active.json'
+    # Idle starts take no lease; the re-check under the lease covers a concurrent recovery.
+    if not path.exists():
+        return 'idle'
     with activity_guard(exclusive=True, pending=True):
-        path = state_root() / 'active.json'
         if not path.exists():
             return 'idle'
         data = json.loads(path.read_text())
@@ -482,7 +489,7 @@ def init_restore_coordination(app):
                                       '/api/backup/external/restore'} or request.path.startswith('/api/backup/restore/')
         # Permanent deletion and its cleanup also need write exclusion, before auth writes.
         exclusive = exclusive or (request.method == 'DELETE' and (
-            request.endpoint in {'admin.delete_user', 'attachments.delete_attachment'} or (request.endpoint == 'vehicles.delete_vehicle'
+            request.endpoint in {'admin.delete_user', 'auth.delete_account', 'attachments.delete_attachment'} or (request.endpoint == 'vehicles.delete_vehicle'
             and request.args.get('hard', 'false').lower() == 'true')))
         lease = activity_guard(exclusive=exclusive)
         try:

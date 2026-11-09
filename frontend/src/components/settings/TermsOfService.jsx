@@ -114,6 +114,7 @@ export default function TermsOfService({ isOpen, onClose }) {
             </div>
           </div>
           <button
+            aria-label={t('common.close')}
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-(--color-bg-tertiary) transition-colors text-(--color-text-muted) hover:text-(--color-text)"
           >

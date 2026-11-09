@@ -1091,6 +1091,7 @@ export default function BackupSettings() {
           </div>
           <label className="relative inline-flex items-center cursor-pointer">
             <input
+              aria-label={t('backup.autoBackup')}
               type="checkbox"
               checked={schedule.enabled}
               onChange={(e) => handleScheduleChange('enabled', e.target.checked)}
@@ -1127,10 +1128,11 @@ export default function BackupSettings() {
             {/* Day Selection */}
             {schedule.frequency === 'weekly' && (
               <div>
-                <label className="block text-xs font-medium text-(--color-text-secondary) mb-2">
+                <label htmlFor="backup-day-of-week" className="block text-xs font-medium text-(--color-text-secondary) mb-2">
                   {t('backup.dayOfWeek') || 'Day of Week'}
                 </label>
                 <select
+                  id="backup-day-of-week"
                   value={schedule.day_of_week}
                   onChange={(e) => handleScheduleChange('day_of_week', parseInt(e.target.value))}
                   className="w-full p-3 rounded-lg bg-(--color-bg-secondary) text-(--color-text-primary) border border-(--color-border)"
@@ -1144,10 +1146,11 @@ export default function BackupSettings() {
             
             {(schedule.frequency === 'monthly' || schedule.frequency === 'quarterly') && (
               <div>
-                <label className="block text-xs font-medium text-(--color-text-secondary) mb-2">
+                <label htmlFor="backup-day-of-month" className="block text-xs font-medium text-(--color-text-secondary) mb-2">
                   {t('backup.dayOfMonth') || 'Day of Month'}
                 </label>
                 <select
+                  id="backup-day-of-month"
                   value={schedule.day_of_month}
                   onChange={(e) => handleScheduleChange('day_of_month', parseInt(e.target.value))}
                   className="w-full p-3 rounded-lg bg-(--color-bg-secondary) text-(--color-text-primary) border border-(--color-border)"
@@ -1169,6 +1172,7 @@ export default function BackupSettings() {
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
+                  aria-label={t('backup.includeAttachments')}
                   type="checkbox"
                   checked={schedule.include_attachments}
                   onChange={(e) => handleScheduleChange('include_attachments', e.target.checked)}
@@ -1213,6 +1217,7 @@ export default function BackupSettings() {
               <span className="text-sm">{t('backup.enableExternal') || 'Enable External Backup'}</span>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
+                  aria-label={t('backup.enableExternal')}
                   type="checkbox"
                   checked={schedule.external_enabled}
                   onChange={(e) => {
@@ -1250,6 +1255,7 @@ export default function BackupSettings() {
                     <div key={destination.id || index} className="rounded-lg border border-(--color-border) p-3 bg-(--color-bg-secondary)/60 space-y-3">
                       <div className="flex items-center flex-wrap gap-2">
                         <input
+                          aria-label={`${t('backup.destinationLabel')} ${index + 1}`}
                           type="text"
                           value={destination.name || ''}
                           onChange={(e) => updateExternalDestination(index, 'name', e.target.value)}
@@ -1294,6 +1300,7 @@ export default function BackupSettings() {
                       </div>
 
                       <input
+                        aria-label={`${t('backup.serverUrl')} ${index + 1}`}
                         type="url"
                         value={destination.external_url || ''}
                         onChange={(e) => updateExternalDestination(index, 'external_url', e.target.value)}
@@ -1303,6 +1310,7 @@ export default function BackupSettings() {
 
                       <div className="relative">
                         <input
+                          aria-label={`${t('backup.apiKey')} ${index + 1}`}
                           type={isDestinationApiKeyVisible(destination.id || `destination_${index}`) ? 'text' : 'password'}
                           autoComplete="new-password"
                           value={destination.external_api_key || ''}
@@ -1325,6 +1333,7 @@ export default function BackupSettings() {
                       </div>
 
                       <input
+                        aria-label={`${t('backup.backupPath')} ${index + 1}`}
                         type="text"
                         value={destination.external_path || '/GearCargo'}
                         onChange={(e) => updateExternalDestination(index, 'external_path', e.target.value)}
@@ -1341,10 +1350,11 @@ export default function BackupSettings() {
 
                 {(schedule.external_destinations || []).length > 0 && (
                   <div>
-                    <label className="block text-xs font-medium text-(--color-text-secondary) mb-2">
+                    <label htmlFor="backup-active-destination" className="block text-xs font-medium text-(--color-text-secondary) mb-2">
                       {t('backup.activeDestination') || 'Active Destination for Test/Browse'}
                     </label>
                     <select
+                      id="backup-active-destination"
                       value={selectedExternalDestinationIndex}
                       onChange={(e) => {
                         setSelectedExternalDestinationIndex(parseInt(e.target.value, 10))
@@ -1557,10 +1567,11 @@ export default function BackupSettings() {
         {showAdvancedSettings && (
           <div className="px-4 pb-4 space-y-4 border-t border-(--color-border)">
             <div className="pt-4">
-              <label className="block text-xs font-medium text-(--color-text-secondary) mb-2">
+              <label htmlFor="backup-retention-days" className="block text-xs font-medium text-(--color-text-secondary) mb-2">
                 {t('backup.retentionDays') || 'Keep backups for (days)'}
               </label>
               <input
+                id="backup-retention-days"
                 type="number"
                 value={schedule.retention_days}
                 onChange={(e) => handleScheduleChange('retention_days', parseInt(e.target.value))}
@@ -1571,10 +1582,11 @@ export default function BackupSettings() {
             </div>
             
             <div>
-              <label className="block text-xs font-medium text-(--color-text-secondary) mb-2">
+              <label htmlFor="backup-max-backups" className="block text-xs font-medium text-(--color-text-secondary) mb-2">
                 {t('backup.maxBackups') || 'Maximum backups to keep'}
               </label>
               <input
+                id="backup-max-backups"
                 type="number"
                 value={schedule.max_backups}
                 onChange={(e) => handleScheduleChange('max_backups', parseInt(e.target.value))}
@@ -1588,6 +1600,7 @@ export default function BackupSettings() {
               <span className="text-sm">{t('backup.notifyOnSuccess') || 'Notify on success'}</span>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
+                  aria-label={t('backup.notifyOnSuccess')}
                   type="checkbox"
                   checked={schedule.notify_on_success}
                   onChange={(e) => handleScheduleChange('notify_on_success', e.target.checked)}
@@ -1601,6 +1614,7 @@ export default function BackupSettings() {
               <span className="text-sm">{t('backup.notifyOnFailure') || 'Notify on failure'}</span>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
+                  aria-label={t('backup.notifyOnFailure')}
                   type="checkbox"
                   checked={schedule.notify_on_failure}
                   onChange={(e) => handleScheduleChange('notify_on_failure', e.target.checked)}

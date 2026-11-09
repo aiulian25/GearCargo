@@ -106,7 +106,7 @@ def _plan(user_id, vehicle_ids, account):
     if account:
         chosen['users'] = {user_id}
         for name in ('backups', 'backup_schedules', 'push_subscriptions', 'email_consent_logs',
-                     'activity_logs', 'user_sessions', 'report_shares', 'due_dismissals', 'mutation_operations', 'import_identities', 'import_batches', 'calendar_outbox', 'scheduled_effects', 'statement_batches', 'statement_transactions', 'statement_matches'):
+                     'activity_logs', 'user_sessions', 'passkeys', 'report_shares', 'due_dismissals', 'mutation_operations', 'import_identities', 'import_batches', 'calendar_outbox', 'scheduled_effects', 'statement_batches', 'statement_transactions', 'statement_matches'):
             chosen[name] = _ids(name, _table(name).c.user_id == user_id)
         chosen['notification_logs'] |= _ids('notification_logs', logs.c.subscription_id.in_(chosen['push_subscriptions']))
     else:
@@ -234,7 +234,7 @@ def _delete_owned_data(user_id, *, vehicle_id=None, actor_id=None):
              'tax_entries', 'fuel_entries', 'service_entries', 'repair_entries', 'parking_entries',
              'consumable_entries', 'insurance_policies', 'attachments', 'entries', 'vehicles',
              'backup_schedules', 'backups', 'push_subscriptions', 'email_consent_logs',
-             'activity_logs', 'user_sessions', 'report_shares', 'mutation_operations', 'import_identities', 'import_batches', 'calendar_outbox', 'scheduled_effects', 'users')
+             'activity_logs', 'user_sessions', 'passkeys', 'report_shares', 'mutation_operations', 'import_identities', 'import_batches', 'calendar_outbox', 'scheduled_effects', 'users')
     for name in order:
         if chosen.get(name):
             table = _table(name)

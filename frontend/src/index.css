@@ -143,6 +143,12 @@
     --color-accent-hover: #4b5563;
   }
 
+  /* Sign-in brand colours. AuthLayout keeps the auth pages light in every theme, so these have no dark counterpart. */
+  :root {
+    --color-auth-accent: #1a3a3a;
+    --color-auth-accent-hover: #152e2e;
+  }
+
   /* Global styles */
   html {
     -webkit-tap-highlight-color: transparent;

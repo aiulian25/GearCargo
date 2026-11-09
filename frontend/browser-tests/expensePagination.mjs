@@ -50,7 +50,7 @@ try {
   const before = requests.length
   await go('/vehicles/1/expenses?year=2024')
   await page.getByText('Station 121', { exact: true }).waitFor()
-  await page.getByText('Selected category, all pages: 1210.00 GBP', { exact: true }).waitFor()
+  await page.getByText('Selected category, all pages: £1,210.00', { exact: true }).waitFor()
   assert.equal(requests.slice(before).filter(r => r.path.includes('/expense-records')).length, 1)
   assert.equal(requests.slice(before).filter(r => r.path.includes('/expenses-summary')).length, 1)
   await page.getByRole('button', { name: 'Next page', exact: true }).click()
@@ -59,7 +59,7 @@ try {
   assert.equal(requests.slice(before).filter(r => r.path.includes('/expenses-summary')).length, 1)
   results.push('121 records: bounded requests, next page, unchanged complete totals')
 
-  await page.getByRole('button', { name: /^January 2024: .* GBP$/ }).click()
+  await page.getByRole('button', { name: /^January 2024: £/ }).click()
   await page.getByText('Station 121', { exact: true }).waitFor()
   await page.getByRole('button', { name: 'Next page', exact: true }).click()
   await page.getByText('Station 101', { exact: true }).waitFor()
@@ -81,7 +81,7 @@ try {
   results.push('Actual fuel edit/save and reload preserve year/month/page filters')
 
   await go('/vehicles/1/charts?year=2024')
-  await page.getByText('1386.00 GBP', { exact: true }).first().waitFor()
+  await page.getByText('£1,386.00', { exact: true }).first().waitFor()
   const report = await page.evaluate(async () => (await window.gc020.api.post('/reports/preview',
     { vehicle_ids: [1], period: 'year', year: 2024 })).data)
   assert.equal(report.totals.grand_total, 1386)
@@ -90,15 +90,15 @@ try {
   await page.getByText('Station 121', { exact: true }).waitFor()
   assert.match(page.url(), /year=2024/)
   await page.getByRole('button', { name: 'Insurance', exact: true }).click()
-  await page.getByText('Estimate for selected period: 96.00 GBP', { exact: true }).waitFor()
-  await page.getByText('10.00 EUR', { exact: false }).first().waitFor()
+  await page.getByText('Estimate for selected period: £96.00', { exact: true }).waitFor()
+  await page.getByText('€10.00', { exact: false }).first().waitFor()
   results.push('Charts, paginated table and report reconcile including EUR insurance estimates')
 
   await go('/vehicles/2/expenses?year=2024')
   await page.getByRole('option', { name: '2020', exact: true }).waitFor({ state: 'attached' })
   await page.getByRole('combobox').selectOption('2020')
   await page.getByRole('button', { name: 'Insurance', exact: true }).click()
-  await page.getByText('Estimate for selected period: 20.00 GBP', { exact: true }).waitFor()
+  await page.getByText('Estimate for selected period: £20.00', { exact: true }).waitFor()
   results.push('Insurance-only history exposes older years and converted totals')
 
   failDetails = true

@@ -25,8 +25,9 @@ from app.models.parking import ParkingEntry
 from app.models.insurance import InsurancePolicy
 from app.models.reminder import Reminder
 from app.models.attachment import Attachment
+from app.utils.timeutils import utc_today
 
-TODAY = date.today()
+TODAY = utc_today()
 
 
 def _mk(currency="GBP"):
@@ -265,8 +266,6 @@ def test_attachment_stats(app, client, auth_headers):
 # subtraction raised TypeError — swallowed by `except Exception: pass`. Every
 # response carried next_service_days = null, and the "Next Service Due" card,
 # the alerts list and Smart Recommendations all fell back to empty.
-
-from app.utils.timeutils import utc_today
 
 
 def _vehicle_stats(client, headers, vehicle_id):

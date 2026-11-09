@@ -29,9 +29,6 @@ sess = Session()
 compress = Compress()
 csrf = CSRFProtect()
 redis_client = None
-# I15: tracks whether Redis is reachable — checked at startup and exposed in /health.
-# Durable session validity/revocation is independent of this startup cache flag.
-_redis_available = False
 
 # S05: known insecure code defaults (from app/config.py) plus placeholder markers
 # used across the tracked .env templates. A real secret is high-entropy hex/base64
@@ -68,6 +65,8 @@ def _is_weak_secret(value) -> bool:
 # URL schemes redis.from_url understands for a session backend.
 REDIS_URL_SCHEMES = ('redis://', 'rediss://', 'unix://')
 
+ACCOUNT_DELETION_ATTEMPTS_PER_HOUR = 5
+
 # SQLAlchemy 2.1 loads psycopg 3 for a bare postgresql:// URL, but this app ships
 # psycopg2 (the entrypoint and migrate scripts import it directly), so the driver is
 # named explicitly. DATABASE_URL itself stays bare: libpq rejects the +psycopg2 form.
@@ -83,7 +82,7 @@ def _with_psycopg2_driver(database_url: str) -> str:
 
 def create_app(config_class=None, *, process_role=None):
     """Application factory pattern."""
-    global redis_client, _redis_available
+    global redis_client
     
     # Static folder is at /app/static (where Vite output is copied)
     static_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static')
@@ -221,25 +220,20 @@ def create_app(config_class=None, *, process_role=None):
             )
     
     # I15: Initialize Redis client for token blacklisting and check connectivity.
-    # The result is stored in _redis_available so the /health endpoint can report
-    # degraded status to orchestrators / monitoring tools.
-    global redis_client, _redis_available
+    global redis_client
     try:
         redis_url = app.config.get('REDIS_URL')
         if redis_url and redis_url != 'memory://':
             redis_client = redis.from_url(redis_url)
             redis_client.ping()  # Test connection
-            _redis_available = True
             app.logger.info('Redis connection successful')
         else:
-            _redis_available = False
             app.logger.warning(
                 'I15: REDIS_URL not set or is memory://. '
                 'Rate limiting is in-memory only (no cross-worker coordination). '
                 'Durable session checks remain active; Redis denylist caching is unavailable.'
             )
     except Exception as e:
-        _redis_available = False
         redis_client = None
         if not app.config.get('DEBUG'):
             app.logger.warning(
@@ -325,9 +319,6 @@ def create_app(config_class=None, *, process_role=None):
             'img-src': ["'self'", "data:", "blob:", "https:", "http:"],
             'connect-src': [
                 "'self'", "ws:", "wss:", "http:", "https:",
-                "https://vpic.nhtsa.dot.gov",
-                "https://nominatim.openstreetmap.org",
-                "https://api.pwnedpasswords.com",
                 "https://fonts.googleapis.com",
                 "https://fonts.gstatic.com",
             ],
@@ -353,9 +344,7 @@ def create_app(config_class=None, *, process_role=None):
             'img-src': ["'self'", "data:", "blob:", "https:"],
             'connect-src': [
                 "'self'",
-                "https://vpic.nhtsa.dot.gov",
-                "https://nominatim.openstreetmap.org",
-                "https://api.pwnedpasswords.com",  # HIBP password breach check
+                # Google Fonts: fetched by the service worker runtime cache (src/sw.js).
                 "https://fonts.googleapis.com",
                 "https://fonts.gstatic.com"
             ],
@@ -399,7 +388,7 @@ def create_app(config_class=None, *, process_role=None):
     from app.routes import register_blueprints
     register_blueprints(app)
 
-    from app.services.restore_transaction import init_restore_coordination, recover_unfinished
+    from app.services.restore_transaction import init_restore_coordination, recover_unfinished, RestoreLockHeld
     init_restore_coordination(app)
     from app.services.deletion import init_deletion_cleanup
     init_deletion_cleanup(app)
@@ -594,6 +583,14 @@ def create_app(config_class=None, *, process_role=None):
         key_func=_ai_rate_key,
         error_message='Too many search requests. Please slow down.')
 
+    # GC-102: every self-service deletion attempt, refused ones included, holds
+    # the instance-wide exclusive restore lease while the password and backup
+    # codes are hashed. Bound it per account, keyed like the search limit.
+    _rate_limit('auth.delete_account',
+        f'{ACCOUNT_DELETION_ATTEMPTS_PER_HOUR} per hour',
+        key_func=_ai_rate_key,
+        error_message='Too many account deletion attempts. Please try again later.')
+
     # F05: per-IP limits on the PUBLIC (unauthenticated) shared-report endpoints.
     # The 256-bit token makes enumeration infeasible; these limits bound DoS /
     # scraping and the cost of the heavier PDF path.
@@ -726,32 +723,10 @@ def create_app(config_class=None, *, process_role=None):
     
     app.wsgi_app = WidgetHeaderMiddleware(_original_wsgi)
 
-    # S11: Apply werkzeug ProxyFix as the outermost WSGI middleware so that
-    # request.remote_addr is always the real client IP by the time Flask (and
-    # Flask-Limiter's get_remote_address) reads it.
-    #
-    # TRUSTED_PROXY_COUNT (default 1) tells ProxyFix how many hops to trust:
-    #   0 → no proxy at all (dev / direct TCP bind)
-    #   1 → one trusted reverse proxy in front (nginx, Traefik, Cloudflare…)
-    #   2 → CDN + reverse proxy in front
-    #
-    # ProxyFix reads ONLY the rightmost N entries of X-Forwarded-For, so a
-    # client cannot forge their IP by appending extra addresses to the left of
-    # the header — the nth-from-right entry is always written by the Nth
-    # trusted proxy and cannot be influenced by the client.
-    from werkzeug.middleware.proxy_fix import ProxyFix
-    _trusted = app.config.get('TRUSTED_PROXY_COUNT', 1)
-    app.wsgi_app = ProxyFix(
-        app.wsgi_app,
-        x_for=_trusted,    # honour X-Forwarded-For (sets remote_addr)
-        x_proto=_trusted,  # honour X-Forwarded-Proto (sets request.scheme)
-        x_host=_trusted,   # honour X-Forwarded-Host (sets request.host)
-        x_prefix=_trusted, # honour X-Forwarded-Prefix (sets SCRIPT_NAME)
-    )
-    app.logger.info(
-        f'S11: ProxyFix applied — trusting {_trusted} reverse-proxy hop(s). '
-        'Adjust TRUSTED_PROXY_COUNT in .env if your topology differs.'
-    )
+    # S11/GC-104: install_readiness (below) wraps this, so health probes never
+    # reach proxy trust or its warnings.
+    from app.services.proxy_trust import install_proxy_trust
+    install_proxy_trust(app)
 
     # ================================================================
     # STATIC FILE SERVING (React SPA)
@@ -953,6 +928,8 @@ def create_app(config_class=None, *, process_role=None):
     with app.app_context():
         try:
             recover_unfinished()
+        except RestoreLockHeld:
+            app.logger.info('Restore recovery skipped: another process holds the restore lock; requests stay guarded.')
         except Exception:
             app.logger.exception('Restore recovery pending; application access remains in maintenance.')
 
@@ -972,7 +949,7 @@ def create_app(config_class=None, *, process_role=None):
         app.logger.warning('Administrator initialization deferred until restore recovery completes.')
 
     from app.services.readiness import install_readiness
-    install_readiness(app, _redis_available)
+    install_readiness(app)
 
     return app
 

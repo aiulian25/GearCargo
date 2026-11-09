@@ -151,7 +151,7 @@ export default function VehicleTimeline() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { t } = useTranslation()
-  const { currency } = useCurrency()
+  const { formatCurrency } = useCurrency()
 
   // Deep-link support (from the dashboard Recent Transactions feed):
   //   ?type=<entryType>  → pre-select that filter chip
@@ -276,11 +276,6 @@ export default function VehicleTimeline() {
     fetchPage(currentPage + 1, filter, false)
   }
   
-  const formatCurrency = (amount) => {
-    if (!amount && amount !== 0) return `${currency.symbol}0`
-    return `${currency.symbol}${Number(amount).toFixed(2)}`
-  }
-  
   const formatDate = (dateStr) => formatDateShort(dateStr)
   
   const getEntryStyle = (type) => {
@@ -341,6 +336,7 @@ export default function VehicleTimeline() {
         <div className="flex items-center justify-between p-4">
           <div className="flex items-center gap-3">
             <button 
+              aria-label={t('common.back')}
               onClick={() => navigate(`/vehicles/${id}`)}
               className="p-2 -ml-2 rounded-lg hover:bg-(--color-bg-tertiary) transition-colors"
             >
@@ -355,6 +351,7 @@ export default function VehicleTimeline() {
             </div>
           </div>
           <button
+            aria-label={t('common.filter')}
             onClick={() => setShowFilters(!showFilters)}
             className={`p-2 rounded-lg transition-colors ${
               showFilters || filter !== 'all' 
@@ -444,7 +441,7 @@ export default function VehicleTimeline() {
                               </div>
                               {entry.cost !== undefined && entry.cost !== null && (
                                 <span className="font-semibold text-(--color-text-primary) whitespace-nowrap">
-                                  {formatCurrency(entry.cost)}
+                                  {formatCurrency(entry.cost, { currency: entry.currency })}
                                 </span>
                               )}
                             </div>

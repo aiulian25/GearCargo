@@ -26,7 +26,7 @@ export default function ImportReview({ preview, busy, onApply, onCancel }) {
           </li>
         ))}
         {(preview.errors || []).map(issue => <li key={`error-${issue.row}`}>
-          {t('backup.importReview.row')} {issue.row}: {issue.error}
+          {t('backup.importReview.row')} {issue.row}: {(issue.message_key && t(issue.message_key)) || issue.error}
         </li>)}
       </ul>
       {preview.records_truncated && <p className="text-xs">{t('backup.importReview.truncated')}</p>}

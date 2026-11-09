@@ -261,9 +261,9 @@ export default function Reminders() {
                       title={t('reminders.snooze7Days')}
                     >
                       {snoozingId === reminder.id ? (
-                        <span className="material-icons-outlined icon-xs animate-spin">sync</span>
+                        <span aria-hidden="true" className="material-icons-outlined icon-xs animate-spin">sync</span>
                       ) : (
-                        <span className="material-icons-outlined icon-xs">snooze</span>
+                        <span aria-hidden="true" className="material-icons-outlined icon-xs">snooze</span>
                       )}
                     </button>
                     <button
@@ -272,7 +272,7 @@ export default function Reminders() {
                       className="btn-icon w-8 h-8"
                       title={t('reminders.markComplete')}
                     >
-                      <span className="material-icons-outlined icon-xs">check</span>
+                      <span aria-hidden="true" className="material-icons-outlined icon-xs">check</span>
                     </button>
                   </div>
                 )}

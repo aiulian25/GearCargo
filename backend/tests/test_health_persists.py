@@ -1,11 +1,12 @@
 """Tests for F30 — health scores persist on the Vehicle row after a Health view."""
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from app import db
 from app.models import Vehicle, ServiceEntry, FuelEntry
+from app.utils.timeutils import utc_today
 
-TODAY = date.today()
+TODAY = utc_today()
 
 
 def _mk_vehicle_with_history(app, user):

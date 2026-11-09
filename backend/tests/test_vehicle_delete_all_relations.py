@@ -1,5 +1,5 @@
 """GC-003 regressions run with real FK enforcement on SQLite and PostgreSQL."""
-from datetime import date, timedelta
+from datetime import timedelta
 import importlib.util
 from pathlib import Path
 
@@ -10,10 +10,10 @@ from sqlalchemy.exc import OperationalError
 from app import db
 from app.models import (Attachment, ActivityLog, Backup, BackupSchedule, BlockedDevice,
                         BlockedIP, ConsumableEntry, DueDismissal, EmailConsentLog, Entry,
-                        FuelEntry, InsurancePolicy, NotificationLog, ParkingEntry,
+                        FuelEntry, InsurancePolicy, NotificationLog, ParkingEntry, Passkey,
                         PredictionAlert, PushSubscription, Reminder, RepairEntry,
                         ReportShare, ServiceEntry, TaxEntry, Todo, User, UserSession, Vehicle)
-from app.utils.timeutils import utc_naive_now
+from app.utils.timeutils import utc_naive_now, utc_today
 
 
 @pytest.fixture(autouse=True)
@@ -74,19 +74,19 @@ def populate_all(app, user):
     uid = user.id
     entries = []
     for cls in (FuelEntry, ServiceEntry, RepairEntry, TaxEntry, ParkingEntry, ConsumableEntry, Entry):
-        row = cls(user_id=uid, vehicle_id=vid, date=date.today(), title=cls.__name__, amount=10)
+        row = cls(user_id=uid, vehicle_id=vid, date=utc_today(), title=cls.__name__, amount=10)
         db.session.add(row); db.session.flush(); entries.append(row)
     service = entries[1]
     indirect_file = write_file(app.config['UPLOAD_FOLDER'], f'{uid}/indirect.pdf')
     indirect = Attachment(user_id=uid, vehicle_id=vid, entry_id=service.id, filename='indirect.pdf', filepath=str(indirect_file))
     db.session.add(indirect); db.session.flush()
     policy = InsurancePolicy(user_id=uid, vehicle_id=vid, provider='Company', premium=10,
-        start_date=date.today(), end_date=date.today()+timedelta(days=30), document_attachment_id=indirect.id)
+        start_date=utc_today(), end_date=utc_today()+timedelta(days=30), document_attachment_id=indirect.id)
     db.session.add(policy); db.session.flush()
     renewal = InsurancePolicy(user_id=uid, vehicle_id=vid, provider='Company', premium=11,
-        start_date=date.today(), end_date=date.today()+timedelta(days=60), renewed_from_id=policy.id)
+        start_date=utc_today(), end_date=utc_today()+timedelta(days=60), renewed_from_id=policy.id)
     entries[3].insurance_policy_id = policy.id
-    reminder = Reminder(user_id=uid, title='Reminder', due_date=date.today(), source_service_id=service.id)
+    reminder = Reminder(user_id=uid, title='Reminder', due_date=utc_today(), source_service_id=service.id)
     prediction = PredictionAlert(user_id=uid, vehicle_id=vid, alert_type='oil_change', title='Alert')
     todo = Todo(user_id=uid, vehicle_id=vid, title='Task')
     db.session.add_all([renewal, reminder, prediction, todo]); db.session.flush()
@@ -158,12 +158,14 @@ def account_fixture(app, user):
         notification_type='system', title='Private notice', channel='push'))
     db.session.add_all([
         Todo(user_id=user.id, title='Unbound task'),
-        Reminder(user_id=user.id, title='Unbound reminder', due_date=date.today()),
+        Reminder(user_id=user.id, title='Unbound reminder', due_date=utc_today()),
         ActivityLog(user_id=user.id, event_type='login', description=user.email, ip_address='192.0.2.1'),
         ActivityLog(user_id=oid, event_type='user_created', event_category='admin',
                     description=f'Created {user.email}', extra_data={'created_user_id': user.id}),
         EmailConsentLog(user_id=user.id, action='grant', email_hash='b'*64),
         UserSession(user_id=user.id, jti='deleted-session', absolute_expires_at=utc_naive_now()+timedelta(days=1)),
+        Passkey(user_id=user.id, relying_party_id='cars.example.org', credential_id='deleted-account-passkey',
+                public_key='public-key', name='Phone'),
         BlockedIP(ip_address='192.0.2.2', target_user_id=user.id, target_email=user.email,
                   blocked_by_id=user.id, unblocked_by_id=user.id, reason=user.email),
         BlockedDevice(device_fingerprint='f'*64, target_user_id=user.id, target_email=user.email,
@@ -173,13 +175,24 @@ def account_fixture(app, user):
     return oid, ovid, files
 
 
-def test_account_deletes_owned_pii_unbound_files_and_every_fk(app, user, client, auth_headers, monkeypatch):
+def administrator_deletes(client, auth_headers, user_id, administrator_id):
+    response = client.delete(f'/api/admin/users/{user_id}', headers=auth_headers(administrator_id, is_admin=True))
+    return response, administrator_id
+
+
+def owner_deletes(client, auth_headers, user_id, administrator_id):
+    response = client.delete('/api/auth/account', json={'password': 'StrongPass123!'}, headers=auth_headers(user_id))
+    return response, None
+
+
+@pytest.mark.parametrize('delete_account', [administrator_deletes, owner_deletes])
+def test_account_deletes_owned_pii_unbound_files_and_every_fk(app, user, client, auth_headers, monkeypatch, delete_account):
     from app.models import DeletionTask
     uid = user.id
     oid, ovid, files = account_fixture(app, user)
     # No Redis service in this fixture; model a deployment without Redis.
     monkeypatch.setitem(app.config, 'REDIS_URL', 'memory://')
-    response = client.delete(f'/api/admin/users/{uid}', headers=auth_headers(oid, is_admin=True))
+    response, actor_id = delete_account(client, auth_headers, uid, oid)
     assert response.status_code == 200, response.json
     assert response.json['cleanup']['state'] == 'completed'
     db.session.expire_all()
@@ -193,7 +206,7 @@ def test_account_deletes_owned_pii_unbound_files_and_every_fk(app, user, client,
         assert row.target_email is row.target_user_id is row.blocked_by_id is row.unblocked_by_id is row.reason is None
         assert row.is_active  # Retain the instance security block.
     audit = ActivityLog.query.filter_by(event_type='user_deleted').one()
-    assert audit.user_id == oid and '@' not in audit.description and not audit.extra_data
+    assert audit.user_id == actor_id and '@' not in audit.description and not audit.extra_data
     creation = ActivityLog.query.filter_by(event_type='user_created').one()
     assert creation.user_id == oid and '@' not in creation.description and not creation.extra_data
     assert all(not path.exists() for path in files)
@@ -298,7 +311,7 @@ def test_conflicting_paths_or_links_fail_without_loss(app, user, client, auth_he
         db.session.add(Todo(user_id=oid, vehicle_id=vid, title='Other owner'))
     else:
         policy = InsurancePolicy(user_id=oid, vehicle_id=ovid, provider='Keep', premium=1,
-            start_date=date.today(), end_date=date.today())
+            start_date=utc_today(), end_date=utc_today())
         db.session.add(policy); db.session.commit()
         policy_id, attachment_id = policy.id, attachment.id
         db.session.rollback()

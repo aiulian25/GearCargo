@@ -12,7 +12,9 @@ import AddVehicleReminder from '../pages/vehicles/AddVehicleReminder'
 import AddVehicleFuel from '../pages/vehicles/AddVehicleFuel'
 import AddVehicleService from '../pages/vehicles/AddVehicleService'
 import AddVehicleConsumable from '../pages/vehicles/AddVehicleConsumable'
-import api, { vehicleApi, fuelApi, serviceApi, reminderApi, attachmentApi } from '../services/api'
+import AddVehicleParking from '../pages/vehicles/AddVehicleParking'
+import AddVehicleTax from '../pages/vehicles/AddVehicleTax'
+import api, { vehicleApi, fuelApi, serviceApi, reminderApi, attachmentApi, taxApi, insuranceApi } from '../services/api'
 import { saveExpenseWithReceipt } from '../utils/receiptExpense'
 import { translations } from '../i18n/translations'
 
@@ -30,6 +32,8 @@ vi.mock('../services/api', () => ({ default: { get: vi.fn(), post: vi.fn(), put:
   fuelApi: { get: vi.fn(), update: vi.fn(), create: vi.fn() },
   serviceApi: { get: vi.fn(), update: vi.fn(), create: vi.fn() },
   consumableApi: { get: vi.fn(), update: vi.fn(), create: vi.fn() },
+  taxApi: { get: vi.fn(), update: vi.fn(), create: vi.fn() },
+  insuranceApi: { getAll: vi.fn() },
 }))
 vi.mock('../utils/receiptExpense', () => ({ saveExpenseWithReceipt: vi.fn() }))
 vi.mock('../components/ui/ScanReceiptBanner', () => ({ default: () => null }))
@@ -49,6 +53,7 @@ beforeEach(() => {
   api.post.mockResolvedValue({ data: { todo: { id: 7, revision: 1 } } }); api.put.mockResolvedValue({ data: { todo: { id: 7, revision: 2 } } })
   reminderApi.create.mockResolvedValue({ data: { reminder: { id: 7, revision: 1 } } }); reminderApi.update.mockResolvedValue({ data: { reminder: { id: 7, revision: 2 } } })
   attachmentApi.upload.mockResolvedValue({ data: { id: 8 } })
+  insuranceApi.getAll.mockResolvedValue({ data: { policies: [] } })
   saveExpenseWithReceipt.mockResolvedValue({ receiptPending: true })
 })
 afterEach(() => { cleanup(); for (const router of routers.splice(0)) router.dispose() })
@@ -70,6 +75,8 @@ function Shell() {
         <Route path="/vehicles/:id/fuel/add" element={<AddVehicleFuel />} />
         <Route path="/vehicles/:id/service/add" element={<AddVehicleService />} />
         <Route path="/vehicles/:id/consumable/add" element={<AddVehicleConsumable />} />
+        <Route path="/vehicles/:id/parking/add" element={<AddVehicleParking />} />
+        <Route path="/vehicles/:id/tax/add" element={<AddVehicleTax />} />
         <Route path="*" element={<p>Destination</p>} />
       </Routes>
     </UnsavedChangesProvider>
@@ -137,6 +144,28 @@ it('protects a photo-only edit and preserves it after an upload failure', async 
   await field(view, 'name', 'Edited after partial save')
   await choose('Save'); await screen.findByText('Destination'); expect(vehicleApi.uploadPhoto).toHaveBeenLastCalledWith('1', file)
   expect(vehicleApi.update).toHaveBeenLastCalledWith('1', expect.objectContaining({ name: 'Edited after partial save' }), expect.objectContaining({ headers: expect.objectContaining({ 'If-Match': '"2"' }) }))
+})
+
+it.each([['name', 'Renamed', false], ['purchase_price', '12000', true]])(
+  'resends a stored purchase currency only with a purchase price edit (%s)', async (name, value, sent) => {
+    vehicleApi.getById.mockResolvedValue({ data: { ...vehicle, purchase_currency: 'KWD', purchase_price: 10000 } })
+    const view = mount(); await field(view, name, value)
+    await choose('Save'); await screen.findByText('Destination')
+    const payload = vehicleApi.update.mock.lastCall[1]
+    expect('purchase_currency' in payload).toBe(sent)
+    expect(payload.purchase_currency).toBe(sent ? 'KWD' : undefined)
+  })
+
+it.each([
+  ['tax', 'tax_type', 'road_tax', taxApi.create],
+  ['parking', 'parking_type', 'street', api.post],
+])('shows the localized reason when the server refuses a %s entry', async (resource, typeField, typeValue, create) => {
+  create.mockRejectedValueOnce({ response: { data: { error: 'Server English', message_key: 'validation.unsupportedCurrencyPrecision' } } })
+  const view = mount(`/vehicles/1/${resource}/add`)
+  await field(view, typeField, typeValue); await field(view, 'amount', '4.25')
+  await choose('Save'); await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+  expect(await screen.findByText(translations.en.validation.unsupportedCurrencyPrecision)).toBeTruthy()
+  expect(screen.queryByText('Server English')).toBeNull()
 })
 
 it('keeps failed updates dirty and releases both route and unload guards only after success', async () => {

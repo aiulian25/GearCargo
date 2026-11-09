@@ -81,7 +81,7 @@ export function AuthProvider({ children }) {
     }
   }, [])
   
-  const login = useCallback(async (email, password, totpCode = null, remember = false, backupCode = null) => {
+  const login = useCallback(async (email, password, totpCode = null, backupCode = null) => {
     const transition = await beginIdentityTransition()
     const response = await api.post('/auth/login', {
       email,
@@ -153,10 +153,11 @@ export function AuthProvider({ children }) {
     return { success: true }
   }, [])
   
-  const logout = useCallback(async () => {
+  const logout = useCallback(async ({ sessionEndedByServer = false } = {}) => {
     const transition = await beginIdentityTransition({ logout: true })
     try {
-      if (transition) await api.post('/auth/logout')
+      // Account deletion already expired the cookies; only the local transition remains.
+      if (transition && !sessionEndedByServer) await api.post('/auth/logout')
     } catch (error) {
       // Ignore logout errors — server clears cookies regardless
     }

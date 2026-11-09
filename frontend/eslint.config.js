@@ -3,12 +3,15 @@ import globals from 'globals'
 import react from 'eslint-plugin-react'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
+import accessibleNames from './eslint-rules/accessibleNames.js'
 
 // Flat config (eslint 9). Replaces the orphaned .eslintrc-audit.json, which
 // eslint never auto-discovered — `npm run lint` had been failing to find any
 // config at all.
 //
-// Scope: correctness rules only. eslint-plugin-react-hooks v7 also ships the
+// Scope: correctness rules, plus the local accessible-names rules
+// (eslint-rules/accessibleNames.js), which fail CI when a button, link or form
+// field has no accessible name. eslint-plugin-react-hooks v7 also ships the
 // React Compiler ruleset (set-state-in-effect, immutability, purity,
 // static-components); those flag ~65 places and are a separate refactor, so
 // they are deliberately not enabled here.
@@ -35,6 +38,15 @@ export default [
       'react/jsx-uses-vars': 'warn',
       'react/jsx-uses-react': 'warn',
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+    },
+  },
+  {
+    files: ['src/**/*.jsx'],
+    ignores: ['src/__tests__/**'],
+    plugins: { 'accessible-names': accessibleNames },
+    rules: {
+      'accessible-names/control-has-name': 'error',
+      'accessible-names/field-has-label': 'error',
     },
   },
   {

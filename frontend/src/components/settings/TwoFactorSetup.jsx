@@ -411,7 +411,7 @@ export default function TwoFactorSetup({ isOpen, onClose, onSuccess, isEnabled =
               </p>
             </div>
           </div>
-          <button onClick={handleClose} className="btn-icon">
+          <button aria-label={t('common.close')} onClick={handleClose} className="btn-icon">
             {Icons.close}
           </button>
         </div>
@@ -470,10 +470,11 @@ export default function TwoFactorSetup({ isOpen, onClose, onSuccess, isEnabled =
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">
+                <label htmlFor="two-factor-disable-password" className="block text-sm font-medium mb-2">
                   {t('common.password') || 'Password'}
                 </label>
                 <input
+                  id="two-factor-disable-password"
                   type="password"
                   value={disablePassword}
                   onChange={(e) => setDisablePassword(e.target.value)}
@@ -485,10 +486,11 @@ export default function TwoFactorSetup({ isOpen, onClose, onSuccess, isEnabled =
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">
+                <label htmlFor="two-factor-disable-code" className="block text-sm font-medium mb-2">
                   {t('twoFactor.disableCodeLabel') || 'Authentication code'}
                 </label>
                 <input
+                  id="two-factor-disable-code"
                   type="text"
                   value={disableCode}
                   onChange={(e) => setDisableCode(e.target.value)}
@@ -538,10 +540,11 @@ export default function TwoFactorSetup({ isOpen, onClose, onSuccess, isEnabled =
               </div>
               
               <div>
-                <label className="block text-sm font-medium mb-2">
+                <label htmlFor="two-factor-regenerate-password" className="block text-sm font-medium mb-2">
                   {t('common.password') || 'Password'}
                 </label>
                 <input
+                  id="two-factor-regenerate-password"
                   type="password"
                   value={regeneratePassword}
                   onChange={(e) => setRegeneratePassword(e.target.value)}
@@ -646,7 +649,7 @@ export default function TwoFactorSetup({ isOpen, onClose, onSuccess, isEnabled =
                       <code className="font-mono text-sm bg-(--color-bg-secondary) px-3 py-1 rounded-sm">
                         {secret}
                       </code>
-                      <button onClick={copySecret} className="btn-icon text-(--color-text-secondary)">
+                      <button aria-label={t('common.copy')} onClick={copySecret} className="btn-icon text-(--color-text-secondary)">
                         {Icons.copy}
                       </button>
                     </div>
@@ -679,6 +682,7 @@ export default function TwoFactorSetup({ isOpen, onClose, onSuccess, isEnabled =
               <form onSubmit={handleVerify} className="space-y-4">
                 <div>
                   <input
+                    aria-label={t('auth.twoFactorCode')}
                     ref={codeInputRef}
                     type="text"
                     value={verificationCode}

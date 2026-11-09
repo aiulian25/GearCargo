@@ -268,7 +268,8 @@ export default function ScanReceiptBanner({ receiptFile, vehicleId, onPrefill, o
             type="button"
             onClick={() => setExpanded(v => !v)}
             className={`shrink-0 transition-colors ${iconCls} hover:opacity-70`}
-            aria-label={expanded ? 'Collapse' : 'Expand'}
+            aria-label={t('attachments.ocrExtractResult')}
+            aria-expanded={expanded}
           >
             {expanded ? Icons.chevronUp : Icons.chevronDown}
           </button>

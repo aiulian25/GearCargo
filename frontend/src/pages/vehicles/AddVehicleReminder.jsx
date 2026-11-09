@@ -229,7 +229,7 @@ export default function AddVehicleReminder() {
     <div className="pb-4">
       {/* Header */}
       <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
-        <button onClick={() => navigate(-1)} className="btn-icon">
+        <button aria-label={t('common.close')} onClick={() => navigate(-1)} className="btn-icon">
           {Icons.close}
         </button>
         <div className="flex-1">
@@ -270,10 +270,11 @@ export default function AddVehicleReminder() {
         {/* Reminder Details */}
         <div className="card space-y-4">
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="reminder_type" className="block text-xs text-(--color-text-muted) mb-1">
               {t('addReminder.reminderType') || 'Reminder Type'} *
             </label>
             <select 
+              id="reminder_type"
               {...register('reminder_type', { required: t('addReminder.typeRequired') || 'Reminder type is required' })}
               className="input"
             >
@@ -289,10 +290,11 @@ export default function AddVehicleReminder() {
           
           {reminderType === 'custom' && (
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="title" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addReminder.customTitle') || 'Custom Title'} *
               </label>
               <input
+                id="title"
                 type="text"
                 {...register('title', { 
                   required: reminderType === 'custom' ? (t('addReminder.titleRequired') || 'Title is required') : false
@@ -315,10 +317,11 @@ export default function AddVehicleReminder() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="due_date" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addReminder.dueDate') || 'Due Date'}
               </label>
               <input
+                id="due_date"
                 type="date"
                 {...register('due_date')}
                 className="input"
@@ -326,10 +329,11 @@ export default function AddVehicleReminder() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="due_mileage" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addReminder.dueMileage') || 'Due Mileage'} ({distUnit})
               </label>
               <input
+                id="due_mileage"
                 type="number" inputMode="decimal"
                 {...register('due_mileage')}
                 className="input"
@@ -351,10 +355,10 @@ export default function AddVehicleReminder() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="repeat_interval" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addReminder.repeatInterval') || 'Repeat Interval'}
               </label>
-              <select {...register('repeat_interval', { onChange: event => { if (!event.target.value) setValue('repeat_mileage', '') } })} className="input">
+              <select id="repeat_interval" {...register('repeat_interval', { onChange: event => { if (!event.target.value) setValue('repeat_mileage', '') } })} className="input">
                 {repeatIntervals.map(interval => (
                   <option key={interval.value} value={interval.value}>{interval.label}</option>
                 ))}
@@ -362,10 +366,11 @@ export default function AddVehicleReminder() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="repeat_mileage" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addReminder.repeatMileage') || 'Repeat Every'} ({distUnit})
               </label>
               <input
+                id="repeat_mileage"
                 type="number" inputMode="decimal"
                 {...register('repeat_mileage', { min: { value: 1, message: t('validation.invalidNumber') },
                   validate: value => !value || (watch('repeat_interval') && watch('due_mileage') !== '') || t('reminderDelivery.intervalRequired') })}
@@ -383,10 +388,11 @@ export default function AddVehicleReminder() {
         {/* Notes */}
         <div className="card space-y-4">
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="notes" className="block text-xs text-(--color-text-muted) mb-1">
               {t('addReminder.notes') || 'Notes'}
             </label>
             <textarea
+              id="notes"
               {...register('notes')}
               className="input resize-none"
               rows={2}

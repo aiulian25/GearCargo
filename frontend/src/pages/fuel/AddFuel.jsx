@@ -12,6 +12,7 @@ import {
   normalizeDistanceUnit,
   displayVolumeToLiters, volumeUnitLabel, displayPriceToPerLiter,
 } from '../../utils/fuelEconomy'
+import { ODOMETER_HINT_ID, announceFuelWarnings, belowLatestReadingHint } from '../../utils/fuelMeasurement'
 
 export default function AddFuel() {
   const mutation = useMutationIntent()
@@ -25,7 +26,8 @@ export default function AddFuel() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [isLoadingVehicles, setIsLoadingVehicles] = useState(true)
-  
+  const [enteredOdometer, setEnteredOdometer] = useState('')
+
   const { register, handleSubmit, watch, setValue, formState: { errors, isDirty } } = useForm({
     defaultValues: {
       vehicle_id: preselectedVehicle || '',
@@ -46,7 +48,8 @@ export default function AddFuel() {
   const selectedVehicleId = watch('vehicle_id')
   const selectedVehicle = vehicles.find(v => v.id === parseInt(selectedVehicleId))
   const distUnit = normalizeDistanceUnit(selectedVehicle?.distance_unit || user?.distance_unit) === 'miles' ? 'mi' : 'km'
-  
+  const odometerHint = belowLatestReadingHint(enteredOdometer, selectedVehicle?.current_mileage, distUnit, t)
+
   // Auto-calculate total cost
   useEffect(() => {
     if (liters && pricePerLiter) {
@@ -83,7 +86,7 @@ export default function AddFuel() {
     setError('')
     
     try {
-      await fuelApi.create({
+      const response = await fuelApi.create({
         ...data,
         vehicle_id: parseInt(data.vehicle_id),
         mileage: parseInt(data.mileage),
@@ -92,7 +95,8 @@ export default function AddFuel() {
         price_per_liter: displayPriceToPerLiter(parseFloat(data.price_per_liter), user),
         total_cost: parseFloat(data.total_cost),
       }, mutation.options())
-      
+      announceFuelWarnings(response?.data?.warnings, t, distUnit)
+
       if (!markSaved()) return
       navigate(-1)
     } catch (err) {
@@ -129,8 +133,8 @@ export default function AddFuel() {
     <div className="pb-4">
       {/* Header */}
       <div className="bg-(--color-bg-card) border-b border-(--color-border) px-4 py-3 flex items-center gap-3">
-        <button onClick={() => navigate(-1)} className="btn-icon">
-          <span className="material-icons-outlined icon-md">close</span>
+        <button aria-label={t('common.close')} onClick={() => navigate(-1)} className="btn-icon">
+          <span aria-hidden="true" className="material-icons-outlined icon-md">close</span>
         </button>
         <h1 className="text-base font-semibold flex-1">{t('addFuel.title') || 'Add Fuel'}</h1>
         <button 
@@ -162,10 +166,11 @@ export default function AddFuel() {
         {/* Vehicle & Date */}
         <div className="card space-y-4">
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="vehicle_id" className="block text-xs text-(--color-text-muted) mb-1">
               {t('common.vehicle') || 'Vehicle'} *
             </label>
             <select 
+              id="vehicle_id"
               {...register('vehicle_id', { required: t('validation.selectVehicle') || 'Select a vehicle' })}
               className="input"
               disabled={isLoadingVehicles}
@@ -182,10 +187,11 @@ export default function AddFuel() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="date" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addFuel.date') || 'Date'} *
               </label>
               <input
+                id="date"
                 type="date"
                 {...register('date', { required: t('addFuel.dateRequired') || 'Date is required' })}
                 className="input"
@@ -193,21 +199,28 @@ export default function AddFuel() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="mileage" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addFuel.odometer') || 'Odometer'} ({distUnit}) *
               </label>
               <input
+                id="mileage"
                 type="number" inputMode="decimal"
-                {...register('mileage', { 
+                {...register('mileage', {
                   required: t('addFuel.mileageRequired') || 'Mileage is required',
-                  min: { value: 0, message: t('addFuel.invalidMileage') || 'Invalid mileage' }
+                  min: { value: 0, message: t('addFuel.invalidMileage') || 'Invalid mileage' },
+                  // Checked on blur: every prefix of a normal reading is below the latest one.
+                  onBlur: event => setEnteredOdometer(event.target.value),
                 })}
+                aria-describedby={ODOMETER_HINT_ID}
                 className="input"
                 placeholder="0"
               />
               {errors.mileage && (
                 <p className="text-xs text-red-500 mt-1">{errors.mileage.message}</p>
               )}
+              <p id={ODOMETER_HINT_ID} role="status" aria-live="polite" className="text-xs text-amber-700 dark:text-amber-400 mt-1 empty:mt-0">
+                {odometerHint}
+              </p>
             </div>
           </div>
         </div>
@@ -218,10 +231,11 @@ export default function AddFuel() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="liters" className="block text-xs text-(--color-text-muted) mb-1">
                 {volumeUnitLabel(user, t)} *
               </label>
               <input
+                id="liters"
                 type="number" inputMode="decimal"
                 step="0.01"
                 {...register('liters', { 
@@ -237,10 +251,11 @@ export default function AddFuel() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="price_per_liter" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addFuel.pricePerUnit', { unit: volumeUnitLabel(user, t) })} *
               </label>
               <input
+                id="price_per_liter"
                 type="number" inputMode="decimal"
                 step="0.001"
                 {...register('price_per_liter', { 
@@ -257,10 +272,11 @@ export default function AddFuel() {
           </div>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="total_cost" className="block text-xs text-(--color-text-muted) mb-1">
               {t('addFuel.totalCost') || 'Total Cost'}
             </label>
             <input
+              id="total_cost"
               type="number" inputMode="decimal"
               step="0.01"
               {...register('total_cost')}
@@ -288,10 +304,10 @@ export default function AddFuel() {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="fuel_type" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addFuel.fuelType') || 'Fuel Type'}
               </label>
-              <select {...register('fuel_type')} className="input">
+              <select id="fuel_type" {...register('fuel_type')} className="input">
                 {fuelTypes.map(type => (
                   <option key={type.value} value={type.value}>{type.label}</option>
                 ))}
@@ -299,10 +315,11 @@ export default function AddFuel() {
             </div>
             
             <div>
-              <label className="block text-xs text-(--color-text-muted) mb-1">
+              <label htmlFor="station_name" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addFuel.station') || 'Station'}
               </label>
               <input
+                id="station_name"
                 type="text"
                 {...register('station_name')}
                 className="input"
@@ -312,10 +329,11 @@ export default function AddFuel() {
           </div>
           
           <div>
-            <label className="block text-xs text-(--color-text-muted) mb-1">
+            <label htmlFor="notes" className="block text-xs text-(--color-text-muted) mb-1">
               {t('addFuel.notes') || 'Notes'}
             </label>
             <textarea
+              id="notes"
               {...register('notes')}
               className="input resize-none"
               rows={2}

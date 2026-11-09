@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useFieldArray, useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import { appointmentApi, vehicleApi, serviceApi, repairApi } from '../../services/api'
-import { useTranslation } from '../../contexts/LanguageContext'
+import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { useMutationIntent } from '../../hooks/useMutationIntent'
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
@@ -18,6 +18,7 @@ import EmptyState from '../../components/ui/EmptyState'
 const TARGETS = ['reminder_id', 'todo_id', 'service_id', 'prediction_id']
 function VisitForm({ record, vehicle, work, expenses, completing, onSaved, onClose }) {
   const { t } = useTranslation()
+  const { formatCurrency } = useCurrency()
   const { user } = useAuth()
   const intent = useMutationIntent()
   const [error, setError] = useState('')
@@ -59,7 +60,7 @@ function VisitForm({ record, vehicle, work, expenses, completing, onSaved, onClo
     {completing ? <>
       <p>{t('appointments.expenseHint')}</p>
       <div className="flex flex-wrap gap-3">{['service', 'repair'].map(kind => <Link key={kind} className="underline" to={`/vehicles/${vehicle.id}/${kind}/add`} state={{ workshopReturnTo: `/vehicles/${vehicle.id}/appointments` }}>{t(`appointments.add_${kind}`)}</Link>)}</div>
-      {expenses.map(entry => <label key={entry.id} className="flex gap-2 items-start"><input type="checkbox" value={entry.id} {...register('entry_ids')} /><span>{entry.title || entry.type} · {entry.date} · {entry.amount} {entry.currency}</span></label>)}
+      {expenses.map(entry => <label key={entry.id} className="flex gap-2 items-start"><input type="checkbox" value={entry.id} {...register('entry_ids')} /><span>{entry.title || entry.type} · {entry.date} · {formatCurrency(entry.amount, { currency: entry.currency })}</span></label>)}
       <label className="flex gap-2"><input type="checkbox" {...register('no_cost')} />{t('appointments.no_cost')}</label>
       <fieldset className="space-y-2"><legend className="font-semibold">{t('appointments.resolveWork')}</legend><p className="text-sm text-(--color-text-muted)">{t('appointments.resolveHint')}</p>
         {record.tasks.filter(task => !task.done).map(task => <label key={task.id} className="flex gap-2"><input type="checkbox" value={task.id} {...register('resolved_task_ids')} />{task.title}</label>)}
@@ -100,6 +101,7 @@ function VisitForm({ record, vehicle, work, expenses, completing, onSaved, onClo
 export default function VehicleAppointments() {
   const { id } = useParams()
   const { t, language } = useTranslation()
+  const { formatCurrency } = useCurrency()
   const confirm = useConfirm()
   const actionKeys = useRef({})
   const [data, setData] = useState(null)
@@ -154,7 +156,7 @@ export default function VehicleAppointments() {
         {visit.dropoff_at && <p>{t('appointments.droppedOff')}: {appointmentTime(visit.dropoff_at, visit.time_zone, language)}</p>}
         {visit.pickup_at && <p>{t('appointments.pickedUp')}: {appointmentTime(visit.pickup_at, visit.time_zone, language)}</p>}
         {visit.tasks.length > 0 && <ul className="space-y-1">{visit.tasks.map(task => <li key={task.id}>{task.done ? '✓ ' : '○ '}{task.title}</li>)}</ul>}
-        {visit.expenses.map(expense => <Link key={expense.id} className="block underline" to={`/vehicles/${id}/${expense.type}/add?edit=${expense.entry_id}`}>{expense.title || expense.type} · {expense.amount} {expense.currency} · {t('appointments.linkedOnce')}</Link>)}
+        {visit.expenses.map(expense => <Link key={expense.id} className="block underline" to={`/vehicles/${id}/${expense.type}/add?edit=${expense.entry_id}`}>{expense.title || expense.type} · {formatCurrency(expense.amount, { currency: expense.currency })} · {t('appointments.linkedOnce')}</Link>)}
         {!data.vehicle.archived && !form && !['completed', 'cancelled'].includes(visit.status) && <div className="flex flex-wrap gap-2">
           <button className="btn btn-secondary" disabled={busy} onClick={() => setForm({ record: visit })}>{t('common.edit')}</button>
           {visit.status === 'requested' && <button className="btn btn-secondary" disabled={busy} onClick={() => action(visit, 'confirm')}>{t('appointments.confirm')}</button>}

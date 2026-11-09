@@ -183,7 +183,7 @@ export default function Settings() {
   const navigate = useNavigate()
   const { theme, setTheme } = useTheme()
   const { user, logout, refreshUser } = useAuth()
-  const { language, setLanguage, currency, languageNames, supportedLanguages } = useLanguage()
+  const { language, setLanguage, currency, languageNames, supportedLanguages, formatCurrency } = useLanguage()
   const { t } = useTranslation()
   const confirm = useConfirm()
   
@@ -1361,6 +1361,7 @@ export default function Settings() {
               )}
               <label className={`relative inline-flex items-center ${pushSupported && !pushDenied ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>
                 <input
+                  aria-label={t('settings.pushNotifications')}
                   type="checkbox"
                   checked={pushSubscribed}
                   onChange={handlePushToggle}
@@ -1410,7 +1411,7 @@ export default function Settings() {
                   <li key={n.id} className="flex items-start gap-3 py-2 border-b border-(--color-border) last:border-0">
                     <span
                       className="text-(--color-text-muted) shrink-0 mt-0.5"
-                      title={n.channel === 'email' ? (t('settings.email') || 'Email') : (t('settings.pushNotifications') || 'Push')}
+                      title={n.channel === 'email' ? t('common.email') : (t('settings.pushNotifications') || 'Push')}
                     >
                       {n.channel === 'email' ? SettingsIcons.email : SettingsIcons.bell}
                     </span>
@@ -1442,7 +1443,7 @@ export default function Settings() {
                 disabled={historyLoading}
                 className="w-full mt-3 text-xs text-(--color-accent) hover:underline disabled:opacity-50 focus:outline-hidden focus:ring-2 focus:ring-(--color-accent) rounded-sm py-1"
               >
-                {historyLoading ? (t('common.loading') || 'Loading…') : (t('notifications.loadMore') || t('common.loadMore') || 'Load more')}
+                {historyLoading ? (t('common.loading') || 'Loading…') : (t('notifications.loadMore') || 'Load more')}
               </button>
             )}
           </div>
@@ -1499,6 +1500,7 @@ export default function Settings() {
                 )}
                 <label className={`relative inline-flex items-center ${emailSettings.email_enabled_on_server ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>
                   <input
+                    aria-label={t('settings.enableEmailAlerts')}
                     type="checkbox"
                     checked={emailSettings.notifications_enabled}
                     onChange={(e) => handleEmailSettingChange('notifications_enabled', e.target.checked)}
@@ -1571,6 +1573,7 @@ export default function Settings() {
                     /* Not set state - input form */
                     <div className="space-y-2">
                       <input
+                        aria-label={t('settings.notifEmailTitle')}
                         type="email"
                         value={notifEmail}
                         onChange={(e) => setNotifEmail(e.target.value)}
@@ -1696,6 +1699,7 @@ export default function Settings() {
                     </p>
                   </div>
                   <input
+                    aria-label={t('settings.loginAlerts')}
                     type="checkbox"
                     checked={emailSettings.login_alerts_enabled}
                     onChange={(e) => handleEmailSettingChange('login_alerts_enabled', e.target.checked)}
@@ -1746,6 +1750,7 @@ export default function Settings() {
                 <div className="flex items-center justify-between py-1">
                   <span className="text-sm">{t('settings.alertDaysBefore') || 'Days before due date'}</span>
                   <select
+                    aria-label={t('settings.alertDaysBefore')}
                     value={emailSettings.alert_days_before}
                     onChange={(e) => handleEmailSettingChange('alert_days_before', parseInt(e.target.value))}
                     className="bg-(--color-bg-tertiary) border border-(--color-border) rounded-sm px-2 py-1 text-sm"
@@ -1798,6 +1803,7 @@ export default function Settings() {
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
+                  aria-label={t('settings.enableCalendarSync')}
                   type="checkbox"
                   checked={calendarSettings.enabled}
                   onChange={(e) => setCalendarSettings(prev => ({ ...prev, enabled: e.target.checked }))}
@@ -1858,10 +1864,11 @@ export default function Settings() {
               {selectedCalendarSource && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium mb-2">
+                    <label htmlFor="calendar-source-name" className="block text-sm font-medium mb-2">
                       {t('settings.sourceName') || 'Source Name'}
                     </label>
                     <input
+                      id="calendar-source-name"
                       type="text"
                       value={selectedCalendarSource.name || ''}
                       onChange={(e) => handleCalendarSettingChange('name', e.target.value)}
@@ -1871,10 +1878,11 @@ export default function Settings() {
 
               {/* Provider Selection */}
               <div>
-                <label className="block text-sm font-medium mb-2">
+                <label htmlFor="calendar-source-provider" className="block text-sm font-medium mb-2">
                   {t('settings.calendarProvider') || 'Calendar Provider'}
                 </label>
                 <select
+                  id="calendar-source-provider"
                   value={selectedCalendarSource.provider || ''}
                   onChange={(e) => handleCalendarProviderChange(e.target.value)}
                   className="w-full bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg px-3 py-2 text-sm"
@@ -1912,10 +1920,11 @@ export default function Settings() {
               {/* CalDAV URL */}
               {selectedCalendarSource.provider && (
                 <div>
-                  <label className="block text-sm font-medium mb-2">
+                  <label htmlFor="calendar-source-url" className="block text-sm font-medium mb-2">
                     {t('settings.calendarUrl') || 'CalDAV URL'}
                   </label>
                   <input
+                    id="calendar-source-url"
                     type="url"
                     value={selectedCalendarSource.url || ''}
                     onChange={(e) => handleCalendarSettingChange('url', e.target.value)}
@@ -1928,10 +1937,11 @@ export default function Settings() {
               {/* Username */}
               {selectedCalendarSource.provider && (
                 <div>
-                  <label className="block text-sm font-medium mb-2">
+                  <label htmlFor="calendar-source-username" className="block text-sm font-medium mb-2">
                     {t('settings.calendarUsername') || 'Username / Email'}
                   </label>
                   <input
+                    id="calendar-source-username"
                     type="text"
                     value={selectedCalendarSource.username || ''}
                     onChange={(e) => handleCalendarSettingChange('username', e.target.value)}
@@ -1944,13 +1954,14 @@ export default function Settings() {
               {/* Password / App Password */}
               {selectedCalendarSource.provider && (
                 <div>
-                  <label className="block text-sm font-medium mb-2">
+                  <label htmlFor="calendar-source-password" className="block text-sm font-medium mb-2">
                     {selectedCalendarSource.provider === 'google' 
                       ? (t('settings.googleAppPassword') || 'App Password (16 characters)')
                       : (t('settings.calendarPassword') || 'Password / App Password')
                     }
                   </label>
                   <input
+                    id="calendar-source-password"
                     type="password"
                     value={selectedCalendarSource.password || ''}
                     onChange={(e) => handleCalendarSettingChange('password', e.target.value)}
@@ -1987,10 +1998,11 @@ export default function Settings() {
               {/* Calendar Selection */}
               {availableCalendars.length > 0 && (
                 <div>
-                  <label className="block text-sm font-medium mb-2">
+                  <label htmlFor="calendar-source-calendar" className="block text-sm font-medium mb-2">
                     {t('settings.selectCalendar') || 'Select Calendar'}
                   </label>
                   <select
+                    id="calendar-source-calendar"
                     value={selectedCalendarSource.calendar_id || ''}
                     onChange={(e) => handleCalendarSettingChange('calendar_id', e.target.value)}
                     className="w-full bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg px-3 py-2 text-sm"
@@ -2169,10 +2181,11 @@ export default function Settings() {
               <div className="space-y-4">
                 {/* Vehicle Selection */}
                 <div>
-                  <label className="block text-sm font-medium mb-2">
+                  <label htmlFor="report-vehicle" className="block text-sm font-medium mb-2">
                     {t('settings.selectVehicle') || 'Select Vehicle'}
                   </label>
                   <select
+                    id="report-vehicle"
                     value={reportSettings.vehicleId}
                     onChange={(e) => handleReportSettingChange('vehicleId', e.target.value)}
                     className="w-full bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg px-3 py-2 text-sm"
@@ -2188,10 +2201,11 @@ export default function Settings() {
                 
                 {/* Period Selection */}
                 <div>
-                  <label className="block text-sm font-medium mb-2">
+                  <label htmlFor="report-period" className="block text-sm font-medium mb-2">
                     {t('settings.reportPeriod') || 'Report Period'}
                   </label>
                   <select
+                    id="report-period"
                     value={reportSettings.period}
                     onChange={(e) => handleReportSettingChange('period', e.target.value)}
                     className="w-full bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg px-3 py-2 text-sm"
@@ -2207,10 +2221,11 @@ export default function Settings() {
                 {/* Year Selection (for year and custom periods) */}
                 {(reportSettings.period === 'year' || reportSettings.period === 'custom') && (
                   <div>
-                    <label className="block text-sm font-medium mb-2">
+                    <label htmlFor="report-year" className="block text-sm font-medium mb-2">
                       {t('settings.selectYear') || 'Select Year'}
                     </label>
                     <select
+                      id="report-year"
                       value={reportSettings.year}
                       onChange={(e) => handleReportSettingChange('year', parseInt(e.target.value))}
                       className="w-full bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg px-3 py-2 text-sm"
@@ -2225,10 +2240,11 @@ export default function Settings() {
                 {/* Month Selection (for custom period) */}
                 {reportSettings.period === 'custom' && (
                   <div>
-                    <label className="block text-sm font-medium mb-2">
+                    <label htmlFor="report-month" className="block text-sm font-medium mb-2">
                       {t('settings.selectMonth') || 'Select Month'}
                     </label>
                     <select
+                      id="report-month"
                       value={reportSettings.month}
                       onChange={(e) => handleReportSettingChange('month', parseInt(e.target.value))}
                       className="w-full bg-(--color-bg-tertiary) border border-(--color-border) rounded-lg px-3 py-2 text-sm"
@@ -2310,7 +2326,7 @@ export default function Settings() {
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">{t('settings.totalCost') || 'Total Cost'}:</span>
                         <span className="text-lg font-bold text-(--color-accent)">
-                          {(reportPreview.totals?.grand_total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {reportPreview.currency}
+                          {formatCurrency(reportPreview.totals?.grand_total, { currency: reportPreview.currency })}
                         </span>
                       </div>
                     </div>
@@ -2391,6 +2407,7 @@ export default function Settings() {
                         </p>
                         <div className="flex items-center gap-2">
                           <input
+                            aria-label={t('reportShare.title')}
                             readOnly
                             value={createdShare.url}
                             onFocus={(e) => e.target.select()}

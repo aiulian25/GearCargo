@@ -5,6 +5,10 @@ import os
 from pathlib import Path
 import sys
 import time
+
+# This file runs as `python <path>`, so sys.path[0] is tests/, not backend/. The
+# parent gets backend/ from `python -m pytest`; a child process does not.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app import create_app, db
 from app.config import TestingConfig
 from app.models import Attachment

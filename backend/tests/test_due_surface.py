@@ -1,14 +1,15 @@
 """Tests for F4 — unified "Due & Expiring" surface (GET /api/due)."""
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from app import db
 from app.models import (
     User, Vehicle, Reminder, ServiceEntry, TaxEntry, InsurancePolicy,
     Attachment, ParkingEntry, ConsumableEntry,
 )
+from app.utils.timeutils import utc_today
 
-TODAY = date.today()
+TODAY = utc_today()
 
 
 def _mk_vehicle(user_id, name='Focus', mileage=0, archived=False):

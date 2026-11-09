@@ -1,10 +1,11 @@
 """Tests for F7 — mileage-based reminders fire when the odometer crosses due_mileage."""
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from app import db
 from app.models import User, Vehicle, Reminder
 from app.services import _check_mileage_reminders
+from app.utils.timeutils import utc_today
 
 
 def _mk_user(email, username):
@@ -29,7 +30,7 @@ def _mk_reminder(user_id, vehicle_id, due_mileage, due_date=None):
     # never fires — isolating the mileage trigger.
     r = Reminder(user_id=user_id, vehicle_id=vehicle_id, title='Change oil',
                  due_mileage=due_mileage,
-                 due_date=due_date or (date.today() + timedelta(days=3650)),
+                 due_date=due_date or (utc_today() + timedelta(days=3650)),
                  reminder_type='maintenance')
     db.session.add(r)
     db.session.commit()
@@ -101,7 +102,7 @@ def test_mileage_only_reminder_far_future_date_still_fires(app, monkeypatch):
         u = _mk_user('m4@example.com', 'mil4')
         v = _mk_vehicle(u.id, mileage=90500)
         _mk_reminder(u.id, v.id, due_mileage=90000,
-                     due_date=date.today() + timedelta(days=365))
+                     due_date=utc_today() + timedelta(days=365))
 
     _check_mileage_reminders(app)
     assert len(calls) == 1

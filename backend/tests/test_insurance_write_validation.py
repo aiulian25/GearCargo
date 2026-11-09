@@ -55,6 +55,7 @@ def _valid_payload(vehicle_id, **overrides):
     ('deductible', {}, 'validation.invalidNumber'),
     ('currency', 'EURO', 'validation.invalidCurrency'),  # the column is String(3)
     ('currency', 'E1R', 'validation.invalidCurrency'),
+    ('currency', 'KWD', 'validation.unsupportedCurrencyPrecision'),
 ])
 def test_create_rejects_malformed_input(app, client, auth_headers, field, bad_value, expected_key):
     user_id, vehicle_id = _seed(app)
@@ -115,6 +116,7 @@ def _existing_policy(app, user_id, vehicle_id):
     ({'end_date': ''}, 'validation.invalidDate'),        # NOT NULL — cannot be cleared
     ({'premium': 'abc'}, 'validation.invalidNumber'),
     ({'currency': 'POUNDS'}, 'validation.invalidCurrency'),
+    ({'currency': 'KWD'}, 'validation.unsupportedCurrencyPrecision'),
 ])
 def test_update_rejects_malformed_input_and_changes_nothing(app, client, auth_headers,
                                                             payload, expected_key):
