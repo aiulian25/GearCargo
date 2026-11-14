@@ -1,161 +1,116 @@
 {
-  "version": "1.9.0",
-  "date": "2026-11-09",
+  "version": "1.10.0",
+  "date": "2026-11-14",
   "notes": {
     "en": [
       {
         "type": "new",
-        "title": "Your devices and your account",
-        "desc": "Profile → Security now lists the devices signed in to your account. Sign one out, or every other device at once. You can also delete your account and everything in it there, after confirming your password and, when two-factor authentication is on, a code."
+        "title": "Amounts in the currency you chose",
+        "desc": "Amounts now always use the currency chosen in Profile → Preferences. Your location and the app language no longer change it. If older records still carry a euro or dollar label they should not have, the Expenses page offers to correct them in one step; the amounts themselves do not change."
       },
       {
-        "type": "security",
-        "title": "Your location, only when you agree",
-        "desc": "The home screen now asks before it reads this device's position, and says that this server looks up the place name with OpenStreetMap's Nominatim service. Your browser no longer contacts a map service itself, and the Privacy Policy names each outside service the app uses and what it receives."
-      },
-      {
-        "type": "security",
-        "title": "Forwarded addresses only from your own proxy",
-        "desc": "A client address forwarded by a proxy is now accepted only when that proxy connects from this machine, a Docker network, your LAN or Tailscale, so someone reaching the app port directly can no longer choose the address used for sign-in blocks, rate limits and the security log. If you manage this server: TRUSTED_PROXY_COUNT now defaults to auto. Behind a CDN, a public-address proxy or a chain of proxies, set it to the number of proxies. A docker-compose.yml from an earlier release still defaults to 1, so set the value in .env or refresh that file. Earlier images do not accept auto: before rolling back to one, set 1 behind a proxy or 0 without one."
+        "type": "fix",
+        "title": "Fewer notes on your screens",
+        "desc": "The explanations under totals and above the expense tables are gone. A message now appears only when something needs your attention, for example when a total leaves amounts out."
       },
       {
         "type": "new",
-        "title": "Amounts in each currency's own format",
-        "desc": "Amounts now follow your language's number format, with each currency's own symbol and decimals: for example £1,234.50 in English and 1.234,50 RON in Romanian. Yen and forint amounts no longer show decimals. Each expense is shown in the currency it was recorded in, rather than your location's currency. Currencies that need three decimal places, such as KWD and BHD, can no longer be used for new amounts, because amounts are stored with two decimals. Existing records in them are kept unchanged."
-      },
-      {
-        "type": "fix",
-        "title": "Fuel fills explain their consumption",
-        "desc": "Every fuel fill now says why it has, or lacks, a consumption figure. An odometer reading lower than the vehicle's last one is flagged as soon as you leave the field and again after saving, and it never blocks the save."
+        "title": "A second copy of every backup",
+        "desc": "If you manage this server, you can mount a second disk or a NAS share and name it in BACKUP_MIRROR_FOLDER. Every finished backup, personal and system, is copied there and checked, and Settings → Backup shows whether the copy is up to date. No address or password is stored in the app."
       },
       {
         "type": "new",
-        "title": "A shorter Add Vehicle form",
-        "desc": "Add Vehicle opens with just the essentials: name, make, model, year, fuel type and current mileage. Everything else waits under More details, so nothing is saved with a default you never saw."
+        "title": "Restore a full backup from a file on the server",
+        "desc": "Administrators can restore a system archive that is already on the server with the command flask restore-system-archive, without uploading it through the browser. This removes the upload size limit for large archives."
+      },
+      {
+        "type": "new",
+        "title": "Hear about a backup copy that keeps failing",
+        "desc": "A scheduled backup that cannot reach its external destination now sends you a notification once its retries run out. Administrators get one when the second copy has been failing for a day."
+      },
+      {
+        "type": "security",
+        "title": "Deleting an account removes all its backups",
+        "desc": "Deleting an account now removes every backup file of that account from the server, including older files that no longer had a record, and its copies on the second storage."
       },
       {
         "type": "fix",
-        "title": "Password-reset links open properly",
-        "desc": "Opening a password-reset, e-mail verification or shared-report link while signed out no longer sends you to the sign-in page and loses the link."
-      },
-      {
-        "type": "fix",
-        "title": "Unsaved Profile changes are protected",
-        "desc": "Leaving Profile with unsaved changes now asks first, as the other forms already did."
-      },
-      {
-        "type": "fix",
-        "title": "Easier with a screen reader",
-        "desc": "Every icon button and form field now has a name that screen readers announce."
-      },
-      {
-        "type": "fix",
-        "title": "The Register page in dark mode",
-        "desc": "The Register page no longer mixes light and dark colours when your device uses dark mode. The sign-in pages stay light in every theme."
+        "title": "Records without a currency",
+        "desc": "An amount that has no currency is no longer counted as euros in the fuel statistics and the report e-mails. It is left out, and the e-mail says when its totals are approximate."
       }
     ],
     "ro": [
       {
         "type": "new",
-        "title": "Dispozitivele și contul tău",
-        "desc": "Profil → Securitate afișează acum dispozitivele conectate la contul tău. Deconectează unul anume sau toate celelalte dispozitive deodată. Tot de acolo îți poți șterge contul și tot ce conține, după ce confirmi parola și, dacă autentificarea în doi pași este activă, un cod."
+        "title": "Sume în moneda aleasă de tine",
+        "desc": "Sumele folosesc acum întotdeauna moneda aleasă în Profil → Preferințe. Locația și limba aplicației nu o mai schimbă. Dacă înregistrări mai vechi poartă încă o etichetă în euro sau dolari pe care nu ar trebui să o aibă, pagina Cheltuieli îți propune să le corectezi dintr-un singur pas; sumele în sine nu se schimbă."
       },
       {
-        "type": "security",
-        "title": "Locația ta, doar cu acordul tău",
-        "desc": "Ecranul Acasă te întreabă acum înainte de a citi poziția acestui dispozitiv și îți spune că serverul află numele locului prin serviciul Nominatim al OpenStreetMap. Browserul nu mai contactează singur niciun serviciu de hărți, iar Politica de Confidențialitate numește fiecare serviciu extern folosit de aplicație și ce primește acesta."
-      },
-      {
-        "type": "security",
-        "title": "Adrese transmise doar de propriul proxy",
-        "desc": "Adresa unui client transmisă de un proxy este acceptată acum doar când proxy-ul se conectează de pe acest server, dintr-o rețea Docker, din rețeaua locală sau din Tailscale, așa că cine accesează direct portul aplicației nu mai poate alege adresa folosită pentru blocarea autentificărilor, limitele de cereri și jurnalul de securitate. Dacă gestionezi acest server: valoarea implicită a TRUSTED_PROXY_COUNT este acum auto. În spatele unui CDN, al unui proxy cu adresă publică sau al unui lanț de proxy-uri, setează TRUSTED_PROXY_COUNT la numărul de proxy-uri. Un docker-compose.yml dintr-o versiune anterioară are încă valoarea implicită 1, așa că setează valoarea în .env sau actualizează fișierul. Imaginile anterioare nu acceptă auto: înainte de a reveni la una dintre ele, setează 1 în spatele unui proxy sau 0 fără proxy."
+        "type": "fix",
+        "title": "Mai puține note pe ecran",
+        "desc": "Explicațiile de sub totaluri și de deasupra tabelelor de cheltuieli au dispărut. Un mesaj apare acum doar când ceva are nevoie de atenția ta, de exemplu când un total lasă sume pe dinafară."
       },
       {
         "type": "new",
-        "title": "Sume în formatul fiecărei monede",
-        "desc": "Sumele urmează acum formatul numerelor din limba ta, cu simbolul și zecimalele fiecărei monede: de exemplu 1.234,50 RON în română și £1,234.50 în engleză. Sumele în yeni și forinți nu mai au zecimale. Fiecare cheltuială apare în moneda în care a fost înregistrată, nu în moneda locației tale. Monedele care au nevoie de trei zecimale, cum ar fi KWD și BHD, nu mai pot fi folosite pentru sume noi, deoarece sumele se salvează cu două zecimale. Înregistrările existente în aceste monede rămân neschimbate."
-      },
-      {
-        "type": "fix",
-        "title": "Alimentările își explică consumul",
-        "desc": "Fiecare alimentare spune acum de ce are sau nu are o valoare de consum. Un kilometraj mai mic decât ultimul înregistrat pentru vehicul este semnalat imediat ce părăsești câmpul și din nou după salvare, fără să blocheze salvarea."
+        "title": "O a doua copie a fiecărui backup",
+        "desc": "Dacă administrezi acest server, poți monta un al doilea disc sau un spațiu partajat de pe un NAS și îl poți indica în BACKUP_MIRROR_FOLDER. Fiecare backup finalizat, personal sau de sistem, este copiat acolo și verificat, iar Setări → Backup arată dacă copia este la zi. Aplicația nu stochează nicio adresă și nicio parolă."
       },
       {
         "type": "new",
-        "title": "Un formular Adaugă Vehicul mai scurt",
-        "desc": "Adaugă Vehicul se deschide doar cu ce este esențial: nume, marcă, model, an, tip de combustibil și kilometrajul actual. Restul așteaptă la Mai multe detalii, așa că nimic nu se salvează cu o valoare implicită pe care nu ai văzut-o."
+        "title": "Restaurează un backup complet dintr-un fișier de pe server",
+        "desc": "Administratorii pot restaura o arhivă de sistem aflată deja pe server cu comanda flask restore-system-archive, fără să o încarce prin browser. Astfel dispare limita de mărime la încărcare pentru arhivele mari."
+      },
+      {
+        "type": "new",
+        "title": "Află când o copie de backup tot eșuează",
+        "desc": "Un backup programat care nu ajunge la destinația externă îți trimite acum o notificare după ce reîncercările s-au epuizat. Administratorii primesc una când a doua copie eșuează de o zi."
+      },
+      {
+        "type": "security",
+        "title": "Ștergerea unui cont îi șterge toate backup-urile",
+        "desc": "Ștergerea unui cont elimină acum de pe server toate fișierele de backup ale contului, inclusiv fișierele mai vechi care nu mai aveau o înregistrare, precum și copiile lor din al doilea spațiu de stocare."
       },
       {
         "type": "fix",
-        "title": "Linkurile de resetare a parolei se deschid corect",
-        "desc": "Când deschizi fără să fii autentificat un link de resetare a parolei, de verificare a e-mailului sau de raport partajat, nu mai ajungi la pagina de autentificare și linkul nu se mai pierde."
-      },
-      {
-        "type": "fix",
-        "title": "Modificările nesalvate din Profil sunt protejate",
-        "desc": "Dacă părăsești Profilul cu modificări nesalvate, aplicația te întreabă acum mai întâi, la fel ca celelalte formulare."
-      },
-      {
-        "type": "fix",
-        "title": "Mai ușor de folosit cu un cititor de ecran",
-        "desc": "Fiecare buton cu pictogramă și fiecare câmp de formular are acum un nume pe care cititoarele de ecran îl anunță."
-      },
-      {
-        "type": "fix",
-        "title": "Pagina de înregistrare în modul întunecat",
-        "desc": "Pagina de înregistrare nu mai amestecă culori deschise și închise când dispozitivul folosește modul întunecat. Paginile de autentificare rămân luminoase în orice temă."
+        "title": "Înregistrări fără monedă",
+        "desc": "O sumă fără monedă nu mai este socotită în euro în statisticile de combustibil și în e-mailurile cu rapoarte. Este lăsată pe dinafară, iar e-mailul spune când totalurile sunt aproximative."
       }
     ],
     "es": [
       {
         "type": "new",
-        "title": "Tus dispositivos y tu cuenta",
-        "desc": "Perfil → Seguridad muestra ahora los dispositivos con sesión iniciada en tu cuenta. Cierra la sesión de uno o de todos los demás a la vez. También puedes eliminar ahí tu cuenta y todo su contenido, tras confirmar tu contraseña y, si la autenticación de dos factores está activada, un código."
+        "title": "Importes en la moneda que elegiste",
+        "desc": "Los importes usan ahora siempre la moneda elegida en Perfil → Preferencias. Tu ubicación y el idioma de la aplicación ya no la cambian. Si algunos registros antiguos conservan una etiqueta en euros o dólares que no les corresponde, la página Gastos te propone corregirlos en un solo paso; los importes no cambian."
       },
       {
-        "type": "security",
-        "title": "Tu ubicación, solo si aceptas",
-        "desc": "La pantalla de Inicio ahora pregunta antes de leer la posición de este dispositivo y explica que este servidor obtiene el nombre del lugar con el servicio Nominatim de OpenStreetMap. Tu navegador ya no contacta por sí mismo con ningún servicio de mapas, y la Política de Privacidad indica cada servicio externo que usa la aplicación y lo que recibe."
-      },
-      {
-        "type": "security",
-        "title": "Direcciones reenviadas solo desde tu propio proxy",
-        "desc": "La dirección del cliente reenviada por un proxy ahora solo se acepta cuando ese proxy se conecta desde este equipo, una red de Docker, tu red local o Tailscale, así que quien acceda directamente al puerto de la aplicación ya no puede elegir la dirección usada para los bloqueos de inicio de sesión, los límites de peticiones y el registro de seguridad. Si gestionas este servidor: el valor predeterminado de TRUSTED_PROXY_COUNT ahora es auto. Detrás de una CDN, un proxy con dirección pública o una cadena de proxies, configura TRUSTED_PROXY_COUNT con el número de proxies. Un docker-compose.yml de una versión anterior sigue usando 1 como valor predeterminado, así que define el valor en .env o actualiza ese archivo. Las imágenes anteriores no aceptan auto: antes de volver a una de ellas, configura 1 detrás de un proxy o 0 sin proxy."
+        "type": "fix",
+        "title": "Menos notas en pantalla",
+        "desc": "Las explicaciones bajo los totales y sobre las tablas de gastos han desaparecido. Ahora un mensaje aparece solo cuando algo necesita tu atención, por ejemplo cuando un total deja importes fuera."
       },
       {
         "type": "new",
-        "title": "Importes en el formato de cada moneda",
-        "desc": "Los importes siguen ahora el formato numérico de tu idioma, con el símbolo y los decimales de cada moneda: por ejemplo 1234,50 € en español y £1,234.50 en inglés. Los importes en yenes y forintos ya no muestran decimales. Cada gasto aparece en la moneda en que se registró, no en la de tu ubicación. Las monedas que necesitan tres decimales, como KWD y BHD, ya no se pueden usar para importes nuevos, porque los importes se guardan con dos decimales. Los registros existentes en esas monedas se conservan sin cambios."
-      },
-      {
-        "type": "fix",
-        "title": "Los repostajes explican su consumo",
-        "desc": "Cada repostaje indica ahora por qué tiene o no una cifra de consumo. Una lectura del odómetro inferior a la última del vehículo se señala en cuanto sales del campo y otra vez al guardar, y nunca impide guardar."
+        "title": "Una segunda copia de cada copia de seguridad",
+        "desc": "Si administras este servidor, puedes montar un segundo disco o una carpeta compartida de un NAS e indicarla en BACKUP_MIRROR_FOLDER. Cada copia de seguridad terminada, personal o del sistema, se copia allí y se verifica, y Ajustes → Copia de seguridad muestra si la copia está al día. La aplicación no guarda ninguna dirección ni contraseña."
       },
       {
         "type": "new",
-        "title": "Un formulario Añadir Vehículo más corto",
-        "desc": "Añadir Vehículo se abre solo con lo esencial: nombre, marca, modelo, año, tipo de combustible y kilometraje actual. Lo demás espera en Más detalles, así que nada se guarda con un valor predeterminado que no hayas visto."
+        "title": "Restaura una copia completa desde un archivo del servidor",
+        "desc": "Los administradores pueden restaurar un archivo del sistema que ya está en el servidor con el comando flask restore-system-archive, sin subirlo desde el navegador. Así desaparece el límite de tamaño de subida para los archivos grandes."
+      },
+      {
+        "type": "new",
+        "title": "Entérate cuando una copia de seguridad sigue fallando",
+        "desc": "Una copia programada que no llega a su destino externo te envía ahora una notificación cuando se agotan los reintentos. Los administradores reciben una cuando la segunda copia lleva un día fallando."
+      },
+      {
+        "type": "security",
+        "title": "Eliminar una cuenta elimina todas sus copias",
+        "desc": "Eliminar una cuenta borra ahora del servidor todos los archivos de copia de seguridad de esa cuenta, incluidos los antiguos que ya no tenían registro, y sus copias en el segundo almacenamiento."
       },
       {
         "type": "fix",
-        "title": "Los enlaces para restablecer la contraseña se abren bien",
-        "desc": "Al abrir sin sesión iniciada un enlace para restablecer la contraseña, verificar el correo o ver un informe compartido, ya no acabas en la página de inicio de sesión ni se pierde el enlace."
-      },
-      {
-        "type": "fix",
-        "title": "Los cambios sin guardar del Perfil están protegidos",
-        "desc": "Al salir del Perfil con cambios sin guardar, ahora se te pregunta antes, como ya hacían los demás formularios."
-      },
-      {
-        "type": "fix",
-        "title": "Más fácil con un lector de pantalla",
-        "desc": "Cada botón con icono y cada campo de formulario tiene ahora un nombre que los lectores de pantalla anuncian."
-      },
-      {
-        "type": "fix",
-        "title": "La página de registro en modo oscuro",
-        "desc": "La página de registro ya no mezcla colores claros y oscuros cuando tu dispositivo usa el modo oscuro. Las páginas de inicio de sesión siguen claras en cualquier tema."
+        "title": "Registros sin moneda",
+        "desc": "Un importe sin moneda ya no se cuenta como euros en las estadísticas de combustible ni en los correos de informes. Se deja fuera, y el correo indica cuándo los totales son aproximados."
       }
     ]
   }
