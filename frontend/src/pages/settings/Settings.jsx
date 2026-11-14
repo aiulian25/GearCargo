@@ -1,4 +1,4 @@
-import FinancialBasis from '../../components/ui/FinancialBasis'
+import FinancialTotalsStatus from '../../components/ui/FinancialTotalsStatus'
 import { mutationOptions } from '../../utils/mutationProtocol'
 import { notifyPendingCleanup } from '../../utils/deletionFeedback'
 import { useState, useEffect, useRef } from 'react'
@@ -2267,7 +2267,7 @@ export default function Settings() {
                   {reportLoading ? (t('common.loading') || 'Loading...') : (t('settings.previewReport') || 'Preview Report Info')}
                 </button>
                 
-                {reportPreview && <FinancialBasis data={reportPreview} />}
+                {reportPreview && <FinancialTotalsStatus data={reportPreview} />}
                 {/* Preview Info */}
                 {reportPreview && (
                   <div className="bg-(--color-bg-tertiary) rounded-lg p-4 space-y-3">

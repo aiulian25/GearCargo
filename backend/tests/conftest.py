@@ -112,3 +112,16 @@ def auth_headers(app):
         return {"Authorization": f"Bearer {token}"}
 
     return _build
+
+
+@pytest.fixture()
+def sent_pushes(monkeypatch):
+    """Every push the code under test asks for, recorded instead of delivered."""
+    pushes = []
+
+    def record(user_id, title, body, data=None, tag=None):
+        pushes.append({'user_id': user_id, 'title': title, 'body': body, 'data': data, 'tag': tag})
+        return 1
+
+    monkeypatch.setattr('app.routes.push.send_push_to_user', record)
+    return pushes

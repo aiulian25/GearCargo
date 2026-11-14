@@ -92,6 +92,11 @@ with its matching application release and runtime keys, then upgrade normally;
 GC-028 does not bypass the schema gate. Plaintext personal backups retain their
 existing versioned import support. See [transactional recovery](RESTORE_RECOVERY.md).
 
+`flask restore-system-archive <file>` restores an archive that is already on the
+server, with the same checks and no upload. It unlocks a `.tar.gz.gcb` archive
+with the operator file above, or with `--passphrase-file <file>`; the passphrase
+is never read from the command line.
+
 For offline recovery inside an image with the current backend installed:
 
 ```sh

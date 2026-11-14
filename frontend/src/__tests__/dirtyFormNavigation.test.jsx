@@ -23,7 +23,7 @@ vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: state.user }
 vi.mock('../contexts/LanguageContext', () => {
   const t = key => key.split('.').reduce((v, k) => v?.[k], translations[state.language]) || key
   return { useTranslation: () => ({ t, language: state.language }), useLanguage: () => ({ t, language: state.language }),
-    useCurrency: () => ({ currency: { symbol: '£' } }) }
+    useCurrency: () => ({ currency: { code: 'GBP', symbol: '£' }, symbolFor: () => '£' }) }
 })
 vi.mock('../services/api', () => ({ default: { get: vi.fn(), post: vi.fn(), put: vi.fn() },
   attachmentApi: { upload: vi.fn() },

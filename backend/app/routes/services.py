@@ -147,8 +147,7 @@ def create_service_entry(current_user):
         labor_cost = parse_optional_amount(data.get('labor_cost'))
         parts_cost = parse_optional_amount(data.get('parts_cost'))
 
-        currency = parse_currency_code(
-            data.get('currency') or current_user.currency or 'EUR')
+        currency = parse_currency_code(data.get('currency') or current_user.chosen_currency)
 
         # Explicit total wins; otherwise the parts and labour add up to it.
         raw_amount = data.get('total_cost') or data.get('cost') or data.get('amount')

@@ -13,6 +13,16 @@ function fixedFractionDigits(currency, decimals) {
   return null
 }
 
+/** The short sign written beside an amount ("£", "€", "lei"), or the code when it has none. */
+export function currencySymbol(currency, language) {
+  try {
+    return new Intl.NumberFormat(localeFor(language), { style: 'currency', currency, currencyDisplay: 'narrowSymbol' })
+      .formatToParts(0).find(part => part.type === 'currency').value
+  } catch {
+    return currency || ''
+  }
+}
+
 /**
  * An omitted `currency` uses the bound default. A present key is authoritative: undefined, null,
  * '' or a malformed code prints the number with that code or the unknown label, never another

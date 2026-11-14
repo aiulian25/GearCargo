@@ -19,7 +19,7 @@ const { identity, locale, auth, currency } = vi.hoisted(() => ({
   identity: { owner_id: 7, owner_key: 'a'.repeat(64), generation: 'b'.repeat(64) },
   locale: { language: 'en' },
   auth: { user: { location_auto_detect: true } },
-  currency: { setCurrencyFromCountry: () => {}, formatCurrency: String },
+  currency: { formatCurrency: String },
 }))
 
 vi.mock('../contexts/LanguageContext', () => {

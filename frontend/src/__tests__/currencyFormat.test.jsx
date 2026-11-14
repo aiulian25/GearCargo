@@ -1,8 +1,8 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { createCurrencyFormatter, UNIT_PRICE_FRACTION_DIGITS } from '../utils/currencyFormat'
-import { LanguageProvider, useCurrency } from '../contexts/LanguageContext'
+import { createCurrencyFormatter, currencySymbol, UNIT_PRICE_FRACTION_DIGITS } from '../utils/currencyFormat'
+import { AccountCurrencyScope, LanguageProvider, useCurrency } from '../contexts/LanguageContext'
 import VehicleTimeline from '../pages/vehicles/VehicleTimeline'
 import VehicleConsumables from '../pages/vehicles/VehicleConsumables'
 import { translations } from '../i18n/translations'
@@ -63,6 +63,33 @@ it('binds the active language, the active currency and the localized unknown lab
   localStorage.setItem('language', 'ro')
   render(<LanguageProvider><Probe /></LanguageProvider>)
   expect(await screen.findByText(`5,00 RON | 1.234,50 GBP | 5,00 ${translations.ro.financial.unknownCurrency}`)).toBeTruthy()
+})
+
+function AccountProbe() {
+  const { currency, formatCurrency, symbolFor } = useCurrency()
+  return <p>{`${currency.code} ${currency.symbol} | ${formatCurrency(5)} | ${symbolFor('RON')} ${symbolFor()}`}</p>
+}
+
+it.each([
+  ['en', 'EUR', 'EUR € | €5.00 | lei €'],
+  ['es', 'GBP', 'GBP £ | 5,00 GBP | L £'],
+  ['ro', 'USD', 'USD $ | 5,00 USD | lei $'],
+])('uses the currency chosen in the profile, whatever the %s language suggests', async (language, chosen, expected) => {
+  localStorage.setItem('language', language)
+  render(<LanguageProvider><AccountCurrencyScope currencyCode={chosen}><AccountProbe /></AccountCurrencyScope></LanguageProvider>)
+  expect(await screen.findByText(expected)).toBeTruthy()
+})
+
+it('falls back to the language currency only while nobody is signed in', async () => {
+  localStorage.setItem('language', 'es')
+  render(<LanguageProvider><AccountCurrencyScope currencyCode={undefined}><AccountProbe /></AccountCurrencyScope></LanguageProvider>)
+  expect(await screen.findByText('EUR € | 5,00 € | L €')).toBeTruthy()
+})
+
+it('gives the short sign of a currency, or its code when it has none', () => {
+  expect(currencySymbol('GBP', 'en')).toBe('£')
+  expect(currencySymbol('CHF', 'en')).toBe('CHF')
+  expect(currencySymbol('not-a-code', 'en')).toBe('not-a-code')
 })
 
 it('shows each timeline row in its stored currency, not the active one', async () => {

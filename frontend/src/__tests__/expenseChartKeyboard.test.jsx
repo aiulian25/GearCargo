@@ -22,6 +22,7 @@ vi.mock('../contexts/LanguageContext', async () => {
 const NO_BREAK_SPACE = ' '
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: { currency: 'USD', volume_unit: 'liters' } }) }))
 vi.mock('../components/ui/AttachmentViewer', () => ({ default: () => null }))
+vi.mock('../components/vehicles/CurrencyReviewPrompt', () => ({ default: () => null }))
 const summary = { display_currency: 'GBP', converted: true, as_of: '2026-12-31',
   totals: { fuel: 1272, grand_total: 1272 }, available_years: [2026],
   monthly: [{ month: '2026-01', total: 1234.5, breakdown: { fuel: 1234.5 } }, { month: '2026-02', total: 37.5, breakdown: { fuel: 37.5 } }] }

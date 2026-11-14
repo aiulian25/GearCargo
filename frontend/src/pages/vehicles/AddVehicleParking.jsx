@@ -11,7 +11,6 @@ import { useForm, useWatch } from 'react-hook-form'
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import { vehicleApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
-import { useAuth } from '../../contexts/AuthContext'
 import api from '../../services/api'
 import ReceiptUpload from '../../components/ReceiptUpload'
 import CurrencySelect from '../../components/ui/CurrencySelect'
@@ -58,8 +57,7 @@ export default function AddVehicleParking() {
   const isEditMode = !!editId
   const navigate = useExpenseNavigation(vehicleId)
   const { t } = useTranslation()
-  const { currency } = useCurrency()
-  const { user } = useAuth()
+  const { currency, symbolFor } = useCurrency()
   
   const [vehicle, setVehicle] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -68,13 +66,13 @@ export default function AddVehicleParking() {
   const [receiptFile, setReceiptFile] = useState(null)
   const [existingAttachments, setExistingAttachments] = useState([])
   
-  const { register, getValues, handleSubmit, formState: { errors, isDirty }, control, reset, setValue } = useForm({
+  const { register, getValues, handleSubmit, formState: { errors, isDirty }, control, reset, setValue, watch } = useForm({
     defaultValues: {
       date: localDate(),
       parking_type: '',
       location: '',
       amount: '',
-      currency: user?.currency || 'EUR',
+      currency: currency.code,
       start_time: '',
       end_time: '',
       notes: '',
@@ -87,6 +85,7 @@ export default function AddVehicleParking() {
       fine_status: 'pending',
     }
   })
+  const entryCurrencySymbol = symbolFor(watch('currency'))
 
   // Watch recurring and parking type
   const isRecurring = useWatch({ control, name: 'recurring' })
@@ -110,7 +109,7 @@ export default function AddVehicleParking() {
             parking_type: entry.parking_type || '',
             location: entry.location || '',
             amount: entry.amount || '',
-            currency: entry.currency || user?.currency || 'EUR',
+            currency: entry.currency || currency.code,
             // F41 — the form's time inputs are HH:MM; the API stores/returns
             // start_datetime / end_datetime. Derive HH:MM from those (the old
             // entry.start_time/end_time keys were never returned → always blank).
@@ -136,7 +135,7 @@ export default function AddVehicleParking() {
     }
     
     fetchData()
-  }, [vehicleId, editId, isEditMode, navigate, reset, mutation])
+  }, [vehicleId, editId, isEditMode, navigate, reset, mutation, currency.code])
 
   // F33 — receipt routed from ShareTarget: apply the AI-parsed fields; the
   // already-uploaded attachment is linked to the entry after create.
@@ -300,7 +299,7 @@ export default function AddVehicleParking() {
             <div className="flex gap-3">
               <div className="flex-1">
               <label htmlFor="amount" className="block text-xs text-(--color-text-muted) mb-1">
-                {t('addParking.amount') || 'Amount'} ({currency.symbol}) *
+                {t('addParking.amount') || 'Amount'} ({entryCurrencySymbol}) *
               </label>
               <input
                 id="amount"

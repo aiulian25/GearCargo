@@ -939,6 +939,9 @@ def create_app(config_class=None, *, process_role=None):
     from app.services.scheduler_ownership import register_scheduler_cli
     register_scheduler_cli(app)
 
+    from app.routes.backup import register_system_restore_cli
+    register_system_restore_cli(app)
+
     # Initialize default admin only while application activity is permitted.
     from app.services.restore_transaction import guarded_app_context, RestoreBusy
     try:

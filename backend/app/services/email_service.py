@@ -171,7 +171,11 @@ WEEKLY_REPORT_TEMPLATE = """
             <span class="stat-value">{{ summary.distance }} {{ summary.distance_unit }}</span>
         </div>
     </div>
-    
+
+    {% if summary.totals_note %}
+    <p style="font-size: 13px; color: #94a3b8;">{{ summary.totals_note }}</p>
+    {% endif %}
+
     {% if upcoming_alerts %}
     <div class="divider"></div>
     <h3 style="color: #f1f5f9;">🔔 Upcoming Alerts</h3>
@@ -227,7 +231,11 @@ MONTHLY_REPORT_TEMPLATE = """
             <span class="stat-value currency" style="color: #3b82f6; font-size: 18px;">{{ summary.currency }}{{ summary.grand_total }}</span>
         </div>
     </div>
-    
+
+    {% if summary.totals_note %}
+    <p style="font-size: 13px; color: #94a3b8;">{{ summary.totals_note }}</p>
+    {% endif %}
+
     {% if vehicles %}
     <div class="divider"></div>
     <h3 style="color: #f1f5f9;">🚗 Per Vehicle Breakdown</h3>
@@ -735,30 +743,41 @@ def _currency_symbol(currency_code: str) -> str:
     return CURRENCY_SYMBOLS.get(code, f'{code} ')
 
 
-def _sum_in_display_currency(amounts, display_currency: str) -> float:
-    """Sum ``(currency, amount)`` pairs into ``display_currency``.
+APPROXIMATE_TOTALS_NOTE = 'Totals are approximate: some amounts have no currency or no exchange rate.'
 
-    Each entry stores the currency it was logged in (``Entry.currency`` defaults
-    to EUR, ``InsurancePolicy.currency`` to USD) while the user reads one display
+
+class _DisplayTotal:
+    """Sums ``(currency, amount)`` pairs in one display currency for a report.
+
+    Each entry stores the currency it was logged in (older records may still carry
+    the former built-in EUR or USD label) while the user reads one display
     currency, so a report must convert BEFORE adding — the same F1/F28 rule the
     dashboard, vehicle stats and the PDF report already follow.
 
-    The FX lookup is skipped entirely when every amount is already in the display
-    currency: that is the common case, and these builders run inside a scheduled
-    job where an avoidable outbound call is pure cost.
+    ``note`` says so when a sum left out an amount with no currency, or added one
+    unconverted because its exchange rate was unavailable.
     """
-    pairs = [((currency or 'EUR').upper(), float(amount or 0))
-             for currency, amount in amounts]
-    if not pairs:
-        return 0.0
-    if all(currency == display_currency for currency, _ in pairs):
-        return sum(amount for _, amount in pairs)
 
-    from app.services import currency as currency_service
-    rates = currency_service.get_rates_cached(current_app._get_current_object())
-    total, _converted, _fx_applied = currency_service.sum_to_display(
-        pairs, display_currency, rates)
-    return total
+    def __init__(self, display_currency: str):
+        self.display_currency = display_currency
+        self.note = ''
+
+    def of(self, amounts) -> float:
+        pairs = [(currency.upper() if currency else None, float(amount or 0))
+                 for currency, amount in amounts]
+        # The FX lookup is skipped entirely when every amount is already in the
+        # display currency: that is the common case, and these builders run inside
+        # a scheduled job where an avoidable outbound call is pure cost.
+        if all(currency == self.display_currency for currency, _ in pairs):
+            return sum((amount for _, amount in pairs), 0.0)
+
+        from app.services import currency as currency_service
+        rates = currency_service.get_rates_cached(current_app._get_current_object())
+        total, converted, _fx_applied = currency_service.sum_to_display(
+            pairs, self.display_currency, rates)
+        if not converted:
+            self.note = APPROXIMATE_TOTALS_NOTE
+        return total
 
 
 def get_user_weekly_summary(user_id: int) -> Dict:
@@ -784,10 +803,8 @@ def get_user_weekly_summary(user_id: int) -> Dict:
         FuelEntry.date >= week_ago
     ).all()
 
-    fuel_spent = _sum_in_display_currency(
-        ((e.currency, e.total_price or e.amount) for e in fuel_entries),
-        display_currency,
-    )
+    display_total = _DisplayTotal(display_currency)
+    fuel_spent = display_total.of((e.currency, e.total_price or e.amount) for e in fuel_entries)
 
     # Services
     services = ServiceEntry.query.filter(
@@ -817,6 +834,7 @@ def get_user_weekly_summary(user_id: int) -> Dict:
         # The template renders "{{ currency }}{{ amount }}", so this must be the
         # SYMBOL — the raw code rendered as "GBP40.00".
         'currency': _currency_symbol(display_currency),
+        'totals_note': display_total.note,
     }
 
 
@@ -869,13 +887,13 @@ def get_user_monthly_summary(user_id: int, month: int, year: int) -> Tuple[Dict,
     def _entry_amounts(entries):
         return ((e.currency, e.amount) for e in entries)
 
-    fuel_total = _sum_in_display_currency(_fuel_amounts(fuel_entries), display_currency)
-    services_total = _sum_in_display_currency(_entry_amounts(service_entries), display_currency)
-    repairs_total = _sum_in_display_currency(_entry_amounts(repair_entries), display_currency)
-    parking_total = _sum_in_display_currency(_entry_amounts(parking_entries), display_currency)
-    taxes_total = _sum_in_display_currency(_entry_amounts(tax_entries), display_currency)
-    insurance_total = _sum_in_display_currency(
-        ((p.currency, p.premium) for p in policies), display_currency)
+    display_total = _DisplayTotal(display_currency)
+    fuel_total = display_total.of(_fuel_amounts(fuel_entries))
+    services_total = display_total.of(_entry_amounts(service_entries))
+    repairs_total = display_total.of(_entry_amounts(repair_entries))
+    parking_total = display_total.of(_entry_amounts(parking_entries))
+    taxes_total = display_total.of(_entry_amounts(tax_entries))
+    insurance_total = display_total.of((p.currency, p.premium) for p in policies)
 
     grand_total = (fuel_total + services_total + repairs_total
                    + parking_total + taxes_total + insurance_total)
@@ -883,14 +901,8 @@ def get_user_monthly_summary(user_id: int, month: int, year: int) -> Tuple[Dict,
     # Per-vehicle breakdown, grouped from the rows already fetched above.
     vehicle_breakdown = []
     for v in vehicles:
-        v_fuel = _sum_in_display_currency(
-            _fuel_amounts(e for e in fuel_entries if e.vehicle_id == v.id),
-            display_currency,
-        )
-        v_service = _sum_in_display_currency(
-            _entry_amounts(e for e in service_entries if e.vehicle_id == v.id),
-            display_currency,
-        )
+        v_fuel = display_total.of(_fuel_amounts(e for e in fuel_entries if e.vehicle_id == v.id))
+        v_service = display_total.of(_entry_amounts(e for e in service_entries if e.vehicle_id == v.id))
         v_total = v_fuel + v_service
 
         if v_total > 0:
@@ -909,6 +921,7 @@ def get_user_monthly_summary(user_id: int, month: int, year: int) -> Tuple[Dict,
         'taxes_insurance_total': f"{taxes_total + insurance_total:.2f}",
         'grand_total': f"{grand_total:.2f}",
         'currency': _currency_symbol(display_currency),
+        'totals_note': display_total.note,
     }, vehicle_breakdown
 
 

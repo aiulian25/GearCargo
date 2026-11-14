@@ -7,6 +7,7 @@ import BackupImportResult from './BackupImportResult'
 import ImportReview from './ImportReview'
 import RestoreProgress from './RestoreProgress'
 import BackupProtectionFields from './BackupProtectionFields'
+import BackupMirrorStatus from './BackupMirrorStatus'
 import { protectionOptions } from '../../utils/backupProtection'
 import { useDateFormat } from '../../hooks/useDateFormat'
 
@@ -846,7 +847,8 @@ export default function BackupSettings() {
           )}
         </div>
       )}
-      
+      {status?.mirror && <BackupMirrorStatus mirror={status.mirror} />}
+
       <BackupProtectionFields title={t('backup.protection.manualTitle')}
         enabled={encryptManual} onEnabled={value => { setEncryptManual(value); clearManualKey() }}
         passphrase={backupPassphrase} onPassphrase={setBackupPassphrase}

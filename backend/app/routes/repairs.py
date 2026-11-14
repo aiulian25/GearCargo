@@ -140,8 +140,7 @@ def create_repair_entry(current_user):
                                             'Labour hours must be a number')
         labor_cost = parse_optional_amount(data.get('labor_cost'))
         parts_cost = parse_optional_amount(data.get('parts_cost'))
-        currency = parse_currency_code(
-            data.get('currency') or current_user.currency or 'EUR')
+        currency = parse_currency_code(data.get('currency') or current_user.chosen_currency)
 
         raw_amount = data.get('total_cost') or data.get('cost') or data.get('amount', 0)
         amount = parse_amount(raw_amount) if raw_amount else 0.0

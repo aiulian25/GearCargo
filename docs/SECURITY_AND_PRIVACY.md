@@ -40,6 +40,16 @@ storage. [Implementation](../backend/app/services/backup_encryption.py),
 and [round-trip/corruption/recovery tests](../backend/tests/test_backup_encryption.py)
 provide the evidence; the guide explains unattended-key storage and restore limits.
 
+The optional [backup mirror](BACKUP_MIRROR.md) copies finished backups into a
+folder the operator mounts into the container. The application opens no
+connection for it, stores no credentials and accepts no address or path from any
+account: the folder is fixed by `BACKUP_MIRROR_FOLDER` at deployment. Copies keep
+the protection of their originals, so a plaintext backup is plaintext in the
+mirror. The application can write to and delete from that folder; snapshots on
+the storage side are the defence against a compromised server.
+[Implementation](../backend/app/services/backup_mirror.py) and
+[tests](../backend/tests/test_backup_mirror.py).
+
 ## Container and processing boundaries
 
 The [production Compose file](../docker-compose.yml) and

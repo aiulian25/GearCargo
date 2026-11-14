@@ -134,7 +134,7 @@ def create_parking_entry(current_user):
         vehicle_id=vehicle.id,
         date=entry_date,
         amount=amount,
-        currency=data.get('currency') or current_user.currency or 'EUR',
+        currency=data.get('currency') or current_user.chosen_currency,
         title=data.get('location_name') or data.get('location'),
         description=data.get('notes'),
         parking_type=data.get('parking_type', 'hourly'),

@@ -41,6 +41,11 @@ when scheduling is disabled:
 docker compose exec gearcargo /etc/gearcargo/scripts/run-backup.sh manual
 ```
 
+With `BACKUP_MIRROR_FOLDER` set, the `backup_mirror` job runs every 15 minutes and
+copies finished backups to the [backup mirror](BACKUP_MIRROR.md). An unreachable
+or failing mirror is recorded as a state and logged at WARNING, never as a job
+failure, so the job keeps retrying and is not stopped by the retry limit below.
+
 Each job has one durable cursor in `scheduled_job_runs`. The scheduler polls
 every 15 seconds with at most four local job threads. At the default
 `LOG_LEVEL=INFO` the polls are not logged: the scheduler process holds
@@ -84,6 +89,12 @@ destinations cancel pending effects. Delivery also rechecks report opt-outs and
 whether a push notification's vehicle is still active. Failed transports retain encrypted payloads
 until delivery, cancellation or account deletion. The deployment encryption key
 must remain available when restoring pending work.
+
+An external backup upload that has used all eight attempts sends its account one
+push notification, when the schedule's "Notify on failure" is on. The delivery
+job sends it at once. Other exhausted deliveries stay silent and are counted by
+`flask scheduler-status`. The backup mirror announces a day of failures to the
+administrators as a queued push; see [Backup mirror](BACKUP_MIRROR.md).
 
 SMTP, Web Push and external upload services do not offer a common transactional
 acknowledgement protocol. If a process loses its connection or dies after the

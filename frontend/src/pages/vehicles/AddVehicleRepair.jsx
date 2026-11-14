@@ -11,7 +11,6 @@ import { useForm, useWatch } from 'react-hook-form'
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import { repairApi, vehicleApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
-import { useAuth } from '../../contexts/AuthContext'
 import { normalizeDistanceUnit } from '../../utils/fuelEconomy'
 import ReceiptUpload from '../../components/ReceiptUpload'
 import ScanReceiptBanner from '../../components/ui/ScanReceiptBanner'
@@ -44,8 +43,7 @@ export default function AddVehicleRepair() {
   const isEditMode = !!editId
   const navigate = useExpenseNavigation(vehicleId)
   const { t } = useTranslation()
-  const { currency } = useCurrency()
-  const { user } = useAuth()
+  const { currency, symbolFor } = useCurrency()
   
   const [vehicle, setVehicle] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -58,7 +56,7 @@ export default function AddVehicleRepair() {
   const [ocrTypeHint, setOcrTypeHint] = useState(false)
   const _ocrTypeTimerRef = useRef(null)
   
-  const { register, getValues, handleSubmit, formState: { errors, isDirty }, setValue, control, reset } = useForm({
+  const { register, getValues, handleSubmit, formState: { errors, isDirty }, setValue, control, reset, watch } = useForm({
     defaultValues: {
       date: localDate(),
       mileage: '',
@@ -68,7 +66,7 @@ export default function AddVehicleRepair() {
       labor_cost: '',
       labor_hours: '',
       total_cost: '',
-      currency: user?.currency || 'EUR',
+      currency: currency.code,
       shop_name: '',
       notes: '',
       warranty_months: '',
@@ -76,6 +74,7 @@ export default function AddVehicleRepair() {
       warranty_covered: false,
     }
   })
+  const entryCurrencySymbol = symbolFor(watch('currency'))
   
   // Watch parts_cost and labor_cost for auto-calculation
   const partsCost = useWatch({ control, name: 'parts_cost' })
@@ -111,7 +110,7 @@ export default function AddVehicleRepair() {
             labor_cost: entry.labor_cost || '',
             labor_hours: entry.labor_hours ?? '',
             total_cost: entry.amount || '',
-            currency: entry.currency || user?.currency || 'EUR',
+            currency: entry.currency || currency.code,
             shop_name: entry.garage_name || entry.provider || '',
             notes: entry.notes || '',
             warranty_months: entry.warranty_months ?? '',
@@ -136,7 +135,7 @@ export default function AddVehicleRepair() {
     }
     
     fetchData()
-  }, [vehicleId, editId, isEditMode, navigate, reset, mutation])
+  }, [vehicleId, editId, isEditMode, navigate, reset, mutation, currency.code])
 
   // F33 — receipt routed from ShareTarget: apply the AI-parsed fields and
   // adopt the already-uploaded attachment (linked to the entry after create).
@@ -424,7 +423,7 @@ export default function AddVehicleRepair() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor="parts_cost" className="block text-xs text-(--color-text-muted) mb-1">
-                {t('addRepair.partsCost') || 'Parts Cost'} ({currency.symbol})
+                {t('addRepair.partsCost') || 'Parts Cost'} ({entryCurrencySymbol})
               </label>
               <input
                 id="parts_cost"
@@ -438,7 +437,7 @@ export default function AddVehicleRepair() {
             
             <div>
               <label htmlFor="labor_cost" className="block text-xs text-(--color-text-muted) mb-1">
-                {t('addRepair.laborCost') || 'Labor Cost'} ({currency.symbol})
+                {t('addRepair.laborCost') || 'Labor Cost'} ({entryCurrencySymbol})
               </label>
               <input
                 id="labor_cost"
@@ -454,7 +453,7 @@ export default function AddVehicleRepair() {
           <div className="flex gap-3">
             <div className="flex-1">
             <label htmlFor="total_cost" className="block text-xs text-(--color-text-muted) mb-1">
-              {t('addRepair.totalCost') || 'Total Cost'} ({currency.symbol})
+              {t('addRepair.totalCost') || 'Total Cost'} ({entryCurrencySymbol})
             </label>
             <input
               id="total_cost"

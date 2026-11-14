@@ -25,7 +25,7 @@ vi.mock('../contexts/LanguageContext', () => {
     if (typeof value !== 'string') throw new Error(`Missing translation: ${key}`)
     return value.replace(/\{(\w+)\}/g, (_, name) => params[name] ?? `{${name}}`)
   }
-  return { useTranslation: () => ({ t }), useCurrency: () => ({ currency: { symbol: '£' } }) }
+  return { useTranslation: () => ({ t }), useCurrency: () => ({ currency: { code: 'GBP', symbol: '£' }, symbolFor: () => '£' }) }
 })
 vi.mock('../hooks/useMutationIntent', () => ({ useMutationIntent: () => mutation }))
 vi.mock('../hooks/useUnsavedChanges', () => ({ useUnsavedChanges: () => () => true }))

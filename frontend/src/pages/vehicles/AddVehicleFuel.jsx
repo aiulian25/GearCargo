@@ -50,7 +50,7 @@ export default function AddVehicleFuel() {
   const navigate = useExpenseNavigation(vehicleId)
   const { t } = useTranslation()
   const { user } = useAuth()
-  const { currency } = useCurrency()
+  const { currency, symbolFor } = useCurrency()
   
   const initialValues = useRef(null)
   const originalEntry = useRef(null)
@@ -70,13 +70,14 @@ export default function AddVehicleFuel() {
       liters: '',
       price_per_liter: '',
       total_cost: '',
-      currency: user?.currency || 'EUR',
+      currency: currency.code,
       is_full_tank: true,
       fuel_type: '',
       station_name: '',
       notes: '',
     }
   })
+  const entryCurrencySymbol = symbolFor(watch('currency'))
   
   const liters = watch('liters')
   const pricePerLiter = watch('price_per_liter')
@@ -112,7 +113,7 @@ export default function AddVehicleFuel() {
             price_per_liter: entry.price_per_liter != null
               ? Math.round(pricePerLiterToDisplay(entry.price_per_liter, user) * 1000) / 1000 : '',
             total_cost: entry.total_price ?? '',
-            currency: entry.currency || user?.currency || 'EUR',
+            currency: entry.currency || currency.code,
             is_full_tank: entry.full_tank ?? true,
             fuel_type: entry.fuel_type || '',
             station_name: entry.station || '',
@@ -343,7 +344,7 @@ export default function AddVehicleFuel() {
             
             <div>
               <label htmlFor="price_per_liter" className="block text-xs text-(--color-text-muted) mb-1">
-                {t('addFuel.pricePerUnit', { unit: volumeUnitLabel(user, t) })} ({currency.symbol}) *
+                {t('addFuel.pricePerUnit', { unit: volumeUnitLabel(user, t) })} ({entryCurrencySymbol}) *
               </label>
               <input
                 id="price_per_liter"
@@ -364,7 +365,7 @@ export default function AddVehicleFuel() {
           <div className="flex gap-3">
             <div className="flex-1">
               <label htmlFor="total_cost" className="block text-xs text-(--color-text-muted) mb-1">
-                {t('addFuel.totalCost') || 'Total Cost'} ({currency.symbol})
+                {t('addFuel.totalCost') || 'Total Cost'} ({entryCurrencySymbol})
               </label>
               <input
                 id="total_cost"

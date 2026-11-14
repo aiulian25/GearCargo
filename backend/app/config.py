@@ -266,6 +266,8 @@ class Config:
     UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', '/app/volumes/attachments')
     BACKUP_FOLDER = os.environ.get('BACKUP_FOLDER', '/app/volumes/backups')
     BACKUP_PASSPHRASE_FILE = os.environ.get('BACKUP_PASSPHRASE_FILE', '')
+    # A second disk or share mounted into the container; empty keeps the second copy off.
+    BACKUP_MIRROR_FOLDER = os.environ.get('BACKUP_MIRROR_FOLDER', '')
     # Default is resolved against BACKUP_FOLDER at runtime (including test overrides).
     RESTORE_STATE_FOLDER = os.environ.get('RESTORE_STATE_FOLDER')
     # NOTE: attachment upload validation is enforced by app/routes/attachments.py

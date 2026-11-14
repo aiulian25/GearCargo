@@ -66,6 +66,41 @@ versions, unsupported members and mismatched checksums fail before live changes.
 Checksums detect corruption, not authenticity. Restore only trusted administrator
 SQL archives. Personal backups keep their separate version-4 format.
 
+## Restoring a system archive that is already on the server
+
+The upload route is limited by `MAX_UPLOAD_SIZE_MB` and by any proxy in front of
+the app. A system archive holds every attachment, so it outgrows those limits. An
+archive that is already on the server, for example in the
+[backup mirror](BACKUP_MIRROR.md), is restored with this command, run as the
+application's service user in its normal environment:
+
+```sh
+flask restore-system-archive /mnt/backup-mirror/system/daily/gearcargo_daily_20261114_030000.tar.gz
+```
+
+With the all-in-one image:
+
+```sh
+docker compose exec -u gearcargo gearcargo flask restore-system-archive <path inside the container>
+```
+
+It is the same restore as the upload: the same staging, validation database,
+schema and migration gate, journal and rollback. It replaces all current data,
+and other requests are held in maintenance while it runs. Unlike an upload, it
+waits for requests and scheduled work in flight to finish rather than refusing
+while the application is busy.
+
+An encrypted archive (`.tar.gz.gcb`) is unlocked with the file named by
+`BACKUP_PASSPHRASE_FILE`, or by `--passphrase-file <file>`. The passphrase is never
+taken from the command line. A plaintext archive restores without one, also when a
+passphrase file is configured.
+
+The command prints the result and the restore identifier (`completed <id>`) and
+exits with status 0. Any failure exits non-zero with the reason; when a restore
+had already started, the message carries its identifier and whether it was
+`rolled_back` or needs `recovery_required` (see the next section). Each run is
+written to the security audit log as an operator action, without an account.
+
 ## If a restore is interrupted
 
 The settings screen retains a failed-restore result. `rolled_back` means recovery

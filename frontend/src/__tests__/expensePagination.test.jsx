@@ -20,6 +20,7 @@ vi.mock('../contexts/LanguageContext', async () => {
 })
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: { currency: 'GBP', volume_unit: 'liters' } }) }))
 vi.mock('../components/ui/AttachmentViewer', () => ({ default: () => null }))
+vi.mock('../components/vehicles/CurrencyReviewPrompt', () => ({ default: () => null }))
 const year = new Date().getFullYear()
 const summary = { display_currency: 'GBP', as_of: `${year}-12-31`, converted: true,
   totals: { fuel: 450, service: 0, repair: 0, tax: 0, parking: 0, consumable: 0, insurance: 0, grand_total: 450 },

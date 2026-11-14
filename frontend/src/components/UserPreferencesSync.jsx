@@ -1,21 +1,21 @@
 /**
  * UserPreferencesSync - Synchronizes user preferences between backend and context providers
  * 
- * This component runs inside the AuthProvider and syncs user preferences (theme, language)
+ * This component runs inside the AuthProvider and syncs user preferences (theme, language, currency)
  * from the backend to the local context providers when user data is loaded.
  */
 import { useEffect, useRef } from 'react'
 import { DateFormatProvider } from '../contexts/DateFormatContext'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
-import { useLanguage } from '../contexts/LanguageContext'
+import { AccountCurrencyScope, useLanguage } from '../contexts/LanguageContext'
 
 export default function UserPreferencesSync({ children }) {
   const { user, isAuthenticated } = useAuth()
   const { loadThemeFromUser } = useTheme()
   const { language, isLoaded, loadLanguageFromUser } = useLanguage()
   const lastSyncedPreferences = useRef(null)
-  
+
   // Sync preferences when user logs in or user data changes
   useEffect(() => {
     // Apply the profile after local preference loading, so a stale local read cannot override it.
@@ -41,7 +41,9 @@ export default function UserPreferencesSync({ children }) {
   }, [user, isAuthenticated, isLoaded, loadThemeFromUser, loadLanguageFromUser])
   
   const preferences = isAuthenticated ? user : null
-  return <DateFormatProvider language={language} dateFormat={preferences?.date_format} timezone={preferences?.timezone}>
-    {children}
-  </DateFormatProvider>
+  return <AccountCurrencyScope currencyCode={preferences?.currency}>
+    <DateFormatProvider language={language} dateFormat={preferences?.date_format} timezone={preferences?.timezone}>
+      {children}
+    </DateFormatProvider>
+  </AccountCurrencyScope>
 }

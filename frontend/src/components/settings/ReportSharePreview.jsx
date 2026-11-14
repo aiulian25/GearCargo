@@ -1,4 +1,4 @@
-import FinancialBasis from '../ui/FinancialBasis'
+import FinancialTotalsStatus from '../ui/FinancialTotalsStatus'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 
 const CATEGORIES = ['fuel', 'service', 'repair', 'tax', 'parking', 'consumable', 'insurance']
@@ -22,7 +22,7 @@ export default function ReportSharePreview({ preview }) {
     <section aria-label={t('reportShare.previewTitle')} className="rounded-lg bg-(--color-bg-tertiary) p-3 space-y-3">
       <h3 className="text-sm font-medium">{t('reportShare.previewTitle')}</h3>
       <ReportSharePrivacyNotice />
-      {preview && <FinancialBasis data={preview} />}
+      {preview && <FinancialTotalsStatus data={preview} />}
       {!preview ? <p className="text-xs text-(--color-text-muted)">{t('reportShare.previewRequired')}</p> : (
         <div className="space-y-2 text-sm">
           <p>{preview.period_label} · {preview.start_date} - {preview.end_date}</p>

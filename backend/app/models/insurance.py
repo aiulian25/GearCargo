@@ -5,6 +5,7 @@ GearCargo - Insurance Policy Model
 from datetime import datetime
 from app.utils.timeutils import utc_naive_now, utc_today, isoformat_utc
 from app import db
+from app.models.user import owner_currency
 from app.utils.revisions import next_revision
 
 
@@ -32,7 +33,7 @@ class InsurancePolicy(db.Model):
     # Cost
     premium = db.Column(db.Numeric(10, 2), nullable=False)
     payment_frequency = db.Column(db.String(20))  # monthly, quarterly, annual
-    currency = db.Column(db.String(3), default='USD')
+    currency = db.Column(db.String(3), default=owner_currency)
     
     # Dates
     start_date = db.Column(db.Date, nullable=False)

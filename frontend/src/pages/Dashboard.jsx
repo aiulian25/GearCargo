@@ -507,7 +507,7 @@ function DueSoon({ items, loading, error, t, onDismiss }) {
 export default function Dashboard() {
   const { formatDate } = useDateFormat()
   const navigate = useNavigate()
-  const { setCurrencyFromCountry, formatCurrency } = useCurrency()
+  const { formatCurrency } = useCurrency()
   const { t, language } = useTranslation()
   const { user } = useAuth()
   const confirm = useConfirm()
@@ -776,8 +776,6 @@ export default function Dashboard() {
         setFuelPrices(data)
         setFuelError(false)
         setResolvedLocation({ countryCode: data.country, locationName: data.location, lat, lon })
-        // Only a country the server actually looked up says where the user is.
-        if (data.country_detected) setCurrencyFromCountry(data.country)
         const now = Date.now()
         fuelPriceFetchedAtRef.current = now
         setFuelPriceFetchedAt(now)
@@ -788,7 +786,7 @@ export default function Dashboard() {
     }
 
     fetchFuelPrices()
-  }, [userLocation, fallbackCountry, fallbackLabel, setCurrencyFromCountry])
+  }, [userLocation, fallbackCountry, fallbackLabel])
 
   // Retry just the fuel-price service after a failure.
   const retryFuel = async () => {

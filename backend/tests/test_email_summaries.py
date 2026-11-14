@@ -21,10 +21,15 @@ Also pinned here:
 from datetime import date, timedelta
 
 import pytest
+from flask import render_template_string
+from sqlalchemy import null
 
 from app import db
 from app.models import FuelEntry, ServiceEntry, User, Vehicle
 from app.services.email_service import (
+    APPROXIMATE_TOTALS_NOTE,
+    MONTHLY_REPORT_TEMPLATE,
+    WEEKLY_REPORT_TEMPLATE,
     get_user_monthly_summary,
     get_user_weekly_summary,
 )
@@ -78,6 +83,7 @@ def test_weekly_summary_uses_real_columns(app):
         # The template renders "{{ currency }}{{ amount }}" — it needs the SYMBOL,
         # the way the monthly summary already provided it.
         assert summary['currency'] == '£'
+        assert summary['totals_note'] == ''
 
 
 def test_monthly_summary_uses_real_columns(app):
@@ -131,6 +137,31 @@ def test_totals_are_converted_into_the_display_currency(app, monkeypatch):
         assert summary['services_total'] == '50.00'  # 100 EUR -> 50 GBP
         assert summary['grand_total'] == '70.00'
         assert vehicles[0]['total'] == '70.00'
+
+
+def test_an_amount_with_no_currency_is_left_out_and_the_report_says_so(app, monkeypatch):
+    """A legacy restore stores no currency. Counted as euros, it was converted into the totals."""
+    import app.services.currency as currency_module
+
+    monkeypatch.setattr(currency_module, 'get_rates_cached', lambda _app: {'GBP': 0.5})
+
+    with app.app_context():
+        user = _make_user('unlabelled@example.com', currency='GBP')
+        active, _archived = _seed(user)
+        today = utc_today()
+        # An explicit SQL NULL: a plain None would take the owner's currency from the column default.
+        db.session.add(FuelEntry(user_id=user.id, vehicle_id=active.id, date=today,
+                                 amount=60, total_price=60, liters=45, currency=null()))
+        db.session.commit()
+
+        weekly = get_user_weekly_summary(user.id)
+        monthly, _vehicles = get_user_monthly_summary(user.id, today.month, today.year)
+
+        assert weekly['fuel_spent'] == '40.00'
+        assert (monthly['fuel_total'], monthly['grand_total']) == ('40.00', '140.00')
+        assert weekly['totals_note'] == monthly['totals_note'] == APPROXIMATE_TOTALS_NOTE
+        assert APPROXIMATE_TOTALS_NOTE in render_template_string(WEEKLY_REPORT_TEMPLATE, summary=weekly)
+        assert APPROXIMATE_TOTALS_NOTE in render_template_string(MONTHLY_REPORT_TEMPLATE, summary=monthly)
 
 
 def test_same_currency_skips_the_rate_lookup(app, monkeypatch):
@@ -198,3 +229,4 @@ def test_monthly_report_job_renders_an_email_with_the_totals(app, monkeypatch):
     assert '£140.00' in sent['html']      # grand total, with the currency symbol
     assert 'Daily' in sent['html']        # the per-vehicle breakdown row
     assert 'Old' not in sent['html']      # the archived vehicle is excluded
+    assert APPROXIMATE_TOTALS_NOTE not in sent['html']

@@ -3,6 +3,12 @@
 # then hand off to the archive builder, including its optional artifact-encryption policy.
 set -eu
 
+# `docker compose exec` starts this as root. An archive written by root lands in a folder
+# the application cannot read, so it would never reach the backup mirror.
+if [ "$(id -u)" = 0 ]; then
+    exec /command/s6-setuidgid gearcargo "$0" "$@"
+fi
+
 envfile="/run/gearcargo/backup.env"
 if [ ! -r "$envfile" ]; then
     echo "[run-backup] ERROR: $envfile missing — scheduler not ready." >&2

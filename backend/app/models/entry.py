@@ -5,6 +5,7 @@ GearCargo - Base Entry Model (Joined Table Inheritance)
 from datetime import datetime
 from app.utils.timeutils import utc_naive_now, isoformat_utc
 from app import db
+from app.models.user import owner_currency
 from app.utils.revisions import next_revision
 
 
@@ -21,7 +22,7 @@ class Entry(db.Model):
     title = db.Column(db.String(255))
     description = db.Column(db.Text)
     amount = db.Column(db.Numeric(10, 2), default=0)
-    currency = db.Column(db.String(3), default='EUR')
+    currency = db.Column(db.String(3), default=owner_currency)
     odometer = db.Column(db.Integer)
     date = db.Column(db.Date, nullable=False, default=utc_naive_now)
     notes = db.Column(db.Text)

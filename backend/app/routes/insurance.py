@@ -79,7 +79,7 @@ def create_policy(current_user):
         premium = parse_amount(data.get('premium', 0), 'Premium must be a number')
         coverage_amount = parse_optional_amount(data.get('coverage_amount'))
         deductible = parse_optional_amount(data.get('deductible'))
-        currency = parse_currency_code(data.get('currency') or current_user.currency)
+        currency = parse_currency_code(data.get('currency') or current_user.chosen_currency)
     except InvalidFieldError as invalid:
         payload, status = invalid_field_response(invalid)
         return jsonify(payload), status

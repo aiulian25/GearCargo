@@ -17,6 +17,7 @@ from app import db
 from app.models import Vehicle, Entry, FuelEntry, ServiceEntry, RepairEntry
 from app.models.attachment import Attachment
 from app.services.ollama import chat as ollama_chat, OllamaError, resolve_model, ai_cache_get, ai_cache_set, AI_CACHE_TTL, validate_ollama_url, ollama_downtime_info, ollama_breaker_allows_probe
+from app.services import currency_review
 from app.services.currency import get_rates_cached
 from app.services.expense_ledger import load_expenses, aggregate, annualized_total, convert
 from app.models.insurance import InsurancePolicy
@@ -31,6 +32,8 @@ from app.utils.entryparse import (
 from app.utils.timeutils import utc_today, isoformat_utc
 
 vehicles_bp = Blueprint('vehicles', __name__)
+
+CURRENCY_REVIEW_ACTIONS = {'relabel': currency_review.relabel, 'keep': currency_review.keep}
 
 
 def _get_max_recorded_odometer(user_id, vehicle_id):
@@ -1309,7 +1312,7 @@ def _build_chat_context(user, vehicle):
             'monthly_budget': (float(vehicle.monthly_budget)
                                if vehicle.monthly_budget is not None else None),
         }),
-        'currency': getattr(user, 'currency', 'EUR') or 'EUR',
+        'currency': user.chosen_currency,
         'spend_lifetime': spend_lifetime,
         # Precomputed answers for the most common cost questions:
         'spend_lifetime_total': spend_lifetime_total,
@@ -1396,7 +1399,7 @@ def _build_fleet_chat_context(user, max_vehicles=6):
         pass
 
     context = {
-        'currency': getattr(user, 'currency', 'EUR') or 'EUR',
+        'currency': user.chosen_currency,
         'vehicle_count': len(vehicles),
         'included_count': len(included),
         'vehicles': fleet,
@@ -2352,6 +2355,31 @@ def update_mileage(current_user, vehicle_id):
         'revision': vehicle.revision,
         'current_mileage': vehicle.current_mileage
     })
+
+
+def _currency_review_payload(user):
+    return {'account_currency': user.chosen_currency, 'groups': currency_review.review_groups(user)}
+
+
+@vehicles_bp.route('/currency-review', methods=['GET'])
+@token_required
+def get_currency_review(current_user):
+    """Records still labelled with a built-in currency, for the person to confirm or correct."""
+    return jsonify(_currency_review_payload(current_user))
+
+
+@vehicles_bp.route('/currency-review', methods=['POST'])
+@token_required
+def resolve_currency_review(current_user):
+    data = request.get_json(silent=True) or {}
+    currency, action = data.get('currency'), data.get('action')
+    resolve = CURRENCY_REVIEW_ACTIONS.get(action)
+    open_currencies = {group['currency'] for group in currency_review.review_groups(current_user)}
+    if resolve is None or currency not in open_currencies:
+        return jsonify({'error': 'There are no records to review in that currency.',
+                        'message_key': 'currencyReview.nothingToReview'}), 400
+    relabelled = resolve(current_user, currency) or 0
+    return jsonify({**_currency_review_payload(current_user), 'relabelled': relabelled})
 
 
 @vehicles_bp.route('/recent-transactions', methods=['GET'])
@@ -3406,7 +3434,7 @@ def complete_health_action(current_user, vehicle_id):
         date=today,
         odometer=odometer,
         amount=0,
-        currency=current_user.currency or 'EUR',
+        currency=current_user.chosen_currency,
         notes=notes,
     )
     db.session.add(entry)

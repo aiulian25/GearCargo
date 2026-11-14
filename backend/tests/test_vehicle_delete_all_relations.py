@@ -145,6 +145,8 @@ def account_fixture(app, user):
     archive = write_file(app.config['BACKUP_FOLDER'], 'personal.zip')
     files.append(archive)
     db.session.add(Backup(user_id=user.id, backup_type='full', filepath=str(archive)))
+    # GC-120: retention can drop a backup's record and keep its file.
+    files.append(write_file(app.config['BACKUP_FOLDER'], f'{user.id}/unrecorded.zip'))
     db.session.add(BackupSchedule(user_id=user.id))
     avatar = write_file(get_uploads_folder(), f'avatars/{user.id}/current.jpg')
     history = write_file(get_uploads_folder(), f'avatars/{user.id}/history.jpg')

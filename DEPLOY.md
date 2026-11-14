@@ -882,6 +882,15 @@ the in-app Backup page restores from. Disable with `BACKUP_ENABLED=false`. Run o
 docker compose exec gearcargo /etc/gearcargo/scripts/run-backup.sh manual
 ```
 
+These archives are on the same disk as the data. To keep a second copy on a NAS
+share or another disk, mount it into the container and set `BACKUP_MIRROR_FOLDER`;
+see [Backup mirror](docs/BACKUP_MIRROR.md). An archive on the server or in the
+mirror is restored without an upload:
+
+```bash
+docker compose exec -u gearcargo gearcargo flask restore-system-archive <path inside the container>
+```
+
 ### 15.4 Updating
 
 ```bash

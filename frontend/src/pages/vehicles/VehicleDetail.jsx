@@ -1,4 +1,4 @@
-import FinancialBasis from '../../components/ui/FinancialBasis'
+import FinancialTotalsStatus from '../../components/ui/FinancialTotalsStatus'
 import { mutationOptions } from '../../utils/mutationProtocol'
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
@@ -640,7 +640,7 @@ export default function VehicleDetail() {
           
           {/* Stats Cards Grid */}
           <div className="flex-1 min-w-0">
-            {stats && <FinancialBasis data={stats} />}
+            {stats && <FinancialTotalsStatus data={stats} />}
             <div className="grid grid-cols-2 gap-3">
               {statsCards.map(stat => {
                 const cardContent = (

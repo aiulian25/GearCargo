@@ -65,19 +65,21 @@ references. A regression test requires a policy review when new FKs are added.
 | `notification_logs.user_id/subscription_id/reminder_id/prediction_id/vehicle_id` | Delete logs for selected vehicle/reminders/predictions first | Also delete owned and owned-subscription logs |
 | `due_dismissals.user_id` and logical `kind/ref_id` | Delete only matching owned occurrences | Delete all owned dismissals |
 | `report_shares.user_id` and JSON `vehicle_ids` | Revoke shares explicitly selecting the deleted vehicle | Delete owned shares |
-| `backups.user_id`, `backup_schedules.user_id` | Keep | Delete schedules/records; queue local archive files |
+| `backups.user_id`, `backup_schedules.user_id` | Keep | Delete schedules/records; queue every file in the account's backup folder, including archives whose record retention already removed |
 | `push_subscriptions.user_id`, `user_sessions.user_id`, `email_consent_logs.user_id`, `activity_logs.user_id` | Keep | Delete owned rows, including stored PII |
 | `passkeys.user_id` | Keep | Delete owned passkeys |
 | Blocked IP/device `target_user_id`, `blocked_by_id`, `unblocked_by_id` | Keep | Detach links and scrub target email/descriptions; preserve the instance security block |
 | Admin activity JSON `created_user_id`, `target_user_id`, `deleted_user_id` | Keep | Scrub target identifiers/email and description; keep the administrator's audit event |
 | Vehicle photo; account avatar/history | Queue selected vehicle photo | Also queue avatars, including superseded files in the account avatar directory |
 | Redis session/location/device/2FA and email attempt keys | Keep | Retry removal scoped to deleted account; never purge another account's keys |
+| Personal backups in the [backup mirror](BACKUP_MIRROR.md) | Keep | Once the account's local backups are gone, retry removal of its mirror folder until the mirror is reachable. The mirror would copy back a local file that is still pending |
 
 The new account-deletion audit is committed with deletion and contains no deleted
 email, name or account ID. Account deletion does not erase independent security
 blocks, operator log files, externally exported calendars/backups or existing
-administrator system snapshots. Those have their own retention/access policies;
-deletion is not a claim of erasure from every historical copy.
+administrator system snapshots, including the copies of those snapshots in the
+backup mirror. Those have their own retention/access policies; deletion is not a
+claim of erasure from every historical copy.
 
 ## Cleanup and retention
 

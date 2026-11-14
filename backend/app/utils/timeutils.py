@@ -46,3 +46,15 @@ def isoformat_utc(value: datetime | None) -> str | None:
         raise TypeError("An instant must be a datetime, not a calendar date")
     aware = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
     return aware.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+
+
+def naive_utc(value) -> datetime | None:
+    """A stored instant, as a datetime or its ISO text, in naive UTC. None when it is neither."""
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value)
+        except ValueError:
+            return None
+    if not isinstance(value, datetime):
+        return None
+    return value.astimezone(timezone.utc).replace(tzinfo=None) if value.tzinfo else value

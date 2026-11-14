@@ -209,6 +209,7 @@ for each area, including the [upgrade boundary](docs/SECURITY_AND_PRIVACY.md#upg
 - Automatic scheduled backups
 - Manual backup/restore
 - Export to external servers (HTTPS)
+- **Second copy on your own disk or NAS** — every finished backup, personal and system, is copied to a folder you mount, checked, and kept in step with local retention; administrators are notified when it has failed for a day ([setup](docs/BACKUP_MIRROR.md))
 - JSON and ZIP backup formats
 - Import from backup files
 - **LubeLogger import** — bring your data across from LubeLogger with full conversion
@@ -716,6 +717,7 @@ The admin user can:
 | `WIDGET_CORS_ORIGINS` | Optional | CORS origin allowlist for widget API endpoints | `*` |
 | `BACKUP_KEEP_LAST` | Optional | Number of daily/weekly backup archives to retain | `7` |
 | `BACKUP_ENABLED` | Optional | Enable daily/weekly system archives | `true` |
+| `BACKUP_MIRROR_FOLDER` | Optional | Container path of a mounted second disk or NAS share that receives a verified copy of every backup; see [Backup mirror](docs/BACKUP_MIRROR.md) | empty (off) |
 | `SYSTEM_RESTORE_*` | Optional | Finite system restore size, memory, disk reserve and time budgets; see [restore sizing](docs/RESTORE_RECOVERY.md#system-restore-resource-budgets) | See linked table |
 | `SCHEDULER_ENABLED` | Optional | Enable this instance's dedicated scheduler service; see [Scheduled jobs](docs/SCHEDULER.md) | `true` |
 
@@ -814,6 +816,7 @@ Configure automatic backups in Settings > Backup:
 - Schedule daily/weekly backups
 - Set retention period
 - Configure one or more external backup destinations (HTTPS)
+- With "Notify on failure" on, a scheduled backup that cannot reach its external destination after all retries sends you one push notification
 - Each destination can be independently enabled/disabled per user
 - Reorder destinations to control primary destination precedence
 - Toggle credential visibility per destination (credentials stay masked by default)
@@ -863,6 +866,14 @@ Destination order is significant: the first enabled destination is treated as pr
 The web restore runs inside the container against the embedded database, so no
 CLI restore script is needed. For a full deployment move, use the admin
 full-state export/import endpoints described above.
+
+**From a file already on the server (system archives):**
+```bash
+# No upload, so no MAX_UPLOAD_SIZE_MB or proxy limit. Replaces all current data.
+docker compose exec -u gearcargo gearcargo flask restore-system-archive /mnt/backup-mirror/system/daily/<archive>
+```
+An encrypted archive (`.tar.gz.gcb`) is unlocked with `BACKUP_PASSPHRASE_FILE`, or
+with `--passphrase-file <file>`. See [Restore recovery](docs/RESTORE_RECOVERY.md).
 
 ### Backup Regression Tests
 

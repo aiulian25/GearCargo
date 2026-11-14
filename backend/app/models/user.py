@@ -62,6 +62,21 @@ def _as_utc(dt):
 # A SHA-256 hex digest — 64 lowercase hex characters.
 _SHA256_HEX = re.compile(r'[0-9a-f]{64}')
 
+# The currency of an account that has not chosen one.
+DEFAULT_CURRENCY = 'GBP'
+
+
+def owner_currency(context):
+    """Column default: a money record saved without a currency is in its owner's chosen one.
+
+    The old literal defaults (EUR for expenses, USD for policies) labelled pounds as euros.
+    """
+    user_id = context.get_current_parameters().get('user_id')
+    if user_id is None:
+        return None
+    chosen = context.connection.execute(db.select(User.currency).where(User.id == user_id)).scalar()
+    return (chosen or DEFAULT_CURRENCY).upper()
+
 
 class User(UserMixin, db.Model):
     """User model for authentication and profile."""
@@ -84,7 +99,7 @@ class User(UserMixin, db.Model):
     language = db.Column(db.String(10), default='en')
     timezone = db.Column(db.String(50), default='UTC')
     theme = db.Column(db.String(10), default='dark')
-    currency = db.Column(db.String(5), default='GBP')  # Currency code (GBP, EUR, RON, USD)
+    currency = db.Column(db.String(5), default=DEFAULT_CURRENCY)  # Currency code (GBP, EUR, RON, USD)
     distance_unit = db.Column(db.String(10), default='km')  # km or miles
     volume_unit = db.Column(db.String(10), default='liters')  # liters or gallons
     date_format = db.Column(db.String(20), default='DD/MM/YYYY')  # Date display format
@@ -357,6 +372,11 @@ class User(UserMixin, db.Model):
             return f"{self.first_name} {self.last_name}"
         return self.username
 
+    @property
+    def chosen_currency(self):
+        """The currency this person chose in their profile, for display and for new records."""
+        return (self.currency or DEFAULT_CURRENCY).upper()
+
     def get_decrypted_notification_email(self):
         """Decrypt the notification email field. Returns empty string if not set."""
         if not self.notification_email:
@@ -493,7 +513,7 @@ class User(UserMixin, db.Model):
             'language': self.language or 'en',
             'timezone': self.timezone or 'UTC',
             'theme': self.theme or 'dark',
-            'currency': self.currency or 'GBP',
+            'currency': self.currency or DEFAULT_CURRENCY,
             'distance_unit': self.distance_unit or 'km',
             'volume_unit': self.volume_unit or 'liters',
             'date_format': self.date_format or 'DD/MM/YYYY',

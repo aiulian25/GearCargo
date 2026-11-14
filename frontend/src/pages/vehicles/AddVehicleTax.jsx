@@ -11,7 +11,6 @@ import { useForm, useWatch } from 'react-hook-form'
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import { taxApi, vehicleApi, insuranceApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
-import { useAuth } from '../../contexts/AuthContext'
 import ReceiptUpload from '../../components/ReceiptUpload'
 import CurrencySelect from '../../components/ui/CurrencySelect'
 
@@ -56,8 +55,7 @@ export default function AddVehicleTax() {
   const isEditMode = !!editId
   const navigate = useExpenseNavigation(vehicleId)
   const { t } = useTranslation()
-  const { currency } = useCurrency()
-  const { user } = useAuth()
+  const { currency, symbolFor } = useCurrency()
   
   const [vehicle, setVehicle] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -67,12 +65,12 @@ export default function AddVehicleTax() {
   const [existingAttachments, setExistingAttachments] = useState([])
   const [insurancePolicies, setInsurancePolicies] = useState([])
   
-  const { register, getValues, handleSubmit, formState: { errors, isDirty }, control, reset, setValue } = useForm({
+  const { register, getValues, handleSubmit, formState: { errors, isDirty }, control, reset, setValue, watch } = useForm({
     defaultValues: {
       date: localDate(),
       tax_type: '',
       amount: '',
-      currency: user?.currency || 'EUR',
+      currency: currency.code,
       status: 'paid',
       valid_until: '',
       reference_number: '',
@@ -83,6 +81,7 @@ export default function AddVehicleTax() {
       insurance_policy_id: '',
     }
   })
+  const entryCurrencySymbol = symbolFor(watch('currency'))
   
   // Watch recurring toggle
   const isRecurring = useWatch({ control, name: 'recurring' })
@@ -109,7 +108,7 @@ export default function AddVehicleTax() {
             date: entry.date ? entry.date.split('T')[0] : localDate(),
             tax_type: entry.tax_type || '',
             amount: entry.amount || '',
-            currency: entry.currency || user?.currency || 'EUR',
+            currency: entry.currency || currency.code,
             status: entry.status || 'paid',
             // F41 — "Valid until" is stored as due_date; the API never returned
             // valid_until, so edit mode always reopened blank. Read due_date.
@@ -132,7 +131,7 @@ export default function AddVehicleTax() {
     }
     
     fetchData()
-  }, [vehicleId, editId, isEditMode, navigate, reset, mutation])
+  }, [vehicleId, editId, isEditMode, navigate, reset, mutation, currency.code])
 
   // F33 — receipt routed from ShareTarget: apply the AI-parsed fields; the
   // already-uploaded attachment is linked to the entry after create.
@@ -289,7 +288,7 @@ export default function AddVehicleTax() {
             <div className="flex gap-3">
               <div className="flex-1">
                 <label htmlFor="amount" className="block text-xs text-(--color-text-muted) mb-1">
-                  {t('addTax.amount') || 'Amount'} ({currency.symbol}) *
+                  {t('addTax.amount') || 'Amount'} ({entryCurrencySymbol}) *
                 </label>
                 <input
                   id="amount"

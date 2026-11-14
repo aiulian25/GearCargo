@@ -84,6 +84,14 @@ def deliver(effect, payload, user):
     raise ValueError('Unsupported scheduled delivery')
 
 
+def announce_exhausted(effect):
+    """A push or email that gave up is only a missed message. A backup that never left the server is not."""
+    if effect.kind != 'backup':
+        return
+    from app.services.backup_notices import notify_external_copy_failed
+    notify_external_copy_failed(effect.user_id)
+
+
 def process_scheduled_effects(app):
     from app.models import User
     from app.services.restore_transaction import guarded_app_context
@@ -103,6 +111,7 @@ def process_scheduled_effects(app):
                 effect.last_error = 'delivery_retry_exhausted'
                 effect.lease_until = None
                 db.session.commit()
+                announce_exhausted(effect)
                 continue
             effect.status = 'sending'
             effect.attempts += 1
@@ -129,6 +138,8 @@ def process_scheduled_effects(app):
                 effect.next_attempt_at = now + timedelta(minutes=min(60, 2 ** min(effect.attempts - 1, 6)))
                 effect.last_error = 'transport_unavailable'
             db.session.commit()
+            if effect.status == 'failed':
+                announce_exhausted(effect)
 
 
 def delivery_status():

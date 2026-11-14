@@ -55,7 +55,7 @@ export default function AddVehicleInsurance() {
   const isEditMode = !!editId
   const navigate = useExpenseNavigation(vehicleId)
   const { t } = useTranslation()
-  const { currency, formatCurrency } = useCurrency()
+  const { symbolFor, formatCurrency } = useCurrency()
 
   const [vehicle, setVehicle] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -86,6 +86,7 @@ export default function AddVehicleInsurance() {
       notes: '',
     }
   })
+  const entryCurrencySymbol = symbolFor(watch('currency'))
   
   const paymentFrequency = watch('payment_frequency')
   const premiumBreakdownKey = PREMIUM_BREAKDOWN_KEYS[paymentFrequency]
@@ -325,7 +326,7 @@ export default function AddVehicleInsurance() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor="premium" className="block text-xs text-(--color-text-muted) mb-1">
-                {t('addInsurance.premium') || 'Premium'} ({currency.symbol}) *
+                {t('addInsurance.premium') || 'Premium'} ({entryCurrencySymbol}) *
               </label>
               <input
                 id="premium"
@@ -372,7 +373,7 @@ export default function AddVehicleInsurance() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor="coverage_amount" className="block text-xs text-(--color-text-muted) mb-1">
-                {t('addInsurance.coverageAmount') || 'Coverage Amount'} ({currency.symbol})
+                {t('addInsurance.coverageAmount') || 'Coverage Amount'} ({entryCurrencySymbol})
               </label>
               <input
                 id="coverage_amount"
@@ -386,7 +387,7 @@ export default function AddVehicleInsurance() {
             
             <div>
               <label htmlFor="deductible" className="block text-xs text-(--color-text-muted) mb-1">
-                {t('addInsurance.deductible') || 'Deductible'} ({currency.symbol})
+                {t('addInsurance.deductible') || 'Deductible'} ({entryCurrencySymbol})
               </label>
               <input
                 id="deductible"

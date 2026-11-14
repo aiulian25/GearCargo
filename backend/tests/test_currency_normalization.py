@@ -8,6 +8,7 @@ never touch the network.
 from datetime import timedelta
 
 import pytest
+from sqlalchemy import null
 
 from app import db
 from app.models import User, Vehicle, FuelEntry, ServiceEntry
@@ -66,6 +67,14 @@ def test_sum_to_display_reports_fx_and_converted():
         [('EUR', 100), ('USD', 100)], 'GBP', FIXED_RATES)
     assert converted is True and fx is True
     assert round(total, 2) == round(100 * 0.86 + 100 / 1.08 * 0.86, 2)
+
+
+@pytest.mark.parametrize('unlabelled, exact', [(100, False), (0, True)])
+def test_sum_to_display_leaves_out_an_amount_with_no_currency(unlabelled, exact):
+    """It used to be counted as euros. An unknown currency belongs in no total."""
+    total, converted, fx = currency_svc.sum_to_display(
+        [('GBP', 50), (None, unlabelled)], 'GBP', FIXED_RATES)
+    assert (total, converted, fx) == (50, exact, False)
 
 
 # --- Endpoint: cost-analytics ---------------------------------------------
@@ -261,6 +270,25 @@ def test_fuel_stats_converts_cost_but_not_volume(app, client, user, auth_headers
     assert data['display_currency'] == 'GBP'
     assert data['converted'] is True
     assert data['fx_applied'] is True
+
+
+def test_fuel_stats_leave_out_a_fill_up_with_no_currency(app, client, user, auth_headers):
+    """A legacy restore stores no currency. Counted as euros, it was converted into the total."""
+    with app.app_context():
+        db.session.get(User, user.id).currency = 'GBP'
+        vehicle = _mk_vehicle(user.id)
+        fill_up = dict(user_id=user.id, vehicle_id=vehicle.id, date=utc_today(), fuel_type='petrol')
+        db.session.add(FuelEntry(amount=50, total_price=50, liters=20, currency='GBP', **fill_up))
+        # An explicit SQL NULL: a plain None would take the owner's currency from the column default.
+        db.session.add(FuelEntry(amount=100, total_price=100, liters=40, currency=null(), **fill_up))
+        db.session.commit()
+
+    data = client.get('/api/fuel/stats', headers=auth_headers(user.id)).get_json()
+
+    assert data['total_cost'] == 50
+    assert data['total_liters'] == 60.0
+    assert data['converted'] is False
+    assert data['fx_applied'] is False
 
 
 def test_fuel_stats_empty_keeps_stable_shape(client, user, auth_headers):

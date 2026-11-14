@@ -43,6 +43,7 @@ from app.services.backup_schema import (
 
 from app.services import restore_transaction as restore_tx
 from app.services import backup_encryption as backup_crypto
+from app.services import backup_mirror
 from app.services.system_restore_budget import Budget, CHUNK
 
 backup_bp = Blueprint('backup', __name__)
@@ -73,6 +74,8 @@ def _restore_user_artifact(user, source, filename, merge_mode, passphrase=None):
 
 SYSTEM_BACKUP_VERSION = '3.1'
 SYSTEM_BACKUP_PREFIX = 'gearcargo_system_backup'
+# Who the security audit names for a restore run from the server's own command line.
+OPERATOR_ACTOR = 'operator-cli'
 
 
 class BackupDestinationConfig:
@@ -1330,6 +1333,7 @@ def get_backup_status(current_user):
         'last_backup_details': last_backup.to_dict() if last_backup else None,
         'available_backups': available_backups[:10],  # Limit to 10 most recent
         'total_backup_count': len(available_backups),
+        'mirror': backup_mirror.mirror_status(),
     })
 
 
@@ -2089,6 +2093,7 @@ def delete_backup(current_user, filename):
     
     try:
         os.remove(filepath)
+        backup_mirror.remove_mirrored_file(f'{current_user.id}/{filename}')
         return jsonify({'message': 'Backup deleted successfully'})
     except Exception as e:
         current_app.logger.error(f'Failed to delete backup {filename}: {e}')
@@ -2890,6 +2895,64 @@ def export_system_backup(current_user):
         )), 500
 
 
+def restore_system_archive_file(archive_path, filename, passphrase, budget):
+    """Authenticate an encrypted archive that is already on disk, then restore it."""
+    temporary_root = tempfile.gettempdir()
+    with open(archive_path, 'rb') as source:
+        # Encrypted imports need authenticated plaintext plus its named staging
+        # copy; check their combined space before envelope authentication.
+        if backup_crypto.is_encrypted(source) or filename.endswith('.gcb'):
+            budget.space(temporary_root, 2 * os.path.getsize(archive_path))
+        with backup_crypto.open_backup(source, filename, passphrase) as (plaintext, inner_format):
+            if inner_format != 'tar.gz':
+                raise backup_crypto.BackupEncryptionError('Use a full system archive here.')
+            if plaintext is source:
+                return restore_system_backup_archive(archive_path, budget=budget)
+            with tempfile.NamedTemporaryFile(prefix='gearcargo-authenticated-', suffix='.tar.gz') as verified:
+                while chunk := plaintext.read(CHUNK):
+                    budget.space(temporary_root, len(chunk))
+                    verified.write(chunk)
+                verified.flush()
+                return restore_system_backup_archive(verified.name, budget=budget)
+
+
+def _archive_passphrase(archive_path, passphrase_file):
+    """The passphrase for an encrypted archive, read from a file and never from the command line."""
+    with open(archive_path, 'rb') as source:
+        encrypted = backup_crypto.is_encrypted(source) or archive_path.lower().endswith('.gcb')
+    if not encrypted:
+        return None
+    key_file = passphrase_file or current_app.config.get('BACKUP_PASSPHRASE_FILE')
+    if not key_file:
+        raise backup_crypto.BackupEncryptionError(
+            'This archive is encrypted. Name the file that holds its passphrase with --passphrase-file.')
+    return backup_crypto.read_passphrase_file(key_file)
+
+
+def register_system_restore_cli(app):
+    import click
+
+    @app.cli.command('restore-system-archive')
+    @click.argument('archive', type=click.Path(exists=True, dir_okay=False, readable=True))
+    @click.option('--passphrase-file', type=click.Path(exists=True, dir_okay=False, readable=True),
+                  help='File holding the passphrase of an encrypted archive. Defaults to BACKUP_PASSPHRASE_FILE.')
+    def restore_system_archive(archive, passphrase_file):
+        """Restore a full system archive that is already on this server. Replaces all current data."""
+        try:
+            passphrase = _archive_passphrase(archive, passphrase_file)
+            # Wait for requests and jobs in flight; an upload would instead be refused while busy.
+            with restore_tx.activity_guard(exclusive=True, blocking=True):
+                manifest = restore_system_archive_file(archive, os.path.basename(archive).lower(), passphrase, Budget())
+        except restore_tx.RestoreFailure as failure:
+            _audit_restore(None, OPERATOR_ACTOR, 'system_full', False)
+            raise click.ClickException(f'{failure} Restore {failure.restore_id}: {failure.state}.') from None
+        except (tarfile.TarError, ValueError, RuntimeError, OSError) as failure:
+            _audit_restore(None, OPERATOR_ACTOR, 'system_full', False)
+            raise click.ClickException(str(failure)) from None
+        _audit_restore(None, OPERATOR_ACTOR, 'system_full', True)
+        click.echo(f"{manifest['recovery']['state']} {manifest['recovery']['id']}")
+
+
 @backup_bp.route('/system/import', methods=['POST'])
 @admin_required
 def import_system_backup(current_user):
@@ -2926,23 +2989,7 @@ def import_system_backup(current_user):
             while chunk := uploaded_file.stream.read(CHUNK):
                 budget.space(temporary_root, len(chunk))
                 temp_file.write(chunk)
-        # Encrypted imports need authenticated plaintext plus its named staging
-        # copy; check their combined space before envelope authentication.
-        with open(archive_path, 'rb') as source:
-            if backup_crypto.is_encrypted(source) or filename.endswith('.gcb'):
-                budget.space(temporary_root, 2 * os.path.getsize(archive_path))
-            with backup_crypto.open_backup(source, filename, request.form.get('passphrase')) as (plaintext, inner_format):
-                if inner_format != 'tar.gz':
-                    raise backup_crypto.BackupEncryptionError('Use a full system archive here.')
-                if plaintext is source:
-                    manifest = restore_system_backup_archive(archive_path, budget=budget)
-                else:
-                    with tempfile.NamedTemporaryFile(prefix='gearcargo-authenticated-', suffix='.tar.gz') as verified:
-                        while chunk := plaintext.read(CHUNK):
-                            budget.space(temporary_root, len(chunk))
-                            verified.write(chunk)
-                        verified.flush()
-                        manifest = restore_system_backup_archive(verified.name, budget=budget)
+        manifest = restore_system_archive_file(archive_path, filename, request.form.get('passphrase'), budget)
         _audit_restore(actor_id, actor_email, 'system_full', True)
         return jsonify(localized_message(
             'backup.system_import.completed',

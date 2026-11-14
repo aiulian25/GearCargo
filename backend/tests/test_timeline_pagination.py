@@ -68,6 +68,8 @@ def _seed(n_entries=N_ENTRIES, n_policies=N_POLICIES):
             user_id=u.id,
             provider=f"Provider {i}",
             premium=100 + i,
+            # Not the account's currency: the feed must report the policy's own.
+            currency="USD",
             payment_frequency="annual",
             start_date=date(2025, 6, i + 1),   # older than all 2026 entries
             end_date=date(2026, 6, i + 1),

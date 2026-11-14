@@ -135,7 +135,7 @@ def create_tax_entry(current_user):
         vehicle_id=vehicle.id,
         date=entry_date,
         amount=amount,
-        currency=data.get('currency') or current_user.currency or 'EUR',
+        currency=data.get('currency') or current_user.chosen_currency,
         title=data.get('tax_type'),
         description=data.get('description'),
         tax_type=data['tax_type'],

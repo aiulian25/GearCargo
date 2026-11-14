@@ -3,6 +3,9 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from apscheduler.triggers.cron import CronTrigger
 
+# A new backup reaches the second copy within this long.
+BACKUP_MIRROR_INTERVAL_SECONDS = 900
+
 
 @dataclass
 class JobDefinition:
@@ -29,6 +32,7 @@ def readiness_heartbeat(app):
 
 def job_definitions(app):
     from app import services as jobs
+    from app.services.backup_mirror import mirror_backups
     from app.services.calendar_outbox import process_calendar_outbox
     from app.services.deletion import scheduled_cleanup
     from app.services.scheduled_effects import process_scheduled_effects
@@ -64,4 +68,6 @@ def job_definitions(app):
             JobDefinition('system_backup_daily', daily_backup, cron={'hour': 3}),
             JobDefinition('system_backup_weekly', weekly_backup, cron={'day_of_week': 'sun', 'hour': 3, 'minute': 30}),
         ])
+    if app.config.get('BACKUP_MIRROR_FOLDER'):
+        definitions.append(JobDefinition('backup_mirror', mirror_backups, seconds=BACKUP_MIRROR_INTERVAL_SECONDS))
     return {definition.name: definition for definition in definitions}

@@ -2,8 +2,9 @@
 GearCargo - Currency normalization (F1).
 
 Per-entry amounts are stored in whatever currency the user logged them in
-(Entry.currency defaults 'EUR', InsurancePolicy.currency defaults 'USD'), while
-each user has a preferred display currency (User.currency defaults 'GBP').
+(a record saved without one takes its owner's; older records may still carry the
+former built-in EUR or USD label), while each user has a preferred display
+currency (User.currency defaults 'GBP').
 Aggregations that sum amounts across entries must therefore convert each amount
 into the display currency BEFORE summing — otherwise GBP + EUR + USD are added
 as if identical.
@@ -70,7 +71,8 @@ def sum_to_display(pairs, to_ccy, rates):
 
     Returns ``(total: float, converted: bool, fx_applied: bool)`` where:
       * ``converted`` is False if ANY pair needed a rate that was unavailable
-        (the total is then only an approximation — some amounts unconverted);
+        (the total is then only an approximation — some amounts unconverted),
+        or had no currency at all (that amount is left out of the total);
       * ``fx_applied`` is True if ANY pair was in a currency other than
         ``to_ccy`` (i.e. a real FX conversion happened, so the total is an
         approximation subject to exchange rates).
@@ -80,7 +82,11 @@ def sum_to_display(pairs, to_ccy, rates):
     converted = True
     fx_applied = False
     for ccy, amount in pairs:
-        src = (ccy or BASE_CURRENCY).upper()
+        if not ccy:
+            # No currency was recorded, so the amount belongs in no total. A zero changes nothing.
+            converted = converted and not float(amount or 0)
+            continue
+        src = ccy.upper()
         conv, ok = to_display(amount, src, dst, rates)
         total += conv
         if not ok:

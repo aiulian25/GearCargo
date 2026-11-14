@@ -1,5 +1,5 @@
 import { useDateFormat } from '../hooks/useDateFormat'
-import FinancialBasis from '../components/ui/FinancialBasis'
+import FinancialTotalsStatus from '../components/ui/FinancialTotalsStatus'
 /**
  * GearCargo - Public Shared Report viewer (F05)
  *
@@ -136,7 +136,7 @@ export default function SharedReport() {
       )}
 
       {/* PDF download */}
-      <FinancialBasis data={d} />
+      <FinancialTotalsStatus data={d} />
       <div className="mb-4"><ReportSharePrivacyNotice /></div>
       <a
         href={reportsApi.sharedPdfUrl(token)}

@@ -5,7 +5,7 @@ positive acknowledgement means accepted, not read. A crash after acceptance
 but before recording it can still cause a retry; SMTP has no idempotency key.
 """
 from copy import deepcopy
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta, timezone
 import hashlib
 from uuid import uuid4
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -16,24 +16,11 @@ from app import db
 from app.models import Reminder, User
 from app.services.restore_transaction import guarded_app_context
 from app.services.vehicle_archive import active_vehicle_condition
-from app.utils.timeutils import utc_naive_now
+from app.utils.timeutils import naive_utc, utc_naive_now
 from app.utils.reminder_routes import reminder_path
 
 CHANNELS = ('push', 'email')
 LEASE = timedelta(minutes=30)
-
-
-def naive_utc(value):
-    if value is None:
-        return None
-    if isinstance(value, str):
-        try:
-            value = datetime.fromisoformat(value)
-        except ValueError:
-            return None
-    if not isinstance(value, datetime):
-        return None
-    return value.astimezone(timezone.utc).replace(tzinfo=None) if value.tzinfo else value
 
 
 def occurrence_key(reminder):

@@ -1,6 +1,6 @@
 import useExpenseFilters, { expensePath } from '../../hooks/useExpenseFilters'
 import useExpenseSummary from '../../hooks/useExpenseSummary'
-import FinancialBasis from '../../components/ui/FinancialBasis'
+import FinancialTotalsStatus from '../../components/ui/FinancialTotalsStatus'
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { vehicleApi } from '../../services/api'
@@ -436,7 +436,6 @@ export default function VehicleCharts() {
           const cpdPoints = analytics.series.map((s) => ({ label: monthShort(s.month), value: s.cost_per_distance }))
           return (
             <>
-            <FinancialBasis data={analytics} />
             {(analytics.converted === false || analytics.fx_applied) && (
               <p className="text-2xs text-(--color-text-muted) flex items-start gap-1.5">
                 <span aria-hidden="true">≈</span>
@@ -629,7 +628,7 @@ export default function VehicleCharts() {
             Case 2 — entries exist in other years but not the selected year:
                      chartData is set but totalExpenses is 0; year selector
                      remains visible in the header so the user can switch. */}
-        <FinancialBasis data={expenseSummary} error={expenseState.error} />
+        <FinancialTotalsStatus data={expenseSummary} error={expenseState.error} />
         {expenseState.error && <button className="btn btn-secondary" onClick={expenseState.retry}>{t('expensePages.retry')}</button>}
         {!chartData ? null : chartData.totalExpenses === 0 ? (
           /* Case 2: entries exist but none in the currently selected year */

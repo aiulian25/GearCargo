@@ -43,7 +43,7 @@ export default function AddVehicleConsumable() {
   const navigate = useExpenseNavigation(vehicleId)
   const location = useLocation()
   const { t } = useTranslation()
-  const { currency } = useCurrency()
+  const { currency, symbolFor } = useCurrency()
 
   const [vehicle, setVehicle] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -51,7 +51,7 @@ export default function AddVehicleConsumable() {
   const [isLoading, setIsLoading] = useState(true)
   const [receiptFile, setReceiptFile] = useState(null)
 
-  const { register, getValues, handleSubmit, formState: { errors, isDirty }, reset } = useForm({
+  const { register, getValues, handleSubmit, formState: { errors, isDirty }, reset, watch } = useForm({
     defaultValues: {
       consumable_type: 'tire',
       brand: '',
@@ -66,6 +66,7 @@ export default function AddVehicleConsumable() {
       notes: '',
     },
   })
+  const entryCurrencySymbol = symbolFor(watch('currency'))
 
   useEffect(() => {
     const fetchData = async () => {
@@ -236,7 +237,7 @@ export default function AddVehicleConsumable() {
             <input id="date" type="date" className="input" {...register('date', { required: true })} />
           </div>
           <div>
-            <label className="label" htmlFor="amount">{t('addConsumable.cost') || 'Cost'} ({currency.symbol})</label>
+            <label className="label" htmlFor="amount">{t('addConsumable.cost') || 'Cost'} ({entryCurrencySymbol})</label>
             <input id="amount" type="number" inputMode="decimal" step="0.01" min={Number(readPrivateNavigationState(location.state)?.prefill?.amount) < 0 ? undefined : 0} className="input" placeholder="0.00" {...register('amount')} />
           </div>
         </div>

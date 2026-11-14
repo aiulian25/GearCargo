@@ -378,8 +378,7 @@ def create_fuel_entry(current_user):
 
         odometer = parse_optional_int(data.get('odometer', data.get('mileage')),
                                       'Odometer must be a number')
-        currency = parse_currency_code(
-            data.get('currency') or current_user.currency or 'EUR')
+        currency = parse_currency_code(data.get('currency') or current_user.chosen_currency)
 
         entry_date = utc_today()
         if data.get('date'):
@@ -700,7 +699,7 @@ def get_fuel_stats(current_user):
     )
     per_ccy = {}
     for ccy, amt in ccy_rows:
-        k = (ccy or 'EUR').upper()
+        k = ccy.upper() if ccy else None
         per_ccy[k] = per_ccy.get(k, 0.0) + float(amt or 0)
     rates = get_rates_cached(current_app._get_current_object())
     total_cost, converted, fx_applied = sum_to_display(
@@ -726,7 +725,7 @@ def get_fuel_stats(current_user):
         'volume_unit': 'liters',
         'avg_price_per_liter': float(avg_ppl) if avg_ppl is not None else None,
         'display_currency': display_ccy,
-        'converted': converted,      # False → a needed FX rate was unavailable
+        'converted': converted,      # False → an amount had no currency or no usable FX rate
         'fx_applied': fx_applied,    # True → amounts crossed currencies
     })
 

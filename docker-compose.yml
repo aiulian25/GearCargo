@@ -73,6 +73,9 @@ services:
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       # Mount this secret file separately; never put it inside backed-up media.
       - BACKUP_PASSPHRASE_FILE=${BACKUP_PASSPHRASE_FILE:-}
+      # Container path of a second disk or NAS share that receives a copy of every backup.
+      # Empty keeps it off. See docs/BACKUP_MIRROR.md.
+      - BACKUP_MIRROR_FOLDER=${BACKUP_MIRROR_FOLDER:-}
 
       - OLLAMA_ENABLED=${OLLAMA_ENABLED:-false}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
@@ -135,6 +138,12 @@ services:
       - ./volumes/redis:/data
       - ./volumes/attachments:/app/volumes/attachments
       - ./volumes/backups:/app/volumes/backups
+      # Second copy of every backup (docs/BACKUP_MIRROR.md). Mount it outside /app/volumes.
+      # - type: bind
+      #   source: /mnt/gearcargo-backups
+      #   target: /mnt/backup-mirror
+      #   bind:
+      #     propagation: rslave
       - ./volumes/uploads:/app/uploads
       - ./volumes/logs:/app/volumes/logs
       - ./volumes/geoip:/app/volumes/geoip:ro

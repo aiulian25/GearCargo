@@ -795,7 +795,8 @@ def import_lubelog_to_gearcargo(user, zip_data, merge_mode='merge', distance_uni
                 for entry in vehicle.get(kind, []):
                     identify(kind, entry, entry.get('_source_id'), source_id)
                     entry['vehicle_id'] = vehicle_id
-                    entry.setdefault('currency', 'EUR')  # existing LubeLogger contract
+                    # LubeLogger has no currency: amounts are in the importing person's own.
+                    entry.setdefault('currency', user.chosen_currency)
                     if kind == 'fuel_entries':
                         entry.setdefault('title', 'Fuel')
                     elif kind in ('service_entries', 'repair_entries'):

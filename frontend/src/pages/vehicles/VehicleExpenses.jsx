@@ -3,7 +3,8 @@ import useExpenseFilters from '../../hooks/useExpenseFilters'
 import useExpenseRecords from '../../hooks/useExpenseRecords'
 import ExpensePagination from '../../components/ui/ExpensePagination'
 import useExpenseSummary from '../../hooks/useExpenseSummary'
-import FinancialBasis from '../../components/ui/FinancialBasis'
+import FinancialTotalsStatus from '../../components/ui/FinancialTotalsStatus'
+import CurrencyReviewPrompt from '../../components/vehicles/CurrencyReviewPrompt'
 import { mutationOptions } from '../../utils/mutationProtocol'
 import { useState, useEffect, useMemo, useId, Fragment } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
@@ -1399,7 +1400,8 @@ export default function VehicleExpenses() {
       </div>
 
       <div className="p-4 md:p-6">
-      <FinancialBasis data={expenseSummary} error={expenseState.error} />
+      <CurrencyReviewPrompt onRelabelled={refresh} />
+      <FinancialTotalsStatus data={expenseSummary} error={expenseState.error} />
       {expenseState.error && <button className="btn btn-secondary" onClick={refresh}>{t('expensePages.retry')}</button>}
       {/* Top Section - Charts */}
       {expenseSummary && (
@@ -1516,7 +1518,6 @@ export default function VehicleExpenses() {
       {detailState.loading ? <p role="status">{t('common.loading')}</p>
         : detailState.error ? <p role="alert">{t('expensePages.loadFailed')} <button onClick={refresh}>{t('expensePages.retry')}</button></p>
         : detailState.data && <>
-          <p className="text-xs mb-2">{t(['todo', 'reminder'].includes(activeTab) ? 'expensePages.tasksAllDates' : activeTab === 'insurance' ? 'expensePages.policyRows' : 'expensePages.recordRows')}</p>
           {detailState.data.records.length ? <div className="bg-(--color-bg-secondary) rounded-xl border border-(--color-border) overflow-x-auto">{renderTable()}</div>
             : <p>{t('expenses.noEntries')}</p>}
           {!['todo', 'reminder'].includes(activeTab) && <div className="text-sm py-2">

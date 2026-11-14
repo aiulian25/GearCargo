@@ -141,8 +141,7 @@ def create_consumable_entry(current_user):
         warranty_months = parse_optional_int(data.get('warranty_months'),
                                              'Warranty months must be a number')
         amount = parse_amount(data.get('amount') or 0)
-        currency = parse_currency_code(
-            data.get('currency') or vehicle_default_currency(current_user))
+        currency = parse_currency_code(data.get('currency') or current_user.chosen_currency)
     except InvalidFieldError as invalid:
         payload, status = invalid_field_response(invalid)
         return jsonify(payload), status
@@ -178,11 +177,6 @@ def create_consumable_entry(current_user):
         'message': 'Consumable entry created',
         'entry': entry.to_dict(current_mileage=vehicle.current_mileage),
     }), 201
-
-
-def vehicle_default_currency(user):
-    """Fall back to the user's preferred currency for new entries."""
-    return getattr(user, 'currency', None) or 'EUR'
 
 
 @consumables_bp.route('/<int:entry_id>', methods=['GET'])

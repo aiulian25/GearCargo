@@ -14,7 +14,11 @@ from sqlalchemy.orm import Session
 
 from app import db
 from app.models import (Attachment, Backup, DeletionTask, User, Vehicle)
+from app.services import backup_mirror
 from app.services.restore_transaction import activity_guard, digest, sync_dir
+
+# A deleted account's copies in the backup mirror. DeletionTask.kind holds 20 characters.
+MIRROR_ACCOUNT_TASK = 'mirror_account'
 
 
 class DeletionConflict(ValueError):
@@ -72,6 +76,16 @@ def queue_file(operation_id, storage, value, seen):
     db.session.add(DeletionTask(operation_id=operation_id, kind='file', payload={
         'storage': storage, 'path': relative, 'sha256': digest(path),
     }))
+
+
+def _queue_folder(operation_id, storage, relative, seen):
+    """Every file left in a folder that belonged to the account, whether a record names it or not."""
+    folder = safe_path(storage, relative)
+    if not folder.exists():
+        return
+    for path in folder.rglob('*'):
+        if path.is_file() or path.is_symlink():
+            queue_file(operation_id, storage, str(path), seen)
 
 
 def _table(name):
@@ -192,17 +206,18 @@ def _delete_owned_data(user_id, *, vehicle_id=None, actor_id=None):
     if account:
         for backup in Backup.query.filter(Backup.id.in_(chosen['backups'])):
             queue_file(operation_id, 'backups', backup.filepath, seen)
+        # Retention trims records and files separately, so an archive can outlive its record.
+        _queue_folder(operation_id, 'backups', str(user_id), seen)
         for value in [user.avatar, *(user.preferences or {}).get('avatar_history', [])]:
             queue_file(operation_id, 'uploads', value, seen)
         # Include superseded avatars no longer in the bounded history list.
-        avatar_folder = safe_path('uploads', f'avatars/{user_id}')
-        if avatar_folder.exists():
-            for path in avatar_folder.rglob('*'):
-                if path.is_file() or path.is_symlink():
-                    queue_file(operation_id, 'uploads', str(path), seen)
+        _queue_folder(operation_id, 'uploads', f'avatars/{user_id}', seen)
         db.session.add(DeletionTask(operation_id=operation_id, kind='redis_user', payload={
             'user_id': user_id, 'email': user.email.lower(),
         }))
+        if backup_mirror.mirror_root() is not None:
+            db.session.add(DeletionTask(operation_id=operation_id, kind=MIRROR_ACCOUNT_TASK,
+                                        payload={'user_id': user_id}))
         for name in ('blocked_ips', 'blocked_devices'):
             table = _table(name)
             # Keep the instance block effective, but erase the deleted target's
@@ -283,11 +298,24 @@ def _remove_file(session, payload):
     sync_dir(path.parent)
 
 
+def _require_account_gone(session, user_id):
+    if session.get(User, user_id) is not None:
+        raise DeletionConflict('Account identifier reused; operator review required.')
+
+
+def _remove_mirrored_account(session, payload):
+    user_id = payload['user_id']
+    _require_account_gone(session, user_id)
+    # The mirror job copies back whatever the local folder still holds, so those files go first.
+    if any(path.is_file() for path in safe_path('backups', str(user_id)).rglob('*')):
+        raise DeletionConflict('Local backups of the deleted account are still pending removal')
+    backup_mirror.remove_mirrored_account(user_id)
+
+
 def _remove_redis_user(session, payload):
     from app import redis_client
     user_id = payload['user_id']
-    if session.get(User, user_id) is not None:
-        raise DeletionConflict('Account identifier reused; operator review required.')
+    _require_account_gone(session, user_id)
     if redis_client is None:
         if current_app.config.get('REDIS_URL') not in (None, '', 'memory://'):
             raise RuntimeError('Redis unavailable')
@@ -307,8 +335,10 @@ def cleanup_pending(operation_id=None, limit=100):
     """Retry committed tasks only. Failure retains the task; missing files succeed."""
     with activity_guard(exclusive=True):
         with Session(db.engine) as session:
+            # A deleted account's mirror copies wait for its local files: see _remove_mirrored_account.
             statement = select(DeletionTask).order_by(
-                DeletionTask.attempts, DeletionTask.created_at, DeletionTask.id).limit(limit)
+                DeletionTask.attempts, DeletionTask.kind == MIRROR_ACCOUNT_TASK,
+                DeletionTask.created_at, DeletionTask.id).limit(limit)
             if operation_id:
                 statement = statement.where(DeletionTask.operation_id == operation_id)
             tasks = session.execute(statement).scalars().all()
@@ -319,6 +349,8 @@ def cleanup_pending(operation_id=None, limit=100):
                         _remove_file(session, task.payload)
                     elif task.kind == 'redis_user':
                         _remove_redis_user(session, task.payload)
+                    elif task.kind == MIRROR_ACCOUNT_TASK:
+                        _remove_mirrored_account(session, task.payload)
                     else:
                         raise DeletionConflict('Unknown cleanup task kind')
                 except Exception as exc:

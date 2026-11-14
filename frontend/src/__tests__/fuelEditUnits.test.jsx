@@ -9,7 +9,7 @@ vi.mock('../services/api', () => ({ fuelApi: { get: vi.fn(), update: vi.fn() }, 
 vi.mock('react-router-dom', () => ({ useNavigate: () => state.navigate, useParams: () => ({ id: '1' }),
   useSearchParams: () => [new URLSearchParams('edit=5')], useLocation: () => ({ state: null }) }))
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: state.user }) }))
-vi.mock('../contexts/LanguageContext', () => ({ useTranslation: () => ({ t: key => key }), useCurrency: () => ({ currency: { symbol: '£' } }) }))
+vi.mock('../contexts/LanguageContext', () => ({ useTranslation: () => ({ t: key => key }), useCurrency: () => ({ currency: { code: 'GBP', symbol: '£' }, symbolFor: code => ({ EUR: '€' })[code] || '£' }) }))
 vi.mock('../hooks/useMutationIntent', () => ({ useMutationIntent: () => state.mutation }))
 vi.mock('../hooks/useUnsavedChanges', () => ({ useUnsavedChanges: () => () => true }))
 vi.mock('../components/ReceiptUpload', () => ({ default: () => null }))
@@ -38,4 +38,13 @@ it.each([
   // callback would reload/reset this form on every render.
   expect(vehicleApi.getById).toHaveBeenCalledTimes(1)
   expect(fuelApi.get).toHaveBeenCalledTimes(1)
+})
+
+it('labels the amounts with the currency of the fill itself, not the profile currency', async () => {
+  vehicleApi.getById.mockResolvedValue({ data: { id: 1, name: 'Miles car', distance_unit: 'miles' } })
+  fuelApi.get.mockResolvedValue({ data: { id: 5, revision: 1, date: '2026-01-01', liters: 40, price_per_liter: 1.5,
+    total_price: 60, odometer: 1000, currency: 'EUR', full_tank: true } })
+  const view = render(<AddVehicleFuel />)
+  await waitFor(() => expect(view.container.textContent).toContain('addFuel.totalCost (€)'))
+  expect(view.container.textContent).not.toContain('(£)')
 })

@@ -217,6 +217,8 @@ export const vehicleApi = {
   getCostAnalytics: (id) => api.get(`/vehicles/${id}/cost-analytics`),
   getExpenseSummary: (id, filters) => api.get(`/vehicles/${id}/expenses-summary`, { params: filters }),
   getExpenseRecords: (id, filters) => api.get(`/vehicles/${id}/expense-records`, { params: filters }),
+  getCurrencyReview: () => api.get('/vehicles/currency-review'),
+  resolveCurrencyReview: (currency, action) => api.post('/vehicles/currency-review', { currency, action }),
   // F11 — 12-month forward cost forecast (recurring + predictions vs budget)
   getForecast: (id, months = 12) => api.get(`/vehicles/${id}/forecast?months=${months}`),
   // F06 — natural-language vehicle chat (single-turn, AI/Ollama)
