@@ -15,19 +15,27 @@ mkdir -p /app/volumes/attachments /app/volumes/backups/system \
 # attachments; on a settled volume this find selects nothing and returns at
 # once. Same end state — a host bind-mount arriving root-owned is still
 # fixed, because those files match the predicate.
-find /app/volumes /app/uploads \( ! -user gearcargo -o ! -group gearcargo \) \
-     -exec chown gearcargo:gearcargo {} + 2>/dev/null || true
+give_to() { # user, then the data trees that must belong to it
+    local owner="$1"; shift
+    find "$@" \( ! -user "$owner" -o ! -group "$owner" \) \
+         -exec chown "$owner:$owner" {} + 2>/dev/null || true
+}
+
+give_to gearcargo /app/volumes /app/uploads
 chown gearcargo:gearcargo /run/gearcargo 2>/dev/null || true
 
+# The whole tree, not only its top folder: files written by an image whose service user had
+# another ID are otherwise unreadable. 1.10.0 shipped postgres as 997 instead of 101 and could
+# not open databases created by earlier versions.
 if [ "$EMBEDDED_DB" = "true" ]; then
     mkdir -p "$PGDATA"
-    chown postgres:postgres "$PGDATA" 2>/dev/null || true
+    give_to postgres "$PGDATA"
     chmod 700 "$PGDATA" 2>/dev/null || true
 fi
 
 if [ "$EMBEDDED_REDIS" = "true" ]; then
     mkdir -p /data
-    chown redis:redis /data 2>/dev/null || true
+    give_to redis /data
 fi
 
 echo "[init-perms] Done."

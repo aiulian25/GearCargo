@@ -2,7 +2,8 @@ import toast from 'react-hot-toast'
 
 // The status region under the odometer input; both fuel forms point aria-describedby at it.
 export const ODOMETER_HINT_ID = 'odometer-hint'
-const MEASURED_STATUS = 'measured'
+// A measured fill, a partial fill and the first full tank are all normal: nothing to explain.
+const UNREMARKABLE_STATUSES = new Set(['measured', 'partial', 'first_full_fill'])
 // Three sentences, still on screen after the form has navigated away.
 const FUEL_WARNING_TOAST_DURATION_MS = 15000
 const FUEL_WARNING_TOAST_ICON = '⚠️'
@@ -23,7 +24,7 @@ export function belowLatestReadingHint(value, latestReading, unit, t) {
 
 export function measurementReason(entry, t) {
   const status = entry.measurement_status
-  if (!status || status === MEASURED_STATUS) return null
+  if (!status || UNREMARKABLE_STATUSES.has(status)) return null
   return t(`fuel.measurementStatus.${status}`)
 }
 

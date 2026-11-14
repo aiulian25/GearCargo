@@ -101,15 +101,16 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
-      - name: Build and push
+      # Built and tested before anything is pushed: 1.10.0 was published although it
+      # could not open the database of an existing installation.
+      - name: Build the candidate image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          load: true
+          tags: gearcargo:candidate
           # Build metadata baked into the image → surfaced at /api/app-version so
           # the PWA can detect newer builds (feature vs weekly security rebuild).
           build-args: |
@@ -123,6 +124,25 @@ jobs:
           # Push/tag/dispatch builds keep the cache for speed.
           no-cache: ${{ github.event_name == 'schedule' }}
           cache-from: type=gha
+
+      - name: Require the candidate to start on the previous release's data
+        run: .github/scripts/upgrade-check.sh "ghcr.io/${{ github.repository_owner }}/gearcargo:latest" gearcargo:candidate
+
+      # Same inputs as the candidate, with no `no-cache` and no imported cache: every layer
+      # comes from the build above, so what is pushed is the image that passed the check.
+      - name: Push the tested image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            BUILD_DATE=${{ steps.buildmeta.outputs.date }}
+            APP_VERSION=${{ steps.buildmeta.outputs.version }}
           # Still write the (freshly patched) layers back so the next push build
           # starts from a patched base.
           cache-to: type=gha,mode=max

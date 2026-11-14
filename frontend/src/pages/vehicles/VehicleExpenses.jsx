@@ -222,8 +222,8 @@ const BarChart = ({ data, categories, title, onMonthClick, selectedMonth, hintTe
 
   return (
     <section className="h-full flex flex-col" aria-labelledby={`${chartId}-title`}>
-      <h3 id={`${chartId}-title`} className="text-(--color-text-primary) text-sm font-medium mb-1 text-center">{title}</h3>
-      <p id={`${chartId}-hint`} className="text-xs text-center text-(--color-text-secondary) mb-3">{hintText}</p>
+      <h3 id={`${chartId}-title`} className="text-(--color-text-primary) text-sm font-medium mb-3 text-center">{title}</h3>
+      <p id={`${chartId}-hint`} className="sr-only">{hintText}</p>
 
       {/* Keep each month a usable touch target; focus scrolls it into view on narrow screens. */}
       <div className="overflow-x-auto px-1 py-2">
@@ -264,7 +264,7 @@ const BarChart = ({ data, categories, title, onMonthClick, selectedMonth, hintTe
           focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text-primary)">
         {t('expenses.fullYear')}
       </button>
-      <p role="status" className="text-xs text-(--color-text-secondary) mt-1">{selection}</p>
+      <p role="status" className="sr-only">{selection}</p>
 
       <details className="mt-3 text-sm text-(--color-text-primary)">
         <summary className="min-h-11 py-3 px-1 cursor-pointer rounded-sm

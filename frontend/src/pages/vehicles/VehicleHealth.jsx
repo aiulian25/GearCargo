@@ -754,12 +754,6 @@ export default function VehicleHealth() {
                 </div>
               </div>
             ))}
-            
-            {Object.keys(health.components || {}).length > 6 && (
-              <p className="text-xs text-(--color-text-secondary) text-center pt-2">
-                {t('vehicleHealth.showingTopComponents') || 'Showing top priority components'}
-              </p>
-            )}
           </div>
         </ExpandableCard>
         

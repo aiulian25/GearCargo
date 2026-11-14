@@ -61,11 +61,6 @@ const Icons = {
       <path d="M16 8H8M16 12H8M10 16H8"/>
     </svg>
   ),
-  trendUp: (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>
-    </svg>
-  ),
 }
 
 // Prediction types configuration
@@ -421,21 +416,6 @@ export default function VehicleAlerts() {
             })}
           </div>
         )}
-        
-        {/* Info card */}
-        <div className="bg-(--color-bg-secondary) rounded-xl p-4 mt-6">
-          <div className="flex items-start gap-3">
-            <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500">
-              {Icons.trendUp}
-            </div>
-            <div>
-              <h3 className="font-medium mb-1">{t('alerts.howItWorks') || 'How It Works'}</h3>
-              <p className="text-sm text-(--color-text-secondary)">
-                {t('alerts.howItWorksDesc') || 'Predictions are based on your vehicle\'s mileage, service history, and typical maintenance intervals. Keep your records updated for accurate predictions.'}
-              </p>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   )

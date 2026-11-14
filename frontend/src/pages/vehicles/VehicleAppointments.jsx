@@ -142,7 +142,6 @@ export default function VehicleAppointments() {
     <Link className="underline text-sm" to={`/vehicles/${id}/alerts`}>{t('common.back')}</Link>
     <div className="flex justify-between gap-3"><div><h1 className="text-xl font-semibold">{t('appointments.heading')}</h1><p className="text-sm text-(--color-text-muted)">{data?.vehicle.name}</p></div>
       {data && !data.vehicle.archived && !form && <button className="btn btn-primary" onClick={() => setForm({})}>{t('appointments.plan')}</button>}</div>
-    <p className="text-sm text-(--color-text-muted)">{t('appointments.manualHint')}</p>
     {!form && <button className="btn btn-secondary btn-sm" disabled={loading} onClick={load}>{t('appointments.refresh')}</button>}
     {loading ? <SkeletonList rows={3} /> : error ? <p role="alert">{t('appointments.loadError')}</p> : <>
       {data.vehicle.archived && <p>{t('appointments.archived')}</p>}

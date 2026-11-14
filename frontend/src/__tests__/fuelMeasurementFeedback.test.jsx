@@ -157,12 +157,12 @@ it('shows each fill’s consumption, or why it has none', async () => {
   expect(await screen.findByText('6.5 L/100km')).toBeTruthy()
   expect(screen.getByText(new RegExp(`${(51000).toLocaleString()} km`))).toBeTruthy()
   expect(screen.getByText(english('fuel.measurementStatus.odometer_regression'))).toBeTruthy()
-  expect(screen.getByText(english('fuel.measurementStatus.partial'))).toBeTruthy()
+  expect(screen.queryByText(/Partial fill/)).toBeNull()
 })
 
 it('names every measurement outcome and warning in all three languages', () => {
-  expect(Object.keys(translations.en.fuel.measurementStatus).sort()).toEqual(['distance_unit_unknown', 'first_full_fill',
-    'odometer_invalid', 'odometer_missing', 'odometer_regression', 'partial', 'volume_invalid'])
+  expect(Object.keys(translations.en.fuel.measurementStatus).sort()).toEqual(['distance_unit_unknown',
+    'odometer_invalid', 'odometer_missing', 'odometer_regression', 'volume_invalid'])
   for (const language of ['en', 'ro', 'es']) {
     for (const group of ['measurementStatus', 'warningTypes']) {
       expect(Object.keys(translations[language].fuel[group]).sort()).toEqual(Object.keys(translations.en.fuel[group]).sort())

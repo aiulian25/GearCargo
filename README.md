@@ -1138,16 +1138,19 @@ docker compose exec redis redis-cli -a \$REDIS_PASSWORD ping
 
 ### Permission errors on volumes
 
-The container re-owns its data directories on every start, before any service drops
-privileges, so restart it:
+The container re-owns everything in its data directories on every start, before any service
+drops privileges, so restart it:
 
 ```bash
 docker compose restart gearcargo
 ```
 
-Do not `chown -R` `./volumes/pgdata` or `./volumes/redis` to your own user: PostgreSQL and
-Redis run as their own users inside the container, and only those top-level directories are
-re-owned at start.
+`./volumes/pgdata` and `./volumes/redis` belong to the PostgreSQL and Redis users inside the
+container (IDs 101 and 100), not to your own user. A restart puts that right as well.
+
+Version 1.10.0 could not start on a database created by an earlier version: the log repeats
+`could not open configuration file ... postgresql.conf: Permission denied`. Update to 1.10.1 or
+later; no other step is needed and no data is lost.
 
 ### Sign-in fails with "Login failed" or "Request verification failed"
 

@@ -57,6 +57,13 @@ WORKDIR /app
 ARG TARGETARCH
 ARG S6_OVERLAY_VERSION=3.2.0.2
 
+# IDs of the two service users. The database and cache files on the host volumes belong to
+# these numbers, so they are part of the upgrade contract: every release must keep them.
+ARG POSTGRES_UID=101
+ARG POSTGRES_GID=104
+ARG REDIS_UID=100
+ARG REDIS_GID=102
+
 # Build metadata (same values passed to the frontend stage) — surfaced by the
 # backend at /api/app-version so the running PWA can detect a newer build and
 # distinguish a feature update (git_sha changed) from a weekly OS-security
@@ -69,6 +76,15 @@ ARG APP_VERSION=0.0.0
 # System packages: PostgreSQL 16 (PGDG), Redis, cron, OCR, s6-overlay.
 # ------------------------------------------------------------
 RUN set -eux; \
+    # Created before the packages, which then keep them. Left to the packages, the IDs follow
+    # the package version: 1.10.0 was built with postgres as 997 instead of 101 and could not
+    # read databases written by earlier releases.
+    groupadd --system --gid "$REDIS_GID" redis; \
+    useradd --system --uid "$REDIS_UID" --gid redis --home-dir /var/lib/redis --no-create-home \
+            --shell /usr/sbin/nologin redis; \
+    groupadd --system --gid "$POSTGRES_GID" postgres; \
+    useradd --system --uid "$POSTGRES_UID" --gid postgres --home-dir /var/lib/postgresql --no-create-home \
+            --shell /bin/bash postgres; \
     apt-get update; \
     mkdir -p /app; \
     apt-get -s upgrade 2>/dev/null | awk '/^Inst /{v=$3; gsub(/[()[\]]/,"",v); print $2" "v}' > /app/patched-packages.txt || true; \
@@ -147,9 +163,12 @@ COPY docker/entrypoint.sh /usr/local/bin/gearcargo-entrypoint.sh
 
 # ------------------------------------------------------------
 # Users, directories, permissions
-# (postgres & redis users are created by their apt packages)
+# (postgres & redis users are created above, with fixed IDs)
 # ------------------------------------------------------------
 RUN set -eux; \
+    # The build stops here rather than publish an image that cannot read existing data.
+    test "$(id -u postgres):$(id -g postgres)" = "$POSTGRES_UID:$POSTGRES_GID"; \
+    test "$(id -u redis):$(id -g redis)" = "$REDIS_UID:$REDIS_GID"; \
     useradd -m -u 1000 gearcargo; \
     mkdir -p /app/volumes/attachments /app/volumes/backups/system \
              /app/uploads /app/volumes/logs \

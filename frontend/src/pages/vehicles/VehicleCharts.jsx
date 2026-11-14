@@ -436,20 +436,16 @@ export default function VehicleCharts() {
           const cpdPoints = analytics.series.map((s) => ({ label: monthShort(s.month), value: s.cost_per_distance }))
           return (
             <>
-            {(analytics.converted === false || analytics.fx_applied) && (
+            {analytics.converted === false && (
               <p className="text-2xs text-(--color-text-muted) flex items-start gap-1.5">
                 <span aria-hidden="true">≈</span>
-                <span>
-                  {analytics.converted === false
-                    ? t('financial.partial')
-                    : (t('analytics.approxConverted') || 'Converted from mixed currencies at today’s rates.')}
-                </span>
+                <span>{t('financial.partial')}</span>
               </p>
             )}
             <div className="grid md:grid-cols-2 gap-4">
               {/* Cost per distance */}
               <div className="bg-(--color-bg-secondary) rounded-2xl p-6">
-                <div className="flex items-start justify-between gap-3 mb-1">
+                <div className="flex items-start justify-between gap-3 mb-4">
                   <h2 className="text-sm font-medium text-(--color-text-secondary)">
                     {(t('charts.costPerDistance') || 'Cost per {unit}').replace('{unit}', unit)}
                   </h2>
@@ -460,9 +456,6 @@ export default function VehicleCharts() {
                     </span>
                   )}
                 </div>
-                <p className="text-2xs text-(--color-text-muted) mb-4">
-                  {t('charts.costPerDistanceDesc') || 'Lifetime average and recent monthly trend'}
-                </p>
                 {hasCpd ? (
                   <LineChart
                     points={cpdPoints}
@@ -479,13 +472,9 @@ export default function VehicleCharts() {
               {/* 12-month forecast */}
               {analytics.forecast && (
                 <div className="bg-(--color-bg-secondary) rounded-2xl p-6">
-                  <h2 className="text-sm font-medium text-(--color-text-secondary) mb-1">
+                  <h2 className="text-sm font-medium text-(--color-text-secondary) mb-4">
                     {t('charts.forecastTitle') || 'Predicted next 12 months'}
                   </h2>
-                  <p className="text-2xs text-(--color-text-muted) mb-4">
-                    {(t('charts.forecastDesc') || 'Estimated from {n} months of history')
-                      .replace('{n}', String(analytics.forecast.months_of_history))}
-                  </p>
                   <div className="flex items-end justify-between gap-3 mb-4 flex-wrap">
                     <div>
                       <p className="text-3xl font-bold">{formatAnalyticsAmount(analytics.forecast.projected_next_12_total)}</p>
@@ -501,9 +490,6 @@ export default function VehicleCharts() {
                     ariaLabel={t('charts.forecastTitle') || 'Predicted next 12 months'}
                     color="#22c55e"
                   />
-                  <p className="text-2xs text-(--color-text-muted) mt-3">
-                    {t('charts.forecastDisclaimer') || 'Estimate based on past spending — actual costs may vary.'}
-                  </p>
                 </div>
               )}
             </div>
@@ -576,24 +562,17 @@ export default function VehicleCharts() {
           const overCount = forecast.buckets.filter((b) => b.over_budget).length
           return (
             <div className="bg-(--color-bg-secondary) rounded-2xl p-6">
-              <div className="flex items-start justify-between gap-3 mb-1">
+              <div className="flex items-start justify-between gap-3 mb-4">
                 <h2 className="text-sm font-medium text-(--color-text-secondary)">
                   {t('forecast.title') || 'Projected costs — next 12 months'}
                 </h2>
                 <span className="text-lg font-bold whitespace-nowrap shrink-0">{formatForecastAmount(total)}</span>
               </div>
-              <p className="text-2xs text-(--color-text-muted) mb-4">
-                {t('forecast.projected') || 'Recurring taxes, insurance, permits and predicted maintenance'}
-              </p>
 
-              {(forecast.converted === false || forecast.fx_applied) && (
+              {forecast.converted === false && (
                 <p className="text-2xs text-(--color-text-muted) flex items-start gap-1.5 mb-3">
                   <span aria-hidden="true">≈</span>
-                  <span>
-                    {forecast.converted === false
-                      ? t('financial.partial')
-                      : (t('analytics.approxConverted') || 'Converted from mixed currencies at today’s rates.')}
-                  </span>
+                  <span>{t('financial.partial')}</span>
                 </p>
               )}
 

@@ -482,14 +482,12 @@ export const translations = {
     
     // Cost-analytics currency normalization (F1)
     analytics: {
-      approxConverted: 'Converted from mixed currencies at today’s rates.',
       rateUnavailable: 'Some amounts could not be converted — exchange rate unavailable.',
     },
 
     // 12-month cost forecast (F11)
     forecast: {
       title: 'Projected costs — next 12 months',
-      projected: 'Recurring taxes, insurance, permits and predicted maintenance',
       overBudget: 'Over budget',
       budgetLine: 'Monthly budget',
     },
@@ -600,12 +598,9 @@ export const translations = {
       byCategory: 'By Category',
       monthlyExpenses: 'Monthly Expenses',
       costPerDistance: 'Cost per {unit}',
-      costPerDistanceDesc: 'Lifetime average and recent monthly trend',
       costPerDistanceNoOdo: 'Add odometer readings to your entries to see cost per distance over time.',
       forecastTitle: 'Predicted next 12 months',
-      forecastDesc: 'Estimated from {n} months of history',
       forecastAvg: '~{v}/month',
-      forecastDisclaimer: 'Estimate based on past spending — actual costs may vary.',
       trendUp: 'Rising',
       trendDown: 'Falling',
       trendFlat: 'Stable',
@@ -636,8 +631,6 @@ export const translations = {
       remaining: 'remaining',
       overdue: 'Overdue!',
       progress: 'Progress',
-      howItWorks: 'How It Works',
-      howItWorksDesc: 'Predictions are based on your vehicle\'s mileage, service history, and typical maintenance intervals. Keep your records updated for accurate predictions.',
       serviceDue: 'Service Due',
       scheduledService: 'Scheduled service',
       oilChange: 'Oil Change',
@@ -854,7 +847,6 @@ export const translations = {
       perYear: '/year',
       fuelEfficiencyTips: 'Fuel Efficiency Tips',
       componentStatus: 'Component Status',
-      showingTopComponents: 'Showing top priority components',
       maintenanceStatus: 'Maintenance Status',
       totalServices: 'Total Services',
       totalRepairs: 'Total Repairs',
@@ -1667,8 +1659,6 @@ export const translations = {
       anomalyAnalyzing: 'Analysing fill-up for anomalies…',
       // Why a fill has no consumption figure (GC-105); keys are the API's measurement_status values.
       measurementStatus: {
-        partial: 'Partial fill — consumption is only measured between two full tanks',
-        first_full_fill: 'Starting point — the next full tank is measured from this reading',
         odometer_regression: "Odometer is not above the previous full tank, so consumption can't be measured. The next full tank will be measured from this reading — edit it if it was a typo.",
         odometer_missing: 'No odometer reading — consumption is only measured between two full tanks with readings',
         odometer_invalid: "Odometer reading is invalid — consumption can't be measured",
@@ -3745,14 +3735,12 @@ export const translations = {
     
     // Cost-analytics currency normalization (F1)
     analytics: {
-      approxConverted: 'Convertit din monede diferite la cursul de azi.',
       rateUnavailable: 'Unele sume nu au putut fi convertite — curs valutar indisponibil.',
     },
 
     // Prognoză de costuri pe 12 luni (F11)
     forecast: {
       title: 'Costuri estimate — următoarele 12 luni',
-      projected: 'Taxe recurente, asigurări, permise și mentenanță estimată',
       overBudget: 'Peste buget',
       budgetLine: 'Buget lunar',
     },
@@ -3863,12 +3851,9 @@ export const translations = {
       byCategory: 'Pe Categorii',
       monthlyExpenses: 'Cheltuieli Lunare',
       costPerDistance: 'Cost pe {unit}',
-      costPerDistanceDesc: 'Media pe durata de viață și tendința lunară recentă',
       costPerDistanceNoOdo: 'Adaugă citiri de kilometraj la intrările tale pentru a vedea costul pe distanță în timp.',
       forecastTitle: 'Cost estimat pentru următoarele 12 luni',
-      forecastDesc: 'Estimat pe baza a {n} luni de istoric',
       forecastAvg: '~{v}/lună',
-      forecastDisclaimer: 'Estimare bazată pe cheltuielile anterioare — costurile reale pot varia.',
       trendUp: 'În creștere',
       trendDown: 'În scădere',
       trendFlat: 'Stabil',
@@ -3899,8 +3884,6 @@ export const translations = {
       remaining: 'rămași',
       overdue: 'Întârziat!',
       progress: 'Progres',
-      howItWorks: 'Cum Funcționează',
-      howItWorksDesc: 'Predicțiile se bazează pe kilometrajul vehiculului, istoricul de service și intervalele tipice de întreținere. Păstrați înregistrările actualizate pentru predicții exacte.',
       serviceDue: 'Service Necesar',
       scheduledService: 'Service programat',
       oilChange: 'Schimb Ulei',
@@ -4117,7 +4100,6 @@ export const translations = {
       perYear: '/an',
       fuelEfficiencyTips: 'Sfaturi Eficiență Combustibil',
       componentStatus: 'Stare Componente',
-      showingTopComponents: 'Se afișează componentele prioritare',
       maintenanceStatus: 'Stare Întreținere',
       totalServices: 'Total Service-uri',
       totalRepairs: 'Total Reparații',
@@ -4929,8 +4911,6 @@ export const translations = {
       anomalyDataQuality: 'Problemă Calitate Date',
       anomalyAnalyzing: 'Se analizează alimentarea…',
       measurementStatus: {
-        partial: 'Alimentare parțială — consumul se măsoară doar între două plinuri',
-        first_full_fill: 'Punct de pornire — următorul plin se măsoară de la acest kilometraj',
         odometer_regression: 'Kilometrajul nu depășește valoarea de la plinul anterior, deci consumul nu poate fi măsurat. Următorul plin va fi măsurat de la această valoare — corecteaz-o dacă a fost o greșeală de tastare.',
         odometer_missing: 'Fără kilometraj — consumul se măsoară doar între două plinuri cu kilometraj',
         odometer_invalid: 'Kilometrajul este invalid — consumul nu poate fi măsurat',
@@ -7008,14 +6988,12 @@ export const translations = {
     
     // Cost-analytics currency normalization (F1)
     analytics: {
-      approxConverted: 'Convertido de monedas mixtas al tipo de cambio de hoy.',
       rateUnavailable: 'Algunos importes no se pudieron convertir — tipo de cambio no disponible.',
     },
 
     // Previsión de costes a 12 meses (F11)
     forecast: {
       title: 'Costes previstos — próximos 12 meses',
-      projected: 'Impuestos recurrentes, seguros, permisos y mantenimiento previsto',
       overBudget: 'Sobre presupuesto',
       budgetLine: 'Presupuesto mensual',
     },
@@ -7126,12 +7104,9 @@ export const translations = {
       byCategory: 'Por Categoría',
       monthlyExpenses: 'Gastos Mensuales',
       costPerDistance: 'Coste por {unit}',
-      costPerDistanceDesc: 'Promedio histórico y tendencia mensual reciente',
       costPerDistanceNoOdo: 'Añade lecturas de odómetro a tus entradas para ver el coste por distancia a lo largo del tiempo.',
       forecastTitle: 'Coste previsto para los próximos 12 meses',
-      forecastDesc: 'Estimado a partir de {n} meses de historial',
       forecastAvg: '~{v}/mes',
-      forecastDisclaimer: 'Estimación basada en gastos anteriores — los costes reales pueden variar.',
       trendUp: 'Al alza',
       trendDown: 'A la baja',
       trendFlat: 'Estable',
@@ -7162,8 +7137,6 @@ export const translations = {
       remaining: 'restantes',
       overdue: '¡Vencido!',
       progress: 'Progreso',
-      howItWorks: 'Cómo Funciona',
-      howItWorksDesc: 'Las predicciones se basan en el kilometraje de su vehículo, el historial de servicio y los intervalos típicos de mantenimiento. Mantenga sus registros actualizados para predicciones precisas.',
       serviceDue: 'Servicio Pendiente',
       scheduledService: 'Servicio programado',
       oilChange: 'Cambio de Aceite',
@@ -7380,7 +7353,6 @@ export const translations = {
       perYear: '/año',
       fuelEfficiencyTips: 'Consejos de Eficiencia de Combustible',
       componentStatus: 'Estado de Componentes',
-      showingTopComponents: 'Mostrando componentes prioritarios',
       maintenanceStatus: 'Estado de Mantenimiento',
       totalServices: 'Total de Servicios',
       totalRepairs: 'Total de Reparaciones',
@@ -8192,8 +8164,6 @@ export const translations = {
       anomalyDataQuality: 'Problema de Calidad de Datos',
       anomalyAnalyzing: 'Analizando carga de combustible…',
       measurementStatus: {
-        partial: 'Carga parcial: el consumo solo se mide entre dos tanques llenos',
-        first_full_fill: 'Punto de partida: el siguiente tanque lleno se mide desde esta lectura',
         odometer_regression: 'El odómetro no supera la lectura del tanque lleno anterior, así que no se puede medir el consumo. El siguiente tanque lleno se medirá desde esta lectura: corrígela si fue un error de tecleo.',
         odometer_missing: 'Sin lectura del odómetro: el consumo solo se mide entre dos tanques llenos con lectura',
         odometer_invalid: 'La lectura del odómetro no es válida: no se puede medir el consumo',
