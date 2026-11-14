@@ -1,8 +1,18 @@
 {
-  "version": "1.10.0",
+  "version": "1.10.1",
   "date": "2026-11-14",
   "notes": {
     "en": [
+      {
+        "type": "fix",
+        "title": "Updating no longer stops the app",
+        "desc": "Version 1.10.0 could not start on an installation that already had data, because the database would not open. This version starts normally and repairs affected installations by itself. No data was lost."
+      },
+      {
+        "type": "fix",
+        "title": "No more standing notes on the vehicle screens",
+        "desc": "Gone: the filter hint and the \"Showing the full year\" line on Expenses, the conversion, history and forecast remarks on Charts, the \"How it works\" box on Prediction Alerts, and the remarks on ordinary fuel rows. Text now appears only when something needs your attention."
+      },
       {
         "type": "new",
         "title": "Amounts in the currency you chose",
@@ -41,6 +51,16 @@
     ],
     "ro": [
       {
+        "type": "fix",
+        "title": "Actualizarea nu mai oprește aplicația",
+        "desc": "Versiunea 1.10.0 nu putea porni pe o instalare care avea deja date, pentru că baza de date nu se deschidea. Această versiune pornește normal și repară singură instalările afectate. Nu s-au pierdut date."
+      },
+      {
+        "type": "fix",
+        "title": "Fără note permanente pe ecranele vehiculului",
+        "desc": "Au dispărut: indicația de filtrare și rândul „Se afișează tot anul” din Cheltuieli, observațiile despre conversie, istoric și estimări din Grafice, caseta „Cum funcționează” din Alerte de predicție și observațiile de pe rândurile obișnuite de combustibil. Textul apare acum doar când ceva are nevoie de atenția ta."
+      },
+      {
         "type": "new",
         "title": "Sume în moneda aleasă de tine",
         "desc": "Sumele folosesc acum întotdeauna moneda aleasă în Profil → Preferințe. Locația și limba aplicației nu o mai schimbă. Dacă înregistrări mai vechi poartă încă o etichetă în euro sau dolari pe care nu ar trebui să o aibă, pagina Cheltuieli îți propune să le corectezi dintr-un singur pas; sumele în sine nu se schimbă."
@@ -77,6 +97,16 @@
       }
     ],
     "es": [
+      {
+        "type": "fix",
+        "title": "Actualizar ya no detiene la aplicación",
+        "desc": "La versión 1.10.0 no podía arrancar en una instalación que ya tenía datos, porque la base de datos no se abría. Esta versión arranca con normalidad y repara por sí sola las instalaciones afectadas. No se ha perdido ningún dato."
+      },
+      {
+        "type": "fix",
+        "title": "Sin notas permanentes en las pantallas del vehículo",
+        "desc": "Han desaparecido: la indicación de filtro y la línea «Mostrando todo el año» en Gastos, las observaciones sobre conversión, historial y previsiones en Gráficos, el cuadro «Cómo funciona» en Alertas de predicción y las observaciones en las filas normales de combustible. Ahora el texto solo aparece cuando algo necesita tu atención."
+      },
       {
         "type": "new",
         "title": "Importes en la moneda que elegiste",
