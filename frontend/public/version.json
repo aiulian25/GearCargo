@@ -1,8 +1,18 @@
 {
-  "version": "1.10.1",
-  "date": "2026-11-14",
+  "version": "1.10.2",
+  "date": "2026-11-18",
   "notes": {
     "en": [
+      {
+        "type": "fix",
+        "title": "Backup destinations can be removed",
+        "desc": "Remove now works on every external backup destination, including the only one. Saving with no destination left turns external backup off and deletes the stored address and credentials."
+      },
+      {
+        "type": "new",
+        "title": "How to set up the second copy, on the Backup screen",
+        "desc": "Administrators find the steps for the second copy of every backup under Settings → Data & Backup, until it is set up. The address field of a destination now shows the short form that works: the server address alone."
+      },
       {
         "type": "fix",
         "title": "Updating no longer stops the app",
@@ -52,6 +62,16 @@
     "ro": [
       {
         "type": "fix",
+        "title": "Destinațiile de backup pot fi eliminate",
+        "desc": "Butonul Elimină funcționează acum pentru orice destinație externă de backup, inclusiv pentru singura rămasă. Dacă salvezi fără nicio destinație, backupul extern se oprește, iar adresa și datele de autentificare stocate sunt șterse."
+      },
+      {
+        "type": "new",
+        "title": "Cum configurezi a doua copie, direct în ecranul de backup",
+        "desc": "Administratorii găsesc pașii pentru a doua copie a fiecărui backup în Setări → Date și Backup, până când este configurată. Câmpul de adresă al unei destinații arată acum forma scurtă care funcționează: doar adresa serverului."
+      },
+      {
+        "type": "fix",
         "title": "Actualizarea nu mai oprește aplicația",
         "desc": "Versiunea 1.10.0 nu putea porni pe o instalare care avea deja date, pentru că baza de date nu se deschidea. Această versiune pornește normal și repară singură instalările afectate. Nu s-au pierdut date."
       },
@@ -97,6 +117,16 @@
       }
     ],
     "es": [
+      {
+        "type": "fix",
+        "title": "Los destinos de copia se pueden eliminar",
+        "desc": "Eliminar funciona ahora con cualquier destino externo de copia de seguridad, incluido el único. Si guardas sin ningún destino, la copia externa se desactiva y se borran la dirección y las credenciales guardadas."
+      },
+      {
+        "type": "new",
+        "title": "Cómo configurar la segunda copia, en la pantalla de copias",
+        "desc": "Los administradores encuentran los pasos para la segunda copia de cada copia de seguridad en Ajustes → Datos y Copia de Seguridad, hasta que esté configurada. El campo de dirección de un destino muestra ahora la forma corta que funciona: solo la dirección del servidor."
+      },
       {
         "type": "fix",
         "title": "Actualizar ya no detiene la aplicación",
