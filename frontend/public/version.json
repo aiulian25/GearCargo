@@ -1,176 +1,101 @@
 {
-  "version": "1.10.2",
+  "version": "1.11.0",
   "date": "2026-11-18",
   "notes": {
     "en": [
       {
-        "type": "fix",
-        "title": "Backup destinations can be removed",
-        "desc": "Remove now works on every external backup destination, including the only one. Saving with no destination left turns external backup off and deletes the stored address and credentials."
+        "type": "new",
+        "title": "The AI assistant and AI predictions are removed",
+        "desc": "GearCargo no longer connects to an AI model (Ollama). Gone: the assistant chat, AI predictions and fuel anomaly alerts, AI reminder suggestions, the \"Extract data\" step on receipts and the AI page in the admin panel."
       },
       {
         "type": "new",
-        "title": "How to set up the second copy, on the Backup screen",
-        "desc": "Administrators find the steps for the second copy of every backup under Settings → Data & Backup, until it is set up. The address field of a destination now shows the short form that works: the server address alone."
-      },
-      {
-        "type": "fix",
-        "title": "Updating no longer stops the app",
-        "desc": "Version 1.10.0 could not start on an installation that already had data, because the database would not open. This version starts normally and repairs affected installations by itself. No data was lost."
-      },
-      {
-        "type": "fix",
-        "title": "No more standing notes on the vehicle screens",
-        "desc": "Gone: the filter hint and the \"Showing the full year\" line on Expenses, the conversion, history and forecast remarks on Charts, the \"How it works\" box on Prediction Alerts, and the remarks on ordinary fuel rows. Text now appears only when something needs your attention."
+        "title": "\"Smart\" is now \"Checklists\"",
+        "desc": "The tab keeps the seasonal checklists and the alerts worked out from your own records (service, insurance, tax, fuel use). Receipt text recognition and document search work as before."
       },
       {
         "type": "new",
-        "title": "Amounts in the currency you chose",
-        "desc": "Amounts now always use the currency chosen in Profile → Preferences. Your location and the app language no longer change it. If older records still carry a euro or dollar label they should not have, the Expenses page offers to correct them in one step; the amounts themselves do not change."
+        "title": "What happens to existing data",
+        "desc": "On update, saved AI predictions and their notifications are deleted. Workshop tasks that were created from a prediction stay as ordinary tasks. Everything else is untouched. Backups made by earlier versions can still be restored."
+      },
+      {
+        "type": "new",
+        "title": "For administrators",
+        "desc": "The OLLAMA_…, CHAT_… and AI_CACHE_TTL settings are no longer read; you can delete them from your .env file. Leaving them in place does no harm."
       },
       {
         "type": "fix",
-        "title": "Fewer notes on your screens",
-        "desc": "The explanations under totals and above the expense tables are gone. A message now appears only when something needs your attention, for example when a total leaves amounts out."
-      },
-      {
-        "type": "new",
-        "title": "A second copy of every backup",
-        "desc": "If you manage this server, you can mount a second disk or a NAS share and name it in BACKUP_MIRROR_FOLDER. Every finished backup, personal and system, is copied there and checked, and Settings → Backup shows whether the copy is up to date. No address or password is stored in the app."
-      },
-      {
-        "type": "new",
-        "title": "Restore a full backup from a file on the server",
-        "desc": "Administrators can restore a system archive that is already on the server with the command flask restore-system-archive, without uploading it through the browser. This removes the upload size limit for large archives."
-      },
-      {
-        "type": "new",
-        "title": "Hear about a backup copy that keeps failing",
-        "desc": "A scheduled backup that cannot reach its external destination now sends you a notification once its retries run out. Administrators get one when the second copy has been failing for a day."
-      },
-      {
-        "type": "security",
-        "title": "Deleting an account removes all its backups",
-        "desc": "Deleting an account now removes every backup file of that account from the server, including older files that no longer had a record, and its copies on the second storage."
+        "title": "The update check works when the app starts",
+        "desc": "The check for a new version was refused at start and only ran half an hour later. It now runs as soon as you are signed in."
       },
       {
         "type": "fix",
-        "title": "Records without a currency",
-        "desc": "An amount that has no currency is no longer counted as euros in the fuel statistics and the report e-mails. It is left out, and the e-mail says when its totals are approximate."
+        "title": "First sign-in on a new device no longer needs a reload",
+        "desc": "If you signed in before the app had finished installing itself, screens could not load their data until you reloaded the page. Fixed."
       }
     ],
     "ro": [
       {
-        "type": "fix",
-        "title": "Destinațiile de backup pot fi eliminate",
-        "desc": "Butonul Elimină funcționează acum pentru orice destinație externă de backup, inclusiv pentru singura rămasă. Dacă salvezi fără nicio destinație, backupul extern se oprește, iar adresa și datele de autentificare stocate sunt șterse."
+        "type": "new",
+        "title": "Asistentul AI și predicțiile AI au fost eliminate",
+        "desc": "GearCargo nu se mai conectează la un model AI (Ollama). Au dispărut: conversația cu asistentul, predicțiile AI și alertele de consum neobișnuit, sugestiile AI pentru memento-uri, pasul „Extrage Date” de la chitanțe și pagina AI din panoul de administrare."
       },
       {
         "type": "new",
-        "title": "Cum configurezi a doua copie, direct în ecranul de backup",
-        "desc": "Administratorii găsesc pașii pentru a doua copie a fiecărui backup în Setări → Date și Backup, până când este configurată. Câmpul de adresă al unei destinații arată acum forma scurtă care funcționează: doar adresa serverului."
-      },
-      {
-        "type": "fix",
-        "title": "Actualizarea nu mai oprește aplicația",
-        "desc": "Versiunea 1.10.0 nu putea porni pe o instalare care avea deja date, pentru că baza de date nu se deschidea. Această versiune pornește normal și repară singură instalările afectate. Nu s-au pierdut date."
-      },
-      {
-        "type": "fix",
-        "title": "Fără note permanente pe ecranele vehiculului",
-        "desc": "Au dispărut: indicația de filtrare și rândul „Se afișează tot anul” din Cheltuieli, observațiile despre conversie, istoric și estimări din Grafice, caseta „Cum funcționează” din Alerte de predicție și observațiile de pe rândurile obișnuite de combustibil. Textul apare acum doar când ceva are nevoie de atenția ta."
+        "title": "„Smart” se numește acum „Liste”",
+        "desc": "Fila păstrează listele de verificare sezoniere și alertele calculate din propriile înregistrări (service, asigurare, taxe, consum). Recunoașterea textului de pe chitanțe și căutarea în documente funcționează ca înainte."
       },
       {
         "type": "new",
-        "title": "Sume în moneda aleasă de tine",
-        "desc": "Sumele folosesc acum întotdeauna moneda aleasă în Profil → Preferințe. Locația și limba aplicației nu o mai schimbă. Dacă înregistrări mai vechi poartă încă o etichetă în euro sau dolari pe care nu ar trebui să o aibă, pagina Cheltuieli îți propune să le corectezi dintr-un singur pas; sumele în sine nu se schimbă."
+        "title": "Ce se întâmplă cu datele existente",
+        "desc": "La actualizare, predicțiile AI salvate și notificările lor sunt șterse. Sarcinile de atelier create dintr-o predicție rămân ca sarcini obișnuite. Restul datelor nu este atins. Backupurile făcute de versiunile anterioare pot fi restaurate în continuare."
+      },
+      {
+        "type": "new",
+        "title": "Pentru administratori",
+        "desc": "Setările OLLAMA_…, CHAT_… și AI_CACHE_TTL nu mai sunt citite; le poți șterge din fișierul .env. Dacă rămân, nu strică nimic."
       },
       {
         "type": "fix",
-        "title": "Mai puține note pe ecran",
-        "desc": "Explicațiile de sub totaluri și de deasupra tabelelor de cheltuieli au dispărut. Un mesaj apare acum doar când ceva are nevoie de atenția ta, de exemplu când un total lasă sume pe dinafară."
-      },
-      {
-        "type": "new",
-        "title": "O a doua copie a fiecărui backup",
-        "desc": "Dacă administrezi acest server, poți monta un al doilea disc sau un spațiu partajat de pe un NAS și îl poți indica în BACKUP_MIRROR_FOLDER. Fiecare backup finalizat, personal sau de sistem, este copiat acolo și verificat, iar Setări → Backup arată dacă copia este la zi. Aplicația nu stochează nicio adresă și nicio parolă."
-      },
-      {
-        "type": "new",
-        "title": "Restaurează un backup complet dintr-un fișier de pe server",
-        "desc": "Administratorii pot restaura o arhivă de sistem aflată deja pe server cu comanda flask restore-system-archive, fără să o încarce prin browser. Astfel dispare limita de mărime la încărcare pentru arhivele mari."
-      },
-      {
-        "type": "new",
-        "title": "Află când o copie de backup tot eșuează",
-        "desc": "Un backup programat care nu ajunge la destinația externă îți trimite acum o notificare după ce reîncercările s-au epuizat. Administratorii primesc una când a doua copie eșuează de o zi."
-      },
-      {
-        "type": "security",
-        "title": "Ștergerea unui cont îi șterge toate backup-urile",
-        "desc": "Ștergerea unui cont elimină acum de pe server toate fișierele de backup ale contului, inclusiv fișierele mai vechi care nu mai aveau o înregistrare, precum și copiile lor din al doilea spațiu de stocare."
+        "title": "Verificarea de actualizări funcționează la pornire",
+        "desc": "Verificarea unei versiuni noi era refuzată la pornire și rula abia după o jumătate de oră. Acum rulează imediat ce te-ai autentificat."
       },
       {
         "type": "fix",
-        "title": "Înregistrări fără monedă",
-        "desc": "O sumă fără monedă nu mai este socotită în euro în statisticile de combustibil și în e-mailurile cu rapoarte. Este lăsată pe dinafară, iar e-mailul spune când totalurile sunt aproximative."
+        "title": "Prima autentificare pe un dispozitiv nou nu mai cere reîncărcare",
+        "desc": "Dacă te autentificai înainte ca aplicația să termine instalarea, ecranele nu își puteau încărca datele până la reîncărcarea paginii. S-a rezolvat."
       }
     ],
     "es": [
       {
-        "type": "fix",
-        "title": "Los destinos de copia se pueden eliminar",
-        "desc": "Eliminar funciona ahora con cualquier destino externo de copia de seguridad, incluido el único. Si guardas sin ningún destino, la copia externa se desactiva y se borran la dirección y las credenciales guardadas."
+        "type": "new",
+        "title": "Se han eliminado el asistente de IA y las predicciones de IA",
+        "desc": "GearCargo ya no se conecta a un modelo de IA (Ollama). Desaparecen: el chat del asistente, las predicciones de IA y las alertas de consumo anómalo, las sugerencias de IA para recordatorios, el paso «Extraer Datos» de los recibos y la página de IA del panel de administración."
       },
       {
         "type": "new",
-        "title": "Cómo configurar la segunda copia, en la pantalla de copias",
-        "desc": "Los administradores encuentran los pasos para la segunda copia de cada copia de seguridad en Ajustes → Datos y Copia de Seguridad, hasta que esté configurada. El campo de dirección de un destino muestra ahora la forma corta que funciona: solo la dirección del servidor."
-      },
-      {
-        "type": "fix",
-        "title": "Actualizar ya no detiene la aplicación",
-        "desc": "La versión 1.10.0 no podía arrancar en una instalación que ya tenía datos, porque la base de datos no se abría. Esta versión arranca con normalidad y repara por sí sola las instalaciones afectadas. No se ha perdido ningún dato."
-      },
-      {
-        "type": "fix",
-        "title": "Sin notas permanentes en las pantallas del vehículo",
-        "desc": "Han desaparecido: la indicación de filtro y la línea «Mostrando todo el año» en Gastos, las observaciones sobre conversión, historial y previsiones en Gráficos, el cuadro «Cómo funciona» en Alertas de predicción y las observaciones en las filas normales de combustible. Ahora el texto solo aparece cuando algo necesita tu atención."
+        "title": "«Smart» ahora se llama «Listas»",
+        "desc": "La pestaña conserva las listas de verificación de temporada y las alertas calculadas a partir de tus propios registros (servicio, seguro, impuestos, consumo). El reconocimiento de texto de los recibos y la búsqueda en documentos funcionan como antes."
       },
       {
         "type": "new",
-        "title": "Importes en la moneda que elegiste",
-        "desc": "Los importes usan ahora siempre la moneda elegida en Perfil → Preferencias. Tu ubicación y el idioma de la aplicación ya no la cambian. Si algunos registros antiguos conservan una etiqueta en euros o dólares que no les corresponde, la página Gastos te propone corregirlos en un solo paso; los importes no cambian."
+        "title": "Qué ocurre con los datos existentes",
+        "desc": "Al actualizar se eliminan las predicciones de IA guardadas y sus notificaciones. Las tareas de taller creadas a partir de una predicción se conservan como tareas normales. El resto de los datos no se toca. Las copias de seguridad hechas con versiones anteriores se pueden seguir restaurando."
+      },
+      {
+        "type": "new",
+        "title": "Para administradores",
+        "desc": "Los ajustes OLLAMA_…, CHAT_… y AI_CACHE_TTL ya no se leen; puedes borrarlos del archivo .env. Si los dejas, no pasa nada."
       },
       {
         "type": "fix",
-        "title": "Menos notas en pantalla",
-        "desc": "Las explicaciones bajo los totales y sobre las tablas de gastos han desaparecido. Ahora un mensaje aparece solo cuando algo necesita tu atención, por ejemplo cuando un total deja importes fuera."
-      },
-      {
-        "type": "new",
-        "title": "Una segunda copia de cada copia de seguridad",
-        "desc": "Si administras este servidor, puedes montar un segundo disco o una carpeta compartida de un NAS e indicarla en BACKUP_MIRROR_FOLDER. Cada copia de seguridad terminada, personal o del sistema, se copia allí y se verifica, y Ajustes → Copia de seguridad muestra si la copia está al día. La aplicación no guarda ninguna dirección ni contraseña."
-      },
-      {
-        "type": "new",
-        "title": "Restaura una copia completa desde un archivo del servidor",
-        "desc": "Los administradores pueden restaurar un archivo del sistema que ya está en el servidor con el comando flask restore-system-archive, sin subirlo desde el navegador. Así desaparece el límite de tamaño de subida para los archivos grandes."
-      },
-      {
-        "type": "new",
-        "title": "Entérate cuando una copia de seguridad sigue fallando",
-        "desc": "Una copia programada que no llega a su destino externo te envía ahora una notificación cuando se agotan los reintentos. Los administradores reciben una cuando la segunda copia lleva un día fallando."
-      },
-      {
-        "type": "security",
-        "title": "Eliminar una cuenta elimina todas sus copias",
-        "desc": "Eliminar una cuenta borra ahora del servidor todos los archivos de copia de seguridad de esa cuenta, incluidos los antiguos que ya no tenían registro, y sus copias en el segundo almacenamiento."
+        "title": "La comprobación de actualizaciones funciona al iniciar",
+        "desc": "La comprobación de una versión nueva se rechazaba al iniciar y solo se ejecutaba media hora después. Ahora se ejecuta en cuanto inicias sesión."
       },
       {
         "type": "fix",
-        "title": "Registros sin moneda",
-        "desc": "Un importe sin moneda ya no se cuenta como euros en las estadísticas de combustible ni en los correos de informes. Se deja fuera, y el correo indica cuándo los totales son aproximados."
+        "title": "El primer inicio de sesión en un dispositivo nuevo ya no requiere recargar",
+        "desc": "Si iniciabas sesión antes de que la aplicación terminara de instalarse, las pantallas no podían cargar sus datos hasta recargar la página. Corregido."
       }
     ]
   }
