@@ -99,10 +99,9 @@ def sum_to_display(pairs, to_ccy, rates):
 def get_rates_cached(app):
     """EUR-based ECB rates, Redis-cached 24h.
 
-    Reuses the exact cache key + fetcher already used by the /currency-rates
-    route so there is a single shared cache entry across the app. Never raises:
-    on total failure it returns an empty dict, which makes conversions of any
-    non-EUR amount fall back to unconverted (flagged) rather than error.
+    Never raises: on total failure it returns an empty dict, which makes
+    conversions of any non-EUR amount fall back to unconverted (flagged) rather
+    than error.
     """
     # Imported lazily to avoid a circular import at module load: get_cached lives
     # in the external route blueprint (which imports auth), and get_live_eur_rates

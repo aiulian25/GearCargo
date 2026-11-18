@@ -591,7 +591,6 @@ export const externalApi = {
   // F25 — stored weekly national price points (accrued by the Monday refresh).
   history: (country = 'UK', weeks = 12) =>
     api.get(`/external/fuel-prices/history?country=${encodeURIComponent(country)}&weeks=${weeks}`),
-  getCurrencyRates: () => api.get('/external/currency-rates'),
 }
 
 // Attachment/Receipt API

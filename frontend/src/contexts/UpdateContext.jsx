@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import { BUILD, IS_PUBLISHED_BUILD, IS_DEV_BUILD } from '../config/build'
+import { useAuth } from './AuthContext'
 
 /**
  * App-update detection (PWA).
@@ -31,6 +32,7 @@ function isNewerVersion(a, b) {
 }
 
 export function UpdateProvider({ children }) {
+  const { isAuthenticated } = useAuth()
   const [available, setAvailable] = useState(false)
   const [kind, setKind] = useState(null)          // 'feature' | 'security'
   const [serverInfo, setServerInfo] = useState(null)
@@ -91,6 +93,9 @@ export function UpdateProvider({ children }) {
   }, [])
 
   useEffect(() => {
+    // Only a signed-in session gets an answer, and the service worker refuses the
+    // request until sign-in has linked this page to that session.
+    if (!isAuthenticated) return undefined
     check()
     const id = setInterval(check, POLL_MS)
     let last = Date.now()
@@ -111,7 +116,7 @@ export function UpdateProvider({ children }) {
       window.removeEventListener('online', check)
       window.removeEventListener('offline', onOffline)
     }
-  }, [check])
+  }, [check, isAuthenticated])
 
   // Apply an update by ACTIVATING the new service worker, then reloading — never
   // a bare reload of the stale shell.

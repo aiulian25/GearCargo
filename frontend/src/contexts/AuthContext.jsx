@@ -29,6 +29,14 @@ export function AuthProvider({ children }) {
       setIsAuthenticated(false)
       setIsLoading(false)
     }
+    // A worker that takes control after sign-in (first visit on a device) was never told which
+    // session this page belongs to, and refuses its requests for private data until it is.
+    const onWorkerTookControl = () => {
+      const identity = getBoundIdentity()
+      // ponytail: a request sent in the instant before the worker answers is still refused once; queue requests on this event if that ever shows.
+      if (identity) restoreOfflineIdentity(identity.owner_id).catch(() => {})
+    }
+    navigator.serviceWorker?.addEventListener('controllerchange', onWorkerTookControl)
     navigator.serviceWorker?.addEventListener('message', onIdentitySuspended)
     window.addEventListener('private-identity-suspended', onIdentitySuspended)
     window.addEventListener('storage', onIdentitySuspended)
@@ -74,6 +82,7 @@ export function AuthProvider({ children }) {
     checkAuth()
     return () => {
       cancelled = true
+      navigator.serviceWorker?.removeEventListener('controllerchange', onWorkerTookControl)
       navigator.serviceWorker?.removeEventListener('message', onIdentitySuspended)
       window.removeEventListener('private-identity-suspended', onIdentitySuspended)
       window.removeEventListener('storage', onIdentitySuspended)

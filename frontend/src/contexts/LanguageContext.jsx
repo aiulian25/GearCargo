@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import { translations, defaultLanguage, supportedLanguages } from '../i18n/translations'
 import { db } from '../services/db'
 import api from '../services/api'
@@ -22,16 +22,9 @@ function getNestedValue(obj, path) {
 }
 
 /** Everything that depends on which currency amounts default to. */
-function useCurrencyValues(currencyCode, language, unknownCurrencyLabel, exchangeRates) {
+function useCurrencyValues(currencyCode, language, unknownCurrencyLabel) {
   const symbolFor = useCallback((code) => currencySymbol(code || currencyCode, language), [currencyCode, language])
   const currency = useMemo(() => ({ code: currencyCode, symbol: symbolFor(currencyCode) }), [currencyCode, symbolFor])
-
-  // Convert an amount from EUR to the active currency using live rates
-  const convertFromEur = useCallback((amountEur) => {
-    if (!exchangeRates || currencyCode === 'EUR') return amountEur
-    const rate = exchangeRates[currencyCode]
-    return rate ? amountEur * rate : amountEur
-  }, [exchangeRates, currencyCode])
 
   const formatCurrency = useMemo(
     () => createCurrencyFormatter({ language, currency: currencyCode, unknownCurrencyLabel }),
@@ -39,17 +32,14 @@ function useCurrencyValues(currencyCode, language, unknownCurrencyLabel, exchang
   )
 
   return useMemo(
-    () => ({ currency, symbolFor, convertFromEur, formatCurrency }),
-    [currency, symbolFor, convertFromEur, formatCurrency],
+    () => ({ currency, symbolFor, formatCurrency }),
+    [currency, symbolFor, formatCurrency],
   )
 }
 
 export function LanguageProvider({ children }) {
   const [language, setLanguageState] = useState(defaultLanguage)
   const [isLoaded, setIsLoaded] = useState(false)
-  // Live exchange rates keyed by currency code (EUR base)
-  const [exchangeRates, setExchangeRates] = useState(null)
-  const ratesFetchedRef = useRef(false)
   // Load saved language preference
   useEffect(() => {
     const loadLanguage = async () => {
@@ -119,19 +109,6 @@ export function LanguageProvider({ children }) {
     }
   }, [])
 
-  // Fetch live exchange rates from backend once per session (after login)
-  useEffect(() => {
-    if (ratesFetchedRef.current || !localStorage.getItem('auth_session')) return
-    ratesFetchedRef.current = true
-    api.get('/external/currency-rates')
-      .then((res) => {
-        if (res.data?.rates) {
-          setExchangeRates(res.data.rates)
-        }
-      })
-      .catch(() => {/* silently ignore — fallback rates are baked into the backend */})
-  }, [])
-
   // Translation function
   const t = useCallback((key, params = {}) => {
     const inCurrentLang = getNestedValue(translations[language], key)
@@ -157,7 +134,7 @@ export function LanguageProvider({ children }) {
   }, [language])
   
   const languageCurrencyCode = LANGUAGE_CURRENCY_CODES[language] || LANGUAGE_CURRENCY_CODES[defaultLanguage]
-  const currencyValues = useCurrencyValues(languageCurrencyCode, language, t('financial.unknownCurrency'), exchangeRates)
+  const currencyValues = useCurrencyValues(languageCurrencyCode, language, t('financial.unknownCurrency'))
 
   const value = {
     language,
@@ -167,7 +144,6 @@ export function LanguageProvider({ children }) {
     isLoaded,
     supportedLanguages,
     ...currencyValues,
-    exchangeRates,
     languageNames,
   }
 
@@ -185,8 +161,7 @@ export function LanguageProvider({ children }) {
 export function AccountCurrencyScope({ currencyCode, children }) {
   const inherited = useLanguage()
   const accountValues = useCurrencyValues(
-    currencyCode || inherited.currency.code, inherited.language,
-    inherited.t('financial.unknownCurrency'), inherited.exchangeRates,
+    currencyCode || inherited.currency.code, inherited.language, inherited.t('financial.unknownCurrency'),
   )
   const value = useMemo(() => ({ ...inherited, ...accountValues }), [inherited, accountValues])
   return (
@@ -212,6 +187,6 @@ export function useTranslation() {
 
 // Hook for currency
 export function useCurrency() {
-  const { currency, formatCurrency, convertFromEur, exchangeRates, symbolFor, language } = useLanguage()
-  return { currency, formatCurrency, convertFromEur, exchangeRates, symbolFor, language }
+  const { currency, formatCurrency, symbolFor, language } = useLanguage()
+  return { currency, formatCurrency, symbolFor, language }
 }

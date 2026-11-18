@@ -14,6 +14,10 @@ Logout, failed session renewal, a definitive session-expired response and accoun
 | Navigation handoffs | New receipt/expense prefills live in memory; browser history carries only an opaque reference. Account changes discard handoffs, and legacy unscoped prefills are ignored. Reloading before saving loses this unsaved handoff; save the expense to use durable receipt storage. |
 | App assets and presentation preferences | Precached app shell, scripts/styles, fonts, public images, theme and language remain available offline. The CSRF token and token-authorized shared report reads remain network-only and never enter private caches. This device's location-sharing choice (GC-103) is also kept at sign-out, like theme and language: `gearcargo_location_consent` records "Use my location", and `gearcargo_location_consent_deferred_at` records when "Not now" was chosen, so the dashboard asks again after seven days. |
 
+## Tab binding
+
+The worker answers a tab's private reads only after that tab has told it which session it belongs to; until then it refuses them with `PRIVATE_SESSION_UNAVAILABLE` (HTTP 409). A tab binds itself when its sign-in is verified, so code that runs at application start must wait for sign-in before it asks for private data: the update check does. A worker that takes control of a tab that is already signed in — on a first visit the worker finishes installing after sign-in — is bound by that tab as soon as it takes control (`controllerchange`). The binding repeats the stored session's identity; a tab whose session was replaced in another tab is not bound.
+
 ## Offline access
 
 An online identity verification unlocks cached private reads for at most **12 hours**. This is an intentional local offline session, not proof that a server session is still valid. A network failure may restore the matching profile within that window; the browser's `navigator.onLine` flag alone is not authoritative. An HTTP authentication failure cannot restore it. Offline writes retain the existing account/retry checks.
@@ -28,7 +32,7 @@ The updated application and worker must run together. An older worker cannot ack
 
 ## Validation
 
-Run `npm test -- --run`, `npm run lint` and `npm run build` from `frontend`. Focused tests are `privateStorageLifecycle.test.js`, `privateNavigation.test.js`, `apiInterceptor.test.js` and `mutationTransport.test.js`.
+Run `npm test -- --run`, `npm run lint` and `npm run build` from `frontend`. Focused tests are `privateStorageLifecycle.test.js`, `privateNavigation.test.js`, `apiInterceptor.test.js`, `mutationTransport.test.js`, `workerTakesControl.test.jsx` and `updateCheckWaitsForSignIn.test.jsx`.
 
 `frontend/browser-tests/privateStorageLifecycle.mjs` uses the existing disposable Flask fixture in `backend/tests/browser_queue_fixture.py`. Set `GC_FRONTEND` to the built frontend directory, `GC_BACKEND_SOCKET` to that fixture's Unix socket, and optionally `GC_BROWSER_OUTPUT`, `PLAYWRIGHT_MODULE` and `GC_CHROMIUM`, then run `node frontend/browser-tests/privateStorageLifecycle.mjs`. Never load the test fixture in production.
 
