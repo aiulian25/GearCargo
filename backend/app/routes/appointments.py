@@ -43,7 +43,7 @@ def available_work(user):
     from app.services.due import build_due_items
     car = vehicle(user, request.args.get('vehicle_id', type=int))
     work = []
-    fields = {'reminder': 'reminder_id', 'todo': 'todo_id', 'service': 'service_id', 'prediction': 'prediction_id'}
+    fields = {'reminder': 'reminder_id', 'todo': 'todo_id', 'service': 'service_id'}
     for item in build_due_items(user.id):
         if item['vehicle_id'] != car.id or item['kind'] not in fields: continue
         field = fields[item['kind']]

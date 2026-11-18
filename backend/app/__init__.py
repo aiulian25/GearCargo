@@ -497,21 +497,18 @@ def create_app(config_class=None, *, process_role=None):
         error_message='Too many requests. Please try again later.')
 
     # ---------------------------------------------------------------------------
-    # S24: AI endpoint rate limits — per authenticated user, not per IP.
+    # S24: rate limits per authenticated user, not per IP, for the costly
+    # endpoints.  Keying by user_id means VPN-hopping or IPv6 rotation cannot
+    # bypass the limit.
     #
-    # All Ollama calls are slow (up to 120 s) and CPU-intensive on the Ollama
-    # host.  Without tight per-user limits an attacker with a valid account could
-    # flood the AI service from multiple IPs.  Keying by user_id (not IP) means
-    # VPN-hopping or IPv6 rotation cannot bypass the limit.
-    #
-    # _ai_rate_key() extracts the authenticated user's ID from the JWT and
+    # _user_rate_key() extracts the authenticated user's ID from the JWT and
     # returns "user:<id>" as the bucket key.  On any failure (missing / expired /
     # invalid token) it falls back to the remote IP — the request will then fail
     # the @token_required check anyway, so no legitimate user is disadvantaged.
     # ---------------------------------------------------------------------------
 
-    def _ai_rate_key() -> str:
-        """Per-user rate-limit key for AI endpoints.
+    def _user_rate_key() -> str:
+        """Per-user rate-limit key.
 
         Returns 'user:<id>' when a valid JWT is present, otherwise falls back
         to the remote IP address so unauthenticated requests are still bounded.
@@ -532,55 +529,16 @@ def create_app(config_class=None, *, process_role=None):
                 pass
         return get_remote_address()
 
-    # Limits per spec (ollama.md §4.3):
-    #   /predictions/generate|refresh  — 3/hour/user
-    #   /vehicles/<id>/chat             — 5/hour/user  (wired when endpoint exists)
-    #   /vehicles/<id>/suggest-reminder — 3/hour/user
-    #   /attachments/<id>/parse-ocr     — 5/hour/user
-
-    for _prediction_endpoint in ('predictions.generate_predictions', 'predictions.refresh_predictions'):
-        _rate_limit(_prediction_endpoint,
-            '10 per hour',
-            key_func=_ai_rate_key,
-            error_message='Too many AI requests. Please wait before generating more predictions.')
-
-    # OCR AI parsing — 5/hour/user.
-    _rate_limit('attachments.parse_ocr_with_ai',
-        '5 per hour',
-        key_func=_ai_rate_key,
-        error_message='Too many AI extraction requests. Please wait before trying again.')
-
     # OCR retry — 10/hour/user (re-runs tesseract, which is CPU-intensive).
     _rate_limit('attachments.retry_ocr',
         '10 per hour',
-        key_func=_ai_rate_key,
+        key_func=_user_rate_key,
         error_message='Too many OCR retry requests. Please wait before trying again.')
-
-    # AI reminder suggestions — 3/hour/user.
-    _rate_limit('vehicles.suggest_reminder',
-        '3 per hour',
-        key_func=_ai_rate_key,
-        error_message='Too many AI suggestion requests. Please wait before trying again.')
-
-    # AI vehicle chat — per-user, generous + env-configurable (CHAT_RATE_LIMIT).
-    # Default '15 per minute; 100 per hour' lets a real conversation flow while
-    # the per-minute burst still bounds abuse (each chat = up to two remote model
-    # calls; see §14.3). No-op until the endpoint exists / when rate limiting is off.
-    _rate_limit('vehicles.vehicle_chat',
-        app.config.get('CHAT_RATE_LIMIT', '15 per minute; 100 per hour'),
-        key_func=_ai_rate_key,
-        error_message='Too many chat requests. Please wait before sending more messages.')
-
-    # F10: fleet-wide chat shares the same per-user AI chat budget/key.
-    _rate_limit('vehicles.fleet_chat',
-        app.config.get('CHAT_RATE_LIMIT', '15 per minute; 100 per hour'),
-        key_func=_ai_rate_key,
-        error_message='Too many chat requests. Please wait before sending more messages.')
 
     # Global search — 30/minute/user (generous for real-time debounced queries).
     _rate_limit('search.global_search',
         '30 per minute',
-        key_func=_ai_rate_key,
+        key_func=_user_rate_key,
         error_message='Too many search requests. Please slow down.')
 
     # GC-102: every self-service deletion attempt, refused ones included, holds
@@ -588,7 +546,7 @@ def create_app(config_class=None, *, process_role=None):
     # codes are hashed. Bound it per account, keyed like the search limit.
     _rate_limit('auth.delete_account',
         f'{ACCOUNT_DELETION_ATTEMPTS_PER_HOUR} per hour',
-        key_func=_ai_rate_key,
+        key_func=_user_rate_key,
         error_message='Too many account deletion attempts. Please try again later.')
 
     # F05: per-IP limits on the PUBLIC (unauthenticated) shared-report endpoints.
@@ -731,32 +689,6 @@ def create_app(config_class=None, *, process_role=None):
     # ================================================================
     # STATIC FILE SERVING (React SPA)
     # ================================================================
-
-    @app.route('/api/config', methods=['GET'])
-    @limiter.exempt
-    def public_config():
-        """Public, non-sensitive branding config for the SPA.
-
-        Lets the frontend (e.g. the chat greeting + avatar alt) use the same
-        assistant name as the backend system prompt, so white-label instances
-        that set CHAT_ASSISTANT_NAME stay in sync. No secrets are exposed.
-        """
-        # Whether the AI assistant (Ollama) is both enabled AND has a URL — the
-        # same two conditions the chat endpoint requires. Lets the SPA hide the
-        # assistant entry points when there's no AI integration, and surface them
-        # automatically once one is added (the SPA re-reads this config).
-        ai_enabled = bool(
-            app.config.get('OLLAMA_ENABLED', False)
-            and (app.config.get('OLLAMA_URL') or app.config.get('OLLAMA_BASE_URL'))
-        )
-        return jsonify({
-            'app_name': app.config.get('APP_NAME', 'GearCargo'),
-            'assistant_name': (
-                app.config.get('CHAT_ASSISTANT_NAME')
-                or app.config.get('APP_NAME', 'GearCargo')
-            ),
-            'ai_enabled': ai_enabled,
-        })
 
     @app.route('/uploads/<path:filename>')
     @limiter.exempt

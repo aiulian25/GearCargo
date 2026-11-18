@@ -181,13 +181,13 @@ def get_due_surface(current_user):
 # the kinds emitted by app.services.due.build_due_items.
 _DISMISSIBLE_KINDS = frozenset((
     'reminder', 'service', 'tax', 'insurance', 'document',
-    'parking', 'fine', 'consumable', 'todo', 'prediction', 'tire_rotation', 'tire_tread',
+    'parking', 'fine', 'consumable', 'todo', 'tire_rotation', 'tire_tread',
 ))
 
 # Kinds that carry their OWN ``dismissed`` boolean column, so a feed dismissal
 # flips that flag directly (keeping other views consistent) instead of writing
-# an occurrence-scoped DueDismissal row. Reminders and F45 AI predictions.
-_NATIVE_DISMISS_KINDS = frozenset(('reminder', 'prediction'))
+# an occurrence-scoped DueDismissal row.
+_NATIVE_DISMISS_KINDS = frozenset(('reminder',))
 
 
 def _resolve_due_ref(user, kind, ref_id):
@@ -205,16 +205,10 @@ def _resolve_due_ref(user, kind, ref_id):
         Attachment, ParkingEntry, ConsumableEntry,
     )
     from app.models.todo import Todo
-    from app.models import PredictionAlert
 
     if kind == 'reminder':
         obj = Reminder.query.filter_by(id=ref_id, user_id=user.id).first()
         return obj, (obj.due_date if obj else None)
-    if kind == 'prediction':
-        # F45 — native dismissed flag (no due date); dismissal matches the
-        # VehicleAlerts page exactly.
-        obj = PredictionAlert.query.filter_by(id=ref_id, user_id=user.id).first()
-        return obj, None
     if kind == 'todo':
         # F44 — occurrence-scoped dismissal pinned to the todo's due_date
         # (todos have no native dismissed flag).

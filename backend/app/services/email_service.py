@@ -403,8 +403,7 @@ class EmailService:
             "insurance": "Insurance Alert",
             "tax": "Road Tax Alert",
             "service": "Service Due",
-            "maintenance": "Maintenance Alert",
-            "smart": "Smart Recommendations"
+            "maintenance": "Maintenance Alert"
         }
         
         intros = {
@@ -412,8 +411,7 @@ class EmailService:
             "insurance": "Your vehicle insurance needs attention:",
             "tax": "Your road tax is due soon:",
             "service": "Your vehicle service is due:",
-            "maintenance": "Maintenance recommended for your vehicle:",
-            "smart": "Based on your vehicle data, we recommend:"
+            "maintenance": "Maintenance recommended for your vehicle:"
         }
         
         content_html = render_template_string(
@@ -546,7 +544,6 @@ class EmailService:
                     • Insurance expiry reminders<br>
                     • Road tax due dates<br>
                     • Service and maintenance alerts<br>
-                    • Smart recommendations<br>
                     • Weekly/Monthly reports (if enabled)
                 </div>
             </div>

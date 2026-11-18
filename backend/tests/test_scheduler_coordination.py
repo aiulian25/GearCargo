@@ -28,7 +28,6 @@ def test_web_factory_starts_no_scheduled_work(app, monkeypatch):
     monkeypatch.setattr('app.init_default_admin', lambda app: None)
     class WebConfig(TestingConfig):
         TESTING = False
-        OLLAMA_ENABLED = True
         SQLALCHEMY_DATABASE_URI = app.config['SQLALCHEMY_DATABASE_URI']
         SECRET_KEY = 'scheduler-fixture-0123456789abcdef0123456789'
         JWT_SECRET_KEY = SECRET_KEY

@@ -6,8 +6,8 @@ yields an efficiency point — its consumption is its own litres PLUS every
 partial fill's litres logged since the previous full tank, divided by the
 odometer distance from that previous full tank. Partial fills carry no
 efficiency of their own (fuel_efficiency / trip_distance = None), so a 20 L
-top-up no longer produces bogus L/100km points that skew avg_consumption,
-the health eco-score and the anomaly baseline.
+top-up no longer produces bogus L/100km points that skew avg_consumption
+and the health eco-score.
 
 Create/update/delete recalculate affected full-to-full windows. Imports walk
 the complete history in batches. Existing derived values can be previewed and

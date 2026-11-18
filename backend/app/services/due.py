@@ -36,14 +36,10 @@ from sqlalchemy import func
 from app import db
 from app.models import (
     User, Vehicle, Reminder, ServiceEntry, TaxEntry, InsurancePolicy,
-    Attachment, ParkingEntry, ConsumableEntry, DueDismissal, PredictionAlert,
+    Attachment, ParkingEntry, ConsumableEntry, DueDismissal,
 )
 from app.models.todo import Todo
 from app.utils.timeutils import utc_today
-
-# How close (in the vehicle's distance unit) a mileage-based prediction must be
-# to the current odometer before it surfaces on the feed (F45).
-PREDICTION_PROXIMITY = 1000
 
 # Items due within this many days count as "warning" (amber); further out is
 # informational. Overdue (days_left < 0) is always "critical".
@@ -78,7 +74,7 @@ def build_due_items(user_id, days=None, today=None):
     the user's ``alert_days_before`` preference (default 14 on the model, itself
     falling back to 30 if unset) — F53's single "how far ahead to warn me" knob,
     shared by the dashboard, widget and email digest. An explicit ``days`` (e.g.
-    chat's wider 60-day window, or ``?days=`` on the endpoint) always overrides.
+    ``?days=`` on the endpoint) always overrides.
 
     Overdue items are always included regardless of how far past — an unresolved
     overdue reminder or an expired policy still needs attention — matching the
@@ -327,40 +323,6 @@ def build_due_items(user_id, days=None, today=None):
         add('consumable', c.id, title, c.vehicle_id, None,
             f'/vehicles/{c.vehicle_id}/consumables',
             days_left=None, severity=severity)
-
-    # --- 8. AI predictions (F45, no due_date) ---------------------------------
-    # Surface an active alert when it's high-urgency, OR when its predicted
-    # mileage is within PREDICTION_PROXIMITY of the vehicle's odometer — so a
-    # "brake pads at 92,000 km" alert appears as the car approaches it. Uses the
-    # native dismissed flag (no DueDismissal row) so a dismissal here and on the
-    # VehicleAlerts page are one and the same state.
-    predictions = PredictionAlert.query.filter(
-        PredictionAlert.user_id == user_id,
-        PredictionAlert.vehicle_id.in_(active_ids),
-        PredictionAlert.dismissed == False,   # noqa: E712
-        PredictionAlert.actioned == False,    # noqa: E712
-    ).all()
-    for p in predictions:
-        v = active.get(p.vehicle_id)
-        current = (v.current_mileage or 0) if v else 0
-        is_high = (p.urgency or '').lower() == 'high'
-        near_mileage = (
-            p.predicted_mileage is not None
-            and current >= p.predicted_mileage - PREDICTION_PROXIMITY
-        )
-        if not (is_high or near_mileage):
-            continue
-        mileage_passed = p.predicted_mileage is not None and current >= p.predicted_mileage
-        severity = 'critical' if (is_high or mileage_passed) else 'warning'
-        extra = None
-        if p.predicted_mileage is not None:
-            extra = {
-                'distance_left': max(0, p.predicted_mileage - current),
-                'distance_unit': (v.distance_unit if v else None) or 'km',
-            }
-        add('prediction', p.id, p.title or 'Prediction', p.vehicle_id, None,
-            f'/vehicles/{p.vehicle_id}/alerts',
-            days_left=None, severity=severity, extra=extra)
 
     # Only user-configured thresholds; storage contributes no mileage.
     from app.models import TireSet

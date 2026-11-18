@@ -94,7 +94,7 @@ from copy import deepcopy
 
 import pytest
 from sqlalchemy import Boolean, Date, DateTime, Float, Integer, JSON, Numeric, String, inspect, null, text
-from app.models import PredictionAlert, DueDismissal
+from app.models import DueDismissal
 
 
 # Independent ORM inventory: an added column must receive an explicit decision.
@@ -169,7 +169,7 @@ def test_all_stored_columns_and_relationships_roundtrip(app, user, tmp_path, mon
     source = {'vehicles': vehicle}
     for kind in ('fuel_entries', 'service_entries', 'repair_entries', 'tax_entries',
                  'parking_entries', 'consumable_entries', 'insurance_policies',
-                 'reminders', 'todos', 'predictions', 'attachments'):
+                 'reminders', 'todos', 'attachments'):
         model = MODELS[kind]
         values = _stored_values(model, nullable)
         if kind == 'fuel_entries':
@@ -178,9 +178,6 @@ def test_all_stored_columns_and_relationships_roundtrip(app, user, tmp_path, mon
             for field in EXCLUDED_COLUMNS[kind]:
                 if field != 'user_id':
                     values.pop(field, None)
-        if kind == 'predictions':
-            values['source_data'] = {'vehicle_id': vehicle.id, 'mileage_notified': True,
-                                     'trigger_entry_id': source['fuel_entries'].id}
         if kind == 'attachments':
             path = tmp_path / 'full.jpg'; path.write_bytes(b'complete-file')
             values.update(filename='full.jpg', filepath=str(path), file_type='image/jpeg')
@@ -217,7 +214,7 @@ def test_all_stored_columns_and_relationships_roundtrip(app, user, tmp_path, mon
         else:
             values['appointment_id'] = source['appointments'].id
         if kind == 'appointment_tasks':
-            for field in ('reminder_id', 'service_id', 'prediction_id'): values[field] = None
+            for field in ('reminder_id', 'service_id'): values[field] = None
             values['todo_id'] = source['todos'].id
         if kind == 'appointment_expenses': values['entry_id'] = source['repair_entries'].id
         row = model(user_id=user.id, vehicle_id=vehicle.id, **values)
@@ -282,9 +279,6 @@ def test_all_stored_columns_and_relationships_roundtrip(app, user, tmp_path, mon
                 value = None
             if kind == 'vehicles' and column in ('avg_fuel_efficiency', 'cost_per_km', 'health_score', 'health_computed_at'):
                 value = None
-            if kind == 'predictions' and column == 'source_data':
-                value = {**value, 'vehicle_id': restored['vehicles'].id,
-                         'trigger_entry_id': restored['fuel_entries'].id}
             assert getattr(row, column) == value, (kind, column, getattr(row, column), value)
         assert row.user_id == target.id
     assert restored['tax_entries'].insurance_policy_id == restored['insurance_policies'].id
@@ -352,13 +346,11 @@ def test_legacy_entry_without_a_date_defaults_to_utc_today(app, monkeypatch):
 
 
 @pytest.mark.parametrize('mutation', ['version', 'unknown_collection', 'unknown_field', 'missing_field',
-                                     'bad_todo', 'unknown_reference', 'account_permissions', 'unknown_json_reference'])
+                                     'bad_todo', 'unknown_reference', 'account_permissions'])
 def test_invalid_current_backup_is_rejected_before_writing(app, client, user, auth_headers, mutation):
     from app.routes.backup import gather_user_data
     vehicle = Vehicle(user_id=user.id, name='Source'); db.session.add(vehicle); db.session.flush()
     db.session.add(Todo(user_id=user.id, vehicle_id=vehicle.id, title='A task'))
-    db.session.add(PredictionAlert(user_id=user.id, vehicle_id=vehicle.id,
-                                   alert_type='maintenance', description='Test', source_data={}))
     db.session.commit()
     data = gather_user_data(user, False)
     if mutation == 'version': data['version'] = '999.0'
@@ -368,7 +360,6 @@ def test_invalid_current_backup_is_rejected_before_writing(app, client, user, au
     elif mutation == 'bad_todo': data['todos'][0]['title'] = None
     elif mutation == 'unknown_reference': data['todos'][0]['vehicle_id'] = 987654
     elif mutation == 'account_permissions': data['user']['preferences']['is_admin'] = True
-    elif mutation == 'unknown_json_reference': data['predictions'][0]['source_data']['trigger_entry_id'] = 987654
     target = make_target()
     response = client.post('/api/backup/import', headers=auth_headers(target.id), data={
         'file': (BytesIO(json.dumps(data).encode()), 'backup.json')})
@@ -452,7 +443,7 @@ def test_json_export_reports_data_only_and_validates_records(app, client, user, 
     response = client.post('/api/backup/export', json={'format': 'json'}, headers=headers)
     assert response.status_code == 200
     data = json.loads(response.data)
-    assert data['version'] == '4.7' and data['media_included'] is False
+    assert data['version'] == '4.8' and data['media_included'] is False
     assert any(w['code'] == 'media_omitted' for w in data['warnings'])
     # Invalid stored references must not produce a supposedly complete JSON backup.
     other = make_target()

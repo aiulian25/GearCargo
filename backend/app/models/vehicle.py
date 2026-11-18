@@ -61,7 +61,6 @@ class Vehicle(db.Model):
     cost_per_km = db.Column(db.Float)
     avg_fuel_efficiency = db.Column(db.Float)  # L/100km or kWh/100km
     maintenance_score = db.Column(db.Integer)  # 0-100
-    prediction_accuracy_score = db.Column(db.Float)
     # F30 — cached from the /health endpoint's overall_score (view-driven).
     health_score = db.Column(db.Integer)  # 0-100
     health_computed_at = db.Column(db.DateTime)
@@ -72,7 +71,6 @@ class Vehicle(db.Model):
     # Status
     archived = db.Column(db.Boolean, default=False)
     archived_at = db.Column(db.DateTime)
-    last_prediction_at = db.Column(db.DateTime)  # Last AI prediction run timestamp
     
     # Display order for dashboard (user-customizable)
     display_order = db.Column(db.Integer, default=0)
@@ -91,7 +89,6 @@ class Vehicle(db.Model):
     tax_entries = db.relationship('TaxEntry', backref='vehicle', lazy='dynamic', cascade='all, delete-orphan')
     parking_entries = db.relationship('ParkingEntry', backref='vehicle', lazy='dynamic', cascade='all, delete-orphan')
     reminders = db.relationship('Reminder', backref='vehicle', lazy='dynamic', cascade='all, delete-orphan')
-    predictions = db.relationship('PredictionAlert', backref='vehicle', lazy='dynamic', cascade='all, delete-orphan')
     attachments = db.relationship('Attachment', backref='vehicle', lazy='dynamic', cascade='all, delete-orphan')
     insurance_policies = db.relationship('InsurancePolicy', backref='vehicle', lazy='dynamic', cascade='all, delete-orphan')
     consumable_entries = db.relationship('ConsumableEntry', backref='vehicle', lazy='dynamic', cascade='all, delete-orphan')

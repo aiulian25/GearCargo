@@ -61,12 +61,11 @@ class AppointmentTask(db.Model):
     reminder_id = db.Column(db.Integer, db.ForeignKey('reminders.id', ondelete='SET NULL'))
     todo_id = db.Column(db.Integer, db.ForeignKey('todos.id', ondelete='SET NULL'))
     service_id = db.Column(db.Integer, db.ForeignKey('service_entries.id', ondelete='SET NULL'))
-    prediction_id = db.Column(db.Integer, db.ForeignKey('prediction_alerts.id', ondelete='SET NULL'))
     source_signature = db.Column(db.String(64))
     created_at = db.Column(db.DateTime, nullable=False, default=utc_naive_now)
 
     def to_dict(self):
-        return {k: getattr(self, k) for k in ('id', 'title', 'done', 'reminder_id', 'todo_id', 'service_id', 'prediction_id')}
+        return {k: getattr(self, k) for k in ('id', 'title', 'done', 'reminder_id', 'todo_id', 'service_id')}
 
 
 class AppointmentExpense(db.Model):

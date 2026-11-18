@@ -4,7 +4,7 @@
  * Lets a user record the real currency of an expense (e.g. a GBP driver's
  * motorway fill abroad) instead of silently inheriting the app default. The
  * chosen code is stored on the entry and the FX pipeline converts it before
- * summing everywhere (stats, reports, chat).
+ * summing everywhere (stats, reports).
  *
  * Presentational only: the parent owns the value via react-hook-form's
  * `register('currency')`, so this integrates with the existing form plumbing

@@ -9,7 +9,7 @@ from sqlalchemy import inspect
 
 from app import db
 from app.models import (Vehicle, InsurancePolicy, TaxEntry, ParkingEntry, Reminder,
-                        Todo, ServiceEntry, Attachment, ConsumableEntry, PredictionAlert)
+                        Todo, ServiceEntry, Attachment, ConsumableEntry)
 from app.services import (check_due_reminders, process_auto_renew_insurance,
     process_recurring_tax_entries, process_recurring_parking_entries,
     check_consumables_due, check_warranty_expiry, check_document_expiry,
@@ -21,7 +21,7 @@ from app.utils.timeutils import utc_naive_now, utc_today
 
 
 MODELS = (InsurancePolicy, TaxEntry, ParkingEntry, Reminder, Todo, ServiceEntry,
-          Attachment, ConsumableEntry, PredictionAlert)
+          Attachment, ConsumableEntry)
 JOBS = (check_due_reminders, process_auto_renew_insurance, process_recurring_tax_entries,
         process_recurring_parking_entries, check_consumables_due, check_warranty_expiry,
         check_document_expiry, process_due_services, dedupe_duplicate_reminders,
@@ -61,9 +61,7 @@ def obligations(app, user):
         warranty_expires=today+timedelta(days=5))
     consumable = ConsumableEntry(**base, date=today, amount=30, consumable_type='tire',
         install_odometer=0, expected_lifespan_km=1000)
-    prediction = PredictionAlert(**base, title='Mileage alert', alert_type='maintenance',
-        predicted_mileage=1000, source_data={})
-    db.session.add_all([policy,current,tax,parking,reminder,todo,service,consumable,prediction])
+    db.session.add_all([policy,current,tax,parking,reminder,todo,service,consumable])
     db.session.flush()
     path = Path(app.config['UPLOAD_FOLDER'])/'archive-receipt.pdf'
     path.write_bytes(b'%PDF-1.4\nPreserved receipt\n%%EOF')

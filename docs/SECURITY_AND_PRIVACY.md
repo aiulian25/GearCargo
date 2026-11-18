@@ -90,27 +90,17 @@ and [decoder tests](../backend/tests/test_image_decoder_limits.py).
 
 CalDAV intentionally permits LAN/loopback HTTP endpoints and requires HTTPS for
 public hosts. Its validator rejects known metadata names and certain IP literals.
-Ollama accepts HTTP(S), including LAN/loopback; it rejects embedded credentials
-and listed dangerous IP ranges. Neither validator is a complete DNS-resolution,
-redirect or network-egress boundary. Use trusted destinations, authenticated TLS
+It is not a complete DNS-resolution, redirect or network-egress boundary. Use trusted destinations, authenticated TLS
 where needed and an egress policy appropriate to your network. Do not describe
 this as blocking all private/internal destinations.
 
 Evidence: [CalDAV policy](../backend/app/services/calendar_service.py) and
-[tests](../backend/tests/test_caldav_url_policy.py); [Ollama policy/transport](../backend/app/services/ollama.py)
-and [URL tests](../backend/tests/test_ssrf_guard.py). External backup destinations
+[tests](../backend/tests/test_caldav_url_policy.py). External backup destinations
 have a separate [resolve/validate/pin policy](../backend/app/routes/backup.py) and
 [SSRF tests](../backend/tests/test_backup_ssrf.py); that stronger policy must not
 be attributed to every integration.
 
-The vehicle assistant queries owner-scoped records; its prompt/output checks
-and optional topic classifier do not prove model truthfulness or confidentiality
-at a remote provider. Prompts, selected vehicle context and receipt text may
-leave this server for the configured Ollama endpoint. The application does not
-control that endpoint's logs. Evidence: [chat routes](../backend/app/routes/vehicles.py),
-[owner-isolation tests](../backend/tests/test_chat_data_isolation.py) and
-[classifier tests](../backend/tests/test_chat_classifier.py). No external model,
-CalDAV server or SMTP delivery was exercised for this documentation change.
+No CalDAV server or SMTP delivery was exercised for this documentation change.
 
 ## Public links
 
@@ -171,7 +161,7 @@ not automatically the controller/contact for every self-hosted instance.
 |---|---|---|
 | Account, vehicle, files and activity | [Models](../backend/app/models), [activity logs](../backend/app/models/activity_log.py), [attachment routes](../backend/app/routes/attachments.py) | Server/database/storage administrators can access records and keys. Ordinary vehicle data and files are not encrypted by field encryption. |
 | Browser caches, profile, unsent forms/receipts | [Private storage](../frontend/src/utils/privateStorage.js), [storage contract](PRIVATE_BROWSER_DATA.md); [browser acceptance](../frontend/browser-tests/privateStorageLifecycle.mjs) | Logout clears private caches/profile but quarantines unsent payloads and pauses receipts for their original account. They are retained for recovery, not encrypted against access to the browser profile. Closed browsers cannot run timed deletion. |
-| Enabled integrations | [Email](../backend/app/services/email_service.py), [push](../backend/app/routes/push.py), [CalDAV](../backend/app/services/calendar_service.py), [Ollama](../backend/app/services/ollama.py), [backup routes](../backend/app/routes/backup.py), [password checks](../backend/app/routes/auth.py), [location and fuel prices](../backend/app/routes/external.py), [fuel and rate sources](../backend/app/services/fuel_price_service.py), [manual lookups](../backend/app/services/manual_service.py) | Mail/push delivery data, calendar events, selected AI context and exports can reach configured providers. Built-in lookups also leave the server: dashboard coordinates (a device position only after consent on that device, or a saved location) and the account language go to OpenStreetMap Nominatim; a five-character password-hash prefix goes to Have I Been Pwned; vehicle make/model/year go to manufacturer sites and carmans.net. GOV.UK and European Commission fuel prices and Frankfurter (ECB) rates are downloaded without user data, and browsers load Google Fonts directly. The in-app “Third-party services” section lists them. No blanket “no third-party sharing” guarantee is made. |
+| Enabled integrations | [Email](../backend/app/services/email_service.py), [push](../backend/app/routes/push.py), [CalDAV](../backend/app/services/calendar_service.py), [backup routes](../backend/app/routes/backup.py), [password checks](../backend/app/routes/auth.py), [location and fuel prices](../backend/app/routes/external.py), [fuel and rate sources](../backend/app/services/fuel_price_service.py), [manual lookups](../backend/app/services/manual_service.py) | Mail/push delivery data, calendar events and exports can reach configured providers. Built-in lookups also leave the server: dashboard coordinates (a device position only after consent on that device, or a saved location) and the account language go to OpenStreetMap Nominatim; a five-character password-hash prefix goes to Have I Been Pwned; vehicle make/model/year go to manufacturer sites and carmans.net. GOV.UK and European Commission fuel prices and Frankfurter (ECB) rates are downloaded without user data, and browsers load Google Fonts directly. The in-app “Third-party services” section lists them. No blanket “no third-party sharing” guarantee is made. |
 | Personal exports | [Backup schema](../backend/app/services/backup_schema.py), [backup contract](USER_BACKUPS.md); [round-trip tests](../backend/tests/test_backup_full_roundtrip.py) | Supported vehicle data is exported; account secrets, operational/security records and all historical server data are not a complete personal export. Secure the resulting copies. |
 | Vehicle/account deletion | [Administrator deletion route](../backend/app/routes/admin.py), [self-service `delete_account` route](../backend/app/routes/auth.py), [deletion service](../backend/app/services/deletion.py); [relational/file cleanup tests](../backend/tests/test_vehicle_delete_all_relations.py), [session and self-deletion tests](../backend/tests/test_session_management.py) | An administrator, or the account owner from Profile → Security after re-entering the password (plus an authentication or backup code while 2FA is on), can delete an account; the last active administrator cannot delete their own. Live rows are removed transactionally; file/Redis cleanup is queued and may retry. Unsent changes and receipt drafts already on the owner's device are not removed. Archive retains data. See [deletion recovery](DELETION_RECOVERY.md). |
 | Historical and external copies | [Deletion exclusions](DELETION_RECOVERY.md#cleanup-and-retention), [cleanup jobs](../backend/app/services/__init__.py), [security logs](../backend/app/utils/security_audit.py) | Independent security blocks, operator logs, administrator system snapshots, external backups/calendars and downloads can survive deletion. Scheduler cleanup of old notification rows is not a universal retention policy. Operators must set retention/access rules for every store, archive and provider. |

@@ -152,7 +152,6 @@ class User(UserMixin, db.Model):
     email_tax_alerts = db.Column(db.Boolean, default=True)
     email_service_alerts = db.Column(db.Boolean, default=True)
     email_reminder_alerts = db.Column(db.Boolean, default=True)
-    email_smart_alerts = db.Column(db.Boolean, default=True)
     login_alerts_enabled = db.Column(db.Boolean, default=True)  # S18: opt-out for suspicious login/device detection
     daily_alerts_enabled = db.Column(db.Boolean, default=True)   # Controls the 8 AM daily alert digest
     weekly_report_enabled = db.Column(db.Boolean, default=False)
@@ -553,7 +552,6 @@ class User(UserMixin, db.Model):
             data['email_tax_alerts'] = self.email_tax_alerts if self.email_tax_alerts is not None else True
             data['email_service_alerts'] = self.email_service_alerts if self.email_service_alerts is not None else True
             data['email_reminder_alerts'] = self.email_reminder_alerts if self.email_reminder_alerts is not None else True
-            data['email_smart_alerts'] = self.email_smart_alerts if self.email_smart_alerts is not None else True
             data['login_alerts_enabled'] = self.login_alerts_enabled if self.login_alerts_enabled is not None else True
             data['daily_alerts_enabled'] = self.daily_alerts_enabled if self.daily_alerts_enabled is not None else True
             data['weekly_report_enabled'] = self.weekly_report_enabled if self.weekly_report_enabled is not None else False

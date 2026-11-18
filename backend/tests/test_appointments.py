@@ -163,7 +163,7 @@ def test_work_and_backup_roundtrip_remaps_every_link(app, client, user, car, aut
     receipt = tmp_path/'receipt.txt'; receipt.write_text('synthetic receipt')
     db.session.add(Attachment(user_id=user.id, vehicle_id=car.id, entry_id=entry.id, filename='receipt.txt', original_filename='receipt.txt', filepath=str(receipt), file_type='text/plain', file_size=17)); db.session.commit()
     archive, payload = backup.create_backup_zip(user)
-    assert payload['version'] == '4.7' and len(payload['appointment_expenses']) == 1
+    assert payload['version'] == '4.8' and len(payload['appointment_expenses']) == 1
     damaged = copy.deepcopy(payload); damaged['appointments'][0]['end_at'] = damaged['appointments'][0]['start_at']
     with pytest.raises(BackupSchemaError): prepare_backup(damaged)
     target = User(username='visit-restore', email='visit-restore@example.invalid'); target.set_password('Test123456!')

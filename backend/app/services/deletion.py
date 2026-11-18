@@ -100,7 +100,7 @@ def _ids(name, condition):
 def _plan(user_id, vehicle_ids, account):
     """Inventory every FK-owned row, including links with no vehicle_id set."""
     chosen = {'vehicles': set(vehicle_ids)}
-    for name in ('entries', 'insurance_policies', 'reminders', 'prediction_alerts',
+    for name in ('entries', 'insurance_policies', 'reminders',
                  'todos', 'attachments', 'notification_logs', 'tire_sets', 'tires', 'tire_fitments', 'tread_readings', 'appointments', 'appointment_tasks', 'appointment_expenses'):
         table = _table(name)
         condition = table.c.vehicle_id.in_(vehicle_ids)
@@ -115,8 +115,7 @@ def _plan(user_id, vehicle_ids, account):
     chosen['attachments'] |= _ids('attachments', _table('attachments').c.entry_id.in_(chosen['entries']))
     chosen['reminders'] |= _ids('reminders', _table('reminders').c.source_service_id.in_(chosen['service_entries']))
     logs = _table('notification_logs')
-    chosen['notification_logs'] |= _ids('notification_logs', or_(
-        logs.c.reminder_id.in_(chosen['reminders']), logs.c.prediction_id.in_(chosen['prediction_alerts'])))
+    chosen['notification_logs'] |= _ids('notification_logs', logs.c.reminder_id.in_(chosen['reminders']))
     if account:
         chosen['users'] = {user_id}
         for name in ('backups', 'backup_schedules', 'push_subscriptions', 'email_consent_logs',
@@ -127,7 +126,7 @@ def _plan(user_id, vehicle_ids, account):
         kinds = {'todo': 'todos', 'service': 'service_entries', 'tax': 'tax_entries',
                  'insurance': 'insurance_policies', 'document': 'attachments',
                  'parking': 'parking_entries', 'fine': 'parking_entries',
-                 'consumable': 'consumable_entries', 'prediction': 'prediction_alerts',
+                 'consumable': 'consumable_entries',
                  'reminder': 'reminders', 'tire_rotation': 'tire_sets', 'tire_tread': 'tire_sets'}
         dismissals = _table('due_dismissals')
         chosen['due_dismissals'] = _ids('due_dismissals', (dismissals.c.user_id == user_id) & or_(
@@ -245,7 +244,7 @@ def _delete_owned_data(user_id, *, vehicle_id=None, actor_id=None):
     # Flush the outbox/audit before issuing ordered Core deletes. Joined-table
     # subclasses must be removed before entries; policy documents after policies.
     db.session.flush()
-    order = ('statement_matches', 'statement_transactions', 'statement_batches', 'appointment_expenses', 'appointment_tasks', 'appointments', 'tread_readings', 'tire_fitments', 'tires', 'tire_sets', 'notification_logs', 'due_dismissals', 'reminders', 'prediction_alerts', 'todos',
+    order = ('statement_matches', 'statement_transactions', 'statement_batches', 'appointment_expenses', 'appointment_tasks', 'appointments', 'tread_readings', 'tire_fitments', 'tires', 'tire_sets', 'notification_logs', 'due_dismissals', 'reminders', 'todos',
              'tax_entries', 'fuel_entries', 'service_entries', 'repair_entries', 'parking_entries',
              'consumable_entries', 'insurance_policies', 'attachments', 'entries', 'vehicles',
              'backup_schedules', 'backups', 'push_subscriptions', 'email_consent_logs',

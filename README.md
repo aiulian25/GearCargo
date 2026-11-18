@@ -10,10 +10,6 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
     <td width="50%" valign="top"><img src="docs/screenshots/expenses.png" alt="Expenses — breakdown and charts"><br><sub><b>Expenses</b> — category breakdown &amp; charts</sub></td>
   </tr>
   <tr>
-    <td width="50%" valign="top"><img src="docs/screenshots/assistant.png" alt="AI vehicle assistant chat"><br><sub><b>AI vehicle assistant</b></sub></td>
-    <td width="50%" valign="top"><img src="docs/screenshots/recommendations.png" alt="Smart recommendations"><br><sub><b>Smart recommendations</b></sub></td>
-  </tr>
-  <tr>
     <td width="50%" valign="top"><img src="docs/screenshots/vehicle-health.png" alt="Vehicle health"><br><sub><b>Vehicle health</b></sub></td>
     <td width="50%" valign="top"><img src="docs/screenshots/consumables.png" alt="Consumables tracking"><br><sub><b>Consumables tracking</b></sub></td>
   </tr>
@@ -132,24 +128,16 @@ A comprehensive vehicle management Progressive Web App (PWA) for tracking fuel c
 - Cost per kilometer/mile analysis
 - **Shareable report links** — generate a read-only report link to share with a garage or family member; links carry opaque bearer tokens, expire, and can be revoked (anyone with the link can view it; downloaded copies cannot be revoked)
 
-### AI-Powered Features (Optional, via Ollama)
-- **Vehicle Assistant (chat)** — a per-vehicle conversational assistant that answers grounded questions about *your* data: spending totals, fuel/service/repair history ("when did I last change the brake pads, what did it cost, where?"), upcoming reminders, and cross-vehicle comparisons ("which car costs most"). Server queries scope vehicle context to the signed-in owner. Input/output checks and an optional topic classifier constrain model responses; they do not guarantee correct or safe answers. Prompts and selected vehicle/receipt context go to the configured Ollama server, whose operator controls its logging. See [AI and network boundaries](docs/SECURITY_AND_PRIVACY.md#network-and-proxy-boundaries)
-- **Automatic nightly maintenance predictions** — nightly scheduler analyses each vehicle's fuel, service, and repair history and generates multilingual prediction alerts (EN/RO/ES)
-- **Manual prediction trigger** — request an immediate AI analysis for any vehicle via the API
-- **OCR receipt scanning** — photos of receipts are automatically scanned (pytesseract) using an 11-step quality pipeline (local illumination normalisation, adaptive binarisation, confidence-filtered word extraction) and parsed by Ollama into structured data (date, amount, vendor, line items) to pre-fill expense forms; up to two shared processing slots under the [supported OCR deployment conditions](docs/OCR_QUEUE.md#capacity-and-recovery)
-- **Fuel anomaly detection** — after each fuel entry, Ollama checks the last 20 entries for suspicious consumption spikes or data-entry errors
-- **AI reminder suggestions** — request 3 AI-generated service reminder suggestions per vehicle based on its history
-- **Per-task model configuration** — assign different Ollama models to different tasks (`OLLAMA_MODEL_PREDICT`, `OLLAMA_MODEL_OCR`, `OLLAMA_MODEL_ANOMALY`, `OLLAMA_MODEL_REMINDER`) for optimal speed/quality trade-offs
-- **Smart Recommendations page** — rule-based alerts for upcoming service, insurance, and tax deadlines
-- Powered by any Ollama-compatible model (local or external); recommended: `qwen2.5` for structured JSON and multilingual output
+### Checklists & Alerts
+- **Seasonal checklists** — winter, summer, pre-purchase and inspection checklists that take your own items
+- **Vehicle alerts** — rule-based notices for upcoming service, insurance and tax deadlines and for high fuel use
 
 ### Attachments & Documents
 - Attach receipts, invoices, documents to any entry
 - Image preview and gallery view
 - PDF document support
 - Organized by vehicle and entry type
-- **OCR text extraction** — images are automatically scanned in the background; click the scan icon in the viewer to review extracted text
-- **AI data extraction** — send OCR text to Ollama to parse structured fields and pre-fill the parent expense form with one tap
+- **OCR text extraction** — receipt photos and PDFs are scanned in the background with Tesseract (illumination normalisation, adaptive binarisation, confidence-filtered words); click the scan icon in the viewer to review the text, and find documents by it in search
 - **OCR badge on thumbnails** — attachment cards display a badge when text has been successfully extracted
 - **Re-scan button** — retry OCR for blurry or rotated images via the attachment viewer
 - **OCR concurrency limit** — image decoding, OCR and PDF text extraction share up to two slots; the durable OCR queue defaults to at most 100 active attachments. This limit requires the shared database/media and supported locking configuration described in [OCR capacity and recovery](docs/OCR_QUEUE.md#capacity-and-recovery). Queued scans recover after restart; exhausted retries and queue overflow show a saved-file status with a manual retry. See [OCR operations](docs/OCR_QUEUE.md).
@@ -188,7 +176,7 @@ for each area, including the [upgrade boundary](docs/SECURITY_AND_PRIVACY.md#upg
   (AES-128-CBC plus HMAC-SHA256). This does not encrypt the whole database or
   uploads. Backup artifact encryption is optional; JSON/ZIP/tar.gz files
   are unencrypted by default, and CSV exports remain unencrypted. See [backup protection](docs/BACKUP_ENCRYPTION.md).
-- **Outbound services** — LAN/loopback Ollama and CalDAV endpoints are deliberately
+- **Outbound services** — LAN/loopback CalDAV endpoints are deliberately
   allowed. URL checks reject certain dangerous literals/metadata destinations;
   they are not a private-network firewall or a complete DNS-rebinding defense.
 - **Container boundary** — the bundled Compose root filesystem is writable.
@@ -588,18 +576,6 @@ VAPID_PUBLIC_KEY=your-vapid-public-key
 VAPID_PRIVATE_KEY=your-vapid-private-key
 VAPID_SUBJECT=mailto:admin@yourdomain.com
 
-# AI Features (optional)
-OLLAMA_ENABLED=false
-OLLAMA_BASE_URL=http://192.168.1.80:11434
-# Global model fallback (run: ollama list to see installed models)
-OLLAMA_MODEL=qwen2.5
-OLLAMA_TIMEOUT=60
-# Per-task model overrides (leave empty to inherit OLLAMA_MODEL)
-OLLAMA_MODEL_PREDICT=qwen2.5
-OLLAMA_MODEL_OCR=qwen2.5
-OLLAMA_MODEL_ANOMALY=llama3.2
-OLLAMA_MODEL_REMINDER=qwen2.5
-
 # Reverse proxy: auto = 1 hop from a non-public (loopback/Docker/LAN/Tailscale) proxy only; 0 = direct; N = N proxies
 TRUSTED_PROXY_COUNT=auto
 
@@ -720,25 +696,6 @@ The admin user can:
 | `BACKUP_MIRROR_FOLDER` | Optional | Container path of a mounted second disk or NAS share that receives a verified copy of every backup; see [Backup mirror](docs/BACKUP_MIRROR.md) | empty (off) |
 | `SYSTEM_RESTORE_*` | Optional | Finite system restore size, memory, disk reserve and time budgets; see [restore sizing](docs/RESTORE_RECOVERY.md#system-restore-resource-budgets) | See linked table |
 | `SCHEDULER_ENABLED` | Optional | Enable this instance's dedicated scheduler service; see [Scheduled jobs](docs/SCHEDULER.md) | `true` |
-
-### Ollama AI Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `OLLAMA_ENABLED` | Enable all AI features | `false` |
-| `OLLAMA_BASE_URL` | Ollama server URL | `http://host.docker.internal:11434` |
-| `OLLAMA_MODEL` | Global default model (fallback for all tasks) | empty |
-| `OLLAMA_TIMEOUT` | HTTP timeout in seconds | `60` |
-| `OLLAMA_MODEL_PREDICT` | Model for nightly maintenance predictions (complex JSON + multilingual) | inherits `OLLAMA_MODEL` |
-| `OLLAMA_MODEL_OCR` | Model for receipt OCR data extraction (structured fields) | inherits `OLLAMA_MODEL` |
-| `OLLAMA_MODEL_ANOMALY` | Model for fuel anomaly detection (fast classification) | inherits `OLLAMA_MODEL` |
-| `OLLAMA_MODEL_REMINDER` | Model for AI-generated reminder suggestions | inherits `OLLAMA_MODEL` |
-
-**Recommended model split** (8 GB VRAM):
-| Task | Model | Reason |
-|------|-------|--------|
-| Predictions, OCR, Reminders | `qwen2.5` | Best structured JSON + EN/RO/ES multilingual output |
-| Anomaly detection | `llama3.2` | Fast and lightweight — speed matters on every fuel save |
 
 ### JWT Token Expiration
 
@@ -920,7 +877,6 @@ pytest tests/test_backup_external_destinations.py -q
 |-----------|------------|---------|
 | **Containers** | Docker | Containerization |
 | **Orchestration** | Docker Compose | Single-container deployment |
-| **AI (Optional)** | Ollama | Local LLM inference (predictions, OCR parsing, anomaly detection) |
 
 ---
 
@@ -966,12 +922,6 @@ Base URL: `/api/`
 | `/api/reports/generate` | POST | Generate PDF report |
 | `/api/backup/export` | POST | Export backup |
 
-### AI Endpoints (requires `OLLAMA_ENABLED=true`)
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/predictions/generate` | POST | Manually trigger AI maintenance predictions for a vehicle |
-| `/api/predictions/status` | GET | Ollama connectivity status and available models |
-| `/api/vehicles/<id>/suggest-reminder` | POST | Get 3 AI-generated reminder suggestions |
 ### Widget API (Gethomepage)
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|

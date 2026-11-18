@@ -162,11 +162,6 @@ const Icons = {
       <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
     </svg>
   ),
-  ai: (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"/><path d="M19 14l.8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8L19 14z"/>
-    </svg>
-  ),
 }
 
 export default function VehicleDetail() {
@@ -485,7 +480,6 @@ export default function VehicleDetail() {
     { id: 'alerts', label: t('vehicleDetail.predictionAlerts') || 'Prediction Alerts', icon: Icons.alert, to: `/vehicles/${id}/alerts` },
     { id: 'health', label: t('vehicleDetail.vehicleHealth') || 'Vehicle Health', icon: Icons.heart, to: `/vehicles/${id}/health` },
     { id: 'consumables', label: t('vehicleDetail.consumables') || 'Consumables', icon: Icons.gauge, to: `/vehicles/${id}/consumables` },
-    // Assistant moved to the Smart page (global entry point); see SmartRecommendations.
   ]
   
   const addButtons = [

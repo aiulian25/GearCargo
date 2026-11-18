@@ -4,7 +4,7 @@ import { readPrivateNavigationState } from '../../utils/privateNavigation'
 import toast from 'react-hot-toast'
 import { saveExpenseWithReceipt } from '../../utils/receiptExpense'
 import { useMutationIntent } from '../../hooks/useMutationIntent'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useSearchParams, useLocation } from 'react-router-dom'
 import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
 import { useForm, useWatch } from 'react-hook-form'
@@ -53,8 +53,6 @@ export default function AddVehicleService() {
   const [existingAttachments, setExistingAttachments] = useState([])
   const [selectedServiceTypes, setSelectedServiceTypes] = useState([])
   const [uploadedAttachmentId, setUploadedAttachmentId] = useState(null)
-  const [ocrTypeHint, setOcrTypeHint] = useState(false)
-  const _ocrTypeTimerRef = useRef(null)
   
   const { register, getValues, handleSubmit, control, setValue, reset, watch, formState: { isDirty } } = useForm({
     defaultValues: {
@@ -140,8 +138,7 @@ export default function AddVehicleService() {
     fetchData()
   }, [vehicleId, editId, isEditMode, navigate, reset, mutation, currency.code])
 
-  // F33 — receipt routed from ShareTarget: apply the AI-parsed fields and
-  // adopt the already-uploaded attachment (linked to the entry after create).
+  // Opened from a bank statement row: start from its date, amount, currency and vendor.
   const location = useLocation()
   useEffect(() => {
     const st = readPrivateNavigationState(location.state)
@@ -151,10 +148,6 @@ export default function AddVehicleService() {
     if (d.currency) setValue('currency', d.currency, { shouldDirty: true })
     if (d.amount != null) setValue('total_cost', String(d.amount), { shouldDirty: true })
     if (d.vendor) setValue('shop_name', d.vendor, { shouldDirty: true })
-    if (d.line_items?.length) {
-      setValue('notes', d.line_items.map(i => i.description).filter(Boolean).join(', '), { shouldDirty: true })
-    }
-    if (st.attachmentId) setUploadedAttachmentId(st.attachmentId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -360,16 +353,6 @@ export default function AddVehicleService() {
             </div>
             {selectedServiceTypes.length === 0 && error && (
               <p className="text-xs text-red-500 mt-1">{t('addService.typeRequired') || 'Service type is required'}</p>
-            )}
-            {ocrTypeHint && (
-              <p className="text-xs text-purple-400 mt-1.5 flex items-center gap-1">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="4 7 4 4 7 4"/><polyline points="4 17 4 20 7 20"/>
-                  <polyline points="17 4 20 4 20 7"/><polyline points="17 20 20 20 20 17"/>
-                  <line x1="4" y1="12" x2="20" y2="12"/>
-                </svg>
-                {t('addService.ocrTypeHint') || 'Auto-selected from receipt'}
-              </p>
             )}
           </div>
           
@@ -582,39 +565,6 @@ export default function AddVehicleService() {
             receiptFile={receiptFile}
             vehicleId={parseInt(vehicleId)}
             onUploadComplete={(id) => setUploadedAttachmentId(id)}
-            onPrefill={(data) => {
-              if (data.date) setValue('date', data.date)
-              if (data.amount != null) setValue('total_cost', String(data.amount))
-              if (data.vendor) setValue('shop_name', data.vendor)
-              if (data.line_items?.[0]?.description) setValue('description', data.line_items[0].description)
-              // §7.5 — infer service_type from OCR line items + category when none selected
-              if (selectedServiceTypes.length === 0) {
-                const haystack = [
-                  data.line_items?.[0]?.description,
-                  data.category,
-                  ...(data.line_items || []).slice(0, 3).map(i => i.description),
-                ].filter(Boolean).join(' ').toLowerCase()
-                const match =
-                  /oil.chang|engine.oil|synthetic.oil|schimb.ulei|cambio.aceit/.test(haystack) ? 'oil_change' :
-                  /tire.rotat|tyre.rotat|rotati.anvelop|rotaci.neum/.test(haystack) ? 'tire_rotation' :
-                  /\bbrake|\bfran[ae]\b|\bfrein\b/.test(haystack) ? 'brake_service' :
-                  /air.filter|filtru.aer|filtro.aire/.test(haystack) ? 'air_filter' :
-                  /cabin.filter|pollen.filter|filtru.cabin|filtro.habit/.test(haystack) ? 'cabin_filter' :
-                  /\btransmission\b|\bcutie.vitez|\bcaja.cambio/.test(haystack) ? 'transmission' :
-                  /coolant|antifreez|antigel|refrigerant/.test(haystack) ? 'coolant' :
-                  /spark.plug|bujie|bujia/.test(haystack) ? 'spark_plugs' :
-                  /timing.belt|timing.chain|curea.distribut|correa.distribuc/.test(haystack) ? 'timing_belt' :
-                  /\binspect|\bitp\b|revision|revizie/.test(haystack) ? 'inspection' :
-                  /full.service|service.complet|revizi.complet|servicio.complet/.test(haystack) ? 'full_service' :
-                  null
-                if (match) {
-                  setSelectedServiceTypes([match])
-                  clearTimeout(_ocrTypeTimerRef.current)
-                  setOcrTypeHint(true)
-                  _ocrTypeTimerRef.current = setTimeout(() => setOcrTypeHint(false), 5000)
-                }
-              }
-            }}
           />
         </div>
       </form>

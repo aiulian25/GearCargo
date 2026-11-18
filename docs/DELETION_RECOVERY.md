@@ -61,8 +61,8 @@ references. A regression test requires a policy review when new FKs are added.
 | `attachments.user_id/vehicle_id/entry_id` | Delete vehicle and entry-linked documents; queue their files | Also delete unbound owned documents |
 | `insurance_policies.user_id/vehicle_id/document_attachment_id/renewed_from_id` | Delete selected policies/renewals before documents | Delete owned policies; preserve foreign owners through restrictions |
 | `reminders.user_id/vehicle_id/source_service_id` | Delete selected and source-service-linked reminders | Also delete unbound owned reminders |
-| `todos.user_id/vehicle_id`; `prediction_alerts.user_id/vehicle_id` | Delete selected children | Delete owned children |
-| `notification_logs.user_id/subscription_id/reminder_id/prediction_id/vehicle_id` | Delete logs for selected vehicle/reminders/predictions first | Also delete owned and owned-subscription logs |
+| `todos.user_id/vehicle_id` | Delete selected children | Delete owned children |
+| `notification_logs.user_id/subscription_id/reminder_id/vehicle_id` | Delete logs for selected vehicle/reminders first | Also delete owned and owned-subscription logs |
 | `due_dismissals.user_id` and logical `kind/ref_id` | Delete only matching owned occurrences | Delete all owned dismissals |
 | `report_shares.user_id` and JSON `vehicle_ids` | Revoke shares explicitly selecting the deleted vehicle | Delete owned shares |
 | `backups.user_id`, `backup_schedules.user_id` | Keep | Delete schedules/records; queue every file in the account's backup folder, including archives whose record retention already removed |

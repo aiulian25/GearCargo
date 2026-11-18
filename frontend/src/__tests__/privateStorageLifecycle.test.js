@@ -21,8 +21,8 @@ function harness() {
     switch: () => { state = { revision: 'B', identity: { owner_key: 'owner-b', generation: 'session-b' }, privateUntil: OFFLINE_SESSION_MS }; buckets.clear() },
     age: () => { state.privateUntil = 999 } }
 }
-it('public branding and shared reports remain network-only and never enter private caches', () => {
-  for (const path of ['/api/config', '/api/reports/shared/token', '/api/reports/shared/token/pdf']) {
+it('the CSRF token and shared reports remain network-only and never enter private caches', () => {
+  for (const path of ['/api/csrf-token', '/api/reports/shared/token', '/api/reports/shared/token/pdf']) {
     const url = new URL(path, 'https://example.test')
     expect(publicApiRead(url)).toBe(true)
     expect(cacheablePrivateApi(url)).toBe(false)

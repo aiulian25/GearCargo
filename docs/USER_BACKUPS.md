@@ -1,4 +1,4 @@
-# Portable personal backups (version 4.7)
+# Portable personal backups (version 4.8)
 
 A personal backup is a copy of vehicle data and portable preferences. It does not
 replace an administrator's full database/media snapshot or the separately stored
@@ -23,7 +23,7 @@ mapped column is added without an explicit backup decision.
 - Reminders: mileage/date, recurrence, completion, dismissal, snooze, translations,
   notification settings/state and source-service relationship. Remote CalDAV
   event IDs, credentials, versions and conflict snapshots are not portable.
-- Todos, saved predictions and due-feed dismissals, including their relationships.
+- Todos and due-feed dismissals, including their relationships.
 - Attachments: metadata, OCR text/state, expiry and notification state, VIN text,
   tags, timestamps, vehicle/entry links. Server disk paths are never copied.
 - Language, timezone, theme, currency, units, date/country/location preferences,
@@ -32,9 +32,8 @@ mapped column is added without an explicit backup decision.
 
 IDs in the archive are source identities and relationship keys within their namespace. Every restored row belongs to the
 signed-in destination account and uses destination database IDs. Tax-to-policy,
-policy renewal/document, reminder-to-service, attachment, prediction and dismissal
-references are remapped, including prediction metadata's vehicle and triggering
-expense IDs. A fresh-account restore retains distinct records even
+policy renewal/document, reminder-to-service, attachment and dismissal
+references are remapped. A fresh-account restore retains distinct records even
 when their dates and amounts happen to match.
 Attachment and insurance-document links must agree with their parent owner and
 vehicle. Unambiguous omitted vehicles are derived during import; contradictory
@@ -87,7 +86,7 @@ made by restoration.
 
 ## Versions, legacy data and merge behavior
 
-New exports use `version: "4.7"`, `format: "gearcargo-user"`. This version is
+New exports use `version: "4.8"`, `format: "gearcargo-user"`. This version is
 separate from the administrator system archive format. Version 1.0 (including
 unversioned files) and 2.0 remain readable through an adapter. Unknown versions,
 collections or missing required version-4 fields are rejected with a field/path
@@ -148,3 +147,5 @@ Version 4.5 adds tire sets, four permanent tire identities per set, fitment/rota
 Version 4.6 adds workshop appointments, checklist/due-work links and completed visit expense links. Existing expenses and receipts remain single records. Restore remaps all links and validates time zones, states and owner-local relationships; formats 4.0–4.5 remain readable without newer collections. See [workshop visits](WORKSHOP_VISITS.md).
 
 Version 4.7 adds selected statement batches, transactions and signed allocations. Restore validates relationships and exact balances; formats 4.0–4.6 remain readable without statement collections. Statement metadata never creates financial totals. Source deletion preserves expenses; previously saved archives retain their own copies. See [statement reconciliation](STATEMENT_RECONCILIATION.md).
+
+Version 4.8 no longer contains saved predictions, the links from workshop tasks and dismissals to them, three unused fields (`prediction_accuracy_score`, `last_prediction_at`, `ocr_populated`) and one unused notification switch. Formats 4.0–4.7 remain readable: that data is dropped on import, and a workshop task that was made from a prediction is restored as a plain task with its title.

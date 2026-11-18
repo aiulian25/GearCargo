@@ -1,6 +1,6 @@
 # Scheduled jobs
 
-`create_app()` does not launch scheduled work, OCR backfills or Ollama probes.
+`create_app()` does not launch scheduled work or OCR backfills.
 The container starts `python scheduler.py` as a separate s6 service after a
 successful migration. Gunicorn uses the `web` role, Flask commands use `cli`,
 and `python rq_worker.py` uses `worker`. Setting a role alone never starts jobs.
@@ -64,7 +64,7 @@ five attempts. Successful completion advances to the next future UTC schedule,
 coalescing missed ticks rather than replaying the entire downtime. First use
 seeds future schedules, plus delayed startup maintenance; it does not infer
 historical deliveries. Deduplication maintenance runs once per installation.
-Recurring generators, fuel refresh, OCR backfill and Ollama probing use the same
+Recurring generators, fuel refresh and OCR backfill use the same
 owner protocol instead of separate factory-startup threads.
 
 ## Delivery and visibility

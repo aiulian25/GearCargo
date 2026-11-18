@@ -2,7 +2,7 @@ import { notifyPendingCleanup } from '../utils/deletionFeedback'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { vehicleApi, externalApi, insuranceApi, configApi, dueApi } from '../services/api'
+import { vehicleApi, externalApi, insuranceApi, dueApi } from '../services/api'
 import { useCurrency, useTranslation } from '../contexts/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 import { isOfflineWriteError, announceOfflineSaved } from '../utils/offlineWrite'
@@ -10,7 +10,6 @@ import { useDateFormat } from '../hooks/useDateFormat'
 import { useUserLocation } from '../hooks/useUserLocation'
 import ServiceUnavailable from '../components/ui/ServiceUnavailable'
 import { useConfirm } from '../components/ui/ConfirmDialog'
-import ChatModal from '../components/chat/ChatModal'
 import LocationPrimingModal from '../components/PWA/LocationPrimingModal'
 import { FALLBACK_COUNTRY } from '../config/location'
 import { countryName } from '../utils/countryName'
@@ -322,7 +321,6 @@ const DUE_KIND = {
   consumable: { color: 'text-cyan-500',   bg: 'bg-cyan-500/10',   icon: <><path d="M21 8V21H3V8M1 3h22v5H1zM10 12h4" /></> },
   fine:       { color: 'text-orange-500', bg: 'bg-orange-500/10', icon: <><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></> },
   todo:       { color: 'text-sky-500',    bg: 'bg-sky-500/10',    icon: <><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></> },
-  prediction: { color: 'text-violet-500', bg: 'bg-violet-500/10', icon: <path d="M9.8 15.9L9 18.8l-.8-2.9a4.5 4.5 0 0 0-3.1-3.1L2.3 12l2.8-.8a4.5 4.5 0 0 0 3.1-3.1L9 5.3l.8 2.8a4.5 4.5 0 0 0 3.1 3.1L15.8 12l-2.9.8a4.5 4.5 0 0 0-3.1 3.1zM18.3 8.7L18 9.8l-.3-1.1a3.4 3.4 0 0 0-2.4-2.4L14.3 6l1-.3a3.4 3.4 0 0 0 2.4-2.4L18 2.3l.3 1a3.4 3.4 0 0 0 2.5 2.4L21.8 6l-1 .3a3.4 3.4 0 0 0-2.5 2.4z" /> },
 }
 const _DEFAULT_DUE = { color: 'text-gray-500', bg: 'bg-gray-500/10', icon: <><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h0" /></> }
 
@@ -367,14 +365,6 @@ function DueSoon({ items, loading, error, t, onDismiss }) {
   const [expanded, setExpanded] = useState(false)
 
   const dueLabel = (it) => {
-    // F45 — a mileage-based prediction shows "in ~400 km" (only predictions
-    // carry distance_left). Zero/negative means the mileage was reached → fall
-    // through to the severity label below.
-    if (it.distance_left != null && it.distance_left > 0) {
-      return (t('due.inDistance') || 'in ~{n} {unit}')
-        .replace('{n}', it.distance_left.toLocaleString())
-        .replace('{unit}', it.distance_unit || 'km')
-    }
     if (it.days_left == null) {
       return it.severity === 'critical'
         ? (t('due.replaceNow') || 'Replace now')
@@ -540,11 +530,6 @@ export default function Dashboard() {
   // Per-service error/retry/dismiss state for the fuel-price widget.
   const [fuelError, setFuelError] = useState(false)
   const [fuelDismissed, setFuelDismissed] = useState(false)
-  const [chatOpen, setChatOpen] = useState(false)
-  // The AI assistant entry only appears when the server has an Ollama
-  // integration (enabled + URL). Re-read on mount so it auto-appears once one
-  // is added later.
-  const [aiEnabled, setAiEnabled] = useState(false)
   const [retryingFuel, setRetryingFuel] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   // Distinguish "vehicles failed to load" (5xx / network) from "genuinely no
@@ -752,15 +737,6 @@ export default function Dashboard() {
       } catch { /* keep optimistic state; next visit refetches */ }
     }
   }, [t])
-
-  // Is the AI assistant available on this server (Ollama enabled + configured)?
-  useEffect(() => {
-    let cancelled = false
-    configApi.get()
-      .then((r) => { if (!cancelled) setAiEnabled(!!r.data?.ai_enabled) })
-      .catch(() => { if (!cancelled) setAiEnabled(false) })
-    return () => { cancelled = true }
-  }, [])
 
   // The server turns coordinates into a country and place name, so the browser never calls a geocoder.
   useEffect(() => {
@@ -1108,37 +1084,6 @@ export default function Dashboard() {
   
   return (
     <div className="p-4 lg:p-6 pb-24 lg:pb-6">
-      {/* AI Assistant banner — only when the server has an Ollama integration */}
-      {aiEnabled && (
-      <button
-        type="button"
-        onClick={() => setChatOpen(true)}
-        className="w-full mb-4 flex items-center gap-3 text-left rounded-xl border border-(--color-border) bg-(--color-bg-card) px-4 py-3 hover:border-(--color-accent) hover:bg-(--color-bg-tertiary) transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-(--color-accent)"
-        aria-haspopup="dialog"
-      >
-        <span className="shrink-0 w-10 h-10 rounded-lg bg-(--color-accent)/10 text-(--color-accent) flex items-center justify-center" aria-hidden="true">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="8" width="18" height="12" rx="2" /><path d="M12 8V5M9 3h6M8 13h.01M16 13h.01M9 17h6" />
-          </svg>
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-2xs font-semibold uppercase tracking-wide text-(--color-accent)">
-            {t('dashboard.assistantEyebrow') || 'AI Assistant'}
-          </span>
-          <span className="block text-sm text-(--color-text-primary) truncate">
-            {t('dashboard.assistantPrompt') || 'How can I help you today?'}
-          </span>
-        </span>
-        <span className="shrink-0 inline-flex items-center gap-1 text-sm font-medium text-(--color-accent)">
-          {t('dashboard.assistantCta') || 'Chat'}
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <polyline points="9 18 15 12 9 6" />
-          </svg>
-        </span>
-      </button>
-      )}
-
-      {aiEnabled && <ChatModal open={chatOpen} onClose={() => setChatOpen(false)} vehicles={vehicles} />}
       <LocationPrimingModal isOpen={consentPending} onConfirm={confirmLocation} onClose={deferLocation} />
 
       {/* Fuel Prices Widget — full-width banner */}

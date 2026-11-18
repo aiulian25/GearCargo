@@ -5,7 +5,7 @@ repairs, taxes, parking, consumables, insurance, reminders, todos and attachment
 It also applies to reminder completion/snooze, todo completion/reopening,
 recurring tax/parking/insurance cancellation, vehicle archive/restore and mileage.
 Permanent vehicle deletion continues to use the separate online deletion recovery
-workflow. Account, admin, import, backup, photo, OCR and recommendation actions
+workflow. Account, admin, import, backup, photo, OCR and checklist actions
 are not generic replayable record writes.
 
 ## Request contract

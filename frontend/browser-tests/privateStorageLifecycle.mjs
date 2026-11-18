@@ -113,7 +113,7 @@ try {
   })
   const page = await harness(context); await seed.close()
   assertPurged(await inventory(page))
-  assert.equal(await page.evaluate(async () => (await fetch('/api/config')).status), 200)
+  assert.equal(await page.evaluate(async () => (await fetch('/api/csrf-token')).status), 200)
   assert.equal(await page.evaluate(async () => (await fetch('/api/reports/shared/invalid-fixture-token')).status), 404)
   results.push({ scenario: 'Upgrade removes unscoped API/media/images/share caches and cached profile; app assets remain', passed: true })
 

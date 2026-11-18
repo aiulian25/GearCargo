@@ -58,7 +58,6 @@ const VehicleAppointments = lazy(() => import('./pages/vehicles/VehicleAppointme
 const VehicleTires = lazy(() => import('./pages/vehicles/VehicleTires'))
 const VehicleConsumables = lazy(() => import('./pages/vehicles/VehicleConsumables'))
 const AddVehicleConsumable = lazy(() => import('./pages/vehicles/AddVehicleConsumable'))
-const VehicleChat = lazy(() => import('./pages/vehicles/VehicleChat'))
 const FuelEntries = lazy(() => import('./pages/fuel/FuelEntries'))
 const AddFuel = lazy(() => import('./pages/fuel/AddFuel'))
 const ShareTarget = lazy(() => import('./pages/ShareTarget'))
@@ -70,7 +69,7 @@ const AddRepair = lazy(() => import('./pages/repairs/AddRepair'))
 const Reminders = lazy(() => import('./pages/reminders/Reminders'))
 const ReminderDetail = lazy(() => import('./pages/reminders/ReminderDetail'))
 const AddReminder = lazy(() => import('./pages/reminders/AddReminder'))
-const SmartRecommendations = lazy(() => import('./pages/predictions/SmartRecommendations'))
+const Checklists = lazy(() => import('./pages/checklists/Checklists'))
 const Settings = lazy(() => import('./pages/settings/Settings'))
 const Profile = lazy(() => import('./pages/settings/Profile'))
 const SharedReport = lazy(() => import('./pages/SharedReport'))
@@ -223,7 +222,6 @@ function App() {
           <Route path="vehicles/:id/appointments" element={<VehicleAppointments />} />
           <Route path="vehicles/:id/tires" element={<VehicleTires />} />
           <Route path="vehicles/:id/consumable/add" element={<AddVehicleConsumable />} />
-          <Route path="vehicles/:id/chat" element={<VehicleChat />} />
           <Route path="vehicles/:id/expenses" element={<VehicleExpenses />} />
           <Route path="vehicles/:id/timeline" element={<VehicleTimeline />} />
           <Route path="vehicles/:id/charts" element={<VehicleCharts />} />
@@ -254,8 +252,7 @@ function App() {
           <Route path="reminders/add" element={<AddReminder />} />
           <Route path={REMINDER_ROUTE} element={<ReminderDetail />} />
           
-          {/* Smart Recommendations */}
-          <Route path="recommendations" element={<SmartRecommendations />} />
+          <Route path="checklists" element={<Checklists />} />
           
           {/* Settings */}
           <Route path="settings" element={<Settings />} />

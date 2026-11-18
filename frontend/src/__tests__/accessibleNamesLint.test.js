@@ -53,7 +53,7 @@ ruleTester.run('field-has-label', accessibleNames.rules['field-has-label'], {
     "<input type='hidden' name='token' />",
     "<input type='file' className='hidden' />",
     "<FormField id='visit-notes' label={t('appointments.notes')}><textarea id='visit-notes' /></FormField>",
-    '<>{keys.map(key => <div key={key}><label htmlFor={`ai-model-${key}`}>{key}</label><select id={`ai-model-${key}`} /></div>)}</>',
+    '<>{keys.map(key => <div key={key}><label htmlFor={`unit-${key}`}>{key}</label><select id={`unit-${key}`} /></div>)}</>',
     // A useId() value shared by the label and the field.
     "<><label htmlFor={id}>{t('settings.currency')}</label><select id={id} /></>",
     "<input type='submit' />",

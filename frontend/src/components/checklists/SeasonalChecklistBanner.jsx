@@ -2,12 +2,12 @@
  * SeasonalChecklistBanner - A compact, dismissible banner for the Dashboard
  * 
  * Shows a quick tip when seasonal checklists are relevant.
- * Non-intrusive, links to the full SmartRecommendations page.
+ * Non-intrusive, links to the Checklists page.
  */
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from '../../contexts/LanguageContext'
-import { predictionApi } from '../../services/api'
+import { checklistApi } from '../../services/api'
 
 // SVG Icons
 const Icons = {
@@ -63,7 +63,7 @@ export default function SeasonalChecklistBanner() {
     
     const fetchData = async () => {
       try {
-        const response = await predictionApi.getChecklists()
+        const response = await checklistApi.getChecklists()
         const checklists = response.data.checklists || []
         
         // Find a relevant seasonal checklist that's in season and not complete
@@ -119,7 +119,7 @@ export default function SeasonalChecklistBanner() {
   
   return (
     <Link
-      to="/recommendations"
+      to="/checklists"
       className={`
         block rounded-xl border p-3 transition-all duration-200
         hover:shadow-md hover:scale-[1.01] touch-manipulation

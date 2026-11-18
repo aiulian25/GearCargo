@@ -9,8 +9,8 @@ Restoring changes only the vehicle's archive flags.
 While archived, GearCargo excludes the vehicle from due/expiry feeds and calendar
 subscriptions, reminder pushes and emails, mileage alerts, automatic insurance
 renewals, and tax/parking generation. Recurrence date repair and duplicate-template
-consolidation also pause. Existing consumable, warranty, document, service and
-prediction jobs continue to exclude archived vehicles. Standalone reminders and
+consolidation also pause. Existing consumable, warranty, document and service
+jobs continue to exclude archived vehicles. Standalone reminders and
 to-dos, with no vehicle, remain eligible.
 
 Restoring resumes saved schedules. Overdue reminders can surface again, and

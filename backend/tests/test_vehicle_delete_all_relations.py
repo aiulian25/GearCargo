@@ -11,7 +11,7 @@ from app import db
 from app.models import (Attachment, ActivityLog, Backup, BackupSchedule, BlockedDevice,
                         BlockedIP, ConsumableEntry, DueDismissal, EmailConsentLog, Entry,
                         FuelEntry, InsurancePolicy, NotificationLog, ParkingEntry, Passkey,
-                        PredictionAlert, PushSubscription, Reminder, RepairEntry,
+                        PushSubscription, Reminder, RepairEntry,
                         ReportShare, ServiceEntry, TaxEntry, Todo, User, UserSession, Vehicle)
 from app.utils.timeutils import utc_naive_now, utc_today
 
@@ -87,14 +87,13 @@ def populate_all(app, user):
         start_date=utc_today(), end_date=utc_today()+timedelta(days=60), renewed_from_id=policy.id)
     entries[3].insurance_policy_id = policy.id
     reminder = Reminder(user_id=uid, title='Reminder', due_date=utc_today(), source_service_id=service.id)
-    prediction = PredictionAlert(user_id=uid, vehicle_id=vid, alert_type='oil_change', title='Alert')
     todo = Todo(user_id=uid, vehicle_id=vid, title='Task')
-    db.session.add_all([renewal, reminder, prediction, todo]); db.session.flush()
-    db.session.add(NotificationLog(user_id=uid, reminder_id=reminder.id, prediction_id=prediction.id,
+    db.session.add_all([renewal, reminder, todo]); db.session.flush()
+    db.session.add(NotificationLog(user_id=uid, reminder_id=reminder.id,
                                     title='Notice', notification_type='reminder', channel='push'))
     kinds = {'service': service.id, 'tax': entries[3].id, 'fine': entries[4].id,
              'parking': entries[4].id, 'consumable': entries[5].id, 'insurance': policy.id,
-             'document': indirect.id, 'reminder': reminder.id, 'prediction': prediction.id, 'todo': todo.id}
+             'document': indirect.id, 'reminder': reminder.id, 'todo': todo.id}
     for kind, rid in kinds.items():
         db.session.add(DueDismissal(user_id=uid, kind=kind, ref_id=rid))
     photo = write_file(get_uploads_folder(), f'vehicles/{vid}.jpg', b'car photo')
@@ -126,7 +125,7 @@ def test_vehicle_deletes_every_child_with_constraints(app, user, client, auth_he
     assert response.status_code == 200, response.json
     assert response.json['cleanup']['state'] == 'completed'
     db.session.expire_all()
-    for cls in (Entry, Attachment, Reminder, PredictionAlert, Todo, InsurancePolicy, NotificationLog, DueDismissal):
+    for cls in (Entry, Attachment, Reminder, Todo, InsurancePolicy, NotificationLog, DueDismissal):
         assert cls.query.filter_by(user_id=user.id).count() == 0, cls
     assert db.session.get(Vehicle, vid) is None
     assert db.session.get(Vehicle, ovid).user_id == oid
@@ -477,7 +476,7 @@ def test_complete_inbound_foreign_key_inventory(app):
         'tire_fitments': {'user_id', 'vehicle_id', 'tire_set_id'},
         'tread_readings': {'user_id', 'vehicle_id', 'tire_set_id', 'tire_id'},
         'appointments': {'user_id', 'vehicle_id', 'preparation_reminder_id'},
-        'appointment_tasks': {'user_id', 'vehicle_id', 'appointment_id', 'reminder_id', 'todo_id', 'service_id', 'prediction_id'},
+        'appointment_tasks': {'user_id', 'vehicle_id', 'appointment_id', 'reminder_id', 'todo_id', 'service_id'},
         'appointment_expenses': {'user_id', 'vehicle_id', 'appointment_id', 'entry_id'},
         'import_batches': {'user_id'},
         'import_identities': {'user_id', 'first_batch_id', 'last_batch_id'},
@@ -487,8 +486,8 @@ def test_complete_inbound_foreign_key_inventory(app):
         'attachments': {'entry_id', 'vehicle_id', 'user_id'},
         'insurance_policies': {'user_id', 'vehicle_id', 'document_attachment_id', 'renewed_from_id'},
         'reminders': {'user_id', 'vehicle_id', 'source_service_id', 'completed_from_id'},
-        'prediction_alerts': {'user_id', 'vehicle_id'}, 'todos': {'user_id', 'vehicle_id', 'completed_from_id'},
-        'notification_logs': {'user_id', 'subscription_id', 'reminder_id', 'prediction_id', 'vehicle_id'},
+        'todos': {'user_id', 'vehicle_id', 'completed_from_id'},
+        'notification_logs': {'user_id', 'subscription_id', 'reminder_id', 'vehicle_id'},
         **{name: {'user_id'} for name in ('backups', 'backup_schedules', 'push_subscriptions', 'email_consent_logs',
             'activity_logs', 'user_sessions', 'report_shares', 'due_dismissals', 'mutation_operations', 'calendar_outbox', 'scheduled_effects',
             'passkeys')},

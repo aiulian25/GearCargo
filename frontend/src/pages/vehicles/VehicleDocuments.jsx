@@ -89,13 +89,6 @@ const Icons = {
       <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
     </svg>
   ),
-  wand: (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/>
-      <path d="M17.8 11.8 19 13"/><path d="M15 9h.01"/><path d="M17.8 6.2 19 5"/>
-      <path d="m3 21 9-9"/><path d="M12.2 6.2 11 5"/>
-    </svg>
-  ),
 }
 
 // ── Category label ─────────────────────────────────────────────────────────────
@@ -180,7 +173,6 @@ export default function VehicleDocuments() {
 
   const timerRef = useRef(null)
   const ocrPollRef = useRef(null)
-  const ocrToastTimerRef = useRef(null)
   const fileInputRef = useRef(null)
   const PER_PAGE = 20
 
@@ -191,8 +183,6 @@ export default function VehicleDocuments() {
   const [uploadCategory, setUploadCategory] = useState('receipt')
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState('')
-  // OCR toast — appears after upload+scan completes with text found
-  const [ocrToast, setOcrToast] = useState(null) // { id, filename }
 
   // F42 — edit-details modal (description / category / expiry date).
   const [editAtt, setEditAtt] = useState(null)   // the attachment being edited
@@ -335,7 +325,6 @@ export default function VehicleDocuments() {
   useEffect(() => () => {
     clearTimeout(timerRef.current)
     clearTimeout(ocrPollRef.current)
-    clearTimeout(ocrToastTimerRef.current)
   }, [])
 
   // ── Upload helpers ─────────────────────────────────────────────────────────
@@ -403,7 +392,7 @@ export default function VehicleDocuments() {
       fetchAttachments(1, debouncedQ)
       // Start OCR polling for images
       if ((attachment?.is_image || attachment?.is_pdf) && ocrStatus === 'pending') {
-        _startOcrPoll(attachment.id, attachment.original_filename || attachment.filename)
+        _startOcrPoll(attachment.id)
       }
     } catch {
       setUploadError(t('vehicleDocuments.uploadError') || 'Upload failed. Please try again.')
@@ -411,7 +400,7 @@ export default function VehicleDocuments() {
     }
   }
 
-  const _startOcrPoll = (id, filename) => {
+  const _startOcrPoll = (id) => {
     if (ocrPollRef.current) clearTimeout(ocrPollRef.current)
     let attempts = 0
     const MAX_ATTEMPTS = 20
@@ -423,14 +412,6 @@ export default function VehicleDocuments() {
         const d = res.data
         if (ocrFinished(d)) {
           fetchAttachments(1, debouncedQ)
-          if (d.ocr_processed && d.has_text && !ocrFailed(d)) {
-            // Refresh so the list shows OCR badge
-            fetchAttachments(1, debouncedQ)
-            // Show toast
-            setOcrToast({ id, filename })
-            if (ocrToastTimerRef.current) clearTimeout(ocrToastTimerRef.current)
-            ocrToastTimerRef.current = setTimeout(() => setOcrToast(null), 8000)
-          }
         } else {
           ocrPollRef.current = setTimeout(poll, 3000)
         }
@@ -439,18 +420,6 @@ export default function VehicleDocuments() {
       }
     }
     ocrPollRef.current = setTimeout(poll, 3000)
-  }
-
-  const dismissToast = () => {
-    setOcrToast(null)
-    clearTimeout(ocrToastTimerRef.current)
-  }
-
-  const openToastViewer = () => {
-    if (!ocrToast) return
-    const att = attachments.find(a => a.id === ocrToast.id)
-    if (att) openViewer(att, true)
-    dismissToast()
   }
 
   // Format file size
@@ -891,45 +860,6 @@ export default function VehicleDocuments() {
         initialShowOcr={viewerShowOcr}
         onClose={() => setViewerOpen(false)}
       />
-
-      {/* OCR toast — slide up from bottom when receipt scan completes */}
-      {ocrToast && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="fixed bottom-20 left-4 right-4 z-50 flex items-center gap-3 bg-(--color-bg-elevated,var(--color-bg-secondary)) border border-purple-500/30 rounded-2xl px-4 py-3 shadow-xl animate-slide-up"
-          style={{ animation: 'slideUp 0.25s ease-out' }}
-        >
-          <span className="shrink-0 text-purple-400">
-            {Icons.wand}
-          </span>
-          <p className="flex-1 text-sm text-(--color-text-primary)">
-            {t('vehicleDocuments.ocrToast') || 'Receipt scanned — extract data?'}
-          </p>
-          <button
-            type="button"
-            onClick={openToastViewer}
-            className="shrink-0 text-xs font-semibold text-purple-400 hover:text-purple-300 transition-colors px-2 py-1 touch-manipulation"
-          >
-            {t('vehicleDocuments.ocrToastView') || 'View'}
-          </button>
-          <button
-            type="button"
-            onClick={dismissToast}
-            aria-label={t('common.dismiss') || 'Dismiss'}
-            className="shrink-0 text-(--color-text-muted) hover:text-(--color-text-primary) transition-colors touch-manipulation"
-          >
-            {Icons.close}
-          </button>
-        </div>
-      )}
-
-      <style>{`
-        @keyframes slideUp {
-          from { transform: translateY(1rem); opacity: 0; }
-          to   { transform: translateY(0);    opacity: 1; }
-        }
-      `}</style>
     </div>
   )
 }

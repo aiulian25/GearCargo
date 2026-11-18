@@ -6,7 +6,7 @@ driven by **`setup.sh`**. See the main README.
 
 | File | What it is |
 |------|-----------|
-| **`.env.reference`** | The complete, documented list of **every** environment variable GearCargo supports (external DB/Redis, Ollama AI, GeoIP, tuning, domain-based access control, etc.). The root `.env.example` is the short version — copy anything extra you need from here. |
+| **`.env.reference`** | The complete, documented list of **every** environment variable GearCargo supports (external DB/Redis, GeoIP, tuning, domain-based access control, etc.). The root `.env.example` is the short version — copy anything extra you need from here. |
 
 ### Notes
 - **Build the image yourself** instead of pulling: use the root

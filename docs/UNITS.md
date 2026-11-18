@@ -8,11 +8,11 @@ is stored in **litres**, price in **currency per litre**, and consumption in
 ## Distance contract
 
 - Vehicle current mileage, entry odometers, full-to-full `trip_distance`, service
-  next-due mileage, reminder due mileage, predicted mileage, consumable lifespans
+  next-due mileage, reminder due mileage, consumable lifespans
   and warranty distances all follow the vehicle unit. Historical names such as
   `warranty_km` and `expected_lifespan_km` do not imply an independent conversion.
 - A vehicle with mileage, average trip distance, maintenance overrides or any
-  expense/reminder/task/insurance/prediction history cannot switch distance
+  expense/reminder/task/insurance history cannot switch distance
   units. The API returns **409 `DISTANCE_UNIT_LOCKED`**, and the edit form disables
   the switch with an explanation. An empty vehicle can choose its unit. Changing
   the equivalent `mi`/`miles` spelling is safe.

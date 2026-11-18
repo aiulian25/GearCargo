@@ -145,5 +145,5 @@ def test_health_probes_are_answered_before_proxy_trust(app, caplog):
     assert IGNORED_FORWARDED_FOR_WARNING not in [record.msg for record in caplog.records]
 
     # Positive control: the same request to any other path is checked.
-    client.get('/api/config', **spoofed)
+    client.get('/api/app-version', **spoofed)
     assert IGNORED_FORWARDED_FOR_WARNING in [record.msg for record in caplog.records]

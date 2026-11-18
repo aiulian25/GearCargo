@@ -304,7 +304,7 @@ export default function VehicleCharts() {
     return () => { active = false }
   }, [id])
 
-  // F11 — forward-looking cost forecast (recurring + predictions vs budget).
+  // F11 — forward-looking cost forecast (recurring costs vs budget).
   // Independent fetch so a failure never breaks the rest of the Charts page.
   useEffect(() => {
     let active = true
@@ -554,7 +554,7 @@ export default function VehicleCharts() {
           )
         })()}
 
-        {/* F11 — forward 12-month projected-cost forecast (recurring + predictions
+        {/* F11 — forward 12-month projected-cost forecast (recurring costs
             vs monthly budget). Independent of the year selector; shown only when
             there is something to project. */}
         {forecast && forecast.buckets?.some((b) => b.projected > 0) && (() => {

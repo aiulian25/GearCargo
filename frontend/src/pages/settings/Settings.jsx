@@ -16,7 +16,6 @@ import SystemLogs from '../../components/admin/SystemLogs'
 import MaintenanceCleanup from '../../components/admin/MaintenanceCleanup'
 import { useDateFormat } from '../../hooks/useDateFormat'
 import SecurityBlocking from '../../components/admin/SecurityBlocking'
-import AiStatusPanel from '../../components/admin/AiStatusPanel'
 import TwoFactorSetup from '../../components/settings/TwoFactorSetup'
 import PasskeySettings from '../../components/settings/PasskeySettings'
 import SecurityQuestionsSetup from '../../components/settings/SecurityQuestionsSetup'
@@ -219,7 +218,6 @@ export default function Settings() {
     email_tax_alerts: true,
     email_service_alerts: true,
     email_reminder_alerts: true,
-    email_smart_alerts: true,
     login_alerts_enabled: true,
     daily_alerts_enabled: true,
     weekly_report_enabled: false,
@@ -238,7 +236,7 @@ export default function Settings() {
   const [showConsentHistory, setShowConsentHistory] = useState(false)
   
   const [showAdminSection, setShowAdminSection] = useState(false)
-  const [adminTab, setAdminTab] = useState('users')  // 'users', 'logs', 'maintenance', 'security', or 'ai'
+  const [adminTab, setAdminTab] = useState('users')  // 'users', 'security', 'logs' or 'maintenance'
   const [showArchiveSection, setShowArchiveSection] = useState(false)
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false)
   const [showTermsOfService, setShowTermsOfService] = useState(false)
@@ -1675,16 +1673,6 @@ export default function Settings() {
                     className="w-4 h-4 rounded-sm border-(--color-border) text-(--color-accent) focus:ring-(--color-accent)"
                   />
                 </label>
-                
-                <label className="flex items-center justify-between py-1 cursor-pointer">
-                  <span className="text-sm">{t('settings.smartAlerts') || 'Smart Recommendations'}</span>
-                  <input
-                    type="checkbox"
-                    checked={emailSettings.email_smart_alerts}
-                    onChange={(e) => handleEmailSettingChange('email_smart_alerts', e.target.checked)}
-                    className="w-4 h-4 rounded-sm border-(--color-border) text-(--color-accent) focus:ring-(--color-accent)"
-                  />
-                </label>
 
                 {/* Security Alerts */}
                 <p className="text-2xs text-(--color-text-muted) font-medium uppercase tracking-wide mt-4 mb-1">
@@ -2857,16 +2845,6 @@ export default function Settings() {
                 >
                   {t('admin.maintenance') || 'Cleanup'}
                 </button>
-                <button
-                  onClick={() => setAdminTab('ai')}
-                  className={`flex-1 py-2 rounded-md text-xs font-medium transition-colors ${
-                    adminTab === 'ai'
-                      ? 'bg-(--color-bg-card) text-(--color-accent) shadow-xs'
-                      : 'text-(--color-text-secondary)'
-                  }`}
-                >
-                  {t('admin.ai') || 'AI'}
-                </button>
               </div>
               
               {/* Tab Content */}
@@ -2874,7 +2852,6 @@ export default function Settings() {
               {adminTab === 'security' && <SecurityBlocking />}
               {adminTab === 'logs' && <SystemLogs />}
               {adminTab === 'maintenance' && <MaintenanceCleanup />}
-              {adminTab === 'ai' && <AiStatusPanel />}
             </div>
           )}
         </div>

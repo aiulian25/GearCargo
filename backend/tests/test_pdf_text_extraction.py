@@ -126,33 +126,6 @@ def test_scanned_pdf_degrades_to_no_text(app, client, user, auth_headers, queued
     assert body['has_text'] is False
 
 
-def test_parse_endpoint_accepts_pdf(app, client, user, auth_headers, queued_tasks, monkeypatch):
-    resp = _upload(client, auth_headers, user.id, _pdf_bytes(), 'invoice.pdf')
-    att_id = resp.get_json()['attachment']['id']
-    _run_queued(app, queued_tasks)
-
-    import app.routes.attachments as att_mod
-    app.config['OLLAMA_ENABLED'] = True
-    app.config['OLLAMA_BASE_URL'] = 'http://localhost:11434'
-    try:
-        monkeypatch.setattr(att_mod, '_resolve_model', lambda *a, **k: 'test-model')
-        monkeypatch.setattr(att_mod, '_ai_cache_get', lambda *a, **k: None)
-        monkeypatch.setattr(att_mod, '_ai_cache_set', lambda *a, **k: None)
-        monkeypatch.setattr(att_mod, '_ollama_chat', lambda **k: {
-            'date': '2026-07-01', 'amount': 42.50, 'vendor': 'Garage Ltd',
-            'category': 'service', 'line_items': [],
-        })
-
-        parsed = client.post(f'/api/attachments/{att_id}/ocr/parse',
-                             headers=auth_headers(user.id))
-        assert parsed.status_code == 200, parsed.get_data(as_text=True)
-        body = parsed.get_json()
-        assert body['amount'] == 42.50
-        assert body['vendor'] == 'Garage Ltd'
-    finally:
-        app.config['OLLAMA_ENABLED'] = False
-
-
 def test_retry_routes_pdf_to_pdf_task(app, client, user, auth_headers, queued_tasks):
     resp = _upload(client, auth_headers, user.id, _pdf_bytes(), 'invoice.pdf')
     att_id = resp.get_json()['attachment']['id']

@@ -41,11 +41,6 @@ def app(tmp_path):
         VOLUMES_PATH = str(volumes_path)
         UPLOAD_FOLDER = str(uploads_path)
         BACKUP_FOLDER = str(backups_path)
-        # Optional AI is opt-in per test (every AI test sets it explicitly). With
-        # it on, a fuel create starts a daemon anomaly thread that reads the
-        # database after the response returns, racing drop_all() below — on
-        # PostgreSQL that is a lock cycle ("deadlock detected") in teardown.
-        OLLAMA_ENABLED = False
 
     flask_app = create_app(LocalTestingConfig)
 

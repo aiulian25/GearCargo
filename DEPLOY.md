@@ -25,8 +25,7 @@ Complete step-by-step guide to deploy GearCargo on any Docker-capable machine â€
    - [4.5 Change the Default Port](#45-change-the-default-port)
    - [4.6 Email (SMTP)](#46-email-smtp)
    - [4.7 Push Notifications (VAPID Keys)](#47-push-notifications-vapid-keys)
-   - [4.8 AI Features (Ollama)](#48-ai-features-ollama--optional)
-   - [4.9 Admin Account Bootstrap](#49-admin-account-bootstrap)
+   - [4.8 Admin Account Bootstrap](#48-admin-account-bootstrap)
 5. [Login to GitHub Container Registry](#5-login-to-github-container-registry)
 6. [Start the Application](#6-start-the-application)
 7. [Verify the Deployment](#7-verify-the-deployment)
@@ -310,34 +309,7 @@ VAPID_SUBJECT=mailto:yourname@gmail.com
 
 ---
 
-### 4.8 AI Features (Ollama) â€” Optional
-
-GearCargo can use Ollama for AI-powered predictions (maintenance forecasts, cost estimates). This is entirely optional.
-
-**Disabled (default):**
-```env
-OLLAMA_ENABLED=false
-```
-
-**Ollama running on the same host:**
-```env
-OLLAMA_ENABLED=true
-OLLAMA_BASE_URL=http://host.docker.internal:11434
-OLLAMA_MODEL=llama3.2
-OLLAMA_TIMEOUT=30
-```
-
-**Ollama on a different machine:**
-```env
-OLLAMA_ENABLED=true
-OLLAMA_BASE_URL=http://192.168.1.100:11434
-OLLAMA_MODEL=llama3.2
-OLLAMA_TIMEOUT=30
-```
-
----
-
-### 4.9 Admin Account Bootstrap
+### 4.8 Admin Account Bootstrap
 
 The first user to register becomes the admin. After the admin exists, public registration is permanently disabled (only admins can invite new users).
 
@@ -794,11 +766,6 @@ Every environment variable the application reads, with its default value:
 | `VAPID_PUBLIC_KEY` | *(empty)* | VAPID public key |
 | `VAPID_PRIVATE_KEY` | *(empty)* | VAPID private key |
 | `VAPID_SUBJECT` | `mailto:admin@gearcargo.local` | VAPID subject (email URI) |
-| **AI (Ollama)** | | |
-| `OLLAMA_ENABLED` | `false` | Enable AI features |
-| `OLLAMA_BASE_URL` | `http://host.docker.internal:11434` | Ollama API URL |
-| `OLLAMA_MODEL` | `llama3.2` | Ollama model name |
-| `OLLAMA_TIMEOUT` | `30` | API timeout (seconds) |
 | **Update check (optional)** | | |
 | `UPDATE_CHECK_ENABLED` | `false` | Opt-in: check GitHub for a newer release and surface it in-app (useful for version-pinned deployments). Contacts api.github.com only; off by default. |
 | `UPDATE_CHECK_REPO` | `aiulian25/GearCargo` | Repo to check releases for |

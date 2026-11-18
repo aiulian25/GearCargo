@@ -52,6 +52,9 @@ def same_source(left, right):
     nullable_additions = {'purchase_currency', 'repeat_mileage', 'recurrence_anchor_date', 'notification_state'}
     left = {k: v for k, v in left.items() if k not in nullable_additions or v not in (None, {})}
     right = {k: v for k, v in right.items() if k not in nullable_additions or v not in (None, {})}
+    # Provenance written by earlier releases still names fields that no longer exist.
+    left = {k: v for k, v in left.items() if k not in RETIRED_SOURCE_FIELDS}
+    right = {k: v for k, v in right.items() if k not in RETIRED_SOURCE_FIELDS}
     # A data-only export has no byte fingerprint. Adding media later must not
     # create another expense or attachment. Compare bytes when both supplied it.
     optional = {'_content_sha256', '_photo_sha256'}
@@ -80,7 +83,10 @@ def lock_imports(user_id):
             connection.exec_driver_sql('BEGIN IMMEDIATE')
 
 
-from app.services.backup_schema import BackupSchemaError
+from app.services.backup_schema import (BackupSchemaError, RETIRED_FUEL_FIELD, RETIRED_TASK_LINK,
+                                        RETIRED_VEHICLE_FIELDS)
+
+RETIRED_SOURCE_FIELDS = {*RETIRED_VEHICLE_FIELDS, RETIRED_FUEL_FIELD, RETIRED_TASK_LINK}
 
 
 class ImportConflict(BackupSchemaError):

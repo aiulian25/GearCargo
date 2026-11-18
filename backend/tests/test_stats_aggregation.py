@@ -265,7 +265,7 @@ def test_attachment_stats(app, client, auth_headers):
 # All three lookups compared a `Date` column against `now` (a *datetime*), so the
 # subtraction raised TypeError — swallowed by `except Exception: pass`. Every
 # response carried next_service_days = null, and the "Next Service Due" card,
-# the alerts list and Smart Recommendations all fell back to empty.
+# the alerts list and the Checklists page all fell back to empty.
 
 
 def _vehicle_stats(client, headers, vehicle_id):

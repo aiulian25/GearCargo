@@ -37,7 +37,6 @@ vi.mock('../services/api', () => {
     vehicleApi: { getAll: answer({ vehicles: [] }), getRecentTransactions: answer({ transactions: [] }) },
     externalApi: { getFuelPrices: answer({ location: 'United Kingdom', country: 'UK', prices: {} }), history: answer({ points: [] }) },
     insuranceApi: { getActive: answer({ policies: [] }), getExpiring: answer({ policies: [] }) },
-    configApi: { get: answer({}) },
     dueApi: { get: answer({ items: [] }) },
   }
 })

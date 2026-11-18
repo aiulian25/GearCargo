@@ -58,7 +58,7 @@ describe('offline operation allowlist', () => {
   })
   it.each(['/api/auth/login', '/api/auth/logout', '/api/auth/register', '/api/auth/password', '/api/auth/2fa/verify',
     '/api/auth/security-questions', '/api/admin/users', '/api/backup/restore', '/api/backup/export', '/api/reports/shares',
-    '/api/vehicles/1/chat', '/api/vehicles/chat', '/api/vehicles/1/photo', '/api/vehicles/1?hard=true',
+    '/api/vehicles/1/photo', '/api/vehicles/1?hard=true',
     '/api/attachments', '/api/todos/1/complete', '/api/reminders/1/complete', '/api/vehicles/reorder',
     '/api/vehicles/1/archive', '/api/vehicles/1/health/actions/complete'])('never queues %s', path => {
     for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) expect(isOfflineWrite(new URL(path, origin), method, origin)).toBe(false)

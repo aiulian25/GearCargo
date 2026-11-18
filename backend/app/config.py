@@ -150,38 +150,6 @@ class Config:
     )
     VAPID_SUBJECT = os.environ.get('VAPID_SUBJECT', 'mailto:admin@gearcargo.local')
     
-    # Ollama (External Instance)
-    OLLAMA_ENABLED = os.environ.get('OLLAMA_ENABLED', 'true').lower() == 'true'
-    # §14.1 — the backend is the SINGLE egress to Ollama (the browser never talks
-    # to it; every call passes validate_ollama_url()). For a DISTRIBUTED setup
-    # (Ollama on a SEPARATE machine/container) point this at the remote host's
-    # LAN IP / DNS / URL, e.g. http://10.0.0.5:11434 or https://ollama.internal —
-    # and use https + a private network/firewall (§14.2). The default
-    # 'host.docker.internal' only resolves the BACKEND's own host, so it is NOT
-    # correct for a different machine; override OLLAMA_BASE_URL in that topology.
-    OLLAMA_BASE_URL = os.environ.get('OLLAMA_BASE_URL', 'http://host.docker.internal:11434')
-    OLLAMA_URL = OLLAMA_BASE_URL  # Alias for backwards compatibility
-    # OLLAMA_MODEL: set this to the model name you have installed in Ollama.
-    # Run `ollama list` to see available models.  No default is set here —
-    # the admin must configure a model via the Admin > AI Settings panel or
-    # the OLLAMA_MODEL environment variable before AI features can be used.
-    OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL', '')
-    OLLAMA_TIMEOUT = int(os.environ.get('OLLAMA_TIMEOUT', 30))
-    # Distributed deployment (§14): Ollama runs on a separate machine/container.
-    # Short connect timeout so a dead/unrouteable remote fails in seconds rather
-    # than holding a sync gunicorn worker for the whole read window.
-    OLLAMA_CONNECT_TIMEOUT = int(os.environ.get('OLLAMA_CONNECT_TIMEOUT', 5))
-    # Per-task model overrides — env-var defaults; also settable via admin UI.
-    # Empty string means "fall back to the global model".
-    OLLAMA_MODEL_PREDICT  = os.environ.get('OLLAMA_MODEL_PREDICT', '')
-    OLLAMA_MODEL_OCR      = os.environ.get('OLLAMA_MODEL_OCR', '')
-    OLLAMA_MODEL_ANOMALY  = os.environ.get('OLLAMA_MODEL_ANOMALY', '')
-    OLLAMA_MODEL_REMINDER = os.environ.get('OLLAMA_MODEL_REMINDER', '')
-    # Chat Layer 2 input classifier — a small/fast model (e.g. llama3.2:1b,
-    # phi3:mini, qwen2.5:0.5b). Falls back to the global model if unset
-    # (resolve_model). Empty = use global.
-    OLLAMA_MODEL_CLASSIFIER = os.environ.get('OLLAMA_MODEL_CLASSIFIER', '')
-
     # Optional "a newer release is available" check (OFF by default to preserve
     # the no-phone-home / offline-safe posture). When enabled, the backend polls
     # GitHub's latest-release API (server-side, heavily cached) and surfaces the
@@ -192,52 +160,6 @@ class Config:
     UPDATE_CHECK_ENABLED = os.environ.get('UPDATE_CHECK_ENABLED', 'false').lower() == 'true'
     UPDATE_CHECK_REPO = os.environ.get('UPDATE_CHECK_REPO', 'aiulian25/GearCargo')
 
-    # Vehicle chat rate limit (per user). Generous enough for a natural
-    # back-and-forth about the user's car/app, while the per-minute burst still
-    # bounds abuse (each chat = up to two remote model calls — see §14.3 pool
-    # starvation). Flask-Limiter syntax; multiple limits separated by ';'.
-    CHAT_RATE_LIMIT = os.environ.get('CHAT_RATE_LIMIT', '15 per minute; 100 per hour')
-
-    # Vehicle chat assistant (CHAT_HARDENING_PLAN §13.2 / Layer 1).
-    # Persona name — defaults to the app name for brand consistency and is
-    # white-label-safe. Fed into the system prompt's identity block.
-    CHAT_ASSISTANT_NAME = os.environ.get('CHAT_ASSISTANT_NAME') or os.environ.get('APP_NAME', 'GearCargo')
-    # Low temperature makes the model less likely to "creatively" break the
-    # guardrails / persona-lockdown in the hardened system prompt. Accepts the
-    # plan's CHAT_MAIN_TEMPERATURE env name, falling back to CHAT_TEMPERATURE.
-    CHAT_TEMPERATURE = float(
-        os.environ.get('CHAT_MAIN_TEMPERATURE')
-        or os.environ.get('CHAT_TEMPERATURE')
-        or '0.3'
-    )
-    # Layer 2 input pre-classifier (ALLOW/BLOCK gate before the main model).
-    # Fail-open (default true): if the classifier errors/times out, fall through
-    # to the main model (which still has L1 + L3) rather than block real users.
-    CHAT_CLASSIFIER_FAIL_OPEN = os.environ.get('CHAT_CLASSIFIER_FAIL_OPEN', 'true').lower() == 'true'
-    # Read timeouts (§14.3): dedicated budgets per hop instead of inheriting
-    # OLLAMA_TIMEOUT. Invariant: connect + classifier + connect + main <
-    # GUNICORN_TIMEOUT, with margin (defaults: 5+15+5+90 = 115 < 360).
-    #
-    # Sync gunicorn workers (GUNICORN_WORKERS, default min(2·cpu+1, 4)) each block
-    # for the whole remote call, so pool starvation is defended by: the short
-    # OLLAMA_CONNECT_TIMEOUT (dead remote fails in ~5s), the §14.4 circuit breaker
-    # (one failure short-circuits the rest), and the per-user 5/h chat rate limit.
-    # For higher AI concurrency, raise GUNICORN_WORKERS (needs RAM). NOTE: chat is
-    # a synchronous request/response, so the fire-and-forget task queue (§1.5/Q03,
-    # TASK_QUEUE_BACKEND=rq) does NOT apply to it — it's for background work.
-    CHAT_CLASSIFIER_TIMEOUT = int(os.environ.get('CHAT_CLASSIFIER_TIMEOUT', 15))
-    CHAT_MAIN_TIMEOUT = int(os.environ.get('CHAT_MAIN_TIMEOUT', 90))
-    # Tight output cap for the classifier — it only emits a short JSON decision
-    # ({"decision":"ALLOW"|"BLOCK"}), so a small num_predict keeps it fast.
-    CHAT_CLASSIFIER_NUM_PREDICT = int(os.environ.get('CHAT_CLASSIFIER_NUM_PREDICT', 16))
-    # Master enable for the Layer 2 gate (env default; admin can override at
-    # runtime via the AppSetting 'chat_classifier_enabled').
-    CHAT_CLASSIFIER_ENABLED = os.environ.get('CHAT_CLASSIFIER_ENABLED', 'true').lower() == 'true'
-    # Optional Layer 3 phase-2: a second tiny-model ALLOW/BLOCK pass over the
-    # ANSWER (stronger than regex). OFF by default — it adds one small model call
-    # per answer; enable only where the extra robustness is worth the latency.
-    CHAT_OUTPUT_CLASSIFIER_ENABLED = os.environ.get('CHAT_OUTPUT_CLASSIFIER_ENABLED', 'false').lower() == 'true'
-    
     # Writable data root (logs, attachments, backups). Defaults to the container
     # path; overridable via env so non-container hosts and CI can point it at a
     # writable location without privileged setup. Defaults are unchanged.

@@ -219,12 +219,8 @@ export const vehicleApi = {
   getExpenseRecords: (id, filters) => api.get(`/vehicles/${id}/expense-records`, { params: filters }),
   getCurrencyReview: () => api.get('/vehicles/currency-review'),
   resolveCurrencyReview: (currency, action) => api.post('/vehicles/currency-review', { currency, action }),
-  // F11 — 12-month forward cost forecast (recurring + predictions vs budget)
+  // F11 — 12-month forward cost forecast (recurring costs vs budget)
   getForecast: (id, months = 12) => api.get(`/vehicles/${id}/forecast?months=${months}`),
-  // F06 — natural-language vehicle chat (single-turn, AI/Ollama)
-  chat: (id, question, locale) => api.post(`/vehicles/${id}/chat`, { question, locale }),
-  // F10 — fleet-wide chat across all vehicles (no id)
-  chatFleet: (question, locale) => api.post('/vehicles/chat', { question, locale }),
   getHealth: (id) => api.get(`/vehicles/${id}/health`),
   getWarranties: (id) => api.get(`/vehicles/${id}/warranties`),
   completeHealthAction: (id, data) => api.post(`/vehicles/${id}/health/actions/complete`, data),
@@ -243,8 +239,6 @@ export const vehicleApi = {
     })
   },
   deletePhoto: (id) => api.delete(`/vehicles/${id}/photo`),
-  suggestReminder: (id, locale = 'en-US') =>
-    api.post(`/vehicles/${id}/suggest-reminder`, { locale }),
 }
 
 export const fuelApi = {
@@ -376,11 +370,6 @@ export const parkingApi = {
   cancel: (id, config) => api.post(`/parking/${id}/cancel`, {}, config),
   // F14 — outstanding parking fines (+ total_owed). status: pending|contested|paid, or omit for all outstanding.
   getFines: (status) => api.get(status ? `/parking/fines?status=${status}` : '/parking/fines'),
-}
-
-// Public, non-sensitive branding config (app + assistant name).
-export const configApi = {
-  get: () => api.get('/config'),
 }
 
 export const pushApi = {
@@ -573,41 +562,21 @@ export const insuranceApi = {
   getExpiring: (days = 30) => api.get(`/insurance/expiring?days=${days}`),
 }
 
-export const predictionApi = {
-  getAll: (vehicleId = null, status = null, locale = 'en-US') => {
-    const params = new URLSearchParams()
-    if (vehicleId) params.set('vehicle_id', vehicleId)
-    if (status) params.set('status', status)
-    if (locale) params.set('locale', locale)
-    const qs = params.toString()
-    return api.get(`/predictions${qs ? `?${qs}` : ''}`)
-  },
-  get: (id) => api.get(`/predictions/${id}`),
-  dismiss: (id) => api.post(`/predictions/${id}/dismiss`),
-  refresh: (vehicleId = null, locale = 'en-US', force = false) => {
-    const params = new URLSearchParams()
-    if (vehicleId) params.set('vehicle_id', vehicleId)
-    if (locale && locale !== 'en-US') params.set('locale', locale)
-    if (force) params.set('force', 'true')
-    const qs = params.toString()
-    return api.post(`/predictions/refresh${qs ? `?${qs}` : ''}`)
-  },
-  getStatus: () => api.get('/predictions/status'),
-  // Seasonal Checklists
-  getChecklists: () => api.get('/predictions/checklists'),
+export const checklistApi = {
+  getChecklists: () => api.get('/checklists'),
   toggleChecklistItem: (checklistId, itemId, completed) => {
     const method = completed ? 'post' : 'delete'
-    return api[method](`/predictions/checklists/${checklistId}/items/${itemId}`)
+    return api[method](`/checklists/${checklistId}/items/${itemId}`)
   },
   dismissChecklist: (checklistId, dismissed = true) => {
     const method = dismissed ? 'post' : 'delete'
-    return api[method](`/predictions/checklists/${checklistId}/dismiss`)
+    return api[method](`/checklists/${checklistId}/dismiss`)
   },
-  resetChecklist: (checklistId) => api.post(`/predictions/checklists/${checklistId}/reset`),
+  resetChecklist: (checklistId) => api.post(`/checklists/${checklistId}/reset`),
   // F54 — user-configurable checklists
-  updateChecklistSettings: (settings) => api.put('/predictions/checklists/settings', settings),
-  addChecklistItem: (checklistId, label) => api.post(`/predictions/checklists/${checklistId}/custom-items`, { label }),
-  removeChecklistItem: (checklistId, itemId) => api.delete(`/predictions/checklists/${checklistId}/custom-items`, { data: { id: itemId } }),
+  updateChecklistSettings: (settings) => api.put('/checklists/settings', settings),
+  addChecklistItem: (checklistId, label) => api.post(`/checklists/${checklistId}/custom-items`, { label }),
+  removeChecklistItem: (checklistId, itemId) => api.delete(`/checklists/${checklistId}/custom-items`, { data: { id: itemId } }),
 }
 
 export const externalApi = {
@@ -675,7 +644,6 @@ export const attachmentApi = {
   },
   getStats: () => api.get('/attachments/stats'),
   getOcr: (id) => api.get(`/attachments/${id}/ocr`),
-  parseOcr: (id) => api.post(`/attachments/${id}/ocr/parse`),
   retryOcr: (id) => api.post(`/attachments/${id}/ocr/retry`),
 }
 
@@ -754,11 +722,6 @@ export const adminApi = {
   createUser: (data) => api.post('/admin/users', data),
   updateUser: (id, data) => api.put(`/admin/users/${id}`, data),
   deleteUser: (id) => api.delete(`/admin/users/${id}`),
-  
-  // Settings
-  getSettings: () => api.get('/admin/settings'),
-  updateSettings: (data) => api.put('/admin/settings', data),
-  flushAiCache: () => api.delete('/admin/ai-cache'),
   
   // Activity Logs
   getLogs: (options = {}) => {

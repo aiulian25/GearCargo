@@ -4,12 +4,11 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import hashlib
 import json
 from app import db
-from app.models import Reminder, Todo, ServiceEntry, PredictionAlert
+from app.models import Reminder, Todo, ServiceEntry
 from app.models.appointment import AppointmentTask
 from app.utils.entryparse import InvalidFieldError
-from app.utils.timeutils import utc_naive_now
 
-TARGETS = {'reminder_id': Reminder, 'todo_id': Todo, 'service_id': ServiceEntry, 'prediction_id': PredictionAlert}
+TARGETS = {'reminder_id': Reminder, 'todo_id': Todo, 'service_id': ServiceEntry}
 
 
 def invalid(field, key='invalid'):
@@ -73,7 +72,7 @@ def apply_details(record, data):
 def signature(target):
     # Portable content signature: local database IDs/revisions do not survive import.
     fields = ('title', 'description', 'due_date', 'due_mileage', 'next_due_date', 'next_due_mileage',
-              'completed', 'dismissed', 'actioned', 'predicted_date', 'predicted_mileage', 'recurring',
+              'completed', 'dismissed', 'recurring',
               'frequency', 'frequency_value', 'repeat_mileage', 'recurrence_end', 'recurrence_anchor_date')
     values = {k: str(getattr(target, k)) for k in fields if hasattr(target, k)}
     return hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()
@@ -170,10 +169,8 @@ def resolve_task(task):
                             due_date=due, priority=target.priority, recurring=True, frequency=target.frequency,
                             frequency_value=target.frequency_value, **extra))
                 target.mark_complete()
-        elif field == 'service_id':
-            target.next_due_date = None; target.next_due_mileage = None
         else:
-            target.actioned = True; target.actioned_at = utc_naive_now()
+            target.next_due_date = None; target.next_due_mileage = None
     task.done = True
 
 
@@ -183,7 +180,7 @@ def validate_backup_appointments(records):
     try:
         appointments = {r['id']: r for r in records['appointments']}
         targets = {f: {r['id']: r for r in records[k]} for f, k in {
-            'reminder_id': 'reminders', 'todo_id': 'todos', 'service_id': 'service_entries', 'prediction_id': 'predictions'}.items()}
+            'reminder_id': 'reminders', 'todo_id': 'todos', 'service_id': 'service_entries'}.items()}
         entries = {r['id']: r for k in ENTRY_COLLECTIONS for r in records[k]}
         eligible_entries = {r['id'] for k in ('service_entries', 'repair_entries') for r in records[k]}
         reminder_ids = set(); expense_ids = set()

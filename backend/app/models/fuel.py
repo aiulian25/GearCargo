@@ -26,8 +26,6 @@ class FuelEntry(Entry):
     fuel_efficiency = db.Column(db.Float)  # L/100km calculated
     trip_distance = db.Column(db.Integer)  # vehicle distance unit since previous full tank
     
-    # OCR
-    ocr_populated = db.Column(db.Boolean, default=False)
     receipt_image = db.Column(db.String(255))
     
     __mapper_args__ = {

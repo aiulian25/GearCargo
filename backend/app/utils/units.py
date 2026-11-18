@@ -49,10 +49,10 @@ def volume_to_liters(value, source_unit):
 def distance_unit_locked(vehicle):
     """Prevent a unit edit from relabelling any existing history or thresholds."""
     from app import db
-    from app.models import Entry, Reminder, Todo, InsurancePolicy, PredictionAlert, TireSet
+    from app.models import Entry, Reminder, Todo, InsurancePolicy, TireSet
     if vehicle.current_mileage or vehicle.avg_trip_distance or vehicle.maintenance_intervals:
         return True
-    for model in (Entry, Reminder, Todo, InsurancePolicy, PredictionAlert, TireSet):
+    for model in (Entry, Reminder, Todo, InsurancePolicy, TireSet):
         if db.session.query(model.id).filter_by(vehicle_id=vehicle.id).first() is not None:
             return True
     return False

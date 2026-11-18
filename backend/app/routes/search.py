@@ -11,7 +11,7 @@ Security notes:
   - Input sanitised: control characters stripped, length capped at 100 chars.
   - All queries filter by current_user.id — cross-user data leakage is impossible.
   - SQLAlchemy .ilike() uses parameterised queries — no SQL injection risk.
-  - Rate-limited in create_app() (30/minute/user via _ai_rate_key).
+  - Rate-limited in create_app() (30/minute/user via _user_rate_key).
 """
 import re
 

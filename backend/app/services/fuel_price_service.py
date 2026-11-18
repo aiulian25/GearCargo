@@ -285,7 +285,7 @@ EU_COUNTRY_NAMES = {
 
 # R4-19: one client (and one connection pool) per process, not one per call.
 # Keyed by (pid, url) so a gunicorn worker never inherits its parent's pooled
-# sockets across a fork — the same rule ollama._get_session follows.
+# sockets across a fork.
 #
 # The app-level client registered in create_app is deliberately NOT reused: it
 # is built without decode_responses, so sharing it would turn every read in

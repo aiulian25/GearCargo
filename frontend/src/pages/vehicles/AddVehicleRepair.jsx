@@ -4,7 +4,7 @@ import { readPrivateNavigationState } from '../../utils/privateNavigation'
 import toast from 'react-hot-toast'
 import { saveExpenseWithReceipt } from '../../utils/receiptExpense'
 import { useMutationIntent } from '../../hooks/useMutationIntent'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useSearchParams, useLocation } from 'react-router-dom'
 import { isOfflineWriteError, announceOfflineSaved } from '../../utils/offlineWrite'
 import { useForm, useWatch } from 'react-hook-form'
@@ -53,8 +53,6 @@ export default function AddVehicleRepair() {
   const [existingAttachments, setExistingAttachments] = useState([])
   const [selectedRepairTypes, setSelectedRepairTypes] = useState([])
   const [uploadedAttachmentId, setUploadedAttachmentId] = useState(null)
-  const [ocrTypeHint, setOcrTypeHint] = useState(false)
-  const _ocrTypeTimerRef = useRef(null)
   
   const { register, getValues, handleSubmit, formState: { errors, isDirty }, setValue, control, reset, watch } = useForm({
     defaultValues: {
@@ -137,8 +135,7 @@ export default function AddVehicleRepair() {
     fetchData()
   }, [vehicleId, editId, isEditMode, navigate, reset, mutation, currency.code])
 
-  // F33 — receipt routed from ShareTarget: apply the AI-parsed fields and
-  // adopt the already-uploaded attachment (linked to the entry after create).
+  // Opened from a bank statement row: start from its date, amount, currency and vendor.
   const location = useLocation()
   useEffect(() => {
     const st = readPrivateNavigationState(location.state)
@@ -148,8 +145,6 @@ export default function AddVehicleRepair() {
     if (d.currency) setValue('currency', d.currency, { shouldDirty: true })
     if (d.amount != null) setValue('total_cost', String(d.amount), { shouldDirty: true })
     if (d.vendor) setValue('shop_name', d.vendor, { shouldDirty: true })
-    if (d.line_items?.[0]?.description) setValue('description', d.line_items[0].description, { shouldDirty: true })
-    if (st.attachmentId) setUploadedAttachmentId(st.attachmentId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -371,16 +366,6 @@ export default function AddVehicleRepair() {
             {selectedRepairTypes.length === 0 && error && (
               <p className="text-xs text-red-500 mt-1">{t('addRepair.repairTypeRequired') || 'Repair type is required'}</p>
             )}
-            {ocrTypeHint && (
-              <p className="text-xs text-purple-400 mt-1.5 flex items-center gap-1">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="4 7 4 4 7 4"/><polyline points="4 17 4 20 7 20"/>
-                  <polyline points="17 4 20 4 20 7"/><polyline points="17 20 20 20 20 17"/>
-                  <line x1="4" y1="12" x2="20" y2="12"/>
-                </svg>
-                {t('addRepair.ocrTypeHint') || 'Auto-selected from receipt'}
-              </p>
-            )}
           </div>
           
           <div>
@@ -579,45 +564,6 @@ export default function AddVehicleRepair() {
             receiptFile={receiptFile}
             vehicleId={parseInt(vehicleId)}
             onUploadComplete={(id) => setUploadedAttachmentId(id)}
-            onPrefill={(data) => {
-              if (data.date) setValue('date', data.date)
-              if (data.amount != null) setValue('total_cost', String(data.amount))
-              if (data.vendor) setValue('shop_name', data.vendor)
-              if (data.line_items?.[0]?.description) setValue('description', data.line_items[0].description)
-              // §7.5 — infer repair_type from OCR line items + category when none selected
-              if (selectedRepairTypes.length === 0) {
-                const haystack = [
-                  data.line_items?.[0]?.description,
-                  data.category,
-                  ...(data.line_items || []).slice(0, 3).map(i => i.description),
-                ].filter(Boolean).join(' ').toLowerCase()
-                const match =
-                  /\bengine\b|\bmotor\b/.test(haystack) ? 'engine' :
-                  /\btransmission\b|\bgearbox\b|\bcutie.vitez/.test(haystack) ? 'transmission' :
-                  /\bbrake|\bfran[ae]\b|\bfrein\b/.test(haystack) ? 'brakes' :
-                  /suspension|amortizor|strut|shock.absorb/.test(haystack) ? 'suspension' :
-                  /electric|wiring|cablag/.test(haystack) ? 'electrical' :
-                  /exhaust|toba|muffler|catalytic|evacuare/.test(haystack) ? 'exhaust' :
-                  /radiator|termostat/.test(haystack) ? 'cooling' :
-                  /fuel.pump|injector|pompa.benzin|sistem.combustibil/.test(haystack) ? 'fuel_system' :
-                  /steering|directie|rack/.test(haystack) ? 'steering' :
-                  /\bbody\b|caroserie|paint|vopsea|dent|zgariat/.test(haystack) ? 'body' :
-                  /interior|tapiterie|scaun|carpet|mocheta/.test(haystack) ? 'interior' :
-                  /\bac\b|air.condition|climatiz|incalzire/.test(haystack) ? 'ac_heating' :
-                  /tire|tyre|anvelop|wheel|janta/.test(haystack) ? 'tires_wheels' :
-                  /\bclutch\b|ambreiaj/.test(haystack) ? 'clutch' :
-                  /drivetrain|axle|differential|cardan/.test(haystack) ? 'drivetrain' :
-                  /\bturbo\b|supercharg/.test(haystack) ? 'turbo' :
-                  /timing.belt|timing.chain|curea.distribut/.test(haystack) ? 'timing_belt' :
-                  null
-                if (match) {
-                  setSelectedRepairTypes([match])
-                  clearTimeout(_ocrTypeTimerRef.current)
-                  setOcrTypeHint(true)
-                  _ocrTypeTimerRef.current = setTimeout(() => setOcrTypeHint(false), 5000)
-                }
-              }
-            }}
           />
         </div>
       </form>

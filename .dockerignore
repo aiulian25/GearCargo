@@ -16,11 +16,12 @@ LICENSE
 # Node modules (will be installed in container)
 frontend/node_modules
 
-# Python caches
-__pycache__
-*.pyc
-*.pyo
-*.pyd
+# Python caches (`**/` because a bare name only matches at the top of the build context)
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.pytest_cache
 .Python
 *.so
 
@@ -53,6 +54,7 @@ backend/static
 
 # Test files
 tests
+backend/tests
 *.test.js
 *.test.py
 coverage

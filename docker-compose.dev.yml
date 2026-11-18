@@ -76,16 +76,6 @@ services:
       # Empty keeps it off. See docs/BACKUP_MIRROR.md.
       - BACKUP_MIRROR_FOLDER=${BACKUP_MIRROR_FOLDER:-}
 
-      # Ollama AI (optional)
-      - OLLAMA_ENABLED=${OLLAMA_ENABLED:-false}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-}
-      - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-60}
-      - OLLAMA_MODEL_PREDICT=${OLLAMA_MODEL_PREDICT:-}
-      - OLLAMA_MODEL_OCR=${OLLAMA_MODEL_OCR:-}
-      - OLLAMA_MODEL_ANOMALY=${OLLAMA_MODEL_ANOMALY:-}
-      - OLLAMA_MODEL_REMINDER=${OLLAMA_MODEL_REMINDER:-}
-
       - DEFAULT_THEME=${DEFAULT_THEME:-dark}
       - APP_NAME=${APP_NAME:-GearCargo}
       - MAX_UPLOAD_SIZE_MB=${MAX_UPLOAD_SIZE_MB:-200}
@@ -180,8 +170,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     networks:
       - npm
 

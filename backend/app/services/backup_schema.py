@@ -17,14 +17,27 @@ from sqlalchemy.orm.attributes import flag_modified
 from app import db
 from app.models import (Entry, Vehicle, FuelEntry, ServiceEntry, RepairEntry, TaxEntry,
                         ParkingEntry, ConsumableEntry, InsurancePolicy, Reminder,
-                        Todo, PredictionAlert, Attachment, DueDismissal, User, TireSet, Tire, FitmentEvent, TreadReading, Appointment, AppointmentTask, AppointmentExpense, StatementBatch, StatementTransaction, StatementMatch)
+                        Todo, Attachment, DueDismissal, User, TireSet, Tire, FitmentEvent, TreadReading, Appointment, AppointmentTask, AppointmentExpense, StatementBatch, StatementTransaction, StatementMatch)
 from app.utils.timeutils import utc_today
 
-USER_BACKUP_VERSION = '4.7'
+USER_BACKUP_VERSION = '4.8'
+# Oldest first. A feature is read from every version listed from its first one on.
+STRICT_VERSIONS = ('4.0', '4.1', '4.2', '4.3', '4.4', '4.5', '4.6', '4.7', USER_BACKUP_VERSION)
 STATEMENT_COLLECTIONS = ('statement_batches', 'statement_transactions', 'statement_matches')
 APPOINTMENT_COLLECTIONS = ('appointments', 'appointment_tasks', 'appointment_expenses')
 TIRE_COLLECTIONS = ('tire_sets', 'tires', 'tire_fitments', 'tread_readings')
 LEGACY_VERSIONS = {'1.0', '2.0'}
+SOURCE_METADATA_SINCE = '4.2'
+TIRES_SINCE = '4.5'
+APPOINTMENTS_SINCE = '4.6'
+STATEMENTS_SINCE = '4.7'
+# Data that versions before 4.8 carried and no release reads any more. It is dropped on import.
+RETIRED_COLLECTION = 'predictions'
+RETIRED_DUE_KIND = 'prediction'
+RETIRED_TASK_LINK = 'prediction_id'
+RETIRED_PREFERENCE = 'email_smart_alerts'
+RETIRED_VEHICLE_FIELDS = ('prediction_accuracy_score', 'last_prediction_at')
+RETIRED_FUEL_FIELD = 'ocr_populated'
 ENTRY_COLLECTIONS = ('fuel_entries', 'service_entries', 'repair_entries',
                      'tax_entries', 'parking_entries', 'consumable_entries')
 
@@ -41,7 +54,6 @@ MODELS = {
     'insurance_policies': InsurancePolicy,
     'reminders': Reminder,
     'todos': Todo,
-    'predictions': PredictionAlert,
     'attachments': Attachment,
     'tire_sets': TireSet, 'tires': Tire, 'tire_fitments': FitmentEvent, 'tread_readings': TreadReading,
     'appointments': Appointment, 'appointment_tasks': AppointmentTask, 'appointment_expenses': AppointmentExpense,
@@ -54,7 +66,7 @@ FIELDS = {
     'statement_transactions': tuple('id batch_id row_number fingerprint date amount currency vendor exclusion_reason created_at'.split()),
     'statement_matches': tuple('id transaction_id entry_id amount entry_signature created_at'.split()),
     'appointments': tuple('id vehicle_id title shop_name shop_contact notes status time_zone start_at end_at confirmed_at dropoff_at pickup_at prepare_minutes notify_push notify_email preparation_reminder_id created_at updated_at'.split()),
-    'appointment_tasks': tuple('id vehicle_id appointment_id title done reminder_id todo_id service_id prediction_id source_signature created_at'.split()),
+    'appointment_tasks': tuple('id vehicle_id appointment_id title done reminder_id todo_id service_id source_signature created_at'.split()),
     'appointment_expenses': tuple('id vehicle_id appointment_id entry_id created_at'.split()),
     'tire_sets': tuple('id vehicle_id name season storage_location purchase_entry_id rotation_interval tread_unit tread_threshold created_at updated_at'.split()),
     'tires': tuple('id vehicle_id tire_set_id identifier created_at'.split()),
@@ -65,13 +77,13 @@ FIELDS = {
         fuel_type tank_capacity engine_cc transmission drivetrain color vehicle_weight_kg
         vehicle_height_cm vehicle_length_cm vehicle_width_cm current_mileage distance_unit purchase_date purchase_price purchase_currency
         monthly_budget avg_trip_distance city_driving_percentage highway_driving_percentage cost_per_km avg_fuel_efficiency maintenance_score
-        prediction_accuracy_score health_score health_computed_at maintenance_intervals archived archived_at last_prediction_at
+        health_score health_computed_at maintenance_intervals archived archived_at
         display_order created_at updated_at
     '''.split()),
     'fuel_entries': tuple('''
         id title description amount currency odometer date
         notes vehicle_id created_at updated_at liters price_per_liter total_price
-        fuel_type station station_address full_tank fuel_efficiency trip_distance ocr_populated
+        fuel_type station station_address full_tank fuel_efficiency trip_distance
     '''.split()),
     'service_entries': tuple('''
         id title description amount currency odometer date
@@ -120,12 +132,6 @@ FIELDS = {
         id title description due_date priority recurring frequency
         frequency_value completed completed_at completed_from_id vehicle_id created_at updated_at
     '''.split()),
-    'predictions': tuple('''
-        id alert_type description predicted_mileage predicted_date confidence_score severity
-        dismissed dismissed_at actioned actioned_at i18n_key i18n_params description_en_us
-        description_ro description_es generated_by model_version title urgency estimated_cost
-        recommended_action source_data vehicle_id created_at expires_at
-    '''.split()),
     'attachments': tuple('''
         id filename original_filename file_type file_size description category
         tags ocr_text ocr_processed vin_extracted expires_at expiry_notified entry_id
@@ -151,7 +157,6 @@ EXCLUDED_COLUMNS = {
     'insurance_policies': ('user_id',),
     'reminders': ('calendar_service', 'external_calendar_id', 'external_checksum', 'external_etag', 'last_synced_at', 'local_version_data', 'remote_version_data', 'sync_conflict', 'user_id'),
     'todos': ('user_id',),
-    'predictions': ('user_id',),
     'attachments': ('filepath', 'user_id', 'ocr_state', 'ocr_attempts', 'ocr_generation',
                     'ocr_owner', 'ocr_lease_until', 'ocr_next_attempt_at', 'ocr_error'),
     'due_dismissals': ('user_id',),
@@ -164,7 +169,7 @@ for _kind in ('vehicles', *ENTRY_COLLECTIONS, 'insurance_policies', 'reminders',
 PREFERENCE_FIELDS = tuple('''
     language timezone theme currency distance_unit volume_unit date_format country_preference
     notifications_enabled email_insurance_alerts email_tax_alerts email_service_alerts
-    email_reminder_alerts email_smart_alerts login_alerts_enabled daily_alerts_enabled
+    email_reminder_alerts login_alerts_enabled daily_alerts_enabled
     weekly_report_enabled monthly_report_enabled alert_days_before
     location_lat location_lon location_name location_auto_detect
 '''.split())
@@ -206,13 +211,13 @@ DUE_TARGETS = {
     'reminder': 'reminders', 'todo': 'todos', 'service': 'service_entries',
     'tax': 'tax_entries', 'insurance': 'insurance_policies', 'document': 'attachments',
     'parking': 'parking_entries', 'fine': 'parking_entries',
-    'consumable': 'consumable_entries', 'prediction': 'predictions',
+    'consumable': 'consumable_entries',
 }
 LINKS = {
     'statement_transactions': {'batch_id': 'statement_batches'},
     'statement_matches': {'transaction_id': 'statement_transactions', 'entry_id': 'entries'},
     'appointments': {'preparation_reminder_id': 'reminders'},
-    'appointment_tasks': {'appointment_id': 'appointments', 'reminder_id': 'reminders', 'todo_id': 'todos', 'service_id': 'service_entries', 'prediction_id': 'predictions'},
+    'appointment_tasks': {'appointment_id': 'appointments', 'reminder_id': 'reminders', 'todo_id': 'todos', 'service_id': 'service_entries'},
     'appointment_expenses': {'appointment_id': 'appointments', 'entry_id': 'entries'},
     'tire_sets': {'purchase_entry_id': 'entries'},
     'tires': {'tire_set_id': 'tire_sets'},
@@ -225,7 +230,6 @@ LINKS = {
     'todos': {'completed_from_id': 'todos'},
     'attachments': {'entry_id': 'entries'},
 }
-PREDICTION_SOURCE_LINKS = {'vehicle_id': 'vehicles', 'trigger_entry_id': 'entries'}
 for _kind in MODELS:
     if 'vehicle_id' in FIELDS[_kind]:
         LINKS.setdefault(_kind, {})['vehicle_id'] = 'vehicles'
@@ -376,6 +380,45 @@ class PreparedBackup:
     origins: dict = field(default_factory=dict)
 
 
+def _versions_since(first):
+    return STRICT_VERSIONS[STRICT_VERSIONS.index(first):]
+
+
+def _collections_absent_from(version):
+    """Collections that a backup of this version cannot contain."""
+    introduced = ((TIRE_COLLECTIONS, TIRES_SINCE), (APPOINTMENT_COLLECTIONS, APPOINTMENTS_SINCE),
+                  (STATEMENT_COLLECTIONS, STATEMENTS_SINCE))
+    return {kind for collections, first in introduced if version not in _versions_since(first) for kind in collections}
+
+
+def _dict_rows(value):
+    return [row for row in value if isinstance(row, dict)] if isinstance(value, list) else []
+
+
+def _without_retired_data(data):
+    """A copy of an older backup without the data that releases stopped keeping."""
+    data = deepcopy(data)
+    data.pop(RETIRED_COLLECTION, None)
+    for vehicle in _dict_rows(data.get('vehicles')):
+        for name in RETIRED_VEHICLE_FIELDS:
+            vehicle.pop(name, None)
+        for entry in _dict_rows(vehicle.get('fuel_entries')):
+            entry.pop(RETIRED_FUEL_FIELD, None)
+    for task in _dict_rows(data.get('appointment_tasks')):
+        # The signature vouched for the linked record; without the link the task stands alone.
+        if task.pop(RETIRED_TASK_LINK, None) is not None:
+            task['source_signature'] = None
+    for collection, retired_kind in (('due_dismissals', RETIRED_DUE_KIND), ('source_metadata', RETIRED_COLLECTION)):
+        if isinstance(data.get(collection), list):
+            data[collection] = [row for row in data[collection]
+                                if not (isinstance(row, dict) and row.get('kind') == retired_kind)]
+    account = data.get('user')
+    preferences = account.get('preferences') if isinstance(account, dict) else None
+    if isinstance(preferences, dict):
+        preferences.pop(RETIRED_PREFERENCE, None)
+    return data
+
+
 def prepare_backup(data, *, validate_domains=True):
     """Validate the full payload before any data is inserted; adapt legacy DTOs.
 
@@ -385,9 +428,13 @@ def prepare_backup(data, *, validate_domains=True):
     if not isinstance(data, dict):
         raise BackupSchemaError('Expected a backup object.')
     version = data.get('version', '1.0')
-    if not isinstance(version, str) or version not in LEGACY_VERSIONS | {'4.0', '4.1', '4.2', '4.3', '4.4', '4.5', '4.6', USER_BACKUP_VERSION}:
+    if not isinstance(version, str) or version not in LEGACY_VERSIONS | set(STRICT_VERSIONS):
         raise BackupSchemaError('Unsupported backup version. Use a compatible GearCargo release.', 'version')
     legacy = version in LEGACY_VERSIONS
+    # The fingerprint identifies the file as written, so it is taken before anything is dropped.
+    file_fingerprint_source = data
+    if version != USER_BACKUP_VERSION:
+        data = _without_retired_data(data)
     warnings = []
     if legacy:
         warnings.append(warning('legacy_incomplete', 'version',
@@ -395,15 +442,11 @@ def prepare_backup(data, *, validate_domains=True):
     elif data.get('format') != 'gearcargo-user':
         raise BackupSchemaError('Unsupported backup format.', 'format')
     allowed_root = {'version', 'format', 'exported_at', 'media_included', 'user', 'media', 'warnings'} | (set(MODELS) - set(ENTRY_COLLECTIONS))
-    if version in ('4.2', '4.3', '4.4', '4.5', '4.6', USER_BACKUP_VERSION):
+    if version in _versions_since(SOURCE_METADATA_SINCE):
         allowed_root |= {'source_namespace', 'source_metadata'}
     required_root = allowed_root - {'warnings'}
-    if version != USER_BACKUP_VERSION:
-        required_root -= set(STATEMENT_COLLECTIONS)
-    if version not in ('4.6', USER_BACKUP_VERSION):
-        required_root -= set(APPOINTMENT_COLLECTIONS)
-    if version not in ('4.5', '4.6', USER_BACKUP_VERSION):
-        required_root -= set(TIRE_COLLECTIONS)
+    absent_collections = _collections_absent_from(version)
+    required_root -= absent_collections
     if not legacy and (set(data) - allowed_root or required_root - set(data)):
         raise BackupSchemaError('Unsupported or missing backup collection or field.', 'backup')
     if legacy and set(data) - allowed_root:
@@ -429,7 +472,7 @@ def prepare_backup(data, *, validate_domains=True):
     for kind in MODELS:
         if kind == 'vehicles' or kind in ENTRY_COLLECTIONS:
             continue
-        if ((kind in TIRE_COLLECTIONS and version not in ('4.5', '4.6', USER_BACKUP_VERSION)) or (kind in APPOINTMENT_COLLECTIONS and version not in ('4.6', USER_BACKUP_VERSION)) or (kind in STATEMENT_COLLECTIONS and version != USER_BACKUP_VERSION)) and kind not in data:
+        if kind in absent_collections:
             records[kind] = []
             continue
         if not legacy and kind not in data:
@@ -513,16 +556,6 @@ def prepare_backup(data, *, validate_domains=True):
     ids['entries'] = set(entry_ids)
     for kind, rows in normalized.items():
         for row in rows:
-            if kind == 'predictions' and isinstance(row.get('source_data'), dict):
-                for field, target in PREDICTION_SOURCE_LINKS.items():
-                    ref = row['source_data'].get(field)
-                    if ref is not None and (type(ref) is not int or ref not in ids[target]):
-                        path = f'predictions[id={row["id"]}].source_data.{field}'
-                        if not legacy:
-                            raise BackupSchemaError('Referenced record is absent from this backup.', path)
-                        warnings.append(warning('unmatched_reference', path,
-                            'Referenced record is absent; the metadata link will not be restored.'))
-                        row['source_data'][field] = None
             for field, target in LINKS.get(kind, {}).items():
                 ref = row.get(field)
                 if ref is not None and ref not in ids[target]:
@@ -576,7 +609,7 @@ def prepare_backup(data, *, validate_domains=True):
     if namespace is not None and (not isinstance(namespace, str) or not namespace or len(namespace) > 160):
         raise BackupSchemaError('Invalid source namespace.', 'source_namespace')
     prepared = PreparedBackup(version, normalized, parsed_prefs, warnings, media_included,
-                              namespace=namespace or 'backup:file:' + digest(data), batch_key=digest(data))
+                              namespace=namespace or 'backup:file:' + digest(file_fingerprint_source), batch_key=digest(file_fingerprint_source))
     prepared.origins = parse_source_metadata(data.get('source_metadata', []), ids)
     return prepared
 
@@ -677,12 +710,6 @@ def import_records(user, prepared, merge_mode, id_maps, attachment_paths, *, con
                     if successor is not None and successor.id != obj.id:
                         raise BackupSchemaError('This completion already has a successor in the destination. Review the records or restore into an empty account.', f'{kind}[id={source_id}].{field}')
                 setattr(obj, field, mapped)
-        if kind == 'predictions' and isinstance(obj.source_data, dict):
-            metadata = dict(obj.source_data)
-            for field, target in PREDICTION_SOURCE_LINKS.items():
-                if field in metadata and metadata[field] is not None:
-                    metadata[field] = id_maps[target].get(metadata[field])
-            obj.source_data = metadata
         # Link assignment may trigger onupdate: preserve the stored timestamp.
         if 'updated_at' in row:
             obj.updated_at = row['updated_at']

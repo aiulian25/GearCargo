@@ -93,14 +93,13 @@ class NotificationLog(db.Model):
     subscription_id = db.Column(db.Integer, db.ForeignKey('push_subscriptions.id'), index=True)
     
     # Notification content
-    notification_type = db.Column(db.String(50), nullable=False)  # reminder, prediction, system
+    notification_type = db.Column(db.String(50), nullable=False)  # reminder, system
     title = db.Column(db.String(255), nullable=False)
     body = db.Column(db.Text)
     data = db.Column(db.JSON)
     
     # Related objects
     reminder_id = db.Column(db.Integer, db.ForeignKey('reminders.id'))
-    prediction_id = db.Column(db.Integer, db.ForeignKey('prediction_alerts.id'))
     vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id'))
     
     # Delivery status

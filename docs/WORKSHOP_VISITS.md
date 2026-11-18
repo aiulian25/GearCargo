@@ -6,7 +6,7 @@ optional workshop/contact details, a proposed drop-off and pick-up time, and an
 IANA time zone such as `Europe/London`. Status is recorded manually by the owner.
 GearCargo does not contact workshops, send booking requests, or verify acceptance.
 
-Select due reminders, todos, service obligations or prediction alerts and add
+Select due reminders, todos or service obligations and add
 custom preparation checklist items. Due work uses the existing due feed's horizon
 and dismissals. Other obligation types remain in their existing screens. Custom
 checklist items can be checked during preparation; linked work is resolved only

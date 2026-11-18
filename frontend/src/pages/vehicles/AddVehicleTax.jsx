@@ -133,10 +133,8 @@ export default function AddVehicleTax() {
     fetchData()
   }, [vehicleId, editId, isEditMode, navigate, reset, mutation, currency.code])
 
-  // F33 — receipt routed from ShareTarget: apply the AI-parsed fields; the
-  // already-uploaded attachment is linked to the entry after create.
+  // Opened from a bank statement row: start from its date, amount and currency.
   const location = useLocation()
-  const sharedAttachmentId = !isEditMode ? readPrivateNavigationState(location.state)?.attachmentId : null
   useEffect(() => {
     const d = readPrivateNavigationState(location.state)?.prefill
     if (!d || isEditMode) return
@@ -146,7 +144,7 @@ export default function AddVehicleTax() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const markSaved = useUnsavedChanges(isDirty || receiptFile || sharedAttachmentId)
+  const markSaved = useUnsavedChanges(isDirty || receiptFile)
 
   const onSubmit = async (data) => {
     setIsSubmitting(true)
@@ -160,9 +158,9 @@ export default function AddVehicleTax() {
         insurance_policy_id: data.insurance_policy_id ? parseInt(data.insurance_policy_id) : null,
       }
       
-      if (receiptFile || sharedAttachmentId) {
+      if (receiptFile) {
         const result = await saveExpenseWithReceipt({ resource: 'taxes', editId,
-          payload, config: mutation.options(), file: receiptFile, attachmentId: sharedAttachmentId })
+          payload, config: mutation.options(), file: receiptFile })
         if (result.receiptPending) toast(t('pwa.sync.receipts.savedPending'), { duration: 8000 })
       } else if (isEditMode) {
         await taxApi.update(editId, payload, mutation.options())

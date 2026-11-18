@@ -1,12 +1,10 @@
-import { privateNavigationState } from '../utils/privateNavigation'
 /**
  * ShareTarget — Web Share Target landing page.
  *
  * The service worker stashes a shared receipt image (from the OS share sheet)
  * in CacheStorage and redirects here. We read it once (then delete it from the
- * cache for privacy), let the user pick a vehicle, and reuse the existing
- * ScanReceiptBanner to upload it to that vehicle and run OCR — landing the photo
- * straight in the OCR upload flow.
+ * cache for privacy), let the user pick a vehicle, and reuse ScanReceiptBanner
+ * to save it among that vehicle's documents, where its text is recognised.
  */
 
 import { useState, useEffect } from 'react'
@@ -27,17 +25,7 @@ export default function ShareTarget() {
   const [vehicleId, setVehicleId] = useState('')
   const [started, setStarted] = useState(false)
   const [uploadedId, setUploadedId] = useState(null)
-  const [parsed, setParsed] = useState(null)   // F33 — AI-extracted fields incl. category
   const [loading, setLoading] = useState(true)
-
-  // F33 — the parse classifier's category → the matching Add form route.
-  // insurance/other have no receipt-shaped Add form; they keep the default flow.
-  const CATEGORY_ROUTES = {
-    fuel: 'fuel/add', service: 'service/add', repair: 'repair/add',
-    parking: 'parking/add', tax: 'tax/add',
-  }
-  const parsedCategory = (parsed?.category || '').toLowerCase()
-  const continueRoute = CATEGORY_ROUTES[parsedCategory]
 
   // Read the shared file the SW stashed, then remove it from cache (privacy).
   useEffect(() => {
@@ -159,7 +147,6 @@ export default function ShareTarget() {
               receiptFile={file}
               vehicleId={parseInt(vehicleId, 10)}
               onUploadComplete={setUploadedId}
-              onPrefill={setParsed}
             />
           )}
 
@@ -171,21 +158,6 @@ export default function ShareTarget() {
                   ? (t('shareTarget.savedFor') || 'Receipt saved to {vehicle}.').replace('{vehicle}', selectedVehicle.name)
                   : t('shareTarget.saved')}
               </p>
-
-              {/* F33 — category-driven continuation: land the parsed fields and
-                  the already-uploaded attachment in the matching Add form. */}
-              {parsed && continueRoute && (
-                <button
-                  type="button"
-                  onClick={() => navigate(`/vehicles/${vehicleId}/${continueRoute}`, {
-                    state: privateNavigationState({ prefill: parsed, attachmentId: uploadedId }),
-                  })}
-                  className="btn btn-primary w-full"
-                >
-                  {(t('shareTarget.continueAs') || 'Continue: add as {type}')
-                    .replace('{type}', t(`expenses.${parsedCategory}`) || parsedCategory)}
-                </button>
-              )}
 
               <button
                 type="button"

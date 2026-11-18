@@ -361,7 +361,7 @@ def test_backup_preserves_channel_outcomes_and_reads_prior_format(app, user, clo
     transports[1]['email'] = False
     check_due_reminders(app)
     payload = gather_user_data(user, False)
-    assert payload['version'] == '4.7'
+    assert payload['version'] == '4.8'
     portable = payload['reminders'][0]
     assert portable['notification_state']['channels']['push']['status'] == 'sent'
     assert portable['notification_state']['channels']['email']['status'] == 'retry'

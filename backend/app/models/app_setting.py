@@ -1,10 +1,9 @@
 """
 GearCargo - App Settings Model
 
-A simple key-value store for runtime-configurable settings.
-Values set here override env-var defaults without requiring a restart.
+A simple key-value store for values the server keeps about itself, such as the
+marker a restore leaves behind.
 
-Admin writes via PUT /api/admin/settings.
 All reads go through AppSetting.get(key, default) which is safe to call
 even before the table exists (returns default on any DB error).
 """
@@ -16,7 +15,7 @@ from app import db
 class AppSetting(db.Model):
     """Persistent key-value settings table.
 
-    Keys are short snake_case strings (e.g. 'ollama_model_predict').
+    Keys are short snake_case strings.
     Values are plain text; callers cast as needed.
     """
 

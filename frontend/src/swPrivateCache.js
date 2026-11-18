@@ -1,7 +1,7 @@
 import { PRIVATE_CACHE_PREFIX, privateCacheName, privateSessionValid } from './utils/privateStorage'
 
 export const isPrivatePath = url => /^\/(api|media|uploads)(\/|$)/.test(url.pathname)
-export const publicApiRead = url => ['/api/config', '/api/csrf-token'].includes(url.pathname) || url.pathname.startsWith('/api/reports/shared/')
+export const publicApiRead = url => url.pathname === '/api/csrf-token' || url.pathname.startsWith('/api/reports/shared/')
 export const cacheablePrivateApi = url => url.pathname.startsWith('/api/') && !/^\/api\/reconciliation(?:\/|$)/.test(url.pathname) && !publicApiRead(url) && !['/api/auth/', '/api/admin/', '/api/csrf-token', '/api/backup/', '/api/push/'].some(prefix => url.pathname.startsWith(prefix))
 const unavailable = () => Response.json({ code: 'PRIVATE_SESSION_UNAVAILABLE', error: 'Sign in online to unlock private data.' }, { status: 409, headers: { 'Cache-Control': 'no-store' } })
 export const noStore = response => {

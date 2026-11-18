@@ -142,8 +142,7 @@ export default function AddVehicleFuel() {
     fetchData()
   }, [vehicleId, editId, isEditMode, navigate, setValue, reset, mutation])
 
-  // F33 — receipt routed from ShareTarget: apply the AI-parsed fields and
-  // adopt the already-uploaded attachment (linked to the entry after create).
+  // Opened from a bank statement row: start from its date, amount, currency and vendor.
   const location = useLocation()
   useEffect(() => {
     const st = readPrivateNavigationState(location.state)
@@ -153,7 +152,6 @@ export default function AddVehicleFuel() {
     if (d.currency) setValue('currency', d.currency, { shouldDirty: true })
     if (d.amount != null) setValue('total_cost', String(d.amount), { shouldDirty: true })
     if (d.vendor) setValue('station_name', d.vendor, { shouldDirty: true })
-    if (st.attachmentId) setUploadedAttachmentId(st.attachmentId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -452,11 +450,6 @@ export default function AddVehicleFuel() {
             receiptFile={receiptFile}
             vehicleId={parseInt(vehicleId)}
             onUploadComplete={(id) => setUploadedAttachmentId(id)}
-            onPrefill={(data) => {
-              if (data.date) setValue('date', data.date)
-              if (data.amount != null) setValue('total_cost', String(data.amount))
-              if (data.vendor) setValue('station_name', data.vendor)
-            }}
           />
         </div>
       </form>

@@ -5,7 +5,6 @@ from dateutil.relativedelta import relativedelta
 from app import db
 from app.models import User, Vehicle, TaxEntry
 from app.models.insurance import InsurancePolicy
-from app.models.prediction import PredictionAlert
 from app.utils.timeutils import utc_today
 
 FIRST = utc_today().replace(day=1)
@@ -54,22 +53,6 @@ def test_monthly_recurring_tax_appears_every_month(app, client, user, auth_heade
     for b in body['buckets']:
         assert b['breakdown']['tax'] == 50.0
         assert b['projected'] == 50.0
-
-
-def test_prediction_lands_in_its_month(app, client, user, auth_headers):
-    target = (FIRST + relativedelta(months=2))
-    with app.app_context():
-        v = _mk_vehicle(user.id)
-        db.session.add(PredictionAlert(
-            vehicle_id=v.id, user_id=user.id, alert_type='oil_change',
-            estimated_cost=200, predicted_date=target, severity='info',
-            dismissed=False, actioned=False))
-        db.session.commit()
-        vid = v.id
-    body = client.get(f'/api/vehicles/{vid}/forecast', headers=auth_headers(user.id)).get_json()
-    key = target.strftime('%Y-%m')
-    match = [b for b in body['buckets'] if b['month'] == key]
-    assert match and match[0]['breakdown']['prediction'] == 200.0
 
 
 def test_annual_insurance_spread_to_monthly(app, client, user, auth_headers):

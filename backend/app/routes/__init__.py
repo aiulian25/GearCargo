@@ -14,7 +14,7 @@ from app.routes.reconciliation import reconciliation_bp
 from app.routes.appointments import appointments_bp
 from app.routes.tires import tires_bp
 from app.routes.reminders import reminders_bp
-from app.routes.predictions import predictions_bp
+from app.routes.checklists import checklists_bp
 from app.routes.attachments import attachments_bp
 from app.routes.insurance import insurance_bp
 from app.routes.backup import backup_bp
@@ -38,7 +38,7 @@ __all__ = [
     'parking_bp',
     'consumables_bp', 'tires_bp', 'appointments_bp', 'reconciliation_bp',
     'reminders_bp',
-    'predictions_bp',
+    'checklists_bp',
     'attachments_bp',
     'insurance_bp',
     'backup_bp',
@@ -69,7 +69,7 @@ def register_blueprints(app):
         (reconciliation_bp, '/api/reconciliation'),
         (appointments_bp, '/api/appointments'),
         (reminders_bp, '/api/reminders'),
-        (predictions_bp, '/api/predictions'),
+        (checklists_bp, '/api/checklists'),
         (attachments_bp, '/api/attachments'),
         (insurance_bp, '/api/insurance'),
         (backup_bp, '/api/backup'),

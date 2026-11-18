@@ -15,7 +15,7 @@ import FormField from '../../components/ui/FormField'
 import { SkeletonList } from '../../components/ui/Skeleton'
 import EmptyState from '../../components/ui/EmptyState'
 
-const TARGETS = ['reminder_id', 'todo_id', 'service_id', 'prediction_id']
+const TARGETS = ['reminder_id', 'todo_id', 'service_id']
 function VisitForm({ record, vehicle, work, expenses, completing, onSaved, onClose }) {
   const { t } = useTranslation()
   const { formatCurrency } = useCurrency()

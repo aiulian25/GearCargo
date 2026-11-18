@@ -12,7 +12,6 @@ from app.models.tax import TaxEntry
 from app.models.parking import ParkingEntry
 from app.models.consumable import ConsumableEntry
 from app.models.reminder import Reminder
-from app.models.prediction import PredictionAlert
 from app.models.attachment import Attachment, OcrSlot
 from app.models.insurance import InsurancePolicy
 from app.models.backup import Backup, BackupSchedule
@@ -48,7 +47,6 @@ __all__ = [
     'ParkingEntry',
     'ConsumableEntry',
     'Reminder',
-    'PredictionAlert',
     'Attachment',
     'OcrSlot',
     'InsurancePolicy',

@@ -179,39 +179,3 @@ def test_reminders_by_mileage(app, client, user, auth_headers, vehicle):
     # vehicle_id is mandatory.
     assert client.get('/api/reminders/by-mileage',
                       headers=auth_headers(user.id)).status_code == 400
-
-
-def test_suggest_reminder_survives_history_gathering(
-        app, client, user, auth_headers, vehicle, monkeypatch):
-    """The route must get PAST the history queries (the old AttributeError
-    site) — the model call itself is mocked, mirroring test_fleet_chat.py."""
-    import app.routes.vehicles as v
-
-    app.config['OLLAMA_ENABLED'] = True
-    app.config['OLLAMA_BASE_URL'] = 'http://localhost:11434'
-    try:
-        with app.app_context():
-            db.session.add(ServiceEntry(user_id=user.id, vehicle_id=vehicle.id,
-                                        date=TODAY - timedelta(days=90), amount=120,
-                                        service_type='oil_change', odometer=28000))
-            db.session.add(RepairEntry(user_id=user.id, vehicle_id=vehicle.id,
-                                       date=TODAY - timedelta(days=30), amount=250,
-                                       repair_type='brakes', severity='high',
-                                       odometer=29500))
-            db.session.commit()
-
-        monkeypatch.setattr(v, 'resolve_model', lambda *_a, **_k: 'test-model')
-        monkeypatch.setattr(v, 'ai_cache_get', lambda *_a, **_k: None)
-        monkeypatch.setattr(v, 'ai_cache_set', lambda *_a, **_k: None)
-        monkeypatch.setattr(v, 'ollama_chat', lambda **_k: {'suggestions': [{
-            'title': 'Oil change', 'reminder_type': 'oil_change',
-            'due_in_days': 60, 'priority': 'medium',
-        }]})
-
-        resp = client.post(f'/api/vehicles/{vehicle.id}/suggest-reminder',
-                           json={}, headers=auth_headers(user.id))
-        assert resp.status_code == 200
-        body = resp.get_json()
-        assert body['suggestions'][0]['title'] == 'Oil change'
-    finally:
-        app.config['OLLAMA_ENABLED'] = False

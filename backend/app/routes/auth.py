@@ -952,7 +952,7 @@ def _clear_cached_sessions(user_id):
             # R4-25: SCAN in bounded batches, never KEYS. KEYS walks the whole
             # keyspace and blocks the server for the duration, and this runs on
             # every password change, logout-everywhere and single-device
-            # eviction. Same cursor idiom as services/ollama.py:229.
+            # eviction.
             deleted = 0
             cursor = 0
             while True:
@@ -2380,7 +2380,6 @@ def update_profile(current_user):
         'email_tax_alerts',
         'email_service_alerts',
         'email_reminder_alerts',
-        'email_smart_alerts',
         'daily_alerts_enabled',
         'weekly_report_enabled',
         'monthly_report_enabled',
@@ -3182,7 +3181,6 @@ def get_email_settings(current_user):
         'email_tax_alerts': current_user.email_tax_alerts if current_user.email_tax_alerts is not None else True,
         'email_service_alerts': current_user.email_service_alerts if current_user.email_service_alerts is not None else True,
         'email_reminder_alerts': current_user.email_reminder_alerts if current_user.email_reminder_alerts is not None else True,
-        'email_smart_alerts': current_user.email_smart_alerts if current_user.email_smart_alerts is not None else True,
         'login_alerts_enabled': current_user.login_alerts_enabled if current_user.login_alerts_enabled is not None else True,  # S18
         'daily_alerts_enabled': current_user.daily_alerts_enabled if current_user.daily_alerts_enabled is not None else True,
         'weekly_report_enabled': current_user.weekly_report_enabled if current_user.weekly_report_enabled is not None else False,

@@ -10,7 +10,7 @@
  */
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from '../../contexts/LanguageContext'
-import { predictionApi } from '../../services/api'
+import { checklistApi } from '../../services/api'
 
 // SVG Icons
 const Icons = {
@@ -415,7 +415,7 @@ export default function SeasonalChecklists({ compact = false, showOnlyInSeason =
     try {
       setIsLoading(true)
       setError(null)
-      const response = await predictionApi.getChecklists()
+      const response = await checklistApi.getChecklists()
       setChecklists(response.data.checklists || [])
     } catch (err) {
       console.error('Failed to load checklists:', err)
@@ -432,7 +432,7 @@ export default function SeasonalChecklists({ compact = false, showOnlyInSeason =
   // Toggle item completion
   const handleToggleItem = async (checklistId, itemId, completed) => {
     try {
-      await predictionApi.toggleChecklistItem(checklistId, itemId, completed)
+      await checklistApi.toggleChecklistItem(checklistId, itemId, completed)
       
       // Optimistic update
       setChecklists(prev => prev.map(cl => {
@@ -462,7 +462,7 @@ export default function SeasonalChecklists({ compact = false, showOnlyInSeason =
     if (!confirm(t('seasonalChecklists.resetConfirm'))) return
     
     try {
-      await predictionApi.resetChecklist(checklistId)
+      await checklistApi.resetChecklist(checklistId)
       fetchChecklists()
     } catch (err) {
       console.error('Failed to reset checklist:', err)
@@ -472,7 +472,7 @@ export default function SeasonalChecklists({ compact = false, showOnlyInSeason =
   // Dismiss/restore checklist
   const handleDismiss = async (checklistId, dismissed) => {
     try {
-      await predictionApi.dismissChecklist(checklistId, dismissed)
+      await checklistApi.dismissChecklist(checklistId, dismissed)
       setChecklists(prev => prev.map(cl =>
         cl.id === checklistId ? { ...cl, dismissed } : cl
       ))
@@ -484,7 +484,7 @@ export default function SeasonalChecklists({ compact = false, showOnlyInSeason =
   // F54 — add a custom item, then refetch so the new row (with its server id) appears
   const handleAddItem = async (checklistId, label) => {
     try {
-      await predictionApi.addChecklistItem(checklistId, label)
+      await checklistApi.addChecklistItem(checklistId, label)
       await fetchChecklists()
     } catch (err) {
       console.error('Failed to add checklist item:', err)
@@ -504,7 +504,7 @@ export default function SeasonalChecklists({ compact = false, showOnlyInSeason =
       }
     }))
     try {
-      await predictionApi.removeChecklistItem(checklistId, itemId)
+      await checklistApi.removeChecklistItem(checklistId, itemId)
     } catch (err) {
       console.error('Failed to remove checklist item:', err)
       fetchChecklists()
@@ -523,7 +523,7 @@ export default function SeasonalChecklists({ compact = false, showOnlyInSeason =
       }
     }))
     try {
-      await predictionApi.updateChecklistSettings({ state_inspection_months: months })
+      await checklistApi.updateChecklistSettings({ state_inspection_months: months })
     } catch (err) {
       console.error('Failed to update inspection months:', err)
       fetchChecklists()

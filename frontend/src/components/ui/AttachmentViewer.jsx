@@ -59,18 +59,6 @@ const Icons = {
       <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
     </svg>
   ),
-  wand: (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/>
-      <path d="M17.8 11.8 19 13"/><path d="M15 9h.01"/><path d="M17.8 6.2 19 5"/>
-      <path d="m3 21 9-9"/><path d="M12.2 6.2 11 5"/>
-    </svg>
-  ),
-  prefill: (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-    </svg>
-  ),
   chevronDown: (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="6 9 12 15 18 9"/>
@@ -102,7 +90,6 @@ const AttachmentViewer = ({
   isOpen, 
   onClose,
   onUpdate,
-  onPrefill,        // (parsedData) => void — called when user taps "Pre-fill Form"
   initialShowOcr = false,  // auto-open OCR panel when viewer opens
   // For single attachment view (backwards compatible)
   attachment = null,
@@ -125,10 +112,6 @@ const AttachmentViewer = ({
   const [ocrData, setOcrData] = useState(null)   // { ocr_processed, has_text, ocr_text }
   const [ocrLoading, setOcrLoading] = useState(false)
   const [ocrCopied, setOcrCopied] = useState(false)
-  // OCR AI-parse state
-  const [ocrParsing, setOcrParsing] = useState(false)
-  const [ocrParsed, setOcrParsed] = useState(null)   // structured result from Ollama
-  const [ocrParseError, setOcrParseError] = useState('')
   // OCR retry state
   const [ocrRetrying, setOcrRetrying] = useState(false)
   const [ocrRetryError, setOcrRetryError] = useState('')
@@ -165,8 +148,6 @@ const AttachmentViewer = ({
       setOcrData(null)
     }
     setOcrCopied(false)
-    setOcrParsed(null)
-    setOcrParseError('')
     setOcrRetrying(false)
     setOcrRetryError('')
     return () => { cancelled = true }
@@ -347,35 +328,6 @@ const AttachmentViewer = ({
       setTimeout(() => setOcrCopied(false), 2000)
     } catch (_) {
       // clipboard not available (e.g. insecure context) — silently ignore
-    }
-  }
-
-  const handleParseOcr = async () => {
-    if (!currentAttachment || ocrParsing) return
-    setOcrParsing(true)
-    setOcrParsed(null)
-    setOcrParseError('')
-    try {
-      const res = await attachmentApi.parseOcr(currentAttachment.id)
-      setOcrParsed(res.data)
-    } catch (err) {
-      const status = err.response?.status
-      if (status === 429) {
-        setOcrParseError(t('attachments.ocrParseRateLimited') || 'Too many requests. Please wait before trying again.')
-      } else if (status === 503) {
-        setOcrParseError(t('attachments.ocrAiDisabled') || 'AI extraction requires Ollama to be enabled.')
-      } else {
-        setOcrParseError(err.response?.data?.error || t('attachments.ocrParseError') || 'Could not extract data from this receipt.')
-      }
-    } finally {
-      setOcrParsing(false)
-    }
-  }
-
-  const handlePrefillForm = () => {
-    if (ocrParsed && onPrefill) {
-      onPrefill(ocrParsed)
-      onClose()
     }
   }
 
@@ -614,21 +566,6 @@ const AttachmentViewer = ({
               <div className="flex items-center gap-1">
                 {ocrData?.has_text && (
                   <button
-                    onClick={handleParseOcr}
-                    disabled={ocrParsing}
-                    className="flex items-center gap-1 text-xs text-purple-300 hover:text-white transition-colors px-2 py-1 rounded-sm hover:bg-white/10 disabled:opacity-50"
-                    title={t('attachments.ocrExtract') || 'Extract Data with AI'}
-                  >
-                    {ocrParsing ? (
-                      <div className="w-3 h-3 border-2 border-purple-400 border-t-transparent rounded-full animate-spin shrink-0" />
-                    ) : Icons.wand}
-                    {ocrParsing
-                      ? (t('attachments.ocrExtracting') || 'Extracting…')
-                      : (t('attachments.ocrExtract') || 'Extract Data')}
-                  </button>
-                )}
-                {ocrData?.has_text && (
-                  <button
                     onClick={handleCopyOcr}
                     className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors px-2 py-1 rounded-sm hover:bg-white/10"
                   >
@@ -662,76 +599,9 @@ const AttachmentViewer = ({
                 )}
               </div>
             ) : ocrData?.has_text ? (
-              <>
-                <pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono leading-relaxed">
-                  {ocrData.ocr_text}
-                </pre>
-
-                {/* AI parse error */}
-                {ocrParseError && (
-                  <p className="mt-2 text-xs text-red-400">{ocrParseError}</p>
-                )}
-
-                {/* AI-parsed structured result */}
-                {ocrParsed && (
-                  <div className="mt-3 border border-purple-500/30 rounded-lg p-3 bg-purple-900/20">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="flex items-center gap-1 text-xs font-semibold text-purple-300">
-                        {Icons.wand}
-                        {t('attachments.ocrExtractResult') || 'Extracted Receipt Data'}
-                      </span>
-                      {onPrefill && (
-                        <button
-                          onClick={handlePrefillForm}
-                          className="flex items-center gap-1 text-xs bg-purple-600 hover:bg-purple-700 text-white px-2 py-1 rounded-sm transition-colors"
-                        >
-                          {Icons.prefill}
-                          {t('attachments.ocrPrefill') || 'Pre-fill Form'}
-                        </button>
-                      )}
-                    </div>
-                    <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                      {ocrParsed.date && (
-                        <>
-                          <dt className="text-gray-400">{t('attachments.ocrDate') || 'Date'}</dt>
-                          <dd className="text-gray-200">{ocrParsed.date}</dd>
-                        </>
-                      )}
-                      {ocrParsed.vendor && (
-                        <>
-                          <dt className="text-gray-400">{t('attachments.ocrVendor') || 'Vendor'}</dt>
-                          <dd className="text-gray-200 truncate">{ocrParsed.vendor}</dd>
-                        </>
-                      )}
-                      {ocrParsed.amount != null && (
-                        <>
-                          <dt className="text-gray-400">{t('attachments.ocrAmount') || 'Amount'}</dt>
-                          <dd className="text-gray-200">{ocrParsed.amount}</dd>
-                        </>
-                      )}
-                      {ocrParsed.category && (
-                        <>
-                          <dt className="text-gray-400">{t('common.category') || 'Category'}</dt>
-                          <dd className="text-gray-200 capitalize">{ocrParsed.category}</dd>
-                        </>
-                      )}
-                    </dl>
-                    {ocrParsed.line_items?.length > 0 && (
-                      <div className="mt-2">
-                        <p className="text-gray-400 text-xs mb-1">{t('attachments.ocrLineItems') || 'Line Items'}</p>
-                        <ul className="space-y-0.5">
-                          {ocrParsed.line_items.map((item, i) => (
-                            <li key={i} className="flex justify-between text-xs text-gray-300">
-                              <span className="truncate max-w-[160px]">{item.description}</span>
-                              {item.cost != null && <span className="ml-2 shrink-0">{item.cost}</span>}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </>
+              <pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono leading-relaxed">
+                {ocrData.ocr_text}
+              </pre>
             ) : (
               <div className="space-y-2">
                 <p className="text-sm text-gray-500 italic">
