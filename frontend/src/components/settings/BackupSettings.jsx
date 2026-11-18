@@ -8,8 +8,12 @@ import ImportReview from './ImportReview'
 import RestoreProgress from './RestoreProgress'
 import BackupProtectionFields from './BackupProtectionFields'
 import BackupMirrorStatus from './BackupMirrorStatus'
+import BackupMirrorSetup from './BackupMirrorSetup'
 import { protectionOptions } from '../../utils/backupProtection'
 import { useDateFormat } from '../../hooks/useDateFormat'
+
+// A plain server address is enough: the backend adds the WebDAV path and the user name itself.
+const SERVER_URL_PLACEHOLDER = 'https://nextcloud.example.com'
 
 // SVG Icons
 const Icons = {
@@ -75,7 +79,7 @@ const Icons = {
   ),
 }
 
-export default function BackupSettings() {
+export default function BackupSettings({ isAdmin = false }) {
   const { formatDate, formatDateTime } = useDateFormat()
   const { t } = useTranslation()
   const fileInputRef = useRef(null)
@@ -418,12 +422,6 @@ export default function BackupSettings() {
       }
 
       const enabledDestinations = destinationsToSave.filter((destination) => destination.enabled)
-
-      if (schedule.external_enabled && !enabledDestinations.length) {
-        toast.error(t('backup.enableAtLeastOneDestination') || 'Enable at least one destination')
-        return
-      }
-
       const primaryDestination = enabledDestinations[0] || destinationsToSave[0]
 
       const protection = protectionOptions(schedule.encryption_enabled, schedulePassphrase,
@@ -431,7 +429,8 @@ export default function BackupSettings() {
       const schedulePayload = {
         ...schedule,
         ...(protection.passphrase ? { passphrase: protection.passphrase } : {}),
-        external_enabled: schedule.external_enabled,
+        // Rows left empty are not destinations: with none filled in, external backup is off.
+        external_enabled: enabledDestinations.length > 0,
         external_url: primaryDestination?.external_url || '',
         external_api_key: primaryDestination?.external_api_key || '',
         external_path: primaryDestination?.external_path || '/GearCargo',
@@ -1193,6 +1192,7 @@ export default function BackupSettings() {
         passphrase={schedulePassphrase} onPassphrase={setSchedulePassphrase}
         confirmation={scheduleConfirmation} onConfirmation={setScheduleConfirmation} />
       <p className="text-xs text-(--color-text-secondary)">{t('backup.protection.scheduleHint')}</p>
+      {isAdmin && status && !status.mirror && <BackupMirrorSetup icon={Icons.folder} chevron={Icons.chevronDown} />}
       {/* External Backup */}
       <div className="bg-(--color-bg-tertiary) rounded-xl">
         <button
@@ -1275,8 +1275,7 @@ export default function BackupSettings() {
                         <button
                           type="button"
                           onClick={() => removeExternalDestination(index)}
-                          disabled={(schedule.external_destinations || []).length <= 1}
-                          className="px-2 py-1 text-xs rounded-lg text-red-500 hover:bg-red-500/10 disabled:opacity-40 shrink-0"
+                          className="px-2 py-1 text-xs rounded-lg text-red-500 hover:bg-red-500/10 shrink-0"
                         >
                           {t('backup.removeDestination') || 'Remove'}
                         </button>
@@ -1306,7 +1305,7 @@ export default function BackupSettings() {
                         type="url"
                         value={destination.external_url || ''}
                         onChange={(e) => updateExternalDestination(index, 'external_url', e.target.value)}
-                        placeholder="https://your-server.com/remote.php/dav/files/user"
+                        placeholder={SERVER_URL_PLACEHOLDER}
                         className="w-full p-3 rounded-lg bg-(--color-bg-secondary) text-(--color-text-primary) border border-(--color-border) placeholder-(--color-text-muted)"
                       />
 

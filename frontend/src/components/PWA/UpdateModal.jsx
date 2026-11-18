@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from '../../contexts/LanguageContext'
 import { useAppUpdate } from '../../contexts/UpdateContext'
 import { BUILD } from '../../config/build'
-
-const REPO_URL = 'https://github.com/aiulian25/GearCargo'
+import { REPO_URL } from '../../config/brand'
 
 const Ic = {
   update: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 21h16"/></svg>,

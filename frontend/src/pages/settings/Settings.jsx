@@ -2562,7 +2562,7 @@ export default function Settings() {
         
         {showBackupSettings && (
           <div className="mt-4 pt-4 border-t border-(--color-border)">
-            <BackupSettings />
+            <BackupSettings isAdmin={isAdmin} />
           </div>
         )}
       </div>

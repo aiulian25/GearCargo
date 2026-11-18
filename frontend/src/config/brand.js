@@ -18,3 +18,7 @@ export const ASSISTANT_NAME = APP_NAME
 // App logo used as the assistant avatar in the chat. 192px is crisp at the
 // small sizes we render it (≤32px) on high-DPI screens.
 export const APP_LOGO_SRC = '/icons/logo-192.png'
+
+export const REPO_URL = 'https://github.com/aiulian25/GearCargo'
+
+export const BACKUP_MIRROR_GUIDE_URL = `${REPO_URL}/blob/main/docs/BACKUP_MIRROR.md`

@@ -31,6 +31,9 @@ the mirror by anyone who can read that folder. Turn on
 
 ## Setting it up
 
+Until a second copy is set up, an administrator finds these steps in Settings →
+Data & Backup, under "Second copy on a NAS or second disk".
+
 1. **Prepare the storage.** Use a folder that holds nothing else. Create an empty
    file named `.gearcargo-backup-mirror` in it. GearCargo writes only where it
    finds this file, so a share that failed to mount can never make the "second
@@ -55,11 +58,14 @@ the mirror by anyone who can read that folder. Turn on
 
    `rslave` lets a share that is mounted after the container started appear
    inside it without a restart.
+
+   Put these lines in `docker-compose.yml`, or save them as
+   `docker-compose.override.yml` next to it; Compose reads that file by itself.
 3. **Let the application write to it.** It writes as user and group ID 1000. On an
    NFS export, map that user to an account that may write to the folder. On an SMB
    mount, use `uid=1000,gid=1000`.
-4. **Restart the container** and open Settings → Backup. The line "Second copy"
-   shows the state.
+4. **Run `docker compose up -d`** and open Settings → Data & Backup. The line
+   "Second copy" shows the state.
 
 Two host examples, with placeholder names. Both keep a NAS outage from blocking
 the server: the mount is optional at boot, and a stalled share returns an error
