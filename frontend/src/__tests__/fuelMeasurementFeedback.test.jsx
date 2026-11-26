@@ -31,7 +31,6 @@ vi.mock('../hooks/useMutationIntent', () => ({ useMutationIntent: () => mutation
 vi.mock('../hooks/useUnsavedChanges', () => ({ useUnsavedChanges: () => () => true }))
 vi.mock('../components/ReceiptUpload', () => ({ default: () => null }))
 vi.mock('../components/ui/ScanReceiptBanner', () => ({ default: () => null }))
-vi.mock('../components/ui/CurrencySelect', () => ({ default: () => null }))
 
 const LATEST_READING = 84312
 const TYPO = '8431'

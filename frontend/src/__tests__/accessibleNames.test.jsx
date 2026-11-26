@@ -3,7 +3,6 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import Calendar from '../pages/calendar/Calendar'
 import Reminders from '../pages/reminders/Reminders'
-import CurrencySelect from '../components/ui/CurrencySelect'
 import { DateFormatProvider } from '../contexts/DateFormatContext'
 import { translations } from '../i18n/translations'
 import { calendarApi, reminderApi, vehicleApi } from '../services/api'
@@ -52,9 +51,4 @@ it('names icon-only reminder actions by their localized titles, not by the icon 
   expect(screen.getByRole('button', { name: 'Mark complete' })).toBeTruthy()
   expect(screen.queryByRole('button', { name: 'snooze' })).toBeNull()
   expect(screen.queryByRole('button', { name: 'check' })).toBeNull()
-})
-
-it('labels the shared currency picker through its own id', () => {
-  render(<CurrencySelect register={name => ({ name })} />)
-  expect(screen.getByRole('combobox', { name: translations.en.settings.currency }).getAttribute('name')).toBe('currency')
 })

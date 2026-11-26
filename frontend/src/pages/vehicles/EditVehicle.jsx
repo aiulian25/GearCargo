@@ -5,7 +5,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { vehicleApi } from '../../services/api'
-import { useLanguage } from '../../contexts/LanguageContext'
+import { useLanguage, useCurrency } from '../../contexts/LanguageContext'
 
 // F31 — component keys + km defaults, mirroring the backend wear table.
 // Placeholders show the effective default in the vehicle's own unit.
@@ -25,6 +25,7 @@ export default function EditVehicle() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { t } = useLanguage()
+  const { symbolFor } = useCurrency()
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -39,7 +40,7 @@ export default function EditVehicle() {
   const fileInputRef = useRef(null)
   const cameraInputRef = useRef(null)
   
-  const { register, handleSubmit, formState: { errors, isDirty, dirtyFields }, reset } = useForm()
+  const { register, handleSubmit, formState: { errors, isDirty, dirtyFields }, reset, watch } = useForm()
   
   // Load existing vehicle data
   useEffect(() => {
@@ -158,9 +159,9 @@ export default function EditVehicle() {
           return Object.keys(overrides).length ? overrides : null
         })(),
       }
-      // An unchanged code is not new input: a stored code that new input may no
+      // The stored code travels only with a new price: a code that new input may no
       // longer use must not block unrelated edits.
-      if (!dirtyFields.purchase_currency && !dirtyFields.purchase_price) delete payload.purchase_currency
+      if (!dirtyFields.purchase_price) delete payload.purchase_currency
       const response = await vehicleApi.update(id, payload, mutation.options())
 
       // Keep the acknowledged revision for edits/retries after a photo failure.
@@ -540,7 +541,7 @@ export default function EditVehicle() {
 
             <div>
               <label htmlFor="purchase_price" className="block text-xs text-(--color-text-muted) mb-1">
-                {t('vehicles.purchasePrice') || 'Purchase price'}
+                {t('vehicles.purchasePrice') || 'Purchase price'} ({symbolFor(watch('purchase_currency'))})
               </label>
               <input
                 id="purchase_price"
@@ -550,12 +551,6 @@ export default function EditVehicle() {
                 className="input"
                 placeholder="0.00"
               />
-            </div>
-            <div>
-              <label htmlFor="purchase_currency" className="block text-xs text-(--color-text-muted) mb-1">{t('financial.purchaseCurrency')}</label>
-              <input id="purchase_currency" {...register('purchase_currency')} maxLength={3} className="input" list="purchase-currencies" placeholder="GBP / EUR / USD" />
-              <datalist id="purchase-currencies">{['GBP', 'EUR', 'RON', 'USD'].map(code => <option key={code} value={code} />)}</datalist>
-              <p className="text-xs mt-1">{t('financial.reviewPurchase')}</p>
             </div>
           </div>
         </div>

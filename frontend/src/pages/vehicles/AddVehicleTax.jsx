@@ -12,7 +12,6 @@ import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import { taxApi, vehicleApi, insuranceApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import ReceiptUpload from '../../components/ReceiptUpload'
-import CurrencySelect from '../../components/ui/CurrencySelect'
 
 // SVG Icons
 const Icons = {
@@ -65,7 +64,7 @@ export default function AddVehicleTax() {
   const [existingAttachments, setExistingAttachments] = useState([])
   const [insurancePolicies, setInsurancePolicies] = useState([])
   
-  const { register, getValues, handleSubmit, formState: { errors, isDirty }, control, reset, setValue, watch } = useForm({
+  const { register, handleSubmit, formState: { errors, isDirty }, control, reset, setValue, watch } = useForm({
     defaultValues: {
       date: localDate(),
       tax_type: '',
@@ -283,27 +282,24 @@ export default function AddVehicleTax() {
               />
             </div>
             
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <label htmlFor="amount" className="block text-xs text-(--color-text-muted) mb-1">
-                  {t('addTax.amount') || 'Amount'} ({entryCurrencySymbol}) *
-                </label>
-                <input
-                  id="amount"
-                  type="number" inputMode="decimal"
-                  step="0.01"
-                  {...register('amount', {
-                    required: t('addTax.amountRequired') || 'Amount is required',
-                    min: { value: Number(readPrivateNavigationState(location.state)?.prefill?.amount) < 0 ? -99999999.99 : 0.01, message: t('addTax.invalidAmount') || 'Invalid amount' }
-                  })}
-                  className="input"
-                  placeholder="0.00"
-                />
-                {errors.amount && (
-                  <p className="text-xs text-red-500 mt-1">{errors.amount.message}</p>
-                )}
-              </div>
-              <CurrencySelect extraCurrency={readPrivateNavigationState(location.state)?.prefill?.currency || getValues('currency')} register={register} className="w-28 shrink-0" />
+            <div>
+              <label htmlFor="amount" className="block text-xs text-(--color-text-muted) mb-1">
+                {t('addTax.amount') || 'Amount'} ({entryCurrencySymbol}) *
+              </label>
+              <input
+                id="amount"
+                type="number" inputMode="decimal"
+                step="0.01"
+                {...register('amount', {
+                  required: t('addTax.amountRequired') || 'Amount is required',
+                  min: { value: Number(readPrivateNavigationState(location.state)?.prefill?.amount) < 0 ? -99999999.99 : 0.01, message: t('addTax.invalidAmount') || 'Invalid amount' }
+                })}
+                className="input"
+                placeholder="0.00"
+              />
+              {errors.amount && (
+                <p className="text-xs text-red-500 mt-1">{errors.amount.message}</p>
+              )}
             </div>
           </div>
 

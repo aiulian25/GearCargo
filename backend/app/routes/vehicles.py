@@ -293,6 +293,10 @@ def update_vehicle(current_user, vehicle_id):
                 continue
             setattr(vehicle, field, data[field])
 
+    # A price saved without a currency is in the owner's, as at create.
+    if data.get('purchase_price') is not None and not vehicle.purchase_currency:
+        vehicle.purchase_currency = current_user.chosen_currency
+
     # F23 — purchase_date needs the same ISO parse used at create.
     if 'purchase_date' in data:
         raw = data['purchase_date']
@@ -721,8 +725,8 @@ def get_cost_analytics(current_user, vehicle_id):
             total_distance = int(span)
             cost_per_distance_lifetime = round(total_cost / span, 4) if fx_converted else None
 
-    # Purchase currency is stored independently of the display preference.
-    # Unknown historical currency requires review; never invent an ownership total.
+    # A stored purchase currency is independent of the display preference; a price
+    # stored without one (older vehicles) is in the owner's currency.
     ownership = None
     if vehicle.purchase_price is not None:
         from dateutil.relativedelta import relativedelta
@@ -731,15 +735,14 @@ def get_cost_analytics(current_user, vehicle_id):
         if vehicle.purchase_date:
             delta = relativedelta(today, vehicle.purchase_date)
             months_owned = max(0, delta.years * 12 + delta.months)
-        converted_purchase = (convert(purchase, vehicle.purchase_currency, display_ccy, rates)
-                              if vehicle.purchase_currency else None)
+        purchase_currency = vehicle.purchase_price_currency
+        converted_purchase = convert(purchase, purchase_currency, display_ccy, rates)
         total_with_purchase = (round(total_cost + float(converted_purchase), 2)
                                if converted_purchase is not None and fx_converted else None)
         ownership = {
             'purchase_price': purchase,
-            'purchase_currency': vehicle.purchase_currency,
+            'purchase_currency': purchase_currency,
             'purchase_price_display': float(converted_purchase) if converted_purchase is not None else None,
-            'purchase_currency_review_required': not bool(vehicle.purchase_currency),
             'purchase_converted': converted_purchase is not None,
             'purchase_date': vehicle.purchase_date.isoformat() if vehicle.purchase_date else None,
             'months_owned': months_owned,

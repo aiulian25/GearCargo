@@ -14,10 +14,11 @@ vi.mock('../services/api', () => {
     fuelApi: list, serviceApi: list, repairApi: list, taxApi: list, reminderApi: list, insuranceApi: list, consumableApi: list, parkingApi: list }
 })
 vi.mock('../contexts/LanguageContext', async () => {
-  const { createCurrencyFormatter } = await import('../utils/currencyFormat')
+  const { createCurrencyFormatter, currencySymbol } = await import('../utils/currencyFormat')
   const t = key => key.split('.').reduce((v, k) => v?.[k], translations[state.language]) || key
   return { useTranslation: () => ({ t, language: state.language }), useLanguage: () => ({ t, language: state.language }),
-    useCurrency: () => ({ formatCurrency: createCurrencyFormatter({ language: state.language, currency: 'USD' }) }) }
+    useCurrency: () => ({ formatCurrency: createCurrencyFormatter({ language: state.language, currency: 'USD' }),
+      symbolFor: code => currencySymbol(code || 'USD', state.language) }) }
 })
 const NO_BREAK_SPACE = ' '
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: { currency: 'USD', volume_unit: 'liters' } }) }))

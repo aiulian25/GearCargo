@@ -13,7 +13,6 @@ import { vehicleApi } from '../../services/api'
 import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import api from '../../services/api'
 import ReceiptUpload from '../../components/ReceiptUpload'
-import CurrencySelect from '../../components/ui/CurrencySelect'
 
 // SVG Icons
 const Icons = {
@@ -66,7 +65,7 @@ export default function AddVehicleParking() {
   const [receiptFile, setReceiptFile] = useState(null)
   const [existingAttachments, setExistingAttachments] = useState([])
   
-  const { register, getValues, handleSubmit, formState: { errors, isDirty }, control, reset, setValue, watch } = useForm({
+  const { register, handleSubmit, formState: { errors, isDirty }, control, reset, setValue, watch } = useForm({
     defaultValues: {
       date: localDate(),
       parking_type: '',
@@ -294,8 +293,7 @@ export default function AddVehicleParking() {
               />
             </div>
             
-            <div className="flex gap-3">
-              <div className="flex-1">
+            <div>
               <label htmlFor="amount" className="block text-xs text-(--color-text-muted) mb-1">
                 {t('addParking.amount') || 'Amount'} ({entryCurrencySymbol}) *
               </label>
@@ -313,8 +311,6 @@ export default function AddVehicleParking() {
               {errors.amount && (
                 <p className="text-xs text-red-500 mt-1">{errors.amount.message}</p>
               )}
-              </div>
-              <CurrencySelect extraCurrency={readPrivateNavigationState(location.state)?.prefill?.currency || getValues('currency')} register={register} className="w-28 shrink-0" />
             </div>
           </div>
           

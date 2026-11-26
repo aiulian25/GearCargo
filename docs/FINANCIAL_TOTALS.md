@@ -30,12 +30,14 @@ archived vehicles. Insurance statistics describe all owned vehicles, including
 archived ones, and label that scope. The same vehicle/date selection is required
 when comparing totals. Expense counts include scheduled insurance occurrences.
 
-`purchase_currency` is nullable. New purchases store their explicit currency or
-snapshot the owner's preference at creation. Existing/legacy prices remain unknown
-until the owner reviews their original currency in Edit vehicle. Ownership totals
-stay unavailable while currency or a required rate is missing. Changing display
-preferences never relabels the stored price. Cost per distance uses the vehicle's
-odometer span and unit; a missing or zero span produces no per-distance result.
+`purchase_currency` is nullable. A purchase price saved through the app is
+stamped with the owner's currency at that moment, both when the vehicle is created
+and when a price is added later; a currency sent explicitly to the API is kept. An
+older price stored without a currency is treated as being in the owner's current
+currency. Ownership totals stay unavailable while a required rate is missing.
+Changing display preferences never relabels a stored currency. Cost per distance
+uses the vehicle's odometer span and unit; a missing or zero span produces no
+per-distance result.
 
 Migration `gc019_purchase_currency` adds metadata only: no expense amounts or
 historical purchase currencies are rewritten. Downgrading removes that metadata;
@@ -47,7 +49,14 @@ compatibility with older portable backups.
 The currency chosen in Profile → Preferences is the account's currency. Amounts
 default to it on every screen; neither the browser's location nor the interface
 language changes it. A record keeps the currency it was saved with, and a new
-record without an explicit currency takes the account's:
+record without an explicit currency takes the account's.
+
+No form asks for a currency. A new record is saved in the account's currency. A
+record that already has another one — an older or imported record, or an expense
+drafted from a bank statement row — keeps it, and its form shows that currency's
+symbol next to the amount. The vehicle forms show the purchase price the same way.
+
+On the server:
 
 - every create route and the CSV and LubeLogger importers use the account
   currency when the request or file names none; a recurring occurrence or a

@@ -144,15 +144,20 @@ def test_missing_fx_is_excluded_not_mixed(rates, fixed_clock):
     assert zero['converted'] is True and zero['fx_applied'] is False
 
 
-def test_unknown_purchase_requires_review_and_known_currency_survives_preference(app, client, user, auth_headers, fixed_clock):
+def test_purchase_without_a_currency_is_in_the_owners_and_known_currency_survives_preference(app, client, user, auth_headers, fixed_clock):
     with app.app_context():
         legacy = Vehicle(user_id=user.id, name='Legacy', purchase_price=1000)
-        db.session.add(legacy)
+        unpriced = Vehicle(user_id=user.id, name='Unpriced')
+        db.session.add_all([legacy, unpriced])
         db.session.commit()
-        legacy_id = legacy.id
+        legacy_id, unpriced_id = legacy.id, unpriced.id
     result = client.get(f'/api/vehicles/{legacy_id}/cost-analytics', headers=auth_headers(user.id)).json
-    assert result['ownership']['purchase_currency_review_required'] is True
-    assert result['ownership']['total_with_purchase'] is None
+    assert 'purchase_currency_review_required' not in result['ownership']
+    assert result['ownership']['purchase_currency'] == 'GBP'
+    assert result['ownership']['purchase_price_display'] == 1000
+    assert result['ownership']['total_with_purchase'] == 1000
+    priced_later = client.put(f'/api/vehicles/{unpriced_id}', headers=auth_headers(user.id), json={'purchase_price': 500})
+    assert priced_later.status_code == 200 and priced_later.json['vehicle']['purchase_currency'] == 'GBP'
     created = client.post('/api/vehicles', headers=auth_headers(user.id), json={'name': 'New', 'purchase_price': 1000})
     assert created.status_code == 201
     vid = created.json['vehicle']['id']

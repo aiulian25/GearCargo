@@ -507,7 +507,6 @@ export default function VehicleCharts() {
                     {analytics.ownership.months_owned != null &&
                       ` • ${analytics.ownership.months_owned} ${t('ownership.months') || 'months'}`}
                   </p>
-                  {analytics.ownership.purchase_currency_review_required && <p className="text-sm mb-3">{t('financial.reviewPurchase')}</p>}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div className="rounded-lg p-3 bg-(--color-bg-tertiary)">
                       <p className="text-xs text-(--color-text-muted)">

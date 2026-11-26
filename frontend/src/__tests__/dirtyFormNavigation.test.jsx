@@ -150,6 +150,7 @@ it.each([['name', 'Renamed', false], ['purchase_price', '12000', true]])(
   'resends a stored purchase currency only with a purchase price edit (%s)', async (name, value, sent) => {
     vehicleApi.getById.mockResolvedValue({ data: { ...vehicle, purchase_currency: 'KWD', purchase_price: 10000 } })
     const view = mount(); await field(view, name, value)
+    expect(view.container.querySelector('[name="purchase_currency"]')).toBeNull()
     await choose('Save'); await screen.findByText('Destination')
     const payload = vehicleApi.update.mock.lastCall[1]
     expect('purchase_currency' in payload).toBe(sent)

@@ -1,4 +1,3 @@
-import CurrencySelect from '../../components/ui/CurrencySelect'
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import { localDate } from '../../utils/dateFormat'
 import useExpenseNavigation from '../../hooks/useExpenseNavigation'
@@ -51,7 +50,7 @@ export default function AddVehicleConsumable() {
   const [isLoading, setIsLoading] = useState(true)
   const [receiptFile, setReceiptFile] = useState(null)
 
-  const { register, getValues, handleSubmit, formState: { errors, isDirty }, reset, watch } = useForm({
+  const { register, handleSubmit, formState: { errors, isDirty }, reset, watch } = useForm({
     defaultValues: {
       consumable_type: 'tire',
       brand: '',
@@ -241,8 +240,6 @@ export default function AddVehicleConsumable() {
             <input id="amount" type="number" inputMode="decimal" step="0.01" min={Number(readPrivateNavigationState(location.state)?.prefill?.amount) < 0 ? undefined : 0} className="input" placeholder="0.00" {...register('amount')} />
           </div>
         </div>
-
-        <CurrencySelect register={register} extraCurrency={readPrivateNavigationState(location.state)?.prefill?.currency || getValues('currency')} />
 
         {/* Odometer at install */}
         <div>

@@ -19,7 +19,6 @@ import {
 import { ODOMETER_HINT_ID, announceFuelWarnings, belowLatestReadingHint } from '../../utils/fuelMeasurement'
 import ReceiptUpload from '../../components/ReceiptUpload'
 import ScanReceiptBanner from '../../components/ui/ScanReceiptBanner'
-import CurrencySelect from '../../components/ui/CurrencySelect'
 
 // SVG Icons
 const Icons = {
@@ -63,7 +62,7 @@ export default function AddVehicleFuel() {
   const [uploadedAttachmentId, setUploadedAttachmentId] = useState(null)
   const [enteredOdometer, setEnteredOdometer] = useState('')
 
-  const { register, getValues, handleSubmit, watch, setValue, reset, formState: { errors, isDirty } } = useForm({
+  const { register, handleSubmit, watch, setValue, reset, formState: { errors, isDirty } } = useForm({
     defaultValues: {
       date: localDate(),
       mileage: '',
@@ -127,9 +126,6 @@ export default function AddVehicleFuel() {
           if (vehicleRes.data.current_mileage) {
             setValue('mileage', vehicleRes.data.current_mileage)
           }
-          // F48 — default the currency to the user's display currency once
-          // auth has resolved (guards against a null user at useForm init).
-          if (user?.currency) setValue('currency', user.currency)
         }
       } catch (error) {
         console.error('Failed to fetch data:', error)
@@ -360,21 +356,18 @@ export default function AddVehicleFuel() {
             </div>
           </div>
           
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label htmlFor="total_cost" className="block text-xs text-(--color-text-muted) mb-1">
-                {t('addFuel.totalCost') || 'Total Cost'} ({entryCurrencySymbol})
-              </label>
-              <input
-                id="total_cost"
-                type="number" inputMode="decimal"
-                step="0.01"
-                {...register('total_cost')}
-                className="input bg-(--color-bg-tertiary)"
-                placeholder={t('addFuel.calculatedAuto') || 'Calculated automatically'}
-              />
-            </div>
-            <CurrencySelect extraCurrency={readPrivateNavigationState(location.state)?.prefill?.currency || getValues('currency')} register={register} className="w-28 shrink-0" />
+          <div>
+            <label htmlFor="total_cost" className="block text-xs text-(--color-text-muted) mb-1">
+              {t('addFuel.totalCost') || 'Total Cost'} ({entryCurrencySymbol})
+            </label>
+            <input
+              id="total_cost"
+              type="number" inputMode="decimal"
+              step="0.01"
+              {...register('total_cost')}
+              className="input bg-(--color-bg-tertiary)"
+              placeholder={t('addFuel.calculatedAuto') || 'Calculated automatically'}
+            />
           </div>
           
           <div className="flex items-center gap-3">

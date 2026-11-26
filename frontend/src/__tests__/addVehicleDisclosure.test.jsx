@@ -5,19 +5,20 @@ import { vehicleApi } from '../services/api'
 import { translations } from '../i18n/translations'
 
 const ESSENTIAL_FIELDS = ['name', 'make', 'model', 'year', 'fuel_type', 'current_mileage']
-const MORE_DETAILS_FIELDS = ['license_plate', 'tank_capacity', 'engine_cc', 'vin', 'purchase_price', 'purchase_currency', 'purchase_date']
+const MORE_DETAILS_FIELDS = ['license_plate', 'tank_capacity', 'engine_cc', 'vin', 'purchase_price', 'purchase_date']
 const SAVED_VEHICLE = { id: 1, revision: 1 }
 
-const state = vi.hoisted(() => ({ language: 'en', navigate: vi.fn() }))
+const state = vi.hoisted(() => ({ language: 'en', navigate: vi.fn(), profileCurrency: 'GBP' }))
 vi.mock('react-router-dom', () => ({ useNavigate: () => state.navigate }))
-vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: { currency: 'GBP' } }) }))
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: { currency: state.profileCurrency } }) }))
 vi.mock('../contexts/LanguageContext', () => {
   const t = key => {
     const value = key.split('.').reduce((item, part) => item?.[part], translations[state.language])
     if (typeof value !== 'string') throw new Error(`Missing translation: ${key}`)
     return value
   }
-  return { useLanguage: () => ({ t }), useTranslation: () => ({ t }) }
+  return { useLanguage: () => ({ t }), useTranslation: () => ({ t }),
+    useCurrency: () => ({ currency: { code: state.profileCurrency, symbol: '£' } }) }
 })
 vi.mock('../services/api', () => ({ vehicleApi: { create: vi.fn(), update: vi.fn(), uploadPhoto: vi.fn() } }))
 
@@ -62,7 +63,7 @@ it('saves every field, including those inside More details', async () => {
   await click(screen.getByText(translations.en.vehicles.dimensionsOptional))
   await fill(view, {
     license_plate: 'AB12 CDE', tank_capacity: '55.5', engine_cc: '1598', vin: 'TMBJJ7NE0K0000001',
-    purchase_price: '12500', purchase_currency: 'EUR', purchase_date: '2025-03-01',
+    purchase_price: '12500', purchase_date: '2025-03-01',
     vehicle_height_cm: '146', vehicle_width_cm: '181', vehicle_length_cm: '469', vehicle_weight_kg: '1340',
   })
   await save()
@@ -71,7 +72,7 @@ it('saves every field, including those inside More details', async () => {
     name: 'Daily', make: 'Skoda', model: 'Octavia', year: 2019, license_plate: 'AB12 CDE', vin: 'TMBJJ7NE0K0000001',
     fuel_type: 'diesel', current_mileage: 42000, tank_capacity: 55.5, engine_cc: 1598,
     vehicle_height_cm: 146, vehicle_width_cm: 181, vehicle_length_cm: 469, vehicle_weight_kg: 1340,
-    purchase_price: 12500, purchase_currency: 'EUR', purchase_date: '2025-03-01', distance_unit: 'miles',
+    purchase_price: 12500, purchase_currency: state.profileCurrency, purchase_date: '2025-03-01', distance_unit: 'miles',
   }, expect.anything())
 })
 
@@ -84,7 +85,7 @@ it('sends the unchanged defaults when More details is never opened', async () =>
     name: 'Daily', make: 'Skoda', model: 'Octavia', year: new Date().getFullYear(), license_plate: '', vin: '',
     fuel_type: 'petrol', current_mileage: 0, tank_capacity: null, engine_cc: null,
     vehicle_height_cm: null, vehicle_width_cm: null, vehicle_length_cm: null, vehicle_weight_kg: null,
-    purchase_price: null, purchase_currency: 'GBP', purchase_date: null, distance_unit: 'km',
+    purchase_price: null, purchase_currency: state.profileCurrency, purchase_date: null, distance_unit: 'km',
   }, expect.anything())
   expect(view.container.querySelector('details').open).toBe(false)
 })

@@ -544,7 +544,7 @@ export const translations = {
     financial: {
       partial: 'Partial totals: amounts with unknown currency or unavailable exchange rates are excluded.',
       loadFailed: 'Expense totals could not be loaded. Please refresh to retry.',
-      purchaseCurrency: 'Purchase currency', unknownCurrency: 'Unknown — review required', reviewPurchase: 'Choose the original purchase currency in Edit vehicle to calculate ownership costs.',
+      unknownCurrency: 'Unknown — review required',
       unavailable: 'Unavailable', consumable: 'Consumables', insurance: 'Insurance (estimate)',
     },
     currencyReview: {
@@ -3644,7 +3644,7 @@ export const translations = {
     financial: {
       partial: 'Totaluri parțiale: sumele cu monedă necunoscută sau curs indisponibil sunt excluse.',
       loadFailed: 'Totalurile nu au putut fi încărcate. Reîmprospătați pentru a reîncerca.',
-      purchaseCurrency: 'Moneda achiziției', unknownCurrency: 'Necunoscută — necesită verificare', reviewPurchase: 'Selectați moneda originală a achiziției în Editare vehicul pentru a calcula costurile de proprietate.',
+      unknownCurrency: 'Necunoscută — necesită verificare',
       unavailable: 'Indisponibil', consumable: 'Consumabile', insurance: 'Asigurare (estimare)',
     },
     currencyReview: {
@@ -6744,7 +6744,7 @@ export const translations = {
     financial: {
       partial: 'Totales parciales: se excluyen importes con moneda desconocida o tipo de cambio no disponible.',
       loadFailed: 'No se pudieron cargar los totales. Actualiza para volver a intentarlo.',
-      purchaseCurrency: 'Moneda de compra', unknownCurrency: 'Desconocida — requiere revisión', reviewPurchase: 'Selecciona la moneda original de compra en Editar vehículo para calcular los costes de propiedad.',
+      unknownCurrency: 'Desconocida — requiere revisión',
       unavailable: 'No disponible', consumable: 'Consumibles', insurance: 'Seguro (estimación)',
     },
     currencyReview: {

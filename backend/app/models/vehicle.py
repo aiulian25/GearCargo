@@ -108,6 +108,11 @@ class Vehicle(db.Model):
         """Return full vehicle name."""
         parts = [str(self.year) if self.year else '', self.make or '', self.model or '']
         return ' '.join(filter(None, parts)) or self.name
+
+    @property
+    def purchase_price_currency(self):
+        """The currency the purchase price is in: the one stored with it, otherwise the owner's."""
+        return self.purchase_currency or self.owner.chosen_currency
     
     def update_mileage(self, new_mileage):
         """Update mileage if greater than current."""

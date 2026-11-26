@@ -14,7 +14,6 @@ vi.mock('../hooks/useMutationIntent', () => ({ useMutationIntent: () => state.mu
 vi.mock('../hooks/useUnsavedChanges', () => ({ useUnsavedChanges: () => () => true }))
 vi.mock('../components/ReceiptUpload', () => ({ default: () => null }))
 vi.mock('../components/ui/ScanReceiptBanner', () => ({ default: () => null }))
-vi.mock('../components/ui/CurrencySelect', () => ({ default: () => null }))
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 it.each([

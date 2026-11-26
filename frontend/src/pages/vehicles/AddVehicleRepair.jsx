@@ -14,7 +14,6 @@ import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { normalizeDistanceUnit } from '../../utils/fuelEconomy'
 import ReceiptUpload from '../../components/ReceiptUpload'
 import ScanReceiptBanner from '../../components/ui/ScanReceiptBanner'
-import CurrencySelect from '../../components/ui/CurrencySelect'
 
 // SVG Icons
 const Icons = {
@@ -54,7 +53,7 @@ export default function AddVehicleRepair() {
   const [selectedRepairTypes, setSelectedRepairTypes] = useState([])
   const [uploadedAttachmentId, setUploadedAttachmentId] = useState(null)
   
-  const { register, getValues, handleSubmit, formState: { errors, isDirty }, setValue, control, reset, watch } = useForm({
+  const { register, handleSubmit, formState: { errors, isDirty }, setValue, control, reset, watch } = useForm({
     defaultValues: {
       date: localDate(),
       mileage: '',
@@ -435,8 +434,7 @@ export default function AddVehicleRepair() {
             </div>
           </div>
           
-          <div className="flex gap-3">
-            <div className="flex-1">
+          <div>
             <label htmlFor="total_cost" className="block text-xs text-(--color-text-muted) mb-1">
               {t('addRepair.totalCost') || 'Total Cost'} ({entryCurrencySymbol})
             </label>
@@ -448,8 +446,6 @@ export default function AddVehicleRepair() {
               className="input"
               placeholder="0.00"
             />
-            </div>
-            <CurrencySelect extraCurrency={readPrivateNavigationState(location.state)?.prefill?.currency || getValues('currency')} register={register} className="w-28 shrink-0" />
           </div>
 
           {/* F56 — labor hours (structured; was only expressible in notes) */}

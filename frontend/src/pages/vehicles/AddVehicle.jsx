@@ -6,8 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { vehicleApi } from '../../services/api'
 import { useAuth } from '../../contexts/AuthContext'
-import CurrencySelect from '../../components/ui/CurrencySelect'
-import { useLanguage } from '../../contexts/LanguageContext'
+import { useLanguage, useCurrency } from '../../contexts/LanguageContext'
 
 export default function AddVehicle() {
   const { user } = useAuth()
@@ -15,6 +14,7 @@ export default function AddVehicle() {
   const createdVehicle = useRef(null)
   const navigate = useNavigate()
   const { t } = useLanguage()
+  const { currency } = useCurrency()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [photoPreview, setPhotoPreview] = useState(null)
@@ -425,9 +425,8 @@ export default function AddVehicle() {
             </div>
 
             <div className="card grid grid-cols-2 gap-3">
-              <div><label htmlFor="purchase_price" className="block text-xs mb-1">{t('vehicles.purchasePrice')}</label>
+              <div><label htmlFor="purchase_price" className="block text-xs mb-1">{t('vehicles.purchasePrice')} ({currency.symbol})</label>
                 <input id="purchase_price" type="number" step="0.01" {...register('purchase_price', { min: 0 })} className="input" /></div>
-              <CurrencySelect register={register} name="purchase_currency" />
               <div><label htmlFor="purchase_date" className="block text-xs mb-1">{t('vehicles.purchaseDate')}</label>
                 <input id="purchase_date" type="date" {...register('purchase_date')} className="input" /></div>
             </div>

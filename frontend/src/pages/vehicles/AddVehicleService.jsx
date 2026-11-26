@@ -14,7 +14,6 @@ import { useTranslation, useCurrency } from '../../contexts/LanguageContext'
 import { normalizeDistanceUnit } from '../../utils/fuelEconomy'
 import ReceiptUpload from '../../components/ReceiptUpload'
 import ScanReceiptBanner from '../../components/ui/ScanReceiptBanner'
-import CurrencySelect from '../../components/ui/CurrencySelect'
 
 // SVG Icons
 const Icons = {
@@ -54,7 +53,7 @@ export default function AddVehicleService() {
   const [selectedServiceTypes, setSelectedServiceTypes] = useState([])
   const [uploadedAttachmentId, setUploadedAttachmentId] = useState(null)
   
-  const { register, getValues, handleSubmit, control, setValue, reset, watch, formState: { isDirty } } = useForm({
+  const { register, handleSubmit, control, setValue, reset, watch, formState: { isDirty } } = useForm({
     defaultValues: {
       date: localDate(),
       mileage: '',
@@ -421,21 +420,18 @@ export default function AddVehicleService() {
             </div>
           </div>
           
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label htmlFor="total_cost" className="block text-xs text-(--color-text-muted) mb-1">
-                {t('addService.totalCost') || 'Total Cost'} ({entryCurrencySymbol})
-              </label>
-              <input
-                id="total_cost"
-                type="number" inputMode="decimal"
-                step="0.01"
-                {...register('total_cost')}
-                className="input"
-                placeholder="0.00"
-              />
-            </div>
-            <CurrencySelect extraCurrency={readPrivateNavigationState(location.state)?.prefill?.currency || getValues('currency')} register={register} className="w-28 shrink-0" />
+          <div>
+            <label htmlFor="total_cost" className="block text-xs text-(--color-text-muted) mb-1">
+              {t('addService.totalCost') || 'Total Cost'} ({entryCurrencySymbol})
+            </label>
+            <input
+              id="total_cost"
+              type="number" inputMode="decimal"
+              step="0.01"
+              {...register('total_cost')}
+              className="input"
+              placeholder="0.00"
+            />
           </div>
 
           {/* F56 — structured workshop fields (previously only fit in notes) */}
