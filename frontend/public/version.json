@@ -1,8 +1,23 @@
 {
-  "version": "1.11.0",
-  "date": "2026-11-18",
+  "version": "1.11.1",
+  "date": "2026-11-26",
   "notes": {
     "en": [
+      {
+        "type": "new",
+        "title": "Forms no longer ask for a currency",
+        "desc": "The Currency field is gone from the expense forms and from the vehicle forms. A new entry is saved in the currency of your profile. An entry that already has another currency keeps it, and its form shows that currency next to the amount."
+      },
+      {
+        "type": "fix",
+        "title": "Older vehicles get their cost of ownership",
+        "desc": "A purchase price saved without a currency now counts as your profile currency, so Charts shows the cost of ownership instead of \"Unknown — review required\"."
+      },
+      {
+        "type": "fix",
+        "title": "A fuel expense drafted from a statement keeps its currency",
+        "desc": "A fuel draft opened from a bank statement row in another currency was switched to your profile currency. It now keeps the currency of the statement."
+      },
       {
         "type": "new",
         "title": "The AI assistant and AI predictions are removed",
@@ -37,6 +52,21 @@
     "ro": [
       {
         "type": "new",
+        "title": "Formularele nu mai cer o monedă",
+        "desc": "Câmpul Monedă a dispărut din formularele de cheltuieli și din cele ale vehiculului. O înregistrare nouă se salvează în moneda din profilul tău. O înregistrare care are deja altă monedă o păstrează, iar formularul o arată lângă sumă."
+      },
+      {
+        "type": "fix",
+        "title": "Vehiculele mai vechi își primesc costul total de deținere",
+        "desc": "Un preț de achiziție salvat fără monedă se consideră acum în moneda profilului tău, așa că Grafice arată costul total de deținere în loc de „Necunoscută — necesită verificare”."
+      },
+      {
+        "type": "fix",
+        "title": "O cheltuială de combustibil pornită dintr-un extras își păstrează moneda",
+        "desc": "Un formular de combustibil deschis dintr-un rând de extras bancar în altă monedă era trecut pe moneda profilului tău. Acum păstrează moneda din extras."
+      },
+      {
+        "type": "new",
         "title": "Asistentul AI și predicțiile AI au fost eliminate",
         "desc": "GearCargo nu se mai conectează la un model AI (Ollama). Au dispărut: conversația cu asistentul, predicțiile AI și alertele de consum neobișnuit, sugestiile AI pentru memento-uri, pasul „Extrage Date” de la chitanțe și pagina AI din panoul de administrare."
       },
@@ -67,6 +97,21 @@
       }
     ],
     "es": [
+      {
+        "type": "new",
+        "title": "Los formularios ya no piden una moneda",
+        "desc": "El campo Moneda desaparece de los formularios de gastos y de los del vehículo. Un registro nuevo se guarda en la moneda de tu perfil. Un registro que ya tiene otra moneda la conserva, y su formulario la muestra junto al importe."
+      },
+      {
+        "type": "fix",
+        "title": "Los vehículos antiguos reciben su coste de propiedad",
+        "desc": "Un precio de compra guardado sin moneda cuenta ahora como la moneda de tu perfil, así que Gráficos muestra el coste de propiedad en lugar de «Desconocida — requiere revisión»."
+      },
+      {
+        "type": "fix",
+        "title": "Un gasto de combustible iniciado desde un extracto conserva su moneda",
+        "desc": "Un borrador de combustible abierto desde una fila de extracto bancario en otra moneda se cambiaba a la moneda de tu perfil. Ahora conserva la moneda del extracto."
+      },
       {
         "type": "new",
         "title": "Se han eliminado el asistente de IA y las predicciones de IA",
